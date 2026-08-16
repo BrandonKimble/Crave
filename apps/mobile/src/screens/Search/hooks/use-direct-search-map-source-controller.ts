@@ -1164,7 +1164,7 @@ export const useDirectSearchMapSourceController = ({
       ? (mountedResults?.metadata?.searchRequestId ?? null)
       : null;
     const committedRestaurants = shouldProjectResultSources
-      ? (mountedResults?.restaurants ?? EMPTY_RESTAURANTS)
+      ? (mountedResults?.places ?? EMPTY_RESTAURANTS)
       : EMPTY_RESTAURANTS;
     // A pure seed (a profile opened with no committed results) is always a single RESTAURANT pin —
     // project it on the restaurant axis regardless of the stale results tab (which defaults to dishes
@@ -1183,10 +1183,8 @@ export const useDirectSearchMapSourceController = ({
       selectedRestaurantId != null
         ? seededMarkerRestaurants.filter(
             (restaurant) =>
-              restaurant.restaurantId === selectedRestaurantId &&
-              !committedRestaurants.some(
-                (committed) => committed.restaurantId === restaurant.restaurantId
-              )
+              restaurant.placeId === selectedRestaurantId &&
+              !committedRestaurants.some((committed) => committed.placeId === restaurant.placeId)
           )
         : [];
     const restaurants = isSeededRestaurantProjection
@@ -1356,12 +1354,12 @@ export const useDirectSearchMapSourceController = ({
         : new Map(
             restaurants
               .filter((restaurant) => typeof restaurant.rank === 'number')
-              .map((restaurant) => [restaurant.restaurantId, restaurant.rank as number])
+              .map((restaurant) => [restaurant.placeId, restaurant.rank as number])
           );
     const restaurantsById =
       anyPrecomputedMarkerProjectionForResults != null
         ? anyPrecomputedMarkerProjectionForResults.restaurantsById
-        : new Map(restaurants.map((restaurant) => [restaurant.restaurantId, restaurant]));
+        : new Map(restaurants.map((restaurant) => [restaurant.placeId, restaurant]));
     if (!isPrewarmBuild) {
       restaurantsByIdRef.current = restaurantsById;
       restaurantsRef.current = restaurants;
@@ -1641,7 +1639,7 @@ export const useDirectSearchMapSourceController = ({
     // on the dish axis the selected restaurant's group too (its restaurant-axis entries
     // would otherwise interleave by score and renumber every dish badge below it).
     const additiveSelectionGroupKeys = new Set<string>(
-      additiveSeededRestaurants.map((restaurant) => restaurant.restaurantId)
+      additiveSeededRestaurants.map((restaurant) => restaurant.placeId)
     );
     if (activeTab === 'dishes' && selectedRestaurantId != null && !isSeededRestaurantProjection) {
       additiveSelectionGroupKeys.add(selectedRestaurantId);

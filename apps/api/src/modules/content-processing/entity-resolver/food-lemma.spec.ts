@@ -1,4 +1,4 @@
-import { foodNameVariants, isSameFoodUpToNumber } from './food-lemma';
+import { itemNameVariants, isSameItemUpToNumber } from './food-lemma';
 
 describe('isSameFoodUpToNumber', () => {
   it('collapses the real split pairs found in production', () => {
@@ -24,24 +24,24 @@ describe('isSameFoodUpToNumber', () => {
       ['tamales', 'tamal'],
     ];
     for (const [plural, singular] of pairs) {
-      expect(isSameFoodUpToNumber(plural, singular)).toBe(true);
-      expect(isSameFoodUpToNumber(singular, plural)).toBe(true);
+      expect(isSameItemUpToNumber(plural, singular)).toBe(true);
+      expect(isSameItemUpToNumber(singular, plural)).toBe(true);
     }
   });
 
   it('resolves the -ies ambiguity BOTH ways (cookie and curry, not cooky)', () => {
     // A single-valued lemma key cannot do this: it must guess -ie or -y.
-    expect(foodNameVariants('cookies')).toEqual(
+    expect(itemNameVariants('cookies')).toEqual(
       expect.arrayContaining(['cookie']),
     );
-    expect(foodNameVariants('curries')).toEqual(
+    expect(itemNameVariants('curries')).toEqual(
       expect.arrayContaining(['curry']),
     );
   });
 
   it('is head-final: only the last word carries number', () => {
-    expect(isSameFoodUpToNumber('chicken tacos', 'beef tacos')).toBe(false);
-    expect(isSameFoodUpToNumber('chicken tacos', 'chicken taco')).toBe(true);
+    expect(isSameItemUpToNumber('chicken tacos', 'beef tacos')).toBe(false);
+    expect(isSameItemUpToNumber('chicken tacos', 'chicken taco')).toBe(true);
   });
 
   it('NEVER invents a singular for mass nouns and plural-named dishes', () => {
@@ -58,7 +58,7 @@ describe('isSameFoodUpToNumber', () => {
       'beans',
       'chips',
     ]) {
-      expect(foodNameVariants(word)).toEqual([word]);
+      expect(itemNameVariants(word)).toEqual([word]);
     }
   });
 
@@ -74,19 +74,19 @@ describe('isSameFoodUpToNumber', () => {
       ['chip', 'chips'],
       ['green', 'greens'],
     ] as const) {
-      expect(foodNameVariants(singular)).not.toContain(protectedPlural);
-      expect(isSameFoodUpToNumber(singular, protectedPlural)).toBe(false);
+      expect(itemNameVariants(singular)).not.toContain(protectedPlural);
+      expect(isSameItemUpToNumber(singular, protectedPlural)).toBe(false);
     }
   });
 
   it('does not collapse two genuinely different foods', () => {
-    expect(isSameFoodUpToNumber('pho', 'poke')).toBe(false);
-    expect(isSameFoodUpToNumber('glass noodle', 'rice noodle')).toBe(false);
-    expect(isSameFoodUpToNumber('taco', 'tostada')).toBe(false);
+    expect(isSameItemUpToNumber('pho', 'poke')).toBe(false);
+    expect(isSameItemUpToNumber('glass noodle', 'rice noodle')).toBe(false);
+    expect(isSameItemUpToNumber('taco', 'tostada')).toBe(false);
   });
 
   it('normalizes whitespace and case without changing identity', () => {
-    expect(isSameFoodUpToNumber('  Breakfast   TACOS ', 'breakfast taco')).toBe(
+    expect(isSameItemUpToNumber('  Breakfast   TACOS ', 'breakfast taco')).toBe(
       true,
     );
   });
@@ -94,17 +94,17 @@ describe('isSameFoodUpToNumber', () => {
   it('NEVER pluralizes a sub-3-char fragment into an exact claim (the jo→jos accident)', () => {
     // R15 defect 1: submitted 'jo' pluralized to 'jos', which exact-matched
     // Jo's Coffee's banked alias — an identity link from a 2-char prefix.
-    expect(foodNameVariants('jo')).toEqual(['jo']);
-    expect(foodNameVariants('a')).toEqual(['a']);
-    expect(isSameFoodUpToNumber('jo', 'jos')).toBe(false);
+    expect(itemNameVariants('jo')).toEqual(['jo']);
+    expect(itemNameVariants('a')).toEqual(['a']);
+    expect(isSameItemUpToNumber('jo', 'jos')).toBe(false);
     // 3-char words are real head words and keep their variants.
-    expect(foodNameVariants('egg')).toContain('eggs');
+    expect(itemNameVariants('egg')).toContain('eggs');
     // Head-final: only a short HEAD is floored, not a short first word.
-    expect(foodNameVariants('bo ssam')).toContain('bo ssams');
+    expect(itemNameVariants('bo ssam')).toContain('bo ssams');
   });
 
   it('returns nothing for an empty name and never matches it', () => {
-    expect(foodNameVariants('   ')).toEqual([]);
-    expect(isSameFoodUpToNumber('', 'taco')).toBe(false);
+    expect(itemNameVariants('   ')).toEqual([]);
+    expect(isSameItemUpToNumber('', 'taco')).toBe(false);
   });
 });

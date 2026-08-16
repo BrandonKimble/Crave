@@ -127,9 +127,7 @@ describe('browse mode — the word-role composition rule', () => {
 
   it("'best' → browse even though a ghost restaurant is BANKED under it — the bank is not evidence", async () => {
     const { service } = harness((q) => [
-      span(q, 'best', [
-        { entityId: 'ghost-1', type: 'restaurant', name: 'Best' },
-      ]),
+      span(q, 'best', [{ entityId: 'ghost-1', type: 'place', name: 'Best' }]),
     ]);
     const result = await service.interpret({ query: 'best' } as never);
     expect(result.queryAnalysis?.browseMode).toBe(true);
@@ -154,7 +152,7 @@ describe('browse mode — the word-role composition rule', () => {
       span(q, 'coffee shops', [
         {
           entityId: 'attr-1',
-          type: 'restaurant_attribute',
+          type: 'place_attribute',
           name: 'coffee shop',
         },
       ]),
@@ -165,7 +163,7 @@ describe('browse mode — the word-role composition rule', () => {
     } as never);
     expect(result.queryAnalysis?.browseMode).toBe(false);
     expect(
-      result.structuredRequest.entities.restaurantAttributes?.map(
+      result.structuredRequest.entities.placeAttributes?.map(
         (e) => e.entityIds[0],
       ),
     ).toEqual(['attr-1']);
@@ -175,21 +173,19 @@ describe('browse mode — the word-role composition rule', () => {
   it("'best birria near me' → today's path: birria grounds, frames stripped, no 'me' probe, no demand", async () => {
     const { service, retrieveCandidates, signals } = harness((q) => [
       span(q, 'birria', [
-        { entityId: 'food-birria', type: 'food', name: 'birria' },
+        { entityId: 'food-birria', type: 'item', name: 'birria' },
       ]),
-      span(q, 'best', [
-        { entityId: 'ghost-1', type: 'restaurant', name: 'Best' },
-      ]),
+      span(q, 'best', [{ entityId: 'ghost-1', type: 'place', name: 'Best' }]),
     ]);
     const result = await service.interpret({
       query: 'best birria near me',
     } as never);
     expect(result.queryAnalysis?.browseMode).toBe(false);
     expect(
-      result.structuredRequest.entities.food?.map((e) => e.entityIds[0]),
+      result.structuredRequest.entities.items?.map((e) => e.entityIds[0]),
     ).toEqual(['food-birria']);
     // The frame-only ghost span is DROPPED from grounding input…
-    expect(result.structuredRequest.entities.restaurants).toBeUndefined();
+    expect(result.structuredRequest.entities.places).toBeUndefined();
     // …and no frame token seeds a residue probe or a demand row.
     expect(retrieveCandidates).not.toHaveBeenCalled();
     expect(signals.record).not.toHaveBeenCalled();
@@ -201,7 +197,7 @@ describe('browse mode — the word-role composition rule', () => {
       span(q, 'Best Quality Daughter', [
         {
           entityId: 'rest-bqd',
-          type: 'restaurant',
+          type: 'place',
           name: 'Best Quality Daughter',
         },
       ]),
@@ -211,18 +207,18 @@ describe('browse mode — the word-role composition rule', () => {
     } as never);
     expect(result.queryAnalysis?.browseMode).toBe(false);
     expect(
-      result.structuredRequest.entities.restaurants?.map((e) => e.entityIds[0]),
+      result.structuredRequest.entities.places?.map((e) => e.entityIds[0]),
     ).toEqual(['rest-bqd']);
   });
 
   it("'tacos' control — a particular word takes today's path unchanged", async () => {
     const { service } = harness((q) => [
-      span(q, 'tacos', [{ entityId: 'food-taco', type: 'food', name: 'taco' }]),
+      span(q, 'tacos', [{ entityId: 'food-taco', type: 'item', name: 'taco' }]),
     ]);
     const result = await service.interpret({ query: 'tacos' } as never);
     expect(result.queryAnalysis?.browseMode).toBe(false);
     expect(
-      result.structuredRequest.entities.food?.map((e) => e.entityIds[0]),
+      result.structuredRequest.entities.items?.map((e) => e.entityIds[0]),
     ).toEqual(['food-taco']);
   });
 
@@ -260,7 +256,7 @@ describe('browse mode — the word-role composition rule', () => {
     // compound we failed to read). The whole run reaches the residue lane;
     // the demand door strips 'best' from anything it records.
     expect(result.unresolved).toEqual([
-      { type: 'food', terms: ['best sushiritto'] },
+      { type: 'item', terms: ['best sushiritto'] },
     ]);
   });
 });

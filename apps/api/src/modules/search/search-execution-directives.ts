@@ -4,8 +4,8 @@ export interface SearchExecutionDirectives {
    * allow a fallback that includes connections whose food/category text matches
    * the attribute term(s), even if the attribute ID graph is incomplete.
    */
-  primaryFoodAttributeQuery?: boolean;
-  primaryFoodAttributeTextFoodIds?: string[];
+  primaryItemAttributeQuery?: boolean;
+  primaryItemAttributeTextItemIds?: string[];
   /**
    * Twin-ingredient union (owner ruling 2026-07-25): same-named ingredient
    * entities of the query foods — the food clause ORs their containment
@@ -36,12 +36,12 @@ export interface SearchExecutionDirectives {
    *  (a grounded dietary id activates its whole pair). */
   dietaryWalls?: Array<{
     name: string;
-    foodAttributeId?: string;
-    restaurantAttributeId?: string;
+    itemAttributeId?: string;
+    placeAttributeId?: string;
   }>;
   pooledGate?: {
-    softFoodAttributeIds: string[];
-    softRestaurantAttributeIds: string[];
+    softItemAttributeIds: string[];
+    softPlaceAttributeIds: string[];
     threshold: number;
     /** TIER-2 SIMILAR RING (round-5 ideal, spec §7.2 dissolved): the dense
      *  sibling ids ride the SAME dish scan as provenance tier 2 — admitted
@@ -49,6 +49,6 @@ export interface SearchExecutionDirectives {
      *  the window (similarAvailable becomes a measured fact). The
      *  Include-similar chip flips membership (ring becomes tier-1 members)
      *  instead of re-running the pipeline. Dish axis only. */
-    similarFoodIds?: string[];
+    similarItemIds?: string[];
   };
 }

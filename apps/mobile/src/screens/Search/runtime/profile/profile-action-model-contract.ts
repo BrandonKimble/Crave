@@ -98,7 +98,7 @@ export type ProfileCloseActionModel = {
 export type ProfileAutoOpenActionModel = {
   results: SearchResponse | null;
   isProfileAutoOpenSuppressed: boolean;
-  pendingSelection: { restaurantId: string } | null;
+  pendingSelection: { placeId: string } | null;
   currentQueryKey: string;
   activeOpenRestaurantId: string | null;
   lastAutoOpenKey: string | null;

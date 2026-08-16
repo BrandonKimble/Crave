@@ -13,7 +13,7 @@ export interface EntitySpan {
   text: string;
   entityId: string;
   name: string;
-  type: string; // 'restaurant' | 'food' | 'food_attribute' | 'restaurant_attribute'
+  type: string; // 'restaurant' | 'food' | 'item_attribute' | 'place_attribute'
 }
 
 // One shared shape (services/author-identity): these were seven

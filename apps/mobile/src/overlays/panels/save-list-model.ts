@@ -61,7 +61,7 @@ export const buildSaveListRows = (lists: UserListSummary[]): SaveListRowModel[] 
 };
 
 export type SaveTargetPayload = {
-  restaurantId?: string;
+  placeId?: string;
   connectionId?: string;
   locationId?: string;
   note?: string;
@@ -81,8 +81,8 @@ export const dispatchSaveForRow = async (
       : await userListsService.addItem(selectedRowId, payload);
   // Plus/saved pill coherence: a successful save marks the target saved
   // everywhere it renders (the batched-membership store's mutation seam).
-  if (payload.restaurantId) {
-    useSavedMembershipStore.getState().markSaved('restaurant', payload.restaurantId);
+  if (payload.placeId) {
+    useSavedMembershipStore.getState().markSaved('restaurant', payload.placeId);
   } else if (payload.connectionId) {
     useSavedMembershipStore.getState().markSaved('connection', payload.connectionId);
   }

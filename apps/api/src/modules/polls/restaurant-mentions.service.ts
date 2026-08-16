@@ -35,7 +35,7 @@ const MAX_CARDS = 200;
 // an unbounded ancestry.
 const MAX_ANCESTOR_DEPTH = 20;
 
-export type RestaurantMentionSort = 'top' | 'new';
+export type PlaceMentionSort = 'top' | 'new';
 
 /**
  * A person as the world sees them. NOT a local shape: three near-identical
@@ -43,38 +43,38 @@ export type RestaurantMentionSort = 'top' | 'new';
  * free to disagree about what a deleted author looks like. One type, one
  * builder — see public-author-identity.
  */
-export type RestaurantMentionUserDto = PublicAuthorIdentity;
+export type PlaceMentionUserDto = PublicAuthorIdentity;
 
-export interface RestaurantMentionReplyDto {
+export interface PlaceMentionReplyDto {
   commentId: string;
   body: string;
   score: number;
   loggedAt: Date;
-  user: RestaurantMentionUserDto;
+  user: PlaceMentionUserDto;
 }
 
-export interface RestaurantMentionCardDto {
+export interface PlaceMentionCardDto {
   commentId: string;
   body: string;
   score: number;
   loggedAt: Date;
-  user: RestaurantMentionUserDto;
+  user: PlaceMentionUserDto;
   pollId: string;
   pollQuestion: string;
-  replies: RestaurantMentionReplyDto[];
+  replies: PlaceMentionReplyDto[];
 }
 
-export interface RestaurantMentionTagDto {
+export interface PlaceMentionTagDto {
   entityId: string;
   name: string;
   type: EntityType;
   mentionCount: number;
 }
 
-export interface RestaurantMentionsDto {
-  restaurantId: string;
-  tags: RestaurantMentionTagDto[];
-  cards: RestaurantMentionCardDto[];
+export interface PlaceMentionsDto {
+  placeId: string;
+  tags: PlaceMentionTagDto[];
+  cards: PlaceMentionCardDto[];
   /** Matched ROOT cards after thread-merge (pre-cap; bounded by the raw
    *  candidate scan) — never counts replies. */
   totalCount: number;
@@ -94,21 +94,21 @@ const spanEntityIds = (entitySpans: unknown): string[] => {
 };
 
 @Injectable()
-export class RestaurantMentionsService {
+export class PlaceMentionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly blocks: UserBlockService,
   ) {}
 
-  async getRestaurantMentions(
-    restaurantId: string,
+  async getPlaceMentions(
+    placeId: string,
     params: {
-      sort?: RestaurantMentionSort;
+      sort?: PlaceMentionSort;
       search?: string;
       tagEntityIds?: string[];
       viewerUserId?: string;
     } = {},
-  ): Promise<RestaurantMentionsDto> {
+  ): Promise<PlaceMentionsDto> {
     const sort = params.sort ?? 'top';
     const search = params.search?.trim() || undefined;
     const tagEntityIds = params.tagEntityIds?.length
@@ -116,7 +116,7 @@ export class RestaurantMentionsService {
       : null;
 
     const [signals, matched, blockedPeers] = await Promise.all([
-      this.prisma.restaurantEntitySignal.findMany({
+      this.prisma.placeEntitySignal.findMany({
         // ACTIVE ONLY (charter §2e). Archived entities are kept as FK-safe
         // tombstones and resolution SINKS, not as vocabulary — a tag is a
         // user-facing label, so a merged-away or junk entity must never
@@ -124,7 +124,7 @@ export class RestaurantMentionsService {
         // budget is spent on real tags. 4,892 of 49,342 signal rows point at
         // archived entities today (2026-07-27).
         where: {
-          restaurantId,
+          placeId,
           mentionCount: { gt: 0 },
           entity: { status: 'active' },
         },
@@ -142,7 +142,7 @@ export class RestaurantMentionsService {
           moderationStatus: PollCommentModerationStatus.approved,
           // JSONB containment: any span object with this entityId.
           entitySpans: {
-            array_contains: [{ entityId: restaurantId }],
+            array_contains: [{ entityId: placeId }],
           } as Prisma.JsonFilter,
           ...(search
             ? { body: { contains: search, mode: 'insensitive' as const } }
@@ -234,7 +234,7 @@ export class RestaurantMentionsService {
       return null;
     };
 
-    const repliesByRoot = new Map<string, RestaurantMentionReplyDto[]>();
+    const repliesByRoot = new Map<string, PlaceMentionReplyDto[]>();
     const roots: typeof filtered = [];
     for (const comment of filtered) {
       const ancestorId = nearestMatchedAncestor(comment.commentId);
@@ -269,7 +269,7 @@ export class RestaurantMentionsService {
       }
       return null;
     };
-    const repliesByTrueRoot = new Map<string, RestaurantMentionReplyDto[]>();
+    const repliesByTrueRoot = new Map<string, PlaceMentionReplyDto[]>();
     for (const [ancestorId, bucket] of repliesByRoot) {
       const rootId = rootIds.has(ancestorId)
         ? ancestorId
@@ -285,7 +285,7 @@ export class RestaurantMentionsService {
     // The CARD budget applies to ROOT candidates (replies ride their root's
     // card for free); totalCount is the honest count of matched root cards
     // BEFORE the cap (bounded by the raw candidate scan above).
-    const cards: RestaurantMentionCardDto[] = roots
+    const cards: PlaceMentionCardDto[] = roots
       .slice(0, MAX_CARDS)
       .map((comment) => ({
         commentId: comment.commentId,
@@ -301,7 +301,7 @@ export class RestaurantMentionsService {
       }));
 
     return {
-      restaurantId,
+      placeId,
       tags: signals.map((signal) => ({
         entityId: signal.entityId,
         name: signal.entity.name,

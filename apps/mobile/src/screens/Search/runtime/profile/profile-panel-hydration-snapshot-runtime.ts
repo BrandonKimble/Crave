@@ -73,8 +73,8 @@ export const createSeededRestaurantPanelSnapshot = ({
   cachedProfile: HydratedRestaurantProfile | undefined;
   selectedLocationId?: string | null;
 }): RestaurantPanelSnapshot => {
-  const restaurantId = restaurant.restaurantId;
-  const isSameRestaurant = currentSnapshot?.restaurant.restaurantId === restaurantId;
+  const placeId = restaurant.placeId;
+  const isSameRestaurant = currentSnapshot?.restaurant.placeId === placeId;
   const existingDishes = isSameRestaurant ? (currentSnapshot?.dishes ?? []) : [];
   const nextDishes = cachedProfile?.dishes ?? existingDishes;
   const preferredLocationId =
@@ -106,14 +106,14 @@ export const createSeededRestaurantPanelSnapshot = ({
 
 export const applyHydratedRestaurantProfileToPanelSnapshot = ({
   currentSnapshot,
-  restaurantId,
+  placeId,
   hydratedProfile,
 }: {
   currentSnapshot: RestaurantPanelSnapshot | null;
-  restaurantId: string;
+  placeId: string;
   hydratedProfile: HydratedRestaurantProfile;
 }): RestaurantPanelSnapshot | null => {
-  if (!currentSnapshot || currentSnapshot.restaurant.restaurantId !== restaurantId) {
+  if (!currentSnapshot || currentSnapshot.restaurant.placeId !== placeId) {
     return currentSnapshot;
   }
 
@@ -138,12 +138,12 @@ export const applyHydratedRestaurantProfileToPanelSnapshot = ({
 
 export const markRestaurantPanelSnapshotHydrating = ({
   currentSnapshot,
-  restaurantId,
+  placeId,
 }: {
   currentSnapshot: RestaurantPanelSnapshot | null;
-  restaurantId: string;
+  placeId: string;
 }): RestaurantPanelSnapshot | null => {
-  if (!currentSnapshot || currentSnapshot.restaurant.restaurantId !== restaurantId) {
+  if (!currentSnapshot || currentSnapshot.restaurant.placeId !== placeId) {
     return currentSnapshot;
   }
   if (currentSnapshot.dishes.length > 0 || currentSnapshot.isLoading) {
@@ -158,12 +158,12 @@ export const markRestaurantPanelSnapshotHydrating = ({
 
 export const clearRestaurantPanelSnapshotHydrating = ({
   currentSnapshot,
-  restaurantId,
+  placeId,
 }: {
   currentSnapshot: RestaurantPanelSnapshot | null;
-  restaurantId: string;
+  placeId: string;
 }): RestaurantPanelSnapshot | null => {
-  if (!currentSnapshot || currentSnapshot.restaurant.restaurantId !== restaurantId) {
+  if (!currentSnapshot || currentSnapshot.restaurant.placeId !== placeId) {
     return currentSnapshot;
   }
 

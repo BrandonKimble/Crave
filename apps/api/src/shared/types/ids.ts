@@ -40,10 +40,11 @@ export type Id<TEntity extends string> = string & {
 };
 
 export type UserId = Id<'user'>;
-export type RestaurantId = Id<'restaurant'>;
-export type FoodId = Id<'food'>;
-export type EntityId = Id<'entity'>;
 export type PlaceId = Id<'place'>;
+export type ItemId = Id<'item'>;
+export type EntityId = Id<'entity'>;
+/** Gazetteer places (the geographic `Place` model), not venue entities. */
+export type GeoPlaceId = Id<'geo_place'>;
 export type LocationId = Id<'location'>;
 export type ConnectionId = Id<'connection'>;
 export type PollId = Id<'poll'>;

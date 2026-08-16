@@ -39,8 +39,8 @@ export type AppRouteOverlayCommandActions = {
   // locationId = the in-context location the save trigger rendered (master
   // plan §7) — rides the save-sheet target into the add payloads.
   getDishSaveHandler: (connectionId: string, locationId?: string | null) => () => void;
-  getRestaurantSaveHandler: (restaurantId: string, locationId?: string | null) => () => void;
-  handleRestaurantSavePress: (restaurantId: string, locationId?: string | null) => void;
+  getRestaurantSaveHandler: (placeId: string, locationId?: string | null) => () => void;
+  handleRestaurantSavePress: (placeId: string, locationId?: string | null) => void;
   handleCloseSaveSheet: () => void;
 };
 
@@ -60,7 +60,7 @@ class AppRouteOverlayCommandController {
   private readonly listeners = new Set<Listener>();
 
   // ─── THE SAVE-HANDLER CACHES ARE BOUNDED (F955(a), F912's shape) ───────────────────
-  // These are keyed by CONTENT identity (`${connectionId|restaurantId}|${locationId}`),
+  // These are keyed by CONTENT identity (`${connectionId|placeId}|${locationId}`),
   // not by the bounded scene-key space, so they used to grow by one permanent entry for
   // every dish and restaurant the user ever saw a save button for, with the only clear
   // being `dispose()` at teardown: the leak class, cache variant. They exist purely to
@@ -139,16 +139,16 @@ class AppRouteOverlayCommandController {
         });
       });
     },
-    getRestaurantSaveHandler: (restaurantId, locationId) => {
-      const handlerKey = `${restaurantId}|${locationId ?? ''}`;
+    getRestaurantSaveHandler: (placeId, locationId) => {
+      const handlerKey = `${placeId}|${locationId ?? ''}`;
       return this.resolveCachedSaveHandler(this.restaurantSaveHandlers, handlerKey, () => () => {
-        this.actions.handleRestaurantSavePress(restaurantId, locationId);
+        this.actions.handleRestaurantSavePress(placeId, locationId);
       });
     },
-    handleRestaurantSavePress: (restaurantId, locationId) => {
+    handleRestaurantSavePress: (placeId, locationId) => {
       this.openSaveSheetRoute({
         listType: 'restaurant',
-        target: { restaurantId, locationId: locationId ?? null },
+        target: { placeId, locationId: locationId ?? null },
       });
     },
     handleCloseSaveSheet: () => {

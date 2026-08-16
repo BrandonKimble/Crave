@@ -30,7 +30,7 @@ interface QueryCase {
   note: string;
 }
 
-const FOODS = [EntityType.food, EntityType.food_attribute];
+const FOODS = [EntityType.item, EntityType.item_attribute];
 
 const CASES: QueryCase[] = [
   // --- semantic / cross-word (lexical should struggle, dense should shine) ---
@@ -68,7 +68,7 @@ const CASES: QueryCase[] = [
   { q: 'ramne', types: FOODS, note: 'typo of ramen' },
   { q: 'chikn sandwich', types: FOODS, note: 'typo cross-word' },
   // --- restaurant lane ---
-  { q: 'joes pizza', types: [EntityType.restaurant], note: 'restaurant name' },
+  { q: 'joes pizza', types: [EntityType.place], note: 'restaurant name' },
 ];
 
 const TOPK = 8;

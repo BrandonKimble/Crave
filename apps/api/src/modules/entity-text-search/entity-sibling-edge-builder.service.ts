@@ -73,7 +73,7 @@ export class EntitySiblingEdgeBuilderService extends DerivedIndexJob {
     const anchors = await this.prisma.$queryRaw<AnchorRow[]>(Prisma.sql`
       SELECT entity_id, name_embedding::text AS emb
       FROM core_entities
-      WHERE type = 'food'::entity_type
+      WHERE type = 'item'::entity_type
         AND status = 'active'::entity_status
         AND name_embedding IS NOT NULL
       ORDER BY entity_id
@@ -82,7 +82,7 @@ export class EntitySiblingEdgeBuilderService extends DerivedIndexJob {
     // Pass 1: every anchor's ordered top-FETCH_N neighborhood.
     //
     // ef_search matters: pgvector HNSW defaults to 40 candidates, and the index
-    // spans ALL entity types — the `type='food'` filter is applied AFTER the
+    // spans ALL entity types — the `type='item'` filter is applied AFTER the
     // candidate scan, so a default-ef LIMIT-60 query silently returns ~20 food
     // rows (proven: pho's neighborhood truncated at 20, mutual ranks went NULL).
     // SET LOCAL inside a transaction pins the setting to these statements only;
@@ -96,7 +96,7 @@ export class EntitySiblingEdgeBuilderService extends DerivedIndexJob {
             SELECT e.entity_id AS "entityId",
                    1 - (e.name_embedding <=> ${anchor.emb}::vector) AS cosine
             FROM core_entities e
-            WHERE e.type = 'food'::entity_type
+            WHERE e.type = 'item'::entity_type
               AND e.status = 'active'::entity_status
               AND e.name_embedding IS NOT NULL
               AND e.entity_id <> ${anchor.entity_id}::uuid

@@ -1,14 +1,14 @@
 export type EntityScope =
-  | 'restaurant'
-  | 'food'
-  | 'food_attribute'
-  | 'restaurant_attribute'
+  | 'place'
+  | 'item'
+  | 'item_attribute'
+  | 'place_attribute'
   | 'ingredient'
   | 'connection';
 
 export type QueryFormat = 'dual_list' | 'single_list';
 
-export type FilterStage = 'restaurant' | 'connection';
+export type FilterStage = 'place' | 'connection';
 
 export interface FilterClause {
   scope: FilterStage;
@@ -20,11 +20,11 @@ export interface FilterClause {
 
 export interface QueryPlan {
   format: QueryFormat;
-  restaurantFilters: FilterClause[];
+  placeFilters: FilterClause[];
   connectionFilters: FilterClause[];
   ranking: {
-    foodOrder: string;
-    restaurantOrder: string;
+    itemOrder: string;
+    placeOrder: string;
   };
   diagnostics: {
     missingEntities: EntityScope[];
@@ -75,13 +75,13 @@ export interface StructuredWeeklyHours {
   hasSchedule: boolean;
 }
 
-export interface FoodResult {
+export interface ItemResult {
   connectionId: string;
-  foodId: string;
-  foodName: string;
-  restaurantId: string;
-  restaurantName: string;
-  restaurantLocationId?: string;
+  itemId: string;
+  itemName: string;
+  placeId: string;
+  placeName: string;
+  placeLocationId?: string;
   scoreSubjectType: 'connection';
   scoreSubjectId: string;
   craveScore: number;
@@ -106,14 +106,14 @@ export interface FoodResult {
   mentionCount: number;
   totalUpvotes: number;
   lastMentionedAt?: string | null;
-  foodAttributes: string[];
-  restaurantPriceLevel?: number | null;
-  restaurantPriceSymbol?: string | null;
-  restaurantDistanceMiles?: number | null;
-  restaurantOperatingStatus?: OperatingStatus | null;
-  restaurantCraveScore: number;
-  restaurantLatitude?: number | null;
-  restaurantLongitude?: number | null;
+  itemAttributes: string[];
+  placePriceLevel?: number | null;
+  placePriceSymbol?: string | null;
+  placeDistanceMiles?: number | null;
+  placeOperatingStatus?: OperatingStatus | null;
+  placeCraveScore: number;
+  placeLatitude?: number | null;
+  placeLongitude?: number | null;
   // Favorites-list projection only (w1-listdetail spec B.1.5): the saver's
   // personal note on this item. Never set by real search responses.
   note?: string | null;
@@ -123,10 +123,10 @@ export interface FoodResult {
   userListItemId?: string | null;
 }
 
-export interface RestaurantFoodSnippet {
+export interface PlaceItemSnippet {
   connectionId: string;
-  foodId: string;
-  foodName: string;
+  itemId: string;
+  itemName: string;
   scoreSubjectType: 'connection';
   scoreSubjectId: string;
   craveScore: number;
@@ -134,7 +134,7 @@ export interface RestaurantFoodSnippet {
   scoreInfo?: ScoreInfoSummary;
 }
 
-export interface RestaurantLocationResult {
+export interface PlaceLocationResult {
   locationId: string;
   googlePlaceId?: string | null;
   latitude?: number | null;
@@ -159,7 +159,7 @@ export interface RestaurantLocationResult {
   updatedAt?: string | null;
 }
 
-export interface RestaurantMatchedTag {
+export interface PlaceMatchedTag {
   entityId: string;
   /** DISPLAY string — localized per request locale (N10). */
   name: string;
@@ -173,9 +173,9 @@ export interface RestaurantMatchedTag {
   mentionCount: number;
 }
 
-export interface RestaurantResult {
-  restaurantId: string;
-  restaurantName: string;
+export interface PlaceResult {
+  placeId: string;
+  placeName: string;
   /**
    * Canonical ordinal rank for the current search snapshot (1-based).
    * This should be server-assigned and stable across cards + map pins.
@@ -207,7 +207,7 @@ export interface RestaurantResult {
   latitude?: number | null;
   longitude?: number | null;
   address?: string | null;
-  restaurantLocationId?: string | null;
+  placeLocationId?: string | null;
   priceLevel?: number | null;
   priceSymbol?: string | null;
   priceText?: string | null;
@@ -219,14 +219,14 @@ export interface RestaurantResult {
    *  (`restaurantMetadata.primaryTypeDisplayName`). The category subline under the name. */
   categoryLabel?: string | null;
   priceLevelUpdatedAt?: string | null;
-  topFood: RestaurantFoodSnippet[];
+  topItem: PlaceItemSnippet[];
   totalDishCount: number;
   operatingStatus?: OperatingStatus | null;
   distanceMiles?: number | null;
-  displayLocation?: RestaurantLocationResult | null;
-  locations?: RestaurantLocationResult[];
+  displayLocation?: PlaceLocationResult | null;
+  locations?: PlaceLocationResult[];
   locationCount?: number;
-  matchedTags?: RestaurantMatchedTag[];
+  matchedTags?: PlaceMatchedTag[];
   matchEvidenceType?: 'connection' | 'tag_signal' | 'mixed' | null;
   hasMenuItems?: boolean;
   // Favorites-list projection only (w1-listdetail spec B.1.5): the saver's
@@ -238,10 +238,7 @@ export interface RestaurantResult {
   userListItemId?: string | null;
 }
 
-export type RestaurantResultScorePreview = Omit<
-  RestaurantResult,
-  'craveScore' | 'rising' | 'scoreInfo'
-> & {
+export type PlaceResultScorePreview = Omit<PlaceResult, 'craveScore' | 'rising' | 'scoreInfo'> & {
   /**
    * Profile-open shell only. Public search/favorite/coverage payloads must use
    * `RestaurantResult` and carry a computed numeric Crave Score.
@@ -251,12 +248,12 @@ export type RestaurantResultScorePreview = Omit<
   scoreInfo?: undefined;
 };
 
-export interface RestaurantProfile {
-  restaurant: RestaurantResult;
-  dishes: FoodResult[];
+export interface PlaceProfile {
+  place: PlaceResult;
+  dishes: ItemResult[];
 }
 
-export interface DishRestaurantLocation {
+export interface DishPlaceLocation {
   locationId: string;
   latitude: number;
   longitude: number;
@@ -265,20 +262,20 @@ export interface DishRestaurantLocation {
   googlePlaceId?: string | null;
 }
 
-export interface DishRestaurantData {
-  restaurantId: string;
-  restaurantName: string;
-  restaurantCraveScore: number;
+export interface DishPlaceData {
+  placeId: string;
+  placeName: string;
+  placeCraveScore: number;
   priceLevel?: number | null;
   priceSymbol?: string | null;
   operatingStatus?: OperatingStatus | null;
-  location: DishRestaurantLocation;
+  location: DishPlaceLocation;
 }
 
 export interface DishResult {
   connectionId: string;
-  foodId: string;
-  foodName: string;
+  itemId: string;
+  itemName: string;
   scoreSubjectType: 'connection';
   scoreSubjectId: string;
   craveScore: number;
@@ -287,8 +284,8 @@ export interface DishResult {
   mentionCount: number;
   totalUpvotes: number;
   lastMentionedAt?: string | null;
-  foodAttributes: string[];
-  restaurant: DishRestaurantData;
+  itemAttributes: string[];
+  place: DishPlaceData;
 }
 
 export interface ScoreInfoSummary {
@@ -302,8 +299,8 @@ export interface SearchResponseMetadata {
    *  drives the "show N similar dishes" chip. Present on page-1 exact-view
    *  responses when the query resolved a food. */
   similarAvailable?: number;
-  totalFoodResults: number;
-  totalRestaurantResults: number;
+  totalItemResults: number;
+  totalPlaceResults: number;
   queryExecutionTimeMs: number;
   boundsApplied: boolean;
   openNowApplied: boolean;
@@ -317,12 +314,12 @@ export interface SearchResponseMetadata {
    * returned items belong to the strict (exact) section.
    */
   exactDishCountOnPage?: number;
-  exactRestaurantCountOnPage?: number;
+  exactPlaceCountOnPage?: number;
   relaxationApplied?: boolean;
   relaxationStage?:
     | 'strict'
-    | 'relaxed_restaurant_attributes'
-    | 'relaxed_food_attributes'
+    | 'relaxed_place_attributes'
+    | 'relaxed_item_attributes'
     | 'relaxed_modifiers';
   resultCoverageStatus?: 'full' | 'partial' | 'unresolved';
   unresolvedEntities?: Array<{
@@ -345,7 +342,7 @@ export interface SearchResponseMetadata {
   originalBackendSearchRequestId?: string;
   dataReadyFrom?: 'backend' | 'cache' | 'in_flight';
   analysisMetadata?: Record<string, unknown>;
-  primaryFoodTerm?: string;
+  primaryItemTerm?: string;
   /** ENGINE-COVERAGE (markets extermination leg 2): raw share of the
    *  viewport covered by engine territories (union across engines, 0..1).
    *  No thresholds — consumers judge per their own law. */
@@ -365,12 +362,12 @@ export interface SearchResponse {
    * client composes the toggle-ON view from one payload — page-1 flips are
    * zero-network and the map gets its extra pins from the same union.
    */
-  similarDishes?: FoodResult[];
-  similarRestaurants?: RestaurantResult[];
+  similarDishes?: ItemResult[];
+  similarPlaces?: PlaceResult[];
   format: QueryFormat;
   plan: QueryPlan;
-  dishes: FoodResult[];
-  restaurants: RestaurantResult[];
+  dishes: ItemResult[];
+  places: PlaceResult[];
   sqlPreview?: string | null;
   metadata: SearchResponseMetadata;
 }
@@ -453,8 +450,8 @@ export interface NaturalSearchRequest {
  * class-validator decorators, and the server's internal post-interpretation
  * shape) and is deliberately NOT attempted here.
  */
-export interface RestaurantStatusPreview {
-  restaurantId: string;
+export interface PlaceStatusPreview {
+  placeId: string;
   operatingStatus: OperatingStatus | null;
   distanceMiles: number | null;
   locationCount: number | null;

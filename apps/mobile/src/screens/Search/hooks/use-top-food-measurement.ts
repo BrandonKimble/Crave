@@ -60,7 +60,7 @@ const topFoodMoreWidthCache = new LruWidthCache<number>(250);
 
 type TopFoodItem = {
   connectionId: string;
-  foodName: string;
+  itemName: string;
 };
 
 type CachedTopFoodLayout = {
@@ -654,14 +654,14 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
 }
 
 /**
- * Given a list of restaurant-like results, returns the set of connectionId+foodName pairs
+ * Given a list of restaurant-like results, returns the set of connectionId+itemName pairs
  * and moreCount values that are NOT yet in the module-level LRU cache and need measurement.
  */
 function computeTopFoodPreMeasureKeys(
   restaurants: readonly { topFood?: readonly TopFoodItem[]; totalDishCount?: number }[],
   maxToRender: number
-): { items: { connectionId: string; foodName: string }[]; moreCounts: number[] } {
-  const items: { connectionId: string; foodName: string }[] = [];
+): { items: { connectionId: string; itemName: string }[]; moreCounts: number[] } {
+  const items: { connectionId: string; itemName: string }[] = [];
   const moreCountsSet = new Set<number>();
   const seenConnectionIds = new Set<string>();
 
@@ -674,7 +674,7 @@ function computeTopFoodPreMeasureKeys(
         topFoodItemWidthCache.get(food.connectionId) === undefined
       ) {
         seenConnectionIds.add(food.connectionId);
-        items.push({ connectionId: food.connectionId, foodName: food.foodName });
+        items.push({ connectionId: food.connectionId, itemName: food.itemName });
       }
     }
     for (let count = 0; count <= foods.length; count++) {

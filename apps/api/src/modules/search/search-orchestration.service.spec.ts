@@ -56,10 +56,10 @@ function entitiesForGroupOnly(group: QueryEntityGroupKey): QueryEntityGroupDto {
 
 /** A natural query per group, so the case name reads like a user action. */
 const QUERY_FOR_GROUP: Record<QueryEntityGroupKey, string> = {
-  restaurants: 'joes pizza',
-  food: 'breakfast tacos',
-  foodAttributes: 'spicy',
-  restaurantAttributes: 'patio seating',
+  places: 'joes pizza',
+  items: 'breakfast tacos',
+  itemAttributes: 'spicy',
+  placeAttributes: 'patio seating',
   ingredients: 'burrata',
 };
 
@@ -75,10 +75,10 @@ function createHarness(
     interpret: jest.fn().mockResolvedValue({
       structuredRequest,
       analysis: {
-        restaurants: [],
-        foods: [],
-        foodAttributes: [],
-        restaurantAttributes: [],
+        places: [],
+        items: [],
+        itemAttributes: [],
+        placeAttributes: [],
       },
       unresolved: [],
       ...(queryAnalysis ? { queryAnalysis } : {}),
@@ -86,12 +86,12 @@ function createHarness(
   };
   const searchService = {
     runQuery: jest.fn().mockResolvedValue({
-      restaurants: [],
+      places: [],
       dishes: [],
       metadata: { searchRequestId: 'sr-1' },
     }),
     buildEmptyResponse: jest.fn().mockReturnValue({
-      restaurants: [],
+      places: [],
       dishes: [],
       metadata: { searchRequestId: 'sr-1' },
     }),

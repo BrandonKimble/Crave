@@ -248,7 +248,7 @@ describe('the outage path is wired to the guard (behavioral)', () => {
     const llm = {
       processContent: jest.fn().mockImplementation(() => {
         order.push('llm');
-        return Promise.resolve({ restaurants: [] });
+        return Promise.resolve({ places: [] });
       }),
     } as unknown as LLMService;
 

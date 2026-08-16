@@ -44,7 +44,7 @@ async function main(): Promise<void> {
     const [pending] = await prisma.$queryRaw<Array<{ n: number }>>`
       SELECT count(*)::int AS n
       FROM (SELECT entity_id, unnest(restaurant_attributes) AS attr
-            FROM core_entities WHERE type='restaurant' AND status='active') x
+            FROM core_entities WHERE type='place' AND status='active') x
     `;
     out(
       `stamped pairs to classify: ${pending.n} (mode=${apply ? 'APPLY' : 'dry-run'})`,
@@ -58,7 +58,7 @@ async function main(): Promise<void> {
       -- The ACTIVE-scope source, from the one owner of "active" — this join
       -- was hand-rolled here, in a script the src-only guard never walked.
       FROM ${Prisma.raw(activeEntityEventsSourceSql())}
-      WHERE ev_scope.evidence_type = 'restaurant_attribute'
+      WHERE ev_scope.evidence_type = 'place_attribute'
       GROUP BY ev_scope.restaurant_id, ev_scope.entity_id
       ON CONFLICT DO NOTHING
     `;
@@ -67,7 +67,7 @@ async function main(): Promise<void> {
         (restaurant_id, attribute_id, source_class, observations)
       SELECT x.entity_id, x.attr, 'legacy_stamp', 1
       FROM (SELECT entity_id, unnest(restaurant_attributes) AS attr
-            FROM core_entities WHERE type='restaurant' AND status='active') x
+            FROM core_entities WHERE type='place' AND status='active') x
       WHERE NOT EXISTS (
         SELECT 1 FROM core_restaurant_attribute_evidence a
         WHERE a.restaurant_id = x.entity_id AND a.attribute_id = x.attr

@@ -51,7 +51,7 @@ export const useSearchRootSearchPrimitivesRuntime = ({
   suggestionPanelStateController: SearchSuggestionPanelStateController;
 }): SearchRootSearchStateRuntime => {
   const pendingRestaurantSelectionRef = React.useRef<{
-    restaurantId: string;
+    placeId: string;
   } | null>(null);
   const resetFocusedMapState = React.useCallback(() => {
     pendingRestaurantSelectionRef.current = null;

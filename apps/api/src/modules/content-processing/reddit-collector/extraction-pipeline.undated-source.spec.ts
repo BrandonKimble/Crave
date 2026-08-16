@@ -100,7 +100,7 @@ describe('undated source enrichment (F9201/F4905 de-weighting floor)', () => {
     const resolved = enrich(
       {
         source_id: 'c1',
-        restaurant: 'Franklin',
+        place: 'Franklin',
         general_praise: true,
         temp_id: 't1',
       },
@@ -126,7 +126,7 @@ describe('undated source enrichment (F9201/F4905 de-weighting floor)', () => {
     const resolved = enrich(
       {
         source_id: 's1',
-        restaurant: 'Franklin',
+        place: 'Franklin',
         general_praise: true,
         temp_id: 't1',
       },

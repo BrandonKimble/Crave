@@ -74,24 +74,19 @@ export const buildMarkerCatalogReadModel = (
       ? markerRestaurants
       : selectedRestaurantId == null
         ? []
-        : markerRestaurants.filter(
-            (restaurant) => restaurant.restaurantId === selectedRestaurantId
-          );
+        : markerRestaurants.filter((restaurant) => restaurant.placeId === selectedRestaurantId);
 
   if (activeTab === 'dishes') {
     const dishesByLocation = new Map<string, { dish: FoodResult; rank: number }>();
 
     dishes.forEach((dish, dishIndex) => {
-      if (
-        typeof dish.restaurantLatitude !== 'number' ||
-        typeof dish.restaurantLongitude !== 'number'
-      ) {
+      if (typeof dish.placeLatitude !== 'number' || typeof dish.placeLongitude !== 'number') {
         return;
       }
 
-      const locationKey = `${dish.restaurantId}-${dish.restaurantLatitude.toFixed(
+      const locationKey = `${dish.placeId}-${dish.placeLatitude.toFixed(
         6
-      )}-${dish.restaurantLongitude.toFixed(6)}`;
+      )}-${dish.placeLongitude.toFixed(6)}`;
       const rank = dishIndex + 1;
       if (!dishesByLocation.has(locationKey)) {
         dishesByLocation.set(locationKey, { dish, rank });
@@ -107,18 +102,18 @@ export const buildMarkerCatalogReadModel = (
         id: featureId,
         geometry: {
           type: 'Point',
-          coordinates: [dish.restaurantLongitude as number, dish.restaurantLatitude as number],
+          coordinates: [dish.placeLongitude as number, dish.placeLatitude as number],
         },
         properties: {
-          restaurantId: dish.restaurantId,
-          restaurantName: dish.restaurantName,
+          restaurantId: dish.placeId,
+          restaurantName: dish.placeName,
           craveScore,
           craveScoreExact: dish.craveScoreExact ?? null,
           rising: dish.rising ?? null,
           rank,
           pinColor,
           isDishPin: true,
-          dishName: dish.foodName,
+          dishName: dish.itemName,
           connectionId: dish.connectionId,
         },
       };
@@ -133,7 +128,7 @@ export const buildMarkerCatalogReadModel = (
 
   {
     restaurantAxisRestaurants.forEach((restaurant) => {
-      const canonicalRank = canonicalRestaurantRankById.get(restaurant.restaurantId);
+      const canonicalRank = canonicalRestaurantRankById.get(restaurant.placeId);
       // The marker catalog drops any restaurant without a numeric rank (rank is a search-ranking
       // concept). A committed restaurant/entity reveal (poll comment-span / restaurant deep link)
       // returns a SINGLE rankless restaurant — so its only pin would be dropped here and the map
@@ -144,7 +139,7 @@ export const buildMarkerCatalogReadModel = (
       // search results are unaffected: they always carry a canonical rank, so the fallback is inert
       // for the result-card path.
       const isRevealedRestaurant =
-        selectedRestaurantId !== null && restaurant.restaurantId === selectedRestaurantId;
+        selectedRestaurantId !== null && restaurant.placeId === selectedRestaurantId;
       const rank =
         typeof canonicalRank === 'number' ? canonicalRank : isRevealedRestaurant ? 1 : undefined;
       if (typeof rank !== 'number') {
@@ -155,7 +150,7 @@ export const buildMarkerCatalogReadModel = (
       const pinColor = getCraveScoreColorFromScore(craveScore);
       const locations = resolveRestaurantMapLocations(restaurant);
       const shouldRenderAllLocations =
-        selectedRestaurantId !== null && restaurant.restaurantId === selectedRestaurantId;
+        selectedRestaurantId !== null && restaurant.placeId === selectedRestaurantId;
       const representativeLocation = shouldRenderAllLocations
         ? null
         : pickPreferredRestaurantMapLocation(restaurant, locationSelectionAnchor);
@@ -197,7 +192,7 @@ export const buildMarkerCatalogReadModel = (
           : [];
 
       locationsToRender.forEach((location) => {
-        const featureId = `${restaurant.restaurantId}-${location.locationId}`;
+        const featureId = `${restaurant.placeId}-${location.locationId}`;
         const feature: Feature<Point, RestaurantFeatureProperties> = {
           type: 'Feature',
           id: featureId,
@@ -206,8 +201,8 @@ export const buildMarkerCatalogReadModel = (
             coordinates: [location.longitude, location.latitude],
           },
           properties: {
-            restaurantId: restaurant.restaurantId,
-            restaurantName: restaurant.restaurantName,
+            restaurantId: restaurant.placeId,
+            restaurantName: restaurant.placeName,
             craveScore,
             craveScoreExact: restaurant.craveScoreExact ?? null,
             rising: restaurant.rising ?? null,

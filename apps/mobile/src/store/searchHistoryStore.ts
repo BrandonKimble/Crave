@@ -34,7 +34,7 @@ type SearchHistoryState = {
   setRecentlyViewedFoods: (value: RecentlyViewedFood[]) => void;
   setIsRecentlyViewedFoodsLoading: (value: boolean) => void;
   updateLocalRecentSearches: (value: string | RecentSearchInput) => void;
-  trackRecentlyViewedRestaurant: (restaurantId: string, restaurantName: string) => void;
+  trackRecentlyViewedRestaurant: (placeId: string, placeName: string) => void;
   trackRecentlyViewedFood: (value: RecentlyViewedFoodInput) => void;
   resetHistory: () => void;
 };
@@ -48,10 +48,10 @@ type RecentSearchInput = {
 
 type RecentlyViewedFoodInput = {
   connectionId: string;
-  foodId: string;
-  foodName: string;
-  restaurantId: string;
-  restaurantName: string;
+  itemId: string;
+  itemName: string;
+  placeId: string;
+  placeName: string;
   statusPreview?: RecentlyViewedFood['statusPreview'] | null;
 };
 
@@ -122,14 +122,12 @@ export const useSearchHistoryStore = create<SearchHistoryState>((set) => ({
         recentSearches: [next, ...withoutMatch].slice(0, RECENT_HISTORY_LIMIT),
       };
     }),
-  trackRecentlyViewedRestaurant: (restaurantId, restaurantName) =>
+  trackRecentlyViewedRestaurant: (placeId, placeName) =>
     set((state) => {
-      const existing = state.recentlyViewedRestaurants.find(
-        (item) => item.restaurantId === restaurantId
-      );
+      const existing = state.recentlyViewedRestaurants.find((item) => item.placeId === placeId);
       const next: RecentlyViewedRestaurant = {
-        restaurantId,
-        restaurantName,
+        placeId,
+        placeName,
         city: existing?.city ?? null,
         region: existing?.region ?? null,
         lastViewedAt: new Date().toISOString(),
@@ -137,7 +135,7 @@ export const useSearchHistoryStore = create<SearchHistoryState>((set) => ({
         statusPreview: existing?.statusPreview ?? null,
       };
       const withoutMatch = state.recentlyViewedRestaurants.filter(
-        (item) => item.restaurantId !== restaurantId
+        (item) => item.placeId !== placeId
       );
       return {
         ...state,
@@ -151,10 +149,10 @@ export const useSearchHistoryStore = create<SearchHistoryState>((set) => ({
       );
       const next: RecentlyViewedFood = {
         connectionId: value.connectionId,
-        foodId: value.foodId,
-        foodName: value.foodName,
-        restaurantId: value.restaurantId,
-        restaurantName: value.restaurantName,
+        itemId: value.itemId,
+        itemName: value.itemName,
+        placeId: value.placeId,
+        placeName: value.placeName,
         lastViewedAt: new Date().toISOString(),
         viewCount: existing ? existing.viewCount + 1 : 1,
         statusPreview: value.statusPreview ?? existing?.statusPreview ?? null,

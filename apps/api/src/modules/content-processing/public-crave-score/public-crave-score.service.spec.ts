@@ -37,17 +37,17 @@ const room = (
 /** Percentile fillers so the subjects under test sit in a real population. */
 function withFillers(candidates: CraveScoreCandidates): CraveScoreCandidates {
   const dishes = [...candidates.dishes];
-  const restaurants = [...candidates.restaurants];
+  const places = [...candidates.places];
   for (let i = 0; i < 10; i += 1) {
     const id = `filler-${i}`;
-    restaurants.push({ restaurantId: id, praiseContributions: [] });
+    places.push({ placeId: id, praiseContributions: [] });
     dishes.push({
       connectionId: `${id}-dish`,
-      restaurantId: id,
+      placeId: id,
       contributions: [room(null, null, i + 1, i)],
     });
   }
-  return { dishes, restaurants };
+  return { dishes, places };
 }
 
 describe('scoreCandidates — §8 per-source calibration', () => {
@@ -60,11 +60,11 @@ describe('scoreCandidates — §8 per-source calibration', () => {
         dishes: [
           {
             connectionId: 'dish-a',
-            restaurantId: 'rest-a',
+            placeId: 'rest-a',
             contributions: [room(null, null, 3, 10)],
           },
         ],
-        restaurants: [{ restaurantId: 'rest-a', praiseContributions: [] }],
+        places: [{ placeId: 'rest-a', praiseContributions: [] }],
       }),
       config,
     );
@@ -95,14 +95,14 @@ describe('scoreCandidates — §8 per-source calibration', () => {
         dishes: [
           {
             connectionId: 'dish-a',
-            restaurantId: 'rest-a',
+            placeId: 'rest-a',
             contributions: [
               room('src-big', 'reddit', 8, 10),
               room('src-small', 'reddit', 1, 0),
             ],
           },
         ],
-        restaurants: [{ restaurantId: 'rest-a', praiseContributions: [] }],
+        places: [{ placeId: 'rest-a', praiseContributions: [] }],
       }),
       config,
       index,
@@ -136,18 +136,18 @@ describe('scoreCandidates — §8 per-source calibration', () => {
         dishes: [
           {
             connectionId: 'dish-poll',
-            restaurantId: 'rest-poll',
+            placeId: 'rest-poll',
             contributions: [room('src-poll', 'poll_surface', 2, 0)],
           },
           {
             connectionId: 'dish-reddit',
-            restaurantId: 'rest-reddit',
+            placeId: 'rest-reddit',
             contributions: [room('src-reddit', 'reddit', 2, 0)],
           },
         ],
-        restaurants: [
-          { restaurantId: 'rest-poll', praiseContributions: [] },
-          { restaurantId: 'rest-reddit', praiseContributions: [] },
+        places: [
+          { placeId: 'rest-poll', praiseContributions: [] },
+          { placeId: 'rest-reddit', praiseContributions: [] },
         ],
       }),
       config,
@@ -181,18 +181,18 @@ describe('scoreCandidates — §8 per-source calibration', () => {
         dishes: [
           {
             connectionId: 'dish-poll',
-            restaurantId: 'rest-poll',
+            placeId: 'rest-poll',
             contributions: [room('src-poll', 'poll_surface', 2, 0)],
           },
           {
             connectionId: 'dish-reddit',
-            restaurantId: 'rest-reddit',
+            placeId: 'rest-reddit',
             contributions: [room('src-reddit', 'reddit', 2, 0)],
           },
         ],
-        restaurants: [
-          { restaurantId: 'rest-poll', praiseContributions: [] },
-          { restaurantId: 'rest-reddit', praiseContributions: [] },
+        places: [
+          { placeId: 'rest-poll', praiseContributions: [] },
+          { placeId: 'rest-reddit', praiseContributions: [] },
         ],
       }),
       config,
@@ -230,14 +230,14 @@ describe('scoring provenance (§5: keys off SOURCES)', () => {
         dishes: [
           {
             connectionId: 'dish-a',
-            restaurantId: 'rest-a',
+            placeId: 'rest-a',
             contributions: [
               room('src-a', 'reddit', 5, 0),
               room('src-b', 'poll_surface', 2, 0),
             ],
           },
         ],
-        restaurants: [{ restaurantId: 'rest-a', praiseContributions: [] }],
+        places: [{ placeId: 'rest-a', praiseContributions: [] }],
       }),
       config,
       index,
@@ -252,13 +252,13 @@ describe('scoring provenance (§5: keys off SOURCES)', () => {
         dishes: [
           {
             connectionId: 'dish-a',
-            restaurantId: 'rest-a',
+            placeId: 'rest-a',
             contributions: [room('src-a', 'reddit', 2, 0)],
           },
         ],
-        restaurants: [
+        places: [
           {
-            restaurantId: 'rest-a',
+            placeId: 'rest-a',
             praiseContributions: [
               room('src-b', 'poll_surface', 5, 0),
               room(null, null, 100, 100), // legacy hole: huge but unattributed
@@ -269,10 +269,10 @@ describe('scoring provenance (§5: keys off SOURCES)', () => {
       config,
       index,
     );
-    const restaurant = scored.find(
+    const place = scored.find(
       (row) => row.subjectType === 'restaurant' && row.subjectId === 'rest-a',
     )!;
-    expect(restaurant.provenanceSourceId).toBe('src-b');
+    expect(place.provenanceSourceId).toBe('src-b');
   });
 
   it('fully unattributed subjects carry null provenance', () => {
@@ -281,11 +281,11 @@ describe('scoring provenance (§5: keys off SOURCES)', () => {
         dishes: [
           {
             connectionId: 'dish-a',
-            restaurantId: 'rest-a',
+            placeId: 'rest-a',
             contributions: [room(null, null, 3, 3)],
           },
         ],
-        restaurants: [{ restaurantId: 'rest-a', praiseContributions: [] }],
+        places: [{ placeId: 'rest-a', praiseContributions: [] }],
       }),
       config,
       index,

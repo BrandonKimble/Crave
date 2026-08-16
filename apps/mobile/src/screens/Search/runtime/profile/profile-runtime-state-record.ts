@@ -7,7 +7,7 @@ import { createInitialProfileTransitionState } from '../../../../navigation/runt
 
 export type ActiveHydrationIntent = {
   requestSeq: number;
-  restaurantId: string;
+  placeId: string;
 };
 
 export type RestaurantProfileRequestById = Promise<HydratedRestaurantProfile>;
@@ -38,7 +38,7 @@ export type ProfileControllerState = {
 };
 
 export const EMPTY_RESTAURANT_FOCUS_SESSION: RestaurantFocusSession = {
-  restaurantId: null,
+  placeId: null,
   locationKey: null,
   hasAppliedInitialMultiLocationZoomOut: false,
 };

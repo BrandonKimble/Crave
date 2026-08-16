@@ -37,7 +37,7 @@ const SHORTLIST_K = 5;
 const RECALL_POOL = 50;
 const MARGIN = Number(process.env.MARGIN ?? 1.3);
 const CONTAINMENT_TYPES = new Set<string>(
-  (process.env.CONTAINMENT_TYPES ?? 'restaurant')
+  (process.env.CONTAINMENT_TYPES ?? 'place')
     .split(',')
     .map((t) => t.trim())
     .filter(Boolean),

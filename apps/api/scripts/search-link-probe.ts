@@ -53,10 +53,10 @@ async function main(): Promise<void> {
           ? `${label}=[${arr.map((e) => e.normalizedName).join(', ')}]`
           : '';
       const parts = [
-        fmt('rest', g.restaurants),
-        fmt('food', g.food),
-        fmt('fAttr', g.foodAttributes),
-        fmt('rAttr', g.restaurantAttributes),
+        fmt('rest', g.places),
+        fmt('food', g.items),
+        fmt('fAttr', g.itemAttributes),
+        fmt('rAttr', g.placeAttributes),
       ].filter(Boolean);
       const unresolved = res.unresolved
         .flatMap((u) => u.terms.map((t) => `${t}(${u.type})`))

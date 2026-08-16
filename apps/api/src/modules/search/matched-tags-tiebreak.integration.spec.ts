@@ -40,8 +40,8 @@ const TEST_TAG = 'itest-matched-tags-tiebreak';
 
 const prisma = new PrismaClient();
 
-const RESTAURANT_ID = '77777777-7777-4777-8777-777777776020';
-const FOOD_ID = '77777777-7777-4777-8777-777777776021';
+const PLACE_ID = '77777777-7777-4777-8777-777777776020';
+const ITEM_ID = '77777777-7777-4777-8777-777777776021';
 
 // The four un-tied tags (distinct mention_counts → ranks 1-4).
 const HIGH_TAGS = [
@@ -66,7 +66,7 @@ let scoreRunId: string;
 function buildPlan(): QueryPlan {
   return {
     format: 'dual_list',
-    restaurantFilters: [],
+    placeFilters: [],
     // FOOD_ATTRIBUTE-scoped filter → signalMatch = res.entity_id = ANY(ids).
     // collectEntityIds keys off the filter scope, not the entities' true
     // types, so the cross-type pair both land in the match set.
@@ -74,13 +74,13 @@ function buildPlan(): QueryPlan {
       {
         scope: 'connection',
         description: 'test tags',
-        entityType: 'food_attribute',
+        entityType: 'item_attribute',
         entityIds: allTagIds,
       },
     ],
     ranking: {
-      foodOrder: 'crave_score DESC',
-      restaurantOrder: 'crave_score DESC',
+      itemOrder: 'crave_score DESC',
+      placeOrder: 'crave_score DESC',
     },
     diagnostics: { missingEntities: [], notes: [] },
   };
@@ -106,15 +106,15 @@ beforeAll(async () => {
 
   await prisma.entity.create({
     data: {
-      entityId: RESTAURANT_ID,
+      entityId: PLACE_ID,
       name: `${TEST_TAG}-restaurant`,
-      type: 'restaurant',
+      type: 'place',
     },
   });
   await prisma.publicEntityScore.create({
     data: {
       subjectType: 'restaurant',
-      subjectId: RESTAURANT_ID,
+      subjectId: PLACE_ID,
       scoreRunId,
       endorsementRaw: 1,
       percentileRank: 0.5,
@@ -123,9 +123,9 @@ beforeAll(async () => {
       displayCurveVersion: TEST_TAG,
     },
   });
-  await prisma.restaurantLocation.create({
+  await prisma.placeLocation.create({
     data: {
-      restaurantId: RESTAURANT_ID,
+      placeId: PLACE_ID,
       // filtered_locations requires google_place_id AND address non-null.
       googlePlaceId: `${TEST_TAG}-place`,
       address: '1 Test St, Austin, TX',
@@ -137,22 +137,22 @@ beforeAll(async () => {
 
   // Inventory floor: EXISTS a core_restaurant_items row for the restaurant.
   await prisma.entity.create({
-    data: { entityId: FOOD_ID, name: `${TEST_TAG}-food`, type: 'food' },
+    data: { entityId: ITEM_ID, name: `${TEST_TAG}-food`, type: 'item' },
   });
   await prisma.connection.create({
-    data: { restaurantId: RESTAURANT_ID, foodId: FOOD_ID, mentionCount: 1 },
+    data: { placeId: PLACE_ID, itemId: ITEM_ID, mentionCount: 1 },
   });
 
   // Un-tied tags.
   for (const t of HIGH_TAGS) {
     await prisma.entity.create({
-      data: { entityId: t.id, name: t.name, type: 'food_attribute' },
+      data: { entityId: t.id, name: t.name, type: 'item_attribute' },
     });
-    await prisma.restaurantEntitySignal.create({
+    await prisma.placeEntitySignal.create({
       data: {
-        restaurantId: RESTAURANT_ID,
+        placeId: PLACE_ID,
         entityId: t.id,
-        entityType: 'food_attribute',
+        entityType: 'item_attribute',
         mentionCount: t.mc,
       },
     });
@@ -164,45 +164,45 @@ beforeAll(async () => {
     data: {
       entityId: TIE_HIGH_ID,
       name: TIE_NAME,
-      type: 'restaurant_attribute',
+      type: 'place_attribute',
     },
   });
-  await prisma.restaurantEntitySignal.create({
+  await prisma.placeEntitySignal.create({
     data: {
-      restaurantId: RESTAURANT_ID,
+      placeId: PLACE_ID,
       entityId: TIE_HIGH_ID,
-      entityType: 'restaurant_attribute',
+      entityType: 'place_attribute',
       mentionCount: TIE_MC,
     },
   });
   await prisma.entity.create({
-    data: { entityId: TIE_LOW_ID, name: TIE_NAME, type: 'food_attribute' },
+    data: { entityId: TIE_LOW_ID, name: TIE_NAME, type: 'item_attribute' },
   });
-  await prisma.restaurantEntitySignal.create({
+  await prisma.placeEntitySignal.create({
     data: {
-      restaurantId: RESTAURANT_ID,
+      placeId: PLACE_ID,
       entityId: TIE_LOW_ID,
-      entityType: 'food_attribute',
+      entityType: 'item_attribute',
       mentionCount: TIE_MC,
     },
   });
 });
 
 afterAll(async () => {
-  await prisma.restaurantEntitySignal.deleteMany({
-    where: { restaurantId: RESTAURANT_ID },
+  await prisma.placeEntitySignal.deleteMany({
+    where: { placeId: PLACE_ID },
   });
   await prisma.connection.deleteMany({
-    where: { restaurantId: RESTAURANT_ID },
+    where: { placeId: PLACE_ID },
   });
-  await prisma.restaurantLocation.deleteMany({
-    where: { restaurantId: RESTAURANT_ID },
+  await prisma.placeLocation.deleteMany({
+    where: { placeId: PLACE_ID },
   });
   await prisma.publicEntityScore.deleteMany({
     where: { scoreVersion: TEST_TAG },
   });
   await prisma.entity.deleteMany({
-    where: { entityId: { in: [RESTAURANT_ID, FOOD_ID, ...allTagIds] } },
+    where: { entityId: { in: [PLACE_ID, ITEM_ID, ...allTagIds] } },
   });
   await prisma.craveScoreRun.deleteMany({ where: { scoreRunId } });
   await prisma.$disconnect();
@@ -216,19 +216,18 @@ async function reseedTiedPair(
   firstId: string,
   secondId: string,
 ): Promise<void> {
-  await prisma.restaurantEntitySignal.deleteMany({
+  await prisma.placeEntitySignal.deleteMany({
     where: {
-      restaurantId: RESTAURANT_ID,
+      placeId: PLACE_ID,
       entityId: { in: [TIE_LOW_ID, TIE_HIGH_ID] },
     },
   });
   for (const id of [firstId, secondId]) {
-    await prisma.restaurantEntitySignal.create({
+    await prisma.placeEntitySignal.create({
       data: {
-        restaurantId: RESTAURANT_ID,
+        placeId: PLACE_ID,
         entityId: id,
-        entityType:
-          id === TIE_LOW_ID ? 'food_attribute' : 'restaurant_attribute',
+        entityType: id === TIE_LOW_ID ? 'item_attribute' : 'place_attribute',
         mentionCount: TIE_MC,
       },
     });
@@ -236,7 +235,7 @@ async function reseedTiedPair(
 }
 
 async function survivorOfTie(): Promise<string[]> {
-  const { dataSql } = new SearchQueryBuilder().buildRestaurantQuery({
+  const { dataSql } = new SearchQueryBuilder().buildPlaceQuery({
     plan: buildPlan(),
     pagination: { skip: 0, take: 5 },
     searchCenter: { lat: 30.27, lng: -97.74 },
@@ -245,7 +244,7 @@ async function survivorOfTie(): Promise<string[]> {
     await prisma.$queryRaw<
       Array<{ restaurant_id: string; matched_tags: unknown }>
     >(dataSql);
-  const row = rows.find((r) => r.restaurant_id === RESTAURANT_ID);
+  const row = rows.find((r) => r.restaurant_id === PLACE_ID);
   expect(row).toBeDefined();
   const tags = row!.matched_tags as Array<{ entityId: string }>;
   expect(tags).toHaveLength(5); // the cut kept 5 tags total
@@ -256,7 +255,7 @@ async function survivorOfTie(): Promise<string[]> {
 
 describe('matched_tags: the fully-tied cross-type pair straddling LIMIT 5 is cut deterministically (F7602)', () => {
   it('THE MUTATION GATE: the matched_tags subquery ORDER BY carries the res.entity_id ASC unique tail', () => {
-    const { dataSql } = new SearchQueryBuilder().buildRestaurantQuery({
+    const { dataSql } = new SearchQueryBuilder().buildPlaceQuery({
       plan: buildPlan(),
       pagination: { skip: 0, take: 5 },
       searchCenter: { lat: 30.27, lng: -97.74 },

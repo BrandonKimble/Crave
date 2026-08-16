@@ -73,7 +73,7 @@ beforeAll(async () => {
     data: {
       entityId: ENTITY_ID,
       name: 'zzq-f9342',
-      type: 'food',
+      type: 'item',
       status: 'active',
     },
   });

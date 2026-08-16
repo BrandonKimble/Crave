@@ -46,12 +46,12 @@ describe('the claim unit is the FORM, not the fold', () => {
   const prisma = new PrismaClient();
   const made: string[] = [];
 
-  const mintFood = async (name: string): Promise<string> => {
+  const mintItem = async (name: string): Promise<string> => {
     const id = randomUUID();
-    const identity = identityInsertData(name, 'food' as never);
+    const identity = identityInsertData(name, 'item' as never);
     await prisma.$executeRawUnsafe(
       `INSERT INTO core_entities (entity_id, name, type, status, identity_key, identity_key_sorted)
-       VALUES ($1::uuid, $2, 'food'::entity_type, 'active'::entity_status, $3, $4)`,
+       VALUES ($1::uuid, $2, 'item'::entity_type, 'active'::entity_status, $3, $4)`,
       id,
       name,
       identity.identityKey,
@@ -116,10 +116,10 @@ describe('the claim unit is the FORM, not the fold', () => {
    */
   it('refuses an IDENTICAL-form claim on another concept and offers it to the judge', async () => {
     const word = `zzq caldo ${randomUUID().slice(0, 8)}`;
-    const incumbent = await mintFood(
+    const incumbent = await mintItem(
       `zzq incumbent ${randomUUID().slice(0, 8)}`,
     );
-    const newcomer = await mintFood(`zzq newcomer ${randomUUID().slice(0, 8)}`);
+    const newcomer = await mintItem(`zzq newcomer ${randomUUID().slice(0, 8)}`);
     await prisma.$transaction((tx) =>
       addSurfaces(tx, incumbent, [
         { form: word, locale: 'es', source: 'vocabulary', role: 'recall' },
@@ -169,8 +169,8 @@ describe('the claim unit is the FORM, not the fold', () => {
     const suffix = randomUUID().slice(0, 8);
     const butterWord = `zzq bơ ${suffix}`;
     const beefWord = `zzq bò ${suffix}`;
-    const butter = await mintFood(`zzq butter ${suffix}`);
-    const beef = await mintFood(`zzq beef ${suffix}`);
+    const butter = await mintItem(`zzq butter ${suffix}`);
+    const beef = await mintItem(`zzq beef ${suffix}`);
 
     await prisma.$transaction((tx) =>
       addSurfaces(tx, butter, [
@@ -220,8 +220,8 @@ describe('the claim unit is the FORM, not the fold', () => {
     const suffix = randomUUID().slice(0, 8);
     const bunchWord = `zzq bó ${suffix}`;
     const beefWord = `zzq bò ${suffix}`;
-    const bunch = await mintFood(`zzq bunch ${suffix}`);
-    const beef = await mintFood(`zzq beef ${suffix}`);
+    const bunch = await mintItem(`zzq bunch ${suffix}`);
+    const beef = await mintItem(`zzq beef ${suffix}`);
 
     await prisma.$transaction((tx) =>
       addSurfaces(tx, bunch, [
@@ -278,8 +278,8 @@ describe('the claim unit is the FORM, not the fold', () => {
   it('re-opens a verdict made by an OLDER rule, and a re-heard win lands', async () => {
     const suffix = randomUUID().slice(0, 8);
     const word = `zzq picante ${suffix}`;
-    const incumbent = await mintFood(`zzq holder ${suffix}`);
-    const loser = await mintFood(`zzq loser ${suffix}`);
+    const incumbent = await mintItem(`zzq holder ${suffix}`);
+    const loser = await mintItem(`zzq loser ${suffix}`);
 
     await prisma.$transaction((tx) =>
       addSurfaces(tx, incumbent, [
@@ -384,7 +384,7 @@ describe('the claim unit is the FORM, not the fold', () => {
    */
   it('hears a held claim with NO competing claimant, and a NO RETRACTS it with the rule version stamped', async () => {
     const word = `zzq lonely ${randomUUID().slice(0, 8)}`;
-    const owner = await mintFood(`zzq owner ${randomUUID().slice(0, 8)}`);
+    const owner = await mintItem(`zzq owner ${randomUUID().slice(0, 8)}`);
     await prisma.$transaction((tx) =>
       addSurfaces(tx, owner, [
         { form: word, locale: 'vi', source: 'vocabulary', role: 'recall' },
@@ -454,7 +454,7 @@ describe('the claim unit is the FORM, not the fold', () => {
    *  stamped, so no later feed pays to ask the same question again. */
   it('a held claim the judge upholds stays active and carries the stamp', async () => {
     const word = `zzq upheld ${randomUUID().slice(0, 8)}`;
-    const owner = await mintFood(`zzq keeper ${randomUUID().slice(0, 8)}`);
+    const owner = await mintItem(`zzq keeper ${randomUUID().slice(0, 8)}`);
     await prisma.$transaction((tx) =>
       addSurfaces(tx, owner, [
         { form: word, locale: 'vi', source: 'vocabulary', role: 'recall' },

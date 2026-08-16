@@ -29,44 +29,44 @@ const CASES: {
   // restaurants: typo / accent / dropped-descriptor / brand
   {
     term: 'Noodle Villiage',
-    type: EntityType.restaurant,
+    type: EntityType.place,
     expect: 'Noodle Village',
   },
   {
     term: 'Caffe Panna',
-    type: EntityType.restaurant,
+    type: EntityType.place,
     expect: 'Caffè Panna',
   },
   {
     term: 'Almondine',
-    type: EntityType.restaurant,
+    type: EntityType.place,
     expect: 'Almondine Bakery',
   },
   {
     term: 'Quality Bistro NYC',
-    type: EntityType.restaurant,
+    type: EntityType.place,
     expect: 'Quality Bistro',
   },
   {
     term: 'Totally Fake Diner 9000',
-    type: EntityType.restaurant,
+    type: EntityType.place,
     expect: 'new',
   },
   // foods (global): spelling variant / added word / distinct
-  { term: 'duck laab', type: EntityType.food, expect: 'duck larb' },
+  { term: 'duck laab', type: EntityType.item, expect: 'duck larb' },
   {
     term: 'falafel pita sandwich',
-    type: EntityType.food,
+    type: EntityType.item,
     expect: 'falafel pita',
   },
   {
     term: 'mugwort gelato',
-    type: EntityType.food,
+    type: EntityType.item,
     expect: 'mugwort ice cream?',
   },
   {
     term: 'zzqqx imaginary noodle thing',
-    type: EntityType.food,
+    type: EntityType.item,
     expect: 'new',
   },
 ];

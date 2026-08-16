@@ -16,7 +16,7 @@ import {
  * loudly at load.
  */
 
-export const RESTAURANT_NAME_JUDGE_PROMPT = readPromptAsset(
+export const PLACE_NAME_JUDGE_PROMPT = readPromptAsset(
   __dirname,
   'restaurant-name-judge-prompt.md',
 );
@@ -34,15 +34,15 @@ const RULE_RELEASES: readonly RuleRelease[] = [
   },
 ];
 
-const restaurantNameRule = resolvePromptRule(
+const placeNameRule = resolvePromptRule(
   'restaurant-name-judge-prompt.md',
   'restaurant-name-rule.ts',
-  RESTAURANT_NAME_JUDGE_PROMPT,
+  PLACE_NAME_JUDGE_PROMPT,
   RULE_RELEASES,
 );
 
-export const RESTAURANT_NAME_RULE_FINGERPRINT = restaurantNameRule.fingerprint;
+export const PLACE_NAME_RULE_FINGERPRINT = placeNameRule.fingerprint;
 
 /** The rule version stamped on every verdict this judge reaches, and the
  *  version the due-predicate compares against. */
-export const RESTAURANT_NAME_RULE_VERSION = restaurantNameRule.version;
+export const PLACE_NAME_RULE_VERSION = placeNameRule.version;

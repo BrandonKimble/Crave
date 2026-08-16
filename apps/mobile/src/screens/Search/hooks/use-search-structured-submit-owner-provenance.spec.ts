@@ -70,8 +70,8 @@ const createViewportBoundsService = (): ViewportBoundsService =>
  * fetcher builds the request the backend actually receives.
  */
 const submitEntityTapAndCaptureRequest = async (params: {
-  restaurantId: string;
-  restaurantName: string;
+  placeId: string;
+  placeName: string;
   submissionSource: 'recent' | 'autocomplete' | 'manual';
   typedPrefix?: string;
 }) => {
@@ -125,8 +125,8 @@ const submitEntityTapAndCaptureRequest = async (params: {
 describe('F5700 — an entity tap reports the surface it CAME FROM', () => {
   it('a recent-submit tap arrives as recent, carrying the real typed prefix', async () => {
     const payload = await submitEntityTapAndCaptureRequest({
-      restaurantId: 'r-1',
-      restaurantName: 'Thai Fresh',
+      placeId: 'r-1',
+      placeName: 'Thai Fresh',
       submissionSource: 'recent',
       typedPrefix: 'thai',
     });
@@ -136,8 +136,8 @@ describe('F5700 — an entity tap reports the surface it CAME FROM', () => {
 
   it('an autocomplete chip tap arrives as autocomplete — the two surfaces are now distinguishable', async () => {
     const payload = await submitEntityTapAndCaptureRequest({
-      restaurantId: 'r-1',
-      restaurantName: 'Thai Fresh',
+      placeId: 'r-1',
+      placeName: 'Thai Fresh',
       submissionSource: 'autocomplete',
       typedPrefix: 'thai f',
     });
@@ -147,8 +147,8 @@ describe('F5700 — an entity tap reports the surface it CAME FROM', () => {
 
   it('leaves no decoration behind for the next dispatch to inherit (RT-6)', async () => {
     await submitEntityTapAndCaptureRequest({
-      restaurantId: 'r-1',
-      restaurantName: 'Thai Fresh',
+      placeId: 'r-1',
+      placeName: 'Thai Fresh',
       submissionSource: 'recent',
       typedPrefix: 'thai',
     });

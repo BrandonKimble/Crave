@@ -20,10 +20,10 @@ export const createProfilePreviewActionRuntime = ({
   },
   actionExecutionPorts,
 }: CreateProfilePresentationActionRuntimeArgs): ProfilePreviewActionRuntime => ({
-  openRestaurantProfilePreview: (restaurantId, restaurantName, options) => {
+  openRestaurantProfilePreview: (placeId, placeName, options) => {
     executeProfilePreviewAction({
-      restaurantId,
-      restaurantName,
+      placeId,
+      placeName,
       pressedCoordinate: options?.pressedCoordinate ?? null,
       previewModel: createProfilePreviewActionModel({
         transitionStatus: getProfileTransitionStatus(),

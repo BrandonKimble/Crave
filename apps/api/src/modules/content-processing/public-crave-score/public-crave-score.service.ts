@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { notABallotDocumentSql } from '../../polls/supply/ballot-document-marker';
 import { randomUUID } from 'crypto';
-import { activeRestaurantEventsSourceSql } from '../reddit-collector/extraction-scope.service';
+import { activePlaceEventsSourceSql } from '../reddit-collector/extraction-scope.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import {
@@ -10,7 +10,7 @@ import {
   CraveScoreSubjectType,
   DishCandidate,
   PublicCraveScoreConfig,
-  RestaurantCandidate,
+  PlaceCandidate,
   ScoredCraveSubject,
   SourceContribution,
 } from './public-crave-score.types';
@@ -33,7 +33,7 @@ type NumericLike = number | string | Prisma.Decimal | null | undefined;
 
 type DishRow = {
   connection_id: string;
-  restaurant_id: string;
+  place_id: string;
   source_id: string | null;
   platform: string | null;
   mentions: NumericLike;
@@ -42,8 +42,8 @@ type DishRow = {
   upvotes_fast: NumericLike;
 };
 
-type RestaurantRow = {
-  restaurant_id: string;
+type PlaceRow = {
+  place_id: string;
   source_id: string | null;
   platform: string | null;
   praise_mentions: NumericLike;
@@ -188,8 +188,7 @@ export class PublicCraveScoreService {
       const pruneStaleSubjects = !params?.fixtureRunId;
       await this.writeScores(scoreRunId, scored, config, pruneStaleSubjects);
       await this.completeRun(scoreRunId, {
-        restaurants: scored.filter((row) => row.subjectType === 'restaurant')
-          .length,
+        places: scored.filter((row) => row.subjectType === 'restaurant').length,
         connections: scored.filter((row) => row.subjectType === 'connection')
           .length,
       });
@@ -278,34 +277,27 @@ export class PublicCraveScoreService {
 
     // 1. Dish endorsement + group by restaurant.
     const dishEndorsement = new Map<string, number>();
-    const dishesByRestaurant = new Map<string, number[]>();
-    const dishContributionsByRestaurant = new Map<
-      string,
-      SourceContribution[]
-    >();
+    const dishesByPlace = new Map<string, number[]>();
+    const dishContributionsByPlace = new Map<string, SourceContribution[]>();
     for (const dish of candidates.dishes) {
       const value = endorse(dish.contributions);
       dishEndorsement.set(dish.connectionId, value);
-      const bucket = dishesByRestaurant.get(dish.restaurantId);
+      const bucket = dishesByPlace.get(dish.placeId);
       if (bucket) {
         bucket.push(value);
       } else {
-        dishesByRestaurant.set(dish.restaurantId, [value]);
+        dishesByPlace.set(dish.placeId, [value]);
       }
-      const contributionBucket = dishContributionsByRestaurant.get(
-        dish.restaurantId,
-      );
+      const contributionBucket = dishContributionsByPlace.get(dish.placeId);
       if (contributionBucket) {
         contributionBucket.push(...dish.contributions);
       } else {
-        dishContributionsByRestaurant.set(dish.restaurantId, [
-          ...dish.contributions,
-        ]);
+        dishContributionsByPlace.set(dish.placeId, [...dish.contributions]);
       }
     }
 
     // 2. Restaurant endorsement = discounted dish-acclaim + praise.
-    const restaurantAggregate = new Map<
+    const placeAggregate = new Map<
       string,
       {
         endorsement: number;
@@ -316,25 +308,25 @@ export class PublicCraveScoreService {
         provenanceSourceId: string | null;
       }
     >();
-    for (const restaurant of candidates.restaurants) {
-      const dishes = (dishesByRestaurant.get(restaurant.restaurantId) ?? [])
+    for (const place of candidates.places) {
+      const dishes = (dishesByPlace.get(place.placeId) ?? [])
         .slice()
         .sort((a, b) => b - a);
       let acclaim = 0;
       for (let i = 0; i < dishes.length; i += 1) {
         acclaim += Math.pow(config.discountRho, i) * dishes[i];
       }
-      const praise = endorse(restaurant.praiseContributions);
+      const praise = endorse(place.praiseContributions);
       // Provenance pools the restaurant's OWN praise rooms with its dishes'
       // rooms on raw calibrated mass (the composite's rho/praise weighting is
       // a ranking shape, not a provenance question).
       const provenanceMass = new Map<string, number>();
-      accumulateProvenance(provenanceMass, restaurant.praiseContributions);
+      accumulateProvenance(provenanceMass, place.praiseContributions);
       accumulateProvenance(
         provenanceMass,
-        dishContributionsByRestaurant.get(restaurant.restaurantId) ?? [],
+        dishContributionsByPlace.get(place.placeId) ?? [],
       );
-      restaurantAggregate.set(restaurant.restaurantId, {
+      placeAggregate.set(place.placeId, {
         endorsement: config.dishWeight * acclaim + config.praiseWeight * praise,
         acclaim,
         praise,
@@ -377,10 +369,10 @@ export class PublicCraveScoreService {
     });
 
     // 3b. Restaurants — inclusion floor: any endorsement (dish acclaim or praise).
-    const restEntries = candidates.restaurants
-      .map((restaurant) => ({
-        restaurant,
-        agg: restaurantAggregate.get(restaurant.restaurantId)!,
+    const restEntries = candidates.places
+      .map((place) => ({
+        place,
+        agg: placeAggregate.get(place.placeId)!,
       }))
       .filter((entry) => entry.agg && entry.agg.endorsement > 0);
     const restRanks = this.percentileRanks(
@@ -390,7 +382,7 @@ export class PublicCraveScoreService {
       scored.push(
         this.buildScored(
           'restaurant',
-          entry.restaurant.restaurantId,
+          entry.place.placeId,
           entry.agg.provenanceSourceId,
           entry.agg.endorsement,
           restRanks[i],
@@ -844,7 +836,7 @@ export class PublicCraveScoreService {
       GROUP BY c.connection_id, c.restaurant_id, src.source_id, src.platform
     `;
 
-    const restRows = await this.prisma.$queryRaw<RestaurantRow[]>`
+    const restRows = await this.prisma.$queryRaw<PlaceRow[]>`
       WITH praise_dedup AS (
         -- general_praise is a RESTAURANT-level fact riding dish-scoped
         -- mention keys: dedupe per (restaurant, mention_key) so one praising
@@ -861,7 +853,7 @@ export class PublicCraveScoreService {
         -- directly — a retained superseded generation (activate-shadow
         -- 'retain') would inflate praise mass. Executed proof: one event on
         -- a never-activated run grew praise_dedup 5 → 6 without this join.
-        FROM ${Prisma.raw(activeRestaurantEventsSourceSql())}
+        FROM ${Prisma.raw(activePlaceEventsSourceSql())}
         GROUP BY restaurant_id, mention_key
       )
       SELECT
@@ -877,7 +869,7 @@ export class PublicCraveScoreService {
       LEFT JOIN collection_source_documents d ON d.document_id = pd.source_document_id
       LEFT JOIN sources src
         ON src.platform = d.platform AND lower(src.handle) = lower(d.community)
-      WHERE e.type = 'restaurant'
+      WHERE e.type = 'place'
         AND e.status = 'active'
         AND ${restFixtureFilter}
       GROUP BY e.entity_id, src.source_id, src.platform
@@ -887,7 +879,7 @@ export class PublicCraveScoreService {
     const dishByConnection = new Map<
       string,
       {
-        restaurantId: string;
+        placeId: string;
         stable: SourceContribution[];
         fast: SourceContribution[];
       }
@@ -895,7 +887,7 @@ export class PublicCraveScoreService {
     for (const row of dishRows) {
       let entry = dishByConnection.get(row.connection_id);
       if (!entry) {
-        entry = { restaurantId: row.restaurant_id, stable: [], fast: [] };
+        entry = { placeId: row.place_id, stable: [], fast: [] };
         dishByConnection.set(row.connection_id, entry);
       }
       entry.stable.push({
@@ -912,15 +904,15 @@ export class PublicCraveScoreService {
       });
     }
 
-    const restaurantById = new Map<
+    const placeById = new Map<
       string,
       { stable: SourceContribution[]; fast: SourceContribution[] }
     >();
     for (const row of restRows) {
-      let entry = restaurantById.get(row.restaurant_id);
+      let entry = placeById.get(row.place_id);
       if (!entry) {
         entry = { stable: [], fast: [] };
-        restaurantById.set(row.restaurant_id, entry);
+        placeById.set(row.place_id, entry);
       }
       entry.stable.push({
         sourceId: row.source_id,
@@ -941,28 +933,28 @@ export class PublicCraveScoreService {
     for (const [connectionId, entry] of dishByConnection) {
       stableDishes.push({
         connectionId,
-        restaurantId: entry.restaurantId,
+        placeId: entry.placeId,
         contributions: entry.stable,
       });
       fastDishes.push({
         connectionId,
-        restaurantId: entry.restaurantId,
+        placeId: entry.placeId,
         contributions: entry.fast,
       });
     }
-    const stableRestaurants: RestaurantCandidate[] = [];
-    const fastRestaurants: RestaurantCandidate[] = [];
-    for (const [restaurantId, entry] of restaurantById) {
-      stableRestaurants.push({
-        restaurantId,
+    const stablePlaces: PlaceCandidate[] = [];
+    const fastPlaces: PlaceCandidate[] = [];
+    for (const [placeId, entry] of placeById) {
+      stablePlaces.push({
+        placeId,
         praiseContributions: entry.stable,
       });
-      fastRestaurants.push({ restaurantId, praiseContributions: entry.fast });
+      fastPlaces.push({ placeId, praiseContributions: entry.fast });
     }
 
     return {
-      stable: { dishes: stableDishes, restaurants: stableRestaurants },
-      fast: { dishes: fastDishes, restaurants: fastRestaurants },
+      stable: { dishes: stableDishes, places: stablePlaces },
+      fast: { dishes: fastDishes, places: fastPlaces },
     };
   }
 

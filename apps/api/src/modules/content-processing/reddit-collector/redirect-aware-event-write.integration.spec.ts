@@ -18,8 +18,8 @@
 import { PrismaClient } from '@prisma/client';
 import {
   activeWinnerRedirectMap,
-  writeRestaurantEntityEvents,
-  writeRestaurantEvents,
+  writePlaceEntityEvents,
+  writePlaceEvents,
 } from './extraction-scope.service';
 import { ProjectionRebuildService } from './projection-rebuild.service';
 
@@ -36,10 +36,10 @@ const logger = {
 } as never;
 
 const ids = {
-  loserRestaurant: '',
-  winnerRestaurant: '',
-  loserFood: '',
-  winnerFood: '',
+  loserPlace: '',
+  winnerPlace: '',
+  loserItem: '',
+  winnerItem: '',
   runId: '',
   inputId: '',
   documentId: '',
@@ -47,7 +47,7 @@ const ids = {
 
 async function seedEntity(
   label: string,
-  type: 'restaurant' | 'food',
+  type: 'place' | 'item',
   status: 'active' | 'archived',
 ): Promise<string> {
   const row = await prisma.entity.create({
@@ -105,22 +105,14 @@ beforeAll(async () => {
   }
   await cleanup();
 
-  ids.loserRestaurant = await seedEntity(
-    'loser-rest',
-    'restaurant',
-    'archived',
-  );
-  ids.winnerRestaurant = await seedEntity(
-    'winner-rest',
-    'restaurant',
-    'active',
-  );
-  ids.loserFood = await seedEntity('loser-food', 'food', 'archived');
-  ids.winnerFood = await seedEntity('winner-food', 'food', 'active');
+  ids.loserPlace = await seedEntity('loser-rest', 'place', 'archived');
+  ids.winnerPlace = await seedEntity('winner-rest', 'place', 'active');
+  ids.loserItem = await seedEntity('loser-food', 'item', 'archived');
+  ids.winnerItem = await seedEntity('winner-food', 'item', 'active');
   await prisma.entityRedirect.createMany({
     data: [
-      { fromEntityId: ids.loserRestaurant, toEntityId: ids.winnerRestaurant },
-      { fromEntityId: ids.loserFood, toEntityId: ids.winnerFood },
+      { fromEntityId: ids.loserPlace, toEntityId: ids.winnerPlace },
+      { fromEntityId: ids.loserItem, toEntityId: ids.winnerItem },
     ],
   });
 
@@ -169,10 +161,10 @@ function entityEventRow(overrides: Record<string, unknown> = {}) {
     extractionRunId: ids.runId,
     inputId: ids.inputId,
     sourceDocumentId: ids.documentId,
-    restaurantId: ids.loserRestaurant,
+    placeId: ids.loserPlace,
     mentionKey: `${TEST_TAG}:mention`,
-    entityId: ids.loserFood,
-    entityType: 'food' as const,
+    entityId: ids.loserItem,
+    entityType: 'item' as const,
     evidenceType: 'food_mention',
     isMenuItem: null,
     mentionedAt: new Date(),
@@ -186,39 +178,39 @@ describe('the write chokepoint owns the invariant (inline resolution)', () => {
   it('maps only archived→active redirect pairs', async () => {
     const map = await prisma.$transaction((tx) =>
       activeWinnerRedirectMap(tx, [
-        ids.loserRestaurant,
-        ids.winnerRestaurant, // active, no redirect FROM it → absent
-        ids.loserFood,
+        ids.loserPlace,
+        ids.winnerPlace, // active, no redirect FROM it → absent
+        ids.loserItem,
         null,
         undefined,
       ]),
     );
-    expect(map.get(ids.loserRestaurant)).toBe(ids.winnerRestaurant);
-    expect(map.get(ids.loserFood)).toBe(ids.winnerFood);
-    expect(map.has(ids.winnerRestaurant)).toBe(false);
+    expect(map.get(ids.loserPlace)).toBe(ids.winnerPlace);
+    expect(map.get(ids.loserItem)).toBe(ids.winnerItem);
+    expect(map.has(ids.winnerPlace)).toBe(false);
   });
 
   it('an entity event aimed at a merged-away loser lands on the winner, in BOTH dimensions', async () => {
     await prisma.$transaction((tx) =>
-      writeRestaurantEntityEvents(tx, [entityEventRow()]),
+      writePlaceEntityEvents(tx, [entityEventRow()]),
     );
-    const rows = await prisma.restaurantEntityEvent.findMany({
+    const rows = await prisma.placeEntityEvent.findMany({
       where: { extractionRunId: ids.runId, evidenceType: 'food_mention' },
-      select: { restaurantId: true, entityId: true },
+      select: { placeId: true, entityId: true },
     });
     expect(rows).toEqual([
-      { restaurantId: ids.winnerRestaurant, entityId: ids.winnerFood },
+      { placeId: ids.winnerPlace, entityId: ids.winnerItem },
     ]);
   });
 
   it('a restaurant (praise) event aimed at the loser lands on the winner', async () => {
     await prisma.$transaction((tx) =>
-      writeRestaurantEvents(tx, [
+      writePlaceEvents(tx, [
         {
           extractionRunId: ids.runId,
           inputId: ids.inputId,
           sourceDocumentId: ids.documentId,
-          restaurantId: ids.loserRestaurant,
+          placeId: ids.loserPlace,
           mentionKey: `${TEST_TAG}:praise`,
           evidenceType: 'general_praise',
           mentionedAt: new Date(),
@@ -227,22 +219,22 @@ describe('the write chokepoint owns the invariant (inline resolution)', () => {
         },
       ]),
     );
-    const rows = await prisma.restaurantEvent.findMany({
+    const rows = await prisma.placeEvent.findMany({
       where: { extractionRunId: ids.runId },
-      select: { restaurantId: true },
+      select: { placeId: true },
     });
-    expect(rows).toEqual([{ restaurantId: ids.winnerRestaurant }]);
+    expect(rows).toEqual([{ placeId: ids.winnerPlace }]);
   });
 
   it('a re-pointed claim the winner already heard is dropped, not doubled and not thrown', async () => {
     // The winner already holds (run, doc, winner, winnerFood, food_mention)
     // from the first test; writing the LOSER-keyed twin again must no-op.
     await prisma.$transaction((tx) =>
-      writeRestaurantEntityEvents(tx, [
+      writePlaceEntityEvents(tx, [
         entityEventRow({ mentionKey: `${TEST_TAG}:dup` }),
       ]),
     );
-    const count = await prisma.restaurantEntityEvent.count({
+    const count = await prisma.placeEntityEvent.count({
       where: { extractionRunId: ids.runId, evidenceType: 'food_mention' },
     });
     expect(count).toBe(1);
@@ -260,25 +252,25 @@ describe('the tombstone sweep remains the crash-window backstop', () => {
       `INSERT INTO core_restaurant_entity_events
          (extraction_run_id, input_id, source_document_id, restaurant_id,
           mention_key, entity_id, entity_type, evidence_type, mentioned_at)
-       VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6::uuid, 'food',
+       VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6::uuid, 'item',
                'menu_item_food', now())
        RETURNING event_id`,
       ids.runId,
       ids.inputId,
       ids.documentId,
-      ids.loserRestaurant,
+      ids.loserPlace,
       `${TEST_TAG}:stranded`,
-      ids.winnerFood,
+      ids.winnerItem,
     );
 
     const rebuild = new ProjectionRebuildService(prisma as never, logger);
     rebuild.onModuleInit();
     await rebuild.sweepTombstoneEvents();
 
-    const healed = await prisma.restaurantEntityEvent.findUnique({
+    const healed = await prisma.placeEntityEvent.findUnique({
       where: { eventId: stranded.event_id },
-      select: { restaurantId: true },
+      select: { placeId: true },
     });
-    expect(healed?.restaurantId).toBe(ids.winnerRestaurant);
+    expect(healed?.placeId).toBe(ids.winnerPlace);
   });
 });

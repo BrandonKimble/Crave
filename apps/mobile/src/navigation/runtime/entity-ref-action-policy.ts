@@ -15,10 +15,10 @@
 //   no world, no desire.
 
 export type EntityRefType =
-  | 'restaurant'
-  | 'food'
-  | 'food_attribute'
-  | 'restaurant_attribute'
+  | 'place'
+  | 'item'
+  | 'item_attribute'
+  | 'place_attribute'
   | 'ingredient'
   | 'person'
   | 'list';
@@ -44,11 +44,11 @@ export type EntityRef = {
 };
 
 export type EntityRefAction =
-  | { kind: 'restaurantWorld'; restaurantId: string; restaurantName: string }
+  | { kind: 'restaurantWorld'; placeId: string; placeName: string }
   | {
       kind: 'entityDesire';
       entityId: string;
-      entityType: 'food' | 'food_attribute' | 'restaurant_attribute' | 'ingredient';
+      entityType: 'item' | 'item_attribute' | 'place_attribute' | 'ingredient';
       label: string;
     }
   | { kind: 'pushScene'; scene: 'userProfile'; params: { userId: string } }
@@ -79,11 +79,11 @@ export type EntityRefAction =
 
 export const resolveEntityRefAction = (ref: EntityRef): EntityRefAction => {
   switch (ref.entityType) {
-    case 'restaurant':
-      return { kind: 'restaurantWorld', restaurantId: ref.entityId, restaurantName: ref.label };
-    case 'food':
-    case 'food_attribute':
-    case 'restaurant_attribute':
+    case 'place':
+      return { kind: 'restaurantWorld', placeId: ref.entityId, placeName: ref.label };
+    case 'item':
+    case 'item_attribute':
+    case 'place_attribute':
     case 'ingredient':
       return {
         kind: 'entityDesire',

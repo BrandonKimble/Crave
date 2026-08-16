@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { asId, type PlaceId, type RestaurantId, type UserId } from './ids';
+import { asId, type GeoPlaceId, type PlaceId, type UserId } from './ids';
 import { codeOnly } from '../testing/code-only';
 
 // TWO FAILURE MODES, TWO MECHANISMS.
@@ -18,20 +18,20 @@ import { codeOnly } from '../testing/code-only';
 describe('branded ids', () => {
   it('a brand is erased at runtime — it costs nothing', () => {
     const raw = '11111111-1111-1111-1111-111111111111';
-    const branded = asId<'restaurant'>(raw);
+    const branded = asId<'place'>(raw);
     expect(branded).toBe(raw);
     expect(typeof branded).toBe('string');
   });
 
   it('cross-type transposition is a COMPILE error (documented here, enforced by tsc)', () => {
-    const restaurantId = asId<'restaurant'>('r') as RestaurantId;
-    const placeId = asId<'place'>('p') as PlaceId;
-    const takes = (r: RestaurantId, p: PlaceId) => Boolean(r) && Boolean(p);
+    const placeId = asId<'place'>('r') as PlaceId;
+    const geoPlaceId = asId<'geo_place'>('p') as GeoPlaceId;
+    const takes = (r: PlaceId, p: GeoPlaceId) => Boolean(r) && Boolean(p);
 
-    expect(takes(restaurantId, placeId)).toBe(true);
+    expect(takes(placeId, geoPlaceId)).toBe(true);
     // @ts-expect-error transposed — this line failing to error means the
     // brand has been weakened (e.g. someone widened a param back to `string`).
-    expect(takes(placeId, restaurantId)).toBe(true);
+    expect(takes(geoPlaceId, placeId)).toBe(true);
   });
 
   it('a branded id still behaves as a string everywhere it must', () => {

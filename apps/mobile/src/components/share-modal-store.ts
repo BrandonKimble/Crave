@@ -74,8 +74,8 @@ export const buildShareLinkPath = (config: ShareModalConfig): string | null => {
           kind: 'entityAction',
           action: {
             kind: 'restaurantWorld',
-            restaurantId: config.id,
-            restaurantName: config.title ?? '',
+            placeId: config.id,
+            placeName: config.title ?? '',
           },
         };
       case 'dish':
@@ -84,7 +84,7 @@ export const buildShareLinkPath = (config: ShareModalConfig): string | null => {
           kind: 'entityAction',
           action: {
             kind: 'entityDesire',
-            entityType: 'food',
+            entityType: 'item',
             entityId: config.id,
             label: config.title ?? '',
           },

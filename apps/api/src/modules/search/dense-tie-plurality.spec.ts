@@ -62,7 +62,7 @@ function decideDense(
     tempId: 'food:test',
     normalizedName: 'pulpo',
     originalText: 'pulpo',
-    entityType: 'food' as never,
+    entityType: 'item' as never,
     aliases: ['pulpo'],
     engineId: null,
   };
@@ -85,14 +85,14 @@ describe('the dense lane reveals its tie plurality', () => {
       {
         entityId: OCTOPUS_A,
         name: 'octopus',
-        type: 'food',
+        type: 'item',
         rrf: 0.5,
         denseCosine: 0.8,
       },
       {
         entityId: OCTOPUS_B,
         name: 'Octopus',
-        type: 'food',
+        type: 'item',
         rrf: 0.49,
         denseCosine: 0.7995,
       },
@@ -100,7 +100,7 @@ describe('the dense lane reveals its tie plurality', () => {
       {
         entityId: GRAPEFRUIT,
         name: 'grapefruit pulp',
-        type: 'food',
+        type: 'item',
         rrf: 0.6,
         denseCosine: 0.6,
       },
@@ -118,14 +118,14 @@ describe('the dense lane reveals its tie plurality', () => {
       {
         entityId: OCTOPUS_A,
         name: 'octopus',
-        type: 'food',
+        type: 'item',
         rrf: 0.5,
         denseCosine: 0.8,
       },
       {
         entityId: GRAPEFRUIT,
         name: 'grapefruit pulp',
-        type: 'food',
+        type: 'item',
         rrf: 0.6,
         denseCosine: 0.6,
       },

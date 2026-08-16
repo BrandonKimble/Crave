@@ -49,20 +49,20 @@ export const resolveProfileAutoOpenAction = ({
   }
 
   if (pendingSelection) {
-    const targetRestaurant = results.restaurants?.find(
-      (restaurant) => restaurant.restaurantId === pendingSelection.restaurantId
+    const targetRestaurant = results.places?.find(
+      (restaurant) => restaurant.placeId === pendingSelection.placeId
     );
     if (!targetRestaurant) {
       return { kind: 'clear_pending_selection' };
     }
     const nextAutoOpenKey = currentQueryKey
-      ? `${currentQueryKey.toLowerCase()}::${targetRestaurant.restaurantId}`
+      ? `${currentQueryKey.toLowerCase()}::${targetRestaurant.placeId}`
       : null;
-    if (activeOpenRestaurantId === targetRestaurant.restaurantId) {
+    if (activeOpenRestaurantId === targetRestaurant.placeId) {
       return {
         kind: 'refresh',
         restaurant: targetRestaurant,
-        queryLabel: currentQueryKey || targetRestaurant.restaurantName || 'Search',
+        queryLabel: currentQueryKey || targetRestaurant.placeName || 'Search',
         nextAutoOpenKey,
       };
     }
@@ -86,7 +86,7 @@ export const resolveProfileAutoOpenAction = ({
   if (!targetRestaurant || !currentQueryKey || isFavoritesSourcedResults) {
     return { kind: 'none' };
   }
-  const nextAutoOpenKey = `${currentQueryKey.toLowerCase()}::${targetRestaurant.restaurantId}`;
+  const nextAutoOpenKey = `${currentQueryKey.toLowerCase()}::${targetRestaurant.placeId}`;
   if (lastAutoOpenKey === nextAutoOpenKey) {
     return { kind: 'none' };
   }

@@ -56,7 +56,7 @@ export const resolveProfileOpenPresentationPlan = ({
     cameraActionModel: restaurantCameraActionModel,
   });
   const cameraTargetResolution = resolveRestaurantProfileCameraMotion({
-    restaurantId: restaurant.restaurantId,
+    placeId: restaurant.placeId,
     source,
     focusTarget,
     cameraActionModel: restaurantCameraActionModel,

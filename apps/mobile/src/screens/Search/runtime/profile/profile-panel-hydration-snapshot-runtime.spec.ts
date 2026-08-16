@@ -21,7 +21,7 @@ import type {
 
 const seed = (craveScore: number | null): RestaurantProfileSeed =>
   ({
-    restaurantId: 'r1',
+    placeId: 'r1',
     name: 'Taqueria',
     craveScore,
     locations: [],
@@ -47,7 +47,7 @@ describe('crave-score presence is null-aware (F1059)', () => {
   it('a REAL 0 on the panel survives hydration — 0 is the worst SCORED, not unscored', () => {
     const next = applyHydratedRestaurantProfileToPanelSnapshot({
       currentSnapshot: snapshot(0),
-      restaurantId: 'r1',
+      placeId: 'r1',
       hydratedProfile: hydrated(71),
     });
     expect(next?.restaurant.craveScore).toBe(0);
@@ -56,7 +56,7 @@ describe('crave-score presence is null-aware (F1059)', () => {
   it('NULL on the panel yields to the hydrated score — absence is the only thing that yields', () => {
     const next = applyHydratedRestaurantProfileToPanelSnapshot({
       currentSnapshot: snapshot(null),
-      restaurantId: 'r1',
+      placeId: 'r1',
       hydratedProfile: hydrated(71),
     });
     expect(next?.restaurant.craveScore).toBe(71);
@@ -65,7 +65,7 @@ describe('crave-score presence is null-aware (F1059)', () => {
   it('unscored on BOTH sides stays null — never coerced to a rank (F758)', () => {
     const next = applyHydratedRestaurantProfileToPanelSnapshot({
       currentSnapshot: snapshot(null),
-      restaurantId: 'r1',
+      placeId: 'r1',
       hydratedProfile: hydrated(null),
     });
     expect(next?.restaurant.craveScore).toBeNull();

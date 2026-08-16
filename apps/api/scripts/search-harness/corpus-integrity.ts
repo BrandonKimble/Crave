@@ -60,7 +60,7 @@ async function main(): Promise<void> {
       FROM core_entities a
       JOIN core_entities b
         ON a.type = b.type
-       AND a.type = 'food'
+       AND a.type = 'item'
        AND a.entity_id < b.entity_id
        AND lower(trim(a.name)) <> lower(trim(b.name))
        AND similarity(a.name, b.name) >= 0.999
@@ -92,7 +92,7 @@ async function main(): Promise<void> {
       JOIN core_entities b
         ON lower(trim(a.name)) = lower(trim(b.name))
        AND a.entity_id <> b.entity_id
-      WHERE a.type = 'restaurant' AND b.type = 'food'
+      WHERE a.type = 'place' AND b.type = 'item'
         AND a.status = 'active' AND b.status = 'active'
       ORDER BY a.name`);
 
@@ -152,7 +152,7 @@ async function main(): Promise<void> {
     const summary = {
       duplicatePairs: dupPairs,
       duplicateGroups: dupGroups.length,
-      wordOrderDupFoods: wordOrder.length,
+      wordOrderDupItems: wordOrder.length,
       ambiguousAliases: ambiguous.length,
       mistypedEntities: mistyped.length,
       crossTypeCollisions: num(crossType[0]?.c),
@@ -182,7 +182,7 @@ async function main(): Promise<void> {
 
     out('');
     out(
-      `2. Word-order / near-identical duplicate FOODS   : ${summary.wordOrderDupFoods}  (audit 4 → 0)`,
+      `2. Word-order / near-identical duplicate FOODS   : ${summary.wordOrderDupItems}  (audit 4 → 0)`,
     );
     for (const w of wordOrder)
       out(`     · "${w.a}"  ≈  "${w.b}"   sim=${Number(w.sim).toFixed(3)}`);
@@ -221,7 +221,7 @@ async function main(): Promise<void> {
     out('');
     const defects =
       summary.duplicatePairs +
-      summary.wordOrderDupFoods +
+      summary.wordOrderDupItems +
       summary.ambiguousAliases +
       summary.mistypedEntities;
     out(

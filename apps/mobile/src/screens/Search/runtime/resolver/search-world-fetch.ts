@@ -214,10 +214,10 @@ export const createSearchWorldFetcher =
         selectedEntityId: identity.entityId,
         selectedEntityType: identity.entityType,
       };
-      if (identity.entityType === 'restaurant') {
+      if (identity.entityType === 'place') {
         const payload: StructuredSearchRequest = {
           entities: {
-            restaurants: [
+            places: [
               {
                 normalizedName: identity.displayName,
                 entityIds: [identity.entityId],
@@ -340,13 +340,13 @@ export const createSearchWorldNextPageFetcher =
     let response: SearchResponse;
     if (
       identity.kind === 'shortcut' ||
-      (identity.kind === 'entity' && identity.entityType === 'restaurant')
+      (identity.kind === 'entity' && identity.entityType === 'place')
     ) {
       const payload: StructuredSearchRequest = {
         entities:
           identity.kind === 'entity'
             ? {
-                restaurants: [
+                places: [
                   {
                     normalizedName: identity.displayName,
                     entityIds: [identity.entityId],

@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { RestaurantStatusService } from './restaurant-status.service';
+import { PlaceStatusService } from './restaurant-status.service';
 import { entityRedirectDouble } from '../../shared/testing/prisma-doubles';
 
 /**
@@ -15,11 +15,9 @@ import { entityRedirectDouble } from '../../shared/testing/prisma-doubles';
 const REQUESTED = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const SURVIVOR = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
 
-function createService(
-  prisma: Record<string, unknown>,
-): RestaurantStatusService {
+function createService(prisma: Record<string, unknown>): PlaceStatusService {
   const logger = { setContext: () => logger };
-  return new RestaurantStatusService(prisma as never, logger as never);
+  return new PlaceStatusService(prisma as never, logger as never);
 }
 
 describe('RestaurantStatusService leak closure (F510)', () => {
@@ -43,7 +41,7 @@ describe('RestaurantStatusService leak closure (F510)', () => {
         findMany: jest.fn().mockResolvedValue([
           {
             entityId: SURVIVOR,
-            restaurantMetadata: null,
+            placeMetadata: null,
             _count: { locations: 2 },
             primaryLocation: null,
           },
@@ -52,11 +50,11 @@ describe('RestaurantStatusService leak closure (F510)', () => {
     };
     const service = createService(prisma);
     const out = await service.getStatusPreviews({
-      restaurantIds: [REQUESTED],
+      placeIds: [REQUESTED],
     } as never);
     expect(out).toHaveLength(1);
     // Preview data comes from the survivor, keyed to the caller's asked id.
-    expect(out[0].restaurantId).toBe(REQUESTED);
+    expect(out[0].placeId).toBe(REQUESTED);
     expect(out[0].locationCount).toBe(2);
     // The read targets the survivor and excludes archived.
     const where = (
@@ -75,7 +73,7 @@ describe('RestaurantStatusService leak closure (F510)', () => {
     };
     const service = createService(prisma);
     const out = await service.getStatusPreviews({
-      restaurantIds: [REQUESTED],
+      placeIds: [REQUESTED],
     } as never);
     expect(out).toHaveLength(0);
   });

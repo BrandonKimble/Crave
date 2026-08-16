@@ -13,8 +13,8 @@ import {
 } from '@nestjs/common';
 import type { User } from '@prisma/client';
 import { PollsService } from './polls.service';
-import { RestaurantMentionsService } from './restaurant-mentions.service';
-import { RestaurantMentionsQueryDto } from './dto/restaurant-mentions.dto';
+import { PlaceMentionsService } from './restaurant-mentions.service';
+import { PlaceMentionsQueryDto } from './dto/restaurant-mentions.dto';
 import { ListUserPollsDto } from './dto/list-user-polls.dto';
 import {
   CreateCommentDto,
@@ -41,7 +41,7 @@ import { NoSignal, RecordsSignal } from '../signals/records-signal.decorator';
 export class PollsController {
   constructor(
     private readonly pollsService: PollsService,
-    private readonly restaurantMentionsService: RestaurantMentionsService,
+    private readonly placeMentionsService: PlaceMentionsService,
     private readonly blocks: UserBlockService,
   ) {}
 
@@ -140,12 +140,12 @@ export class PollsController {
   @AllowUnentitled()
   @Get('restaurants/:restaurantId/mentions')
   @UseGuards(OptionalClerkAuthGuard)
-  getRestaurantMentions(
-    @Param('restaurantId', new ParseUUIDPipe()) restaurantId: string,
-    @Query() query: RestaurantMentionsQueryDto,
+  getPlaceMentions(
+    @Param('placeId', new ParseUUIDPipe()) placeId: string,
+    @Query() query: PlaceMentionsQueryDto,
     @CurrentUser() user?: User | null,
   ) {
-    return this.restaurantMentionsService.getRestaurantMentions(restaurantId, {
+    return this.placeMentionsService.getPlaceMentions(placeId, {
       sort: query.sort,
       search: query.search,
       tagEntityIds: query.tags,

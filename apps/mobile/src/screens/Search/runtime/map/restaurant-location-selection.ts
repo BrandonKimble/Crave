@@ -102,7 +102,7 @@ export const resolveRestaurantMapLocations = (
     seen.add(dedupeKey);
     const locationId =
       (location as { locationId?: string | null })?.locationId ??
-      `${restaurant.restaurantId}-loc-${options.locationIndex}`;
+      `${restaurant.placeId}-loc-${options.locationIndex}`;
     resolved.push({
       locationId,
       latitude: location!.latitude as number,

@@ -36,9 +36,9 @@
  * restaurant ids travel as `$1`, a bind parameter, exactly as they did when
  * this SQL lived at its one caller.
  */
-export type FoodEdgeScope = { readonly restaurantIdsParam: string } | null;
+export type ItemEdgeScope = { readonly placeIdsParam: string } | null;
 
-function foodScopeClause(scope: FoodEdgeScope): string {
+function itemScopeClause(scope: ItemEdgeScope): string {
   if (scope === null) return '';
   // The leading newline and this indentation are not cosmetic: they make the
   // scoped statement BYTE-IDENTICAL to the text that lived at the incremental
@@ -47,7 +47,7 @@ function foodScopeClause(scope: FoodEdgeScope): string {
   return `
          AND c.food_id IN (
            SELECT DISTINCT food_id FROM core_restaurant_items
-           WHERE restaurant_id = ANY(${scope.restaurantIdsParam}::uuid[])
+           WHERE restaurant_id = ANY(${scope.placeIdsParam}::uuid[])
          )`;
 }
 
@@ -58,21 +58,21 @@ function foodScopeClause(scope: FoodEdgeScope): string {
  * shape). One lock serializes only this phase. The nightly full replace takes
  * the same lock, so it cannot interleave with an incremental refresh either.
  */
-export const FOOD_CATEGORY_EDGE_LOCK =
+export const ITEM_CATEGORY_EDGE_LOCK =
   "SELECT pg_advisory_xact_lock(hashtext('rebuild:food-category-edges'))";
 
 /** Clear the edges this rebuild is about to re-derive, and nothing else. */
-export function foodCategoryEdgeDeleteSql(scope: FoodEdgeScope): string {
+export function itemCategoryEdgeDeleteSql(scope: ItemEdgeScope): string {
   if (scope === null) return 'DELETE FROM derived_food_category_edges';
   return `DELETE FROM derived_food_category_edges
        WHERE food_id IN (
          SELECT DISTINCT food_id FROM core_restaurant_items
-         WHERE restaurant_id = ANY(${scope.restaurantIdsParam}::uuid[])
+         WHERE restaurant_id = ANY(${scope.placeIdsParam}::uuid[])
        )`;
 }
 
 /** Re-derive them from the connection arrays that are the source of truth. */
-export function foodCategoryEdgeInsertSql(scope: FoodEdgeScope): string {
+export function itemCategoryEdgeInsertSql(scope: ItemEdgeScope): string {
   return `INSERT INTO derived_food_category_edges (food_id, category_id, conn_support, food_conns)
        SELECT c.food_id, cat_id, count(*),
               -- STARVED anchors are excluded from BOTH sides of the edge
@@ -86,7 +86,7 @@ export function foodCategoryEdgeInsertSql(scope: FoodEdgeScope): string {
                WHERE c2.food_id = c.food_id AND c2.mention_count > 0)
        FROM core_restaurant_items c, unnest(c.categories) AS cat_id
        WHERE cat_id <> c.food_id
-         AND c.mention_count > 0${foodScopeClause(scope)}
+         AND c.mention_count > 0${itemScopeClause(scope)}
        GROUP BY c.food_id, cat_id
        HAVING (count(*) >= 2
            OR count(*) = (SELECT count(*) FROM core_restaurant_items c3

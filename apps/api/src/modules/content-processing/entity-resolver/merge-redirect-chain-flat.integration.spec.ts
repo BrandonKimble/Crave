@@ -32,7 +32,7 @@ const ids: string[] = [];
 
 async function seed(label: string): Promise<string> {
   const entity = await prisma.entity.create({
-    data: { name: `${TEST_TAG}-${label}`, type: 'food' },
+    data: { name: `${TEST_TAG}-${label}`, type: 'item' },
   });
   ids.push(entity.entityId);
   return entity.entityId;

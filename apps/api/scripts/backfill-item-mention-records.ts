@@ -34,14 +34,14 @@ async function main(): Promise<void> {
     const projection = app.get(ProjectionRebuildService);
 
     const rows = await prisma.$queryRaw<Array<{ entity_id: string }>>`
-      SELECT entity_id FROM core_entities WHERE type = 'restaurant'
+      SELECT entity_id FROM core_entities WHERE type = 'place'
     `;
     const ids = rows.map((row) => row.entity_id);
     const BATCH = 200;
     const startedAt = Date.now();
 
     for (let i = 0; i < ids.length; i += BATCH) {
-      await projection.rebuildForRestaurants(ids.slice(i, i + BATCH));
+      await projection.rebuildForPlaces(ids.slice(i, i + BATCH));
       console.log(
         `projection rebuilt ${Math.min(i + BATCH, ids.length)}/${ids.length}`,
       );

@@ -11,7 +11,7 @@ import { PhotoReadService } from './photo-read.service';
 const rawRow = (over: Partial<Record<string, unknown>>) => ({
   photo_id: 'p1',
   user_id: 'u1',
-  restaurant_id: 'r1',
+  place_id: 'r1',
   connection_id: null,
   public_id: 'crave/test/photos/p1',
   caption: null,
@@ -23,13 +23,13 @@ const rawRow = (over: Partial<Record<string, unknown>>) => ({
 
 function makeService(params: {
   connectionRows?: unknown[];
-  restaurantRows?: unknown[];
+  placeRows?: unknown[];
   connectionCounts?: Array<{
     connectionId: string;
     _count: { photoId: number };
   }>;
-  restaurantCounts?: Array<{
-    restaurantId: string;
+  placeCounts?: Array<{
+    placeId: string;
     _count: { photoId: number };
   }>;
 }) {
@@ -39,14 +39,14 @@ function makeService(params: {
   if (params.connectionRows) {
     queryRaw.mockResolvedValueOnce(params.connectionRows);
   }
-  if (params.restaurantRows) {
-    queryRaw.mockResolvedValueOnce(params.restaurantRows);
+  if (params.placeRows) {
+    queryRaw.mockResolvedValueOnce(params.placeRows);
   }
   const groupBy = jest.fn(({ by }: { by: string[] }) =>
     Promise.resolve(
       by[0] === 'connectionId'
         ? (params.connectionCounts ?? [])
-        : (params.restaurantCounts ?? []),
+        : (params.placeCounts ?? []),
     ),
   );
   const prisma = {
@@ -76,13 +76,13 @@ describe('PhotoReadService.cardStrips', () => {
         }),
         rawRow({ photo_id: 'pd2', connection_id: 'c1' }),
       ],
-      restaurantRows: [rawRow({ photo_id: 'pr1', restaurant_id: 'r2' })],
+      placeRows: [rawRow({ photo_id: 'pr1', place_id: 'r2' })],
       connectionCounts: [{ connectionId: 'c1', _count: { photoId: 14 } }],
-      restaurantCounts: [{ restaurantId: 'r2', _count: { photoId: 3 } }],
+      placeCounts: [{ placeId: 'r2', _count: { photoId: 3 } }],
     });
     const { strips } = await service.cardStrips([
-      { restaurantId: 'r1', connectionId: 'c1' },
-      { restaurantId: 'r2' },
+      { placeId: 'r1', connectionId: 'c1' },
+      { placeId: 'r2' },
     ]);
     expect(strips).toHaveLength(2);
     expect(strips[0].key).toBe('c1');
@@ -97,13 +97,13 @@ describe('PhotoReadService.cardStrips', () => {
   it('a dish ref NEVER falls back to restaurant photos; empty refs come back as empty strips', async () => {
     const { service } = makeService({
       connectionRows: [],
-      restaurantRows: [rawRow({ photo_id: 'pr1', restaurant_id: 'r1' })],
-      restaurantCounts: [{ restaurantId: 'r1', _count: { photoId: 1 } }],
+      placeRows: [rawRow({ photo_id: 'pr1', place_id: 'r1' })],
+      placeCounts: [{ placeId: 'r1', _count: { photoId: 1 } }],
     });
     const { strips } = await service.cardStrips([
-      { restaurantId: 'r1', connectionId: 'c-none' },
-      { restaurantId: 'r1' },
-      { restaurantId: 'r-none' },
+      { placeId: 'r1', connectionId: 'c-none' },
+      { placeId: 'r1' },
+      { placeId: 'r-none' },
     ]);
     expect(strips[0]).toEqual({ key: 'c-none', totalCount: 0, photos: [] });
     expect(strips[1].photos).toHaveLength(1);
@@ -116,8 +116,8 @@ describe('PhotoReadService.cardStrips', () => {
       connectionCounts: [],
     });
     await service.cardStrips([
-      { restaurantId: 'r1', connectionId: 'c1' },
-      { restaurantId: 'r2', connectionId: 'c1' },
+      { placeId: 'r1', connectionId: 'c1' },
+      { placeId: 'r2', connectionId: 'c1' },
     ]);
     expect(queryRaw).toHaveBeenCalledTimes(1);
     expect(prisma.photo.groupBy).toHaveBeenCalledTimes(1);
@@ -126,13 +126,13 @@ describe('PhotoReadService.cardStrips', () => {
   it('excludes private photos: the strip window and its counts read public only', async () => {
     const { service, queryRaw, prisma } = makeService({
       connectionRows: [],
-      restaurantRows: [],
+      placeRows: [],
       connectionCounts: [],
-      restaurantCounts: [],
+      placeCounts: [],
     });
     await service.cardStrips([
-      { restaurantId: 'r1', connectionId: 'c1' },
-      { restaurantId: 'r2' },
+      { placeId: 'r1', connectionId: 'c1' },
+      { placeId: 'r2' },
     ]);
     // $queryRaw is a tagged template: the SQL text is the joined strings.
     for (const call of queryRaw.mock.calls as unknown as [string[]][]) {
@@ -162,7 +162,7 @@ describe('PhotoReadService visibility on gallery + food log', () => {
 
   it('restaurant gallery reads public-only (page, count, and per-dish window)', async () => {
     const { service, findMany, count, queryRaw } = makeGalleryService();
-    await service.restaurantGallery('r1');
+    await service.placeGallery('r1');
     type WhereCall = [{ where: { visibility?: string } }];
     const findManyCalls = findMany.mock.calls as unknown as WhereCall[];
     const countCalls = count.mock.calls as unknown as WhereCall[];
@@ -176,10 +176,10 @@ describe('PhotoReadService visibility on gallery + food log', () => {
   it("food log: a VISITOR's read excludes private; the OWNER's read includes it", async () => {
     const { service, findMany } = makeGalleryService();
     type WhereCall = [{ where: { visibility?: string } }];
-    await service.userFoodLog('owner', 'visitor');
+    await service.userItemLog('owner', 'visitor');
     const calls = findMany.mock.calls as unknown as WhereCall[];
     expect(calls[0][0].where.visibility).toBe('public');
-    await service.userFoodLog('owner', 'owner');
+    await service.userItemLog('owner', 'owner');
     expect(calls[1][0].where.visibility).toBeUndefined();
   });
 });

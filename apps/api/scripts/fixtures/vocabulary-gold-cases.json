@@ -2,7 +2,7 @@
   {
     "id": "thing-not-material-gyro",
     "why": "THING-vs-MATERIAL: measured drift — v6 answered the sandwich concept with its filling's name ('gyro meat').",
-    "concept": { "name": "gyro", "entityType": "food", "locale": "en" },
+    "concept": { "name": "gyro", "entityType": "item", "locale": "en" },
     "expect": { "label": "gyro", "notLabel": ["gyro meat"] }
   },
   {
@@ -10,7 +10,7 @@
     "why": "Measured drift: 'cinnamon roll' answered with its head ingredient 'cinnamon'.",
     "concept": {
       "name": "cinnamon roll",
-      "entityType": "food",
+      "entityType": "item",
       "locale": "en"
     },
     "expect": { "label": "cinnamon roll", "notLabel": ["cinnamon"] }
@@ -18,43 +18,43 @@
   {
     "id": "thing-not-material-key-lime-pie",
     "why": "Measured drift: 'key lime pie' answered with 'key lime'.",
-    "concept": { "name": "key lime pie", "entityType": "food", "locale": "en" },
+    "concept": { "name": "key lime pie", "entityType": "item", "locale": "en" },
     "expect": { "label": "key lime pie", "notLabel": ["key lime"] }
   },
   {
     "id": "thing-not-material-spring-roll",
     "why": "Measured drift: 'spring roll' answered with the material it is wrapped in ('spring roll wrapper').",
-    "concept": { "name": "spring roll", "entityType": "food", "locale": "en" },
+    "concept": { "name": "spring roll", "entityType": "item", "locale": "en" },
     "expect": { "label": "spring roll", "notLabel": ["spring roll wrapper"] }
   },
   {
     "id": "thing-not-material-bbq",
     "why": "Measured drift: 'bbq' answered with 'bbq sauce'.",
-    "concept": { "name": "bbq", "entityType": "food", "locale": "en" },
+    "concept": { "name": "bbq", "entityType": "item", "locale": "en" },
     "expect": { "notLabel": ["bbq sauce"] }
   },
   {
     "id": "thing-not-material-matcha",
     "why": "Measured drift: 'matcha' answered with 'matcha powder'.",
-    "concept": { "name": "matcha", "entityType": "food", "locale": "en" },
+    "concept": { "name": "matcha", "entityType": "item", "locale": "en" },
     "expect": { "notLabel": ["matcha powder"] }
   },
   {
     "id": "thing-not-material-margarita",
     "why": "The non-mechanically-detectable twin: 'margarita' sliding to 'margarita mix'.",
-    "concept": { "name": "margarita", "entityType": "food", "locale": "en" },
+    "concept": { "name": "margarita", "entityType": "item", "locale": "en" },
     "expect": { "label": "margarita", "notLabel": ["margarita mix"] }
   },
   {
     "id": "thing-not-material-stew",
     "why": "The other undetectable twin: 'stew' sliding to 'stew meat'.",
-    "concept": { "name": "stew", "entityType": "food", "locale": "en" },
+    "concept": { "name": "stew", "entityType": "item", "locale": "en" },
     "expect": { "label": "stew", "notLabel": ["stew meat"] }
   },
   {
     "id": "boundary-control-caldo",
     "why": "Keep-side control: the original BOUNDARY case must keep holding — es 'soup' never answered by the neighbouring 'caldo'.",
-    "concept": { "name": "soup", "entityType": "food", "locale": "es" },
+    "concept": { "name": "soup", "entityType": "item", "locale": "es" },
     "expect": { "notLabel": ["caldo"] }
   },
   {

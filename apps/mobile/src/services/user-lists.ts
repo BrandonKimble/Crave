@@ -62,7 +62,7 @@ export interface UserListSummary {
 
 export interface UserListTileImage {
   slot: 0 | 1 | 2 | 3;
-  restaurantId: string;
+  placeId: string;
   photoId: string;
   thumbUrl: string;
 }
@@ -230,7 +230,7 @@ export const userListsService = {
   async addItem(
     listId: string,
     payload: {
-      restaurantId?: string;
+      placeId?: string;
       connectionId?: string;
       locationId?: string;
       note?: string;
@@ -245,7 +245,7 @@ export const userListsService = {
    * body shape as addItem, no listId (the kind IS the address).
    */
   async addFavoriteItem(payload: {
-    restaurantId?: string;
+    placeId?: string;
     connectionId?: string;
     locationId?: string;
     note?: string;
@@ -255,7 +255,7 @@ export const userListsService = {
   },
   /** Unheart: remove from the user's kind='favorites' list. */
   async removeFavoriteItem(payload: {
-    restaurantId?: string;
+    placeId?: string;
     connectionId?: string;
     locationId?: string;
   }) {
@@ -326,7 +326,7 @@ export const userListsService = {
    * live in any list the viewer owns or co-edits.
    */
   async batchMemberships(query: {
-    restaurantIds?: string[];
+    placeIds?: string[];
     connectionIds?: string[];
   }): Promise<{ savedRestaurantIds: string[]; savedConnectionIds: string[] }> {
     const response = await api.post<{

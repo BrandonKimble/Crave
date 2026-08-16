@@ -128,8 +128,8 @@ const ENTITY_SIGNAL_CANDIDATE_LIMIT = MAX_TERMS_PER_CYCLE * 50;
 const COLLECTIBLE_ENTITY_TYPES = [
   'restaurant',
   'food',
-  'food_attribute',
-  'restaurant_attribute',
+  'item_attribute',
+  'place_attribute',
 ];
 
 function clamp01(value: number): number {
@@ -893,16 +893,16 @@ export class KeywordSliceSelectionService {
     distinctUsers: number;
     demandScore?: number;
     reason: OnDemandReason;
-    resultRestaurantCount: number | null;
-    resultFoodCount: number | null;
+    resultPlaceCount: number | null;
+    resultItemCount: number | null;
     lastSeenAt: Date;
     now: Date;
   }): number {
     const severity =
       params.reason === 'low_result'
         ? this.calculateLowResultSeverity({
-            restaurantCount: params.resultRestaurantCount,
-            foodCount: params.resultFoodCount,
+            placeCount: params.resultPlaceCount,
+            itemCount: params.resultItemCount,
           })
         : 1;
     const demandScore =
@@ -931,14 +931,14 @@ export class KeywordSliceSelectionService {
   }
 
   private calculateLowResultSeverity(params: {
-    restaurantCount: number | null;
-    foodCount: number | null;
+    placeCount: number | null;
+    itemCount: number | null;
   }): number {
     const targetCount = ON_DEMAND_MIN_RESULTS;
     const observedCount =
-      typeof params.restaurantCount === 'number'
-        ? Math.max(params.restaurantCount, 0)
-        : Math.max(params.foodCount ?? 0, 0);
+      typeof params.placeCount === 'number'
+        ? Math.max(params.placeCount, 0)
+        : Math.max(params.itemCount ?? 0, 0);
     const coverage = clamp01(observedCount / targetCount);
     return curves.inverseCoverage(coverage, 1.2);
   }
@@ -1095,8 +1095,8 @@ export class KeywordSliceSelectionService {
         distinctUsers: request.distinctUserCount,
         demandScore: request.demandScore,
         reason: request.reason as OnDemandReason,
-        resultRestaurantCount: request.resultRestaurantCount,
-        resultFoodCount: request.resultFoodCount,
+        resultPlaceCount: request.resultPlaceCount,
+        resultItemCount: request.resultItemCount,
         lastSeenAt: request.lastSeenAt,
         now,
       }),
@@ -1111,8 +1111,8 @@ export class KeywordSliceSelectionService {
         demandScore: request.demandScore,
         askCount: request.askCount,
         entityId: request.entityId,
-        resultRestaurantCount: request.resultRestaurantCount ?? 0,
-        resultFoodCount: request.resultFoodCount ?? 0,
+        resultPlaceCount: request.resultPlaceCount ?? 0,
+        resultItemCount: request.resultItemCount ?? 0,
         lastSeenAt: request.lastSeenAt.toISOString(),
       },
     }));

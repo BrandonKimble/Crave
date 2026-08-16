@@ -4,7 +4,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { EntityStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
-import { RestaurantLocationEnrichmentService } from './restaurant-location-enrichment.service';
+import { PlaceLocationEnrichmentService } from './restaurant-location-enrichment.service';
 
 export interface JanitorSummary {
   archivedClosed: number;
@@ -51,12 +51,12 @@ export interface JanitorSummary {
  * consistent with how cuisine hubs and leaked entities are retired.
  */
 @Injectable()
-export class RestaurantJanitorService {
+export class PlaceJanitorService {
   private readonly logger: LoggerService;
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly enrichmentService: RestaurantLocationEnrichmentService,
+    private readonly enrichmentService: PlaceLocationEnrichmentService,
     private readonly config: ConfigService,
     loggerService: LoggerService,
   ) {
@@ -144,7 +144,7 @@ export class RestaurantJanitorService {
     // 1. Every location closed permanently → archive the restaurant.
     const closed = await this.prisma.$queryRaw<{ entity_id: string }[]>`
       SELECT e.entity_id FROM core_entities e
-      WHERE e.type = 'restaurant' AND e.status = 'active'
+      WHERE e.type = 'place' AND e.status = 'active'
         AND EXISTS (
           SELECT 1 FROM core_restaurant_locations l
           WHERE l.restaurant_id = e.entity_id
@@ -167,10 +167,10 @@ export class RestaurantJanitorService {
 
     // 2. Moved → re-enrich through the redirect target (force: the identity
     // changed; enrichRestaurantById follows movedPlaceId internally).
-    const moved = await this.prisma.restaurantLocation.findMany({
+    const moved = await this.prisma.placeLocation.findMany({
       where: { movedPlaceId: { not: null } },
-      select: { locationId: true, restaurantId: true },
-      distinct: ['restaurantId'],
+      select: { locationId: true, placeId: true },
+      distinct: ['placeId'],
       // Rotate under the cap: oldest-attempted first, and we stamp the row
       // below after EVERY attempt (success rewrites the location; failure
       // paths never touch it — without the stamp the same failing rows
@@ -178,17 +178,17 @@ export class RestaurantJanitorService {
       orderBy: { updatedAt: 'asc' },
       take: movedRetryLimit,
     });
-    summary.selected.moved = moved.map((row) => row.restaurantId);
+    summary.selected.moved = moved.map((row) => row.placeId);
     if (!dryRun) {
       for (const row of moved) {
-        const result = await this.enrichmentService.enrichRestaurantById(
-          row.restaurantId,
+        const result = await this.enrichmentService.enrichPlaceById(
+          row.placeId,
           { force: true },
         );
         if (result.status === 'updated') {
           summary.reEnrichedMoved += 1;
         } else {
-          await this.prisma.restaurantLocation.update({
+          await this.prisma.placeLocation.update({
             where: { locationId: row.locationId },
             data: { updatedAt: new Date() },
           });

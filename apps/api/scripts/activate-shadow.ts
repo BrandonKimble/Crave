@@ -33,6 +33,7 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { CollectionEvidenceService } from '../src/modules/content-processing/reddit-collector/collection-evidence.service';
 import { ProjectionRebuildService } from '../src/modules/content-processing/reddit-collector/projection-rebuild.service';
+import { RehearsalGenerationService } from '../src/modules/content-processing/reddit-collector/rehearsal-generation.service';
 import { ExtractionScopeService } from '../src/modules/content-processing/reddit-collector/extraction-scope.service';
 import { PromptRegistryService } from '../src/modules/external-integrations/llm/prompt-registry.service';
 import { RescoreCoordinatorService } from '../src/modules/content-processing/public-crave-score/rescore-coordinator.service';
@@ -158,7 +159,7 @@ async function main(): Promise<void> {
       }
       const affected = new Set<string>();
       for (const [oldRunId, docIds] of byOldRun) {
-        for (const id of await scope.affectedRestaurantsForDocuments(docIds))
+        for (const id of await scope.affectedPlacesForDocuments(docIds))
           affected.add(id);
         await evidence.activateRunForDocuments(oldRunId, docIds, {
           supersede: 'retain',
@@ -167,7 +168,7 @@ async function main(): Promise<void> {
       console.log(
         `Flipped ${flips.length} documents back across ${byOldRun.size} runs. Rebuilding ${affected.size} restaurants…`,
       );
-      await rebuild.rebuildForRestaurants(Array.from(affected));
+      await rebuild.rebuildForPlaces(Array.from(affected));
       // Scores must follow the graph (product red team F3): without this,
       // search serves generation-A ranking over generation-B filters until
       // an unrelated collection batch happens to dirty the flag.
@@ -301,28 +302,36 @@ async function main(): Promise<void> {
       communities,
       compute: async () => {
         const plan: Array<{ runId: string; documentIds: string[] }> = [];
-        const affectedRestaurants = new Set<string>();
+        const affectedPlaces = new Set<string>();
         for (const run of runs) {
           const documentIds = await scope.documentsOwnedByRun(run.run_id);
           if (!documentIds.length) continue;
           plan.push({ runId: run.run_id, documentIds });
-          for (const id of await scope.affectedRestaurantsForDocuments(
-            documentIds,
-          ))
-            affectedRestaurants.add(id);
+          for (const id of await scope.affectedPlacesForDocuments(documentIds))
+            affectedPlaces.add(id);
         }
-        return { plan, restaurantIds: Array.from(affectedRestaurants) };
+        return { plan, placeIds: Array.from(affectedPlaces) };
       },
     });
-    const { plan, restaurantIds } = resolved.plan;
+    const { plan, placeIds } = resolved.plan;
     console.log(
-      `${resolved.resumed ? 'RESUMED plan' : 'Plan'}: ${plan.length} runs, ${plan.reduce((n, p) => n + p.documentIds.length, 0)} documents, ${restaurantIds.length} restaurants → ${planPath}`,
+      `${resolved.resumed ? 'RESUMED plan' : 'Plan'}: ${plan.length} runs, ${plan.reduce((n, p) => n + p.documentIds.length, 0)} documents, ${placeIds.length} restaurants → ${planPath}`,
     );
     if (!plan.length) {
       console.log('Nothing to activate.');
       consumeActivationPlan(planPath);
       return;
     }
+
+    // REHEARSAL FLIP FIRST (plans/shadow-sandbox.md): the shadow's mints
+    // become real BEFORE any document pointer moves, so a reader never sees
+    // an active generation whose entities are still invisible. Keyed by the
+    // plan's run ids; idempotent (a resume re-runs it as a no-op).
+    const rehearsal = app.get(RehearsalGenerationService);
+    const flippedGeneration = await rehearsal.flip(plan.map((p) => p.runId));
+    console.log(
+      `Rehearsal flip: ${flippedGeneration.entities} entities, ${flippedGeneration.surfaces} surfaces, ${flippedGeneration.verdicts} verdicts -> live.`,
+    );
 
     let flipped = 0;
     for (const step of plan) {
@@ -349,19 +358,22 @@ async function main(): Promise<void> {
     // now uses the same bound.
     const REBUILD_CHUNK = 100;
     console.log(
-      `Rebuilding projections for ${restaurantIds.length} restaurants in chunks of ${REBUILD_CHUNK} (full surviving ledger — R5)…`,
+      `Rebuilding projections for ${placeIds.length} restaurants in chunks of ${REBUILD_CHUNK} (full surviving ledger — R5)…`,
     );
-    for (let i = 0; i < restaurantIds.length; i += REBUILD_CHUNK) {
-      await rebuild.rebuildForRestaurants(
-        restaurantIds.slice(i, i + REBUILD_CHUNK),
-      );
+    for (let i = 0; i < placeIds.length; i += REBUILD_CHUNK) {
+      await rebuild.rebuildForPlaces(placeIds.slice(i, i + REBUILD_CHUNK));
       if ((i / REBUILD_CHUNK) % 5 === 0 && i > 0) {
-        console.log(`  rebuilt ${i}/${restaurantIds.length}…`);
+        console.log(`  rebuilt ${i}/${placeIds.length}…`);
       }
     }
     // The artifact is consumed only on FULL success — a crash anywhere above
     // leaves it in place as the authority for the resume.
     consumeActivationPlan(planPath);
+    if (flippedGeneration.flippedPlaceIds.length) {
+      console.log(
+        `DEFERRED MACHINERY: ${flippedGeneration.flippedPlaceIds.length} newly-live restaurants need enrichment — the mention-driven queue re-attempts on next collection touch, or run the enrichment janitor now. Attribute adjudication fires on the next banked batch's debounce.`,
+      );
+    }
     console.log(
       'DONE. Close with: reload/anchor-audit.sql, reload/gc-unsupported-entities.sql, prompt-activate.ts, cost-reconcile.sh',
     );

@@ -54,9 +54,9 @@ import {
 // dish-side attribute) with zero es surfaces — found by the launch-gate
 // residual, fixed the compound stratum when simulated.
 const LABELED_ENTITY_TYPES = [
-  'restaurant_attribute',
-  'food_attribute',
-  'food',
+  'place_attribute',
+  'item_attribute',
+  'item',
   'ingredient',
 ];
 

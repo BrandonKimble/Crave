@@ -63,7 +63,7 @@ function buildService(): DemandVocabularyService {
 async function seedEntity(): Promise<void> {
   await prisma.$executeRawUnsafe(
     `INSERT INTO core_entities (entity_id, name, type, status, identity_key, identity_key_sorted)
-     VALUES ($1::uuid, $2, 'food'::entity_type, 'active'::entity_status, $3, $3)
+     VALUES ($1::uuid, $2, 'item'::entity_type, 'active'::entity_status, $3, $3)
      ON CONFLICT (entity_id) DO NOTHING`,
     ENTITY,
     ENTITY_NAME,

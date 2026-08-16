@@ -76,8 +76,8 @@ export class SearchOrchestrationService {
         this.logger.info('Search debug: selected entity response', {
           searchRequestId: response.metadata.searchRequestId,
           resultCoverageStatus: response.metadata.resultCoverageStatus,
-          totalRestaurantResults: response.metadata.totalRestaurantResults,
-          totalFoodResults: response.metadata.totalFoodResults,
+          totalPlaceResults: response.metadata.totalPlaceResults,
+          totalItemResults: response.metadata.totalItemResults,
           queryExecutionTimeMs: response.metadata.queryExecutionTimeMs,
           onDemandQueued: response.metadata.onDemandQueued ?? false,
         });
@@ -196,11 +196,10 @@ export class SearchOrchestrationService {
             ? (interpretation.analysisMetadata ?? null)
             : undefined,
         interpretationCounts: {
-          restaurants: interpretation.analysis.restaurants.length,
-          foods: interpretation.analysis.foods.length,
-          foodAttributes: interpretation.analysis.foodAttributes.length,
-          restaurantAttributes:
-            interpretation.analysis.restaurantAttributes.length,
+          places: interpretation.analysis.places.length,
+          items: interpretation.analysis.items.length,
+          itemAttributes: interpretation.analysis.itemAttributes.length,
+          placeAttributes: interpretation.analysis.placeAttributes.length,
         },
         unresolved: summarizeUnresolvedEntities(interpretation.unresolved),
         structuredEntities:
@@ -248,9 +247,9 @@ export class SearchOrchestrationService {
       this.logger.info('Search debug: final response', {
         searchRequestId: response.metadata.searchRequestId,
         resultCoverageStatus: response.metadata.resultCoverageStatus,
-        totalRestaurantResults: response.metadata.totalRestaurantResults,
-        totalFoodResults: response.metadata.totalFoodResults,
-        restaurantsOnPage: response.restaurants?.length ?? 0,
+        totalPlaceResults: response.metadata.totalPlaceResults,
+        totalItemResults: response.metadata.totalItemResults,
+        restaurantsOnPage: response.places?.length ?? 0,
         dishesOnPage: response.dishes?.length ?? 0,
         queryExecutionTimeMs: response.metadata.queryExecutionTimeMs,
         onDemandQueued: response.metadata.onDemandQueued ?? false,
@@ -259,7 +258,7 @@ export class SearchOrchestrationService {
     }
 
     const totalResults =
-      (response.dishes?.length ?? 0) + (response.restaurants?.length ?? 0);
+      (response.dishes?.length ?? 0) + (response.places?.length ?? 0);
     // F3800: same derived vocabulary as the entry gate. The hand-copied
     // four-arm version reported an ingredient-only search that returned
     // nothing as coverage 'full' — an honest gap laundered into "nothing
@@ -330,17 +329,17 @@ export class SearchOrchestrationService {
     };
     const entities: QueryEntityGroupDto = {};
     switch (selectedEntityType) {
-      case 'restaurant':
-        entities.restaurants = [selectedEntry];
+      case 'place':
+        entities.places = [selectedEntry];
         break;
-      case 'food':
-        entities.food = [selectedEntry];
+      case 'item':
+        entities.items = [selectedEntry];
         break;
-      case 'food_attribute':
-        entities.foodAttributes = [selectedEntry];
+      case 'item_attribute':
+        entities.itemAttributes = [selectedEntry];
         break;
-      case 'restaurant_attribute':
-        entities.restaurantAttributes = [selectedEntry];
+      case 'place_attribute':
+        entities.placeAttributes = [selectedEntry];
         break;
       case 'ingredient':
         entities.ingredients = [selectedEntry];

@@ -39,7 +39,7 @@ async function seedSubject(opts: {
   const entity = await prisma.entity.create({
     data: {
       name: `${TEST_TAG}-${opts.label}`,
-      type: 'food',
+      type: 'item',
       status: opts.status,
     },
   });

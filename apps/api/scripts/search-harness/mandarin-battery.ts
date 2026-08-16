@@ -17,11 +17,11 @@ import { analyzeQuery } from '../../src/modules/entity-text-search/query-analyze
 import type { SearchQueryRequestDto } from '../../src/modules/search/dto/search-query.dto';
 
 const TYPES: EntityType[] = [
-  'food',
+  'item',
   'ingredient',
-  'food_attribute',
-  'restaurant_attribute',
-  'restaurant',
+  'item_attribute',
+  'place_attribute',
+  'place',
 ] as EntityType[];
 
 /** Austin viewport — runQuery requires one. */
@@ -93,15 +93,15 @@ async function main(): Promise<void> {
         } as unknown as SearchQueryRequestDto);
         const meta = res.metadata as unknown as Record<string, unknown>;
         out(
-          `    runQuery: dishes=${res.dishes?.length ?? 0} restaurants=${res.restaurants?.length ?? 0} totals=${String(meta?.totalFoodResults)}/${String(meta?.totalRestaurantResults)}`,
+          `    runQuery: dishes=${res.dishes?.length ?? 0} restaurants=${res.places?.length ?? 0} totals=${String(meta?.totalItemResults)}/${String(meta?.totalPlaceResults)}`,
         );
         const top = (res.dishes ?? []).slice(0, 3) as Array<{
           name?: string;
-          foodName?: string;
+          itemName?: string;
         }>;
         if (top.length) {
           out(
-            `    top: ${top.map((d) => d.name ?? d.foodName ?? '?').join(' | ')}`,
+            `    top: ${top.map((d) => d.name ?? d.itemName ?? '?').join(' | ')}`,
           );
         }
       }

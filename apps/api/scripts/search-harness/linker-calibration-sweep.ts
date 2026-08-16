@@ -94,7 +94,7 @@ async function main(): Promise<void> {
 
     // ---- corpus -----------------------------------------------------------
     const pairs: Pair[] = [];
-    for (const type of [EntityType.food, EntityType.restaurant]) {
+    for (const type of [EntityType.item, EntityType.place]) {
       const rows = await prisma.$queryRawUnsafe<
         { entity_id: string; name: string }[]
       >(
@@ -121,7 +121,7 @@ async function main(): Promise<void> {
         `SELECT name FROM core_entities
          WHERE type = $1::entity_type AND status='active'
          ORDER BY random() LIMIT $2`,
-        type === EntityType.food ? EntityType.restaurant : EntityType.food,
+        type === EntityType.item ? EntityType.place : EntityType.item,
         Math.floor(NEGATIVES / 2),
       );
       for (const row of otherRows) {

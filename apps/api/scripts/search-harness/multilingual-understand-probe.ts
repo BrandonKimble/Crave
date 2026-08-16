@@ -45,11 +45,11 @@ import { SearchQueryInterpretationService } from '../../src/modules/search/searc
 import { PrismaService } from '../../src/prisma/prisma.service';
 
 const TYPES: EntityType[] = [
-  'food',
+  'item',
   'ingredient',
-  'food_attribute',
-  'restaurant_attribute',
-  'restaurant',
+  'item_attribute',
+  'place_attribute',
+  'place',
 ] as EntityType[];
 
 const N1_QUERIES = [
@@ -98,7 +98,7 @@ async function main(): Promise<void> {
   const sample = await prisma.$queryRawUnsafe<{ name: string }[]>(
     `SELECT name FROM core_entities
       WHERE status = 'active' AND name ~ '^[A-Za-z0-9 ]+$'
-        AND type IN ('food','restaurant','food_attribute')
+        AND type IN ('item','place','item_attribute')
       ORDER BY md5(name) LIMIT 50`,
   );
   let grounded = 0;

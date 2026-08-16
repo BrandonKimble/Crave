@@ -120,7 +120,7 @@ export class EntityEmbeddingReconcilerService
                   AND ${recallScope('en', 's')}
                ) AS surfaces
          FROM core_entities e
-       WHERE type IN ('restaurant','food','food_attribute','restaurant_attribute','ingredient')
+       WHERE type IN ('place','item','item_attribute','place_attribute','ingredient')
          AND status = 'active'
          ${Prisma.raw(reembedAll ? '' : 'AND (name_embedding IS NULL OR name_embedding_stale = true)')}
        ORDER BY entity_id
@@ -148,7 +148,7 @@ export class EntityEmbeddingReconcilerService
 
     const [{ n }] = await this.prisma.$queryRawUnsafe<{ n: bigint }[]>(
       `SELECT count(*) AS n FROM core_entities
-       WHERE type IN ('restaurant','food','food_attribute','restaurant_attribute','ingredient')
+       WHERE type IN ('place','item','item_attribute','place_attribute','ingredient')
          AND status = 'active'
          AND (name_embedding IS NULL OR name_embedding_stale = true)`,
     );

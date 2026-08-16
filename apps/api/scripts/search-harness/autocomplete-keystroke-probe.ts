@@ -19,7 +19,7 @@ import { EntityTextSearchService } from '../../src/modules/entity-text-search/en
  *   yarn workspace api ts-node scripts/search-harness/autocomplete-keystroke-probe.ts
  */
 
-const FOODS: EntityType[] = [EntityType.food, EntityType.restaurant];
+const FOODS: EntityType[] = [EntityType.item, EntityType.place];
 
 const SEQUENCES: string[][] = [
   ['r', 'ra', 'ram', 'rame', 'ramen'],

@@ -37,7 +37,7 @@ async function main(): Promise<void> {
     for (const c of COMMENTS) {
       const spans = await ets.scanForKnownEntities(
         c,
-        [EntityType.restaurant, EntityType.food],
+        [EntityType.place, EntityType.item],
         { engineId: null },
       );
       out('');

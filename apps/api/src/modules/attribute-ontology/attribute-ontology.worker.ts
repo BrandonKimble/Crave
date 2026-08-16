@@ -33,7 +33,7 @@ export class AttributeOntologyWorker implements OnModuleInit {
   @Process(ADJUDICATE_JOB)
   async handle(job: Job<AttributeAdjudicationJobData>): Promise<void> {
     const type = job.data?.type;
-    if (type !== 'food_attribute' && type !== 'restaurant_attribute') {
+    if (type !== 'item_attribute' && type !== 'place_attribute') {
       this.logger.warn('Adjudication job missing/invalid type', {
         jobId: job.id,
         data: job.data,

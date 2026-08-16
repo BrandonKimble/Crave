@@ -42,7 +42,7 @@
       "connectionId": "uuid-conn",
       "foodId": "uuid-food",
       "foodName": "Tonkotsu Ramen",
-      "restaurantId": "uuid-restaurant",
+      "placeId": "uuid-restaurant",
       "restaurantName": "Ramen Tatsu-Ya",
       "scoreSubjectType": "connection",
       "scoreSubjectId": "uuid-conn",
@@ -56,7 +56,7 @@
   ],
   "restaurants": [
     {
-      "restaurantId": "uuid-restaurant",
+      "placeId": "uuid-restaurant",
       "restaurantName": "Ramen Tatsu-Ya",
       "scoreSubjectType": "restaurant",
       "scoreSubjectId": "uuid-restaurant",

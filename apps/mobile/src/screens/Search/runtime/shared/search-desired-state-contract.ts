@@ -60,7 +60,7 @@ export type SearchQueryIdentity =
       kind: 'entity';
       /** Poll-comment / autocomplete entity tap: one entity, skip-LLM lane. Restaurant
        *  taps fetch structured; food/attribute taps fetch natural + submissionContext. */
-      entityType: 'restaurant' | 'food' | 'food_attribute' | 'restaurant_attribute' | 'ingredient';
+      entityType: 'place' | 'item' | 'item_attribute' | 'place_attribute' | 'ingredient';
       entityId: string;
       displayName: string;
       /** SEE-LOCATIONS mode (restaurant only): the world = this restaurant's

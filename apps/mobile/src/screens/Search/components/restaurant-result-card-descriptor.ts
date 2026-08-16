@@ -50,12 +50,12 @@ export type RestaurantResultCardDescriptor = {
   matchedTags: RestaurantResultCardMatchedTagDescriptor[];
   priceRangeLabel: string | null;
   primaryFoodHighlight: RestaurantResultCardPrimaryFoodHighlight | null;
-  primaryFoodTerm: string | null;
+  primaryItemTerm: string | null;
   qualityColor: string;
   rank: number;
   rankFontSize: number;
   rankLabel: string;
-  restaurantId: string;
+  placeId: string;
   showDistanceInScore: boolean;
   topFoodLayout: CachedTopFoodLayout | null;
   topFoodNameSegmentsByConnectionId: Map<string, SuggestionMatchSegment[]>;
@@ -63,19 +63,19 @@ export type RestaurantResultCardDescriptor = {
 };
 
 export const normalizeRestaurantCardPrimaryFoodTerm = (
-  primaryFoodTerm: string | null | undefined
+  primaryItemTerm: string | null | undefined
 ): string | null => {
-  if (typeof primaryFoodTerm !== 'string') {
+  if (typeof primaryItemTerm !== 'string') {
     return null;
   }
-  const trimmed = primaryFoodTerm.trim();
+  const trimmed = primaryItemTerm.trim();
   return trimmed.length ? trimmed : null;
 };
 
 export const createRestaurantCardPrimaryFoodHighlight = (
-  primaryFoodTerm: string | null | undefined
+  primaryItemTerm: string | null | undefined
 ): RestaurantResultCardPrimaryFoodHighlight | null => {
-  const normalized = normalizeRestaurantCardPrimaryFoodTerm(primaryFoodTerm);
+  const normalized = normalizeRestaurantCardPrimaryFoodTerm(primaryItemTerm);
   if (normalized == null) {
     return null;
   }
@@ -100,30 +100,30 @@ export const formatRestaurantCardMatchedTagLabel = (tag: RestaurantMatchedTag): 
 };
 
 export const buildRestaurantResultCardDescriptor = ({
-  primaryFoodTerm,
+  primaryItemTerm,
   qualityColor,
   rank,
   restaurant,
   topFoodLayout = null,
 }: {
-  primaryFoodTerm: string | null | undefined;
+  primaryItemTerm: string | null | undefined;
   qualityColor: string;
   rank: number;
   restaurant: RestaurantResult;
   topFoodLayout?: CachedTopFoodLayout | null;
 }): RestaurantResultCardDescriptor => {
-  const topFoodItems = restaurant.topFood ?? [];
+  const topFoodItems = restaurant.topItem ?? [];
   const candidateTopFoods = topFoodItems.slice(0, TOP_FOOD_RENDER_LIMIT);
   const totalDishCount = Math.max(
     restaurant.totalDishCount ?? topFoodItems.length,
     topFoodItems.length
   );
-  const primaryFoodHighlight = createRestaurantCardPrimaryFoodHighlight(primaryFoodTerm);
+  const primaryFoodHighlight = createRestaurantCardPrimaryFoodHighlight(primaryItemTerm);
   const topFoodNameSegmentsByConnectionId = new Map<string, SuggestionMatchSegment[]>();
   candidateTopFoods.forEach((food) => {
     topFoodNameSegmentsByConnectionId.set(
       food.connectionId,
-      buildRestaurantCardHighlightedTextSegments(food.foodName, primaryFoodHighlight)
+      buildRestaurantCardHighlightedTextSegments(food.itemName, primaryFoodHighlight)
     );
   });
   const hasStatus =
@@ -133,7 +133,7 @@ export const buildRestaurantResultCardDescriptor = ({
     .filter((tag) => typeof tag.name === 'string' && tag.name.trim().length > 0)
     .slice(0, MAX_MATCHED_TAGS)
     .map((tag) => ({
-      key: `${restaurant.restaurantId}-${tag.entityId}`,
+      key: `${restaurant.placeId}-${tag.entityId}`,
       label: formatRestaurantCardMatchedTagLabel(tag),
     }))
     .filter((tag) => tag.label.length > 0);
@@ -153,12 +153,12 @@ export const buildRestaurantResultCardDescriptor = ({
     priceRangeLabel:
       restaurant.priceRangeText ?? getPriceSymbolLabel(restaurant.priceLevel) ?? null,
     primaryFoodHighlight,
-    primaryFoodTerm: primaryFoodHighlight?.term ?? null,
+    primaryItemTerm: primaryFoodHighlight?.term ?? null,
     qualityColor,
     rank,
     rankFontSize: getRankFontSize(FONT_SIZES.title, rank),
     rankLabel: formatRankLabel(rank),
-    restaurantId: restaurant.restaurantId,
+    placeId: restaurant.placeId,
     showDistanceInScore: !hasStatus && distanceLabel !== null,
     topFoodLayout,
     topFoodNameSegmentsByConnectionId,

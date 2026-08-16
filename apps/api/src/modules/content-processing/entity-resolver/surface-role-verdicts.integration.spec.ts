@@ -42,12 +42,12 @@ describe('surface role verdicts — proven against a live database', () => {
   const prisma = new PrismaClient();
   const made: string[] = [];
 
-  const mintFood = async (name: string): Promise<string> => {
+  const mintItem = async (name: string): Promise<string> => {
     const id = randomUUID();
-    const identity = identityInsertData(name, 'food' as never);
+    const identity = identityInsertData(name, 'item' as never);
     await prisma.$executeRawUnsafe(
       `INSERT INTO core_entities (entity_id, name, type, status, identity_key, identity_key_sorted)
-       VALUES ($1::uuid, $2, 'food'::entity_type, 'active'::entity_status, $3, $4)`,
+       VALUES ($1::uuid, $2, 'item'::entity_type, 'active'::entity_status, $3, $4)`,
       id,
       name,
       identity.identityKey,
@@ -89,10 +89,10 @@ describe('surface role verdicts — proven against a live database', () => {
    */
   it('P0: eviction takes the incumbent WORD and leaves the user their LABEL', async () => {
     const word = `zzq palabra ${randomUUID().slice(0, 8)}`;
-    const incumbent = await mintFood(
+    const incumbent = await mintItem(
       `zzq incumbent ${randomUUID().slice(0, 8)}`,
     );
-    const newcomer = await mintFood(`zzq newcomer ${randomUUID().slice(0, 8)}`);
+    const newcomer = await mintItem(`zzq newcomer ${randomUUID().slice(0, 8)}`);
 
     // The incumbent banks it the way the label sweep does: role='both', the
     // rendered default label for (entity, locale).
@@ -191,8 +191,8 @@ describe('surface role verdicts — proven against a live database', () => {
 
   it('A: an OBSERVED write cannot widen a refused display row into a recall claim', async () => {
     const word = `zzq observada ${randomUUID().slice(0, 8)}`;
-    const holder = await mintFood(`zzq holder ${randomUUID().slice(0, 8)}`);
-    const refused = await mintFood(`zzq refused ${randomUUID().slice(0, 8)}`);
+    const holder = await mintItem(`zzq holder ${randomUUID().slice(0, 8)}`);
+    const refused = await mintItem(`zzq refused ${randomUUID().slice(0, 8)}`);
 
     await prisma.$transaction((tx) =>
       addSurfaces(tx, holder, [
@@ -227,7 +227,7 @@ describe('surface role verdicts — proven against a live database', () => {
     // "display rows are frozen": with nothing contesting the word, the same
     // write lands.
     const word = `zzq libre ${randomUUID().slice(0, 8)}`;
-    const entity = await mintFood(`zzq free ${randomUUID().slice(0, 8)}`);
+    const entity = await mintItem(`zzq free ${randomUUID().slice(0, 8)}`);
     await prisma.$transaction((tx) =>
       addSurfaces(tx, entity, [
         { form: word, locale: 'es', source: 'sweep', role: 'display' },
@@ -243,7 +243,7 @@ describe('surface role verdicts — proven against a live database', () => {
 
   it('B: no unadjudicated write can resurrect a deprecated form', async () => {
     const word = `zzq muerta ${randomUUID().slice(0, 8)}`;
-    const entity = await mintFood(`zzq buried ${randomUUID().slice(0, 8)}`);
+    const entity = await mintItem(`zzq buried ${randomUUID().slice(0, 8)}`);
     await prisma.$transaction((tx) =>
       addSurfaces(tx, entity, [
         { form: word, locale: 'es', source: 'sweep', role: 'both' },
@@ -305,8 +305,8 @@ describe('surface role verdicts — proven against a live database', () => {
 
   it('C: the merge fold carries ROLE, so a loser’s refused label is not laundered into a recall claim', async () => {
     const word = `zzq fusion ${randomUUID().slice(0, 8)}`;
-    const loser = await mintFood(`zzq loser ${randomUUID().slice(0, 8)}`);
-    const winner = await mintFood(`zzq winner ${randomUUID().slice(0, 8)}`);
+    const loser = await mintItem(`zzq loser ${randomUUID().slice(0, 8)}`);
+    const winner = await mintItem(`zzq winner ${randomUUID().slice(0, 8)}`);
 
     await prisma.$executeRawUnsafe(
       `INSERT INTO entity_surface (entity_id, form, form_folded, locale, role, source, confidence, status)

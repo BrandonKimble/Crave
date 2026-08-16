@@ -73,11 +73,11 @@ describe('post-body claims carry one ballot (creator = one vote)', () => {
     const maps = buildMaps([post('p1', 2125, [comment('c1', 41)])]);
 
     const fromPost = enrich(
-      { source_id: 'p1', restaurant: 'Franklin', general_praise: true },
+      { source_id: 'p1', place: 'Franklin', general_praise: true },
       maps,
     );
     const fromComment = enrich(
-      { source_id: 'c1', restaurant: 'Franklin', general_praise: true },
+      { source_id: 'c1', place: 'Franklin', general_praise: true },
       maps,
     );
 
@@ -88,7 +88,7 @@ describe('post-body claims carry one ballot (creator = one vote)', () => {
   it('a downvoted post still carries its creator ballot of exactly 1', () => {
     const maps = buildMaps([post('p1', 0, [])]);
     const fromPost = enrich(
-      { source_id: 'p1', restaurant: 'Franklin', general_praise: true },
+      { source_id: 'p1', place: 'Franklin', general_praise: true },
       maps,
     );
     expect(fromPost.source_ups).toBe(1);

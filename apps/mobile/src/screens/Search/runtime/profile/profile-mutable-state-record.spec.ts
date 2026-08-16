@@ -15,8 +15,8 @@ import {
 import { createInitialProfileControllerState } from './profile-runtime-state-record';
 import type { HydratedRestaurantProfile } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 
-const profile = (restaurantId: string): HydratedRestaurantProfile =>
-  ({ restaurant: { restaurantId }, dishes: [] }) as unknown as HydratedRestaurantProfile;
+const profile = (placeId: string): HydratedRestaurantProfile =>
+  ({ restaurant: { placeId }, dishes: [] }) as unknown as HydratedRestaurantProfile;
 
 const LIMIT = 12;
 

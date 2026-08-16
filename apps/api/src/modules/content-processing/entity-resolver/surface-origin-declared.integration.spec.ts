@@ -36,12 +36,12 @@ describe('a surface banks at the language its writer claims', () => {
   const prisma = new PrismaClient();
   const made: string[] = [];
 
-  const mintFood = async (name: string): Promise<string> => {
+  const mintItem = async (name: string): Promise<string> => {
     const id = randomUUID();
-    const identity = identityInsertData(name, 'food' as never);
+    const identity = identityInsertData(name, 'item' as never);
     await prisma.$executeRawUnsafe(
       `INSERT INTO core_entities (entity_id, name, type, status, identity_key, identity_key_sorted)
-       VALUES ($1::uuid, $2, 'food'::entity_type, 'active'::entity_status, $3, $4)`,
+       VALUES ($1::uuid, $2, 'item'::entity_type, 'active'::entity_status, $3, $4)`,
       id,
       name,
       identity.identityKey,
@@ -82,7 +82,7 @@ describe('a surface banks at the language its writer claims', () => {
     const suffix = randomUUID().slice(0, 8);
     const marked = `zzq café ${suffix}`;
     const plain = marked.normalize('NFD').replace(ACCENTS, '');
-    const shop = await mintFood(`zzq coffee shop ${suffix}`);
+    const shop = await mintItem(`zzq coffee shop ${suffix}`);
 
     // The real sequence: the generator banks the accented recall row, the
     // sweep banks the plain label — and BOTH are authored.
@@ -118,7 +118,7 @@ describe('a surface banks at the language its writer claims', () => {
     const suffix = randomUUID().slice(0, 8);
     const marked = `zzq thịt ${suffix}`;
     const plain = marked.normalize('NFD').replace(ACCENTS, '');
-    const meat = await mintFood(`zzq meat ${suffix}`);
+    const meat = await mintItem(`zzq meat ${suffix}`);
     await prisma.$transaction((tx) =>
       addSurfaces(tx, meat, [
         { form: marked, locale: 'vi', source: 'vocabulary', role: 'recall' },
@@ -136,7 +136,7 @@ describe('a surface banks at the language its writer claims', () => {
   it("banks a declared stripped-convenience form at 'und', whatever locale it names", async () => {
     const suffix = randomUUID().slice(0, 8);
     const plain = `zzq bun cha ${suffix}`;
-    const dish = await mintFood(`zzq noodle ${suffix}`);
+    const dish = await mintItem(`zzq noodle ${suffix}`);
     await prisma.$transaction((tx) =>
       addSurfaces(tx, dish, [
         {
@@ -159,7 +159,7 @@ describe('a surface banks at the language its writer claims', () => {
   it('needs no accented sibling to honour the stripped-convenience declaration', async () => {
     const suffix = randomUUID().slice(0, 8);
     const plain = `zzq lone form ${suffix}`;
-    const lone = await mintFood(`zzq lone ${suffix}`);
+    const lone = await mintItem(`zzq lone ${suffix}`);
     await prisma.$transaction((tx) =>
       addSurfaces(tx, lone, [
         {

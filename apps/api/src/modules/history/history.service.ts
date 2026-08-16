@@ -5,12 +5,12 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
-import { RecordRestaurantViewDto } from './dto/record-restaurant-view.dto';
-import { RecordFoodViewDto } from './dto/record-food-view.dto';
-import { ListRestaurantViewsDto } from './dto/list-restaurant-views.dto';
-import { ListFoodViewsDto } from './dto/list-food-views.dto';
-import { RestaurantStatusService } from '../search/restaurant-status.service';
-import type { RestaurantStatusPreviewDto } from '../search/dto/restaurant-status-preview.dto';
+import { RecordPlaceViewDto } from './dto/record-restaurant-view.dto';
+import { RecordItemViewDto } from './dto/record-food-view.dto';
+import { ListPlaceViewsDto } from './dto/list-restaurant-views.dto';
+import { ListItemViewsDto } from './dto/list-food-views.dto';
+import { PlaceStatusService } from '../search/restaurant-status.service';
+import type { PlaceStatusPreviewDto } from '../search/dto/restaurant-status-preview.dto';
 import { SignalsService } from '../signals/signals.service';
 import { SignalDemandReadService } from '../signals/signal-demand-read.service';
 import { SaveableEntityResolver } from '../entities/saveable-entity.resolver';
@@ -28,7 +28,7 @@ export class HistoryService {
   constructor(
     private readonly prisma: PrismaService,
     loggerService: LoggerService,
-    private readonly restaurantStatusService: RestaurantStatusService,
+    private readonly placeStatusService: PlaceStatusService,
     private readonly signals: SignalsService,
     private readonly signalDemandRead: SignalDemandReadService,
     private readonly saveableEntities: SaveableEntityResolver,
@@ -36,19 +36,17 @@ export class HistoryService {
     this.logger = loggerService.setContext('HistoryService');
   }
 
-  async recordRestaurantView(
+  async recordPlaceView(
     userId: string,
-    dto: RecordRestaurantViewDto,
+    dto: RecordPlaceViewDto,
   ): Promise<void> {
     // ONE saveable-entity law (D36/F682): redirect-resolve → type →
     // status='active'. Type alone let an entity_view act be written against
     // an ARCHIVED entity; a merge loser's id now records against the
     // survivor rather than against a husk.
-    const restaurant = await this.saveableEntities.resolveSaveableRestaurant(
-      dto.restaurantId,
-    );
+    const place = await this.saveableEntities.resolveSaveablePlace(dto.placeId);
 
-    if (!restaurant) {
+    if (!place) {
       throw new NotFoundException('Restaurant not found');
     }
 
@@ -57,7 +55,7 @@ export class HistoryService {
     // now a ledger read: the latest entity_view act on this subject.
     const now = new Date();
     const lastViewedAt = await this.signalDemandRead.lastEntityViewAt(userId, {
-      entityId: restaurant.entityId,
+      entityId: place.entityId,
     });
 
     const shouldIncrement =
@@ -71,13 +69,13 @@ export class HistoryService {
       this.signals.record({
         kind: 'entity_view',
         userId,
-        subject: { entityId: restaurant.entityId },
-        geo: this.signals.bboxFromRestaurantLocation({
-          restaurantId: restaurant.entityId,
+        subject: { entityId: place.entityId },
+        geo: this.signals.bboxFromPlaceLocation({
+          placeId: place.entityId,
           locationId: dto.locationId ?? null,
         }),
         meta: {
-          contextRestaurantId: restaurant.entityId,
+          contextRestaurantId: place.entityId,
           locationId: dto.locationId ?? undefined,
           source: dto.source ?? undefined,
           // NOT meta.searchRequestId: that key is the read-side act-dedupe key
@@ -90,32 +88,32 @@ export class HistoryService {
 
     this.logger.debug('Recorded restaurant view', {
       userId,
-      restaurantId: restaurant.entityId,
+      placeId: place.entityId,
       shouldIncrement,
       source: dto.source,
     });
   }
 
-  async recordFoodView(userId: string, dto: RecordFoodViewDto): Promise<void> {
+  async recordItemView(userId: string, dto: RecordItemViewDto): Promise<void> {
     const connection = await this.prisma.connection.findUnique({
       where: { connectionId: dto.connectionId },
-      select: { connectionId: true, foodId: true, restaurantId: true },
+      select: { connectionId: true, itemId: true, placeId: true },
     });
 
     if (!connection) {
       throw new NotFoundException('Connection not found');
     }
 
-    if (dto.foodId && dto.foodId !== connection.foodId) {
+    if (dto.itemId && dto.itemId !== connection.itemId) {
       throw new BadRequestException('Connection does not match food');
     }
 
     // Same one law on the dish side (D36/F682).
-    const food = await this.saveableEntities.resolveSaveableFood(
-      connection.foodId,
+    const item = await this.saveableEntities.resolveSaveableItem(
+      connection.itemId,
     );
 
-    if (!food) {
+    if (!item) {
       throw new NotFoundException('Food not found');
     }
 
@@ -124,7 +122,7 @@ export class HistoryService {
     // restaurant — the same grain the dead user_food_views table kept).
     const now = new Date();
     const lastViewedAt = await this.signalDemandRead.lastEntityViewAt(userId, {
-      entityId: food.entityId,
+      entityId: item.entityId,
       connectionId: connection.connectionId,
     });
 
@@ -138,13 +136,13 @@ export class HistoryService {
       this.signals.record({
         kind: 'entity_view',
         userId,
-        subject: { entityId: food.entityId },
-        geo: this.signals.bboxFromRestaurantLocation({
-          restaurantId: connection.restaurantId,
+        subject: { entityId: item.entityId },
+        geo: this.signals.bboxFromPlaceLocation({
+          placeId: connection.placeId,
           locationId: dto.locationId ?? null,
         }),
         meta: {
-          contextRestaurantId: connection.restaurantId,
+          contextRestaurantId: connection.placeId,
           connectionId: connection.connectionId,
           locationId: dto.locationId ?? undefined,
           source: dto.source ?? undefined,
@@ -155,7 +153,7 @@ export class HistoryService {
 
     this.logger.debug('Recorded food view', {
       userId,
-      foodId: food.entityId,
+      itemId: item.entityId,
       connectionId: connection.connectionId,
       shouldIncrement,
       source: dto.source,
@@ -168,13 +166,13 @@ export class HistoryService {
    * user_food_views tables. The response contract is frozen, plus the
    * locationId the dual-write records (the recently-viewed location display).
    */
-  async listRecentlyViewedRestaurants(
+  async listRecentlyViewedPlaces(
     userId: string,
-    query: ListRestaurantViewsDto,
+    query: ListPlaceViewsDto,
   ): Promise<
     Array<{
-      restaurantId: string;
-      restaurantName: string;
+      placeId: string;
+      placeName: string;
       city?: string | null;
       region?: string | null;
       lastViewedAt: Date;
@@ -182,31 +180,31 @@ export class HistoryService {
       locationId?: string | null;
       /** Earned address suggestion: the viewed location's address label. */
       locationAddress?: string | null;
-      statusPreview?: RestaurantStatusPreviewDto | null;
+      statusPreview?: PlaceStatusPreviewDto | null;
     }>
   > {
     const take = Math.max(1, Math.min(query.limit ?? 10, 50));
     const prefix = query.prefix?.trim();
 
-    const rows = await this.signalDemandRead.recentlyViewedRestaurants(userId, {
+    const rows = await this.signalDemandRead.recentlyViewedPlaces(userId, {
       prefix,
       limit: take,
     });
 
-    const restaurantIds = rows.map((row) => row.restaurantId);
+    const placeIds = rows.map((row) => row.placeId);
     const [previews, addressByLocationId] = await Promise.all([
-      restaurantIds.length > 0
-        ? this.restaurantStatusService.getStatusPreviews({ restaurantIds })
+      placeIds.length > 0
+        ? this.placeStatusService.getStatusPreviews({ placeIds })
         : Promise.resolve([]),
       this.loadLocationAddresses(rows.map((row) => row.locationId ?? null)),
     ]);
     const previewMap = new Map(
-      previews.map((preview) => [preview.restaurantId, preview]),
+      previews.map((preview) => [preview.placeId, preview]),
     );
 
     return rows.map((row) => ({
-      restaurantId: row.restaurantId,
-      restaurantName: row.restaurantName,
+      placeId: row.placeId,
+      placeName: row.placeName,
       city: row.city,
       region: row.region,
       lastViewedAt: row.lastViewedAt,
@@ -215,60 +213,60 @@ export class HistoryService {
       locationAddress: row.locationId
         ? (addressByLocationId.get(row.locationId) ?? null)
         : null,
-      statusPreview: previewMap.get(row.restaurantId) ?? null,
+      statusPreview: previewMap.get(row.placeId) ?? null,
     }));
   }
 
-  async listRecentlyViewedFoods(
+  async listRecentlyViewedItems(
     userId: string,
-    query: ListFoodViewsDto,
+    query: ListItemViewsDto,
   ): Promise<
     Array<{
       connectionId: string;
-      foodId: string;
-      foodName: string;
-      restaurantId: string;
-      restaurantName: string;
+      itemId: string;
+      itemName: string;
+      placeId: string;
+      placeName: string;
       lastViewedAt: Date;
       viewCount: number;
       locationId?: string | null;
       /** Earned address suggestion: the viewed location's address label. */
       locationAddress?: string | null;
-      statusPreview?: RestaurantStatusPreviewDto | null;
+      statusPreview?: PlaceStatusPreviewDto | null;
     }>
   > {
     const take = Math.max(1, Math.min(query.limit ?? 10, 50));
     const prefix = query.prefix?.trim();
 
-    const rows = await this.signalDemandRead.recentlyViewedFoods(userId, {
+    const rows = await this.signalDemandRead.recentlyViewedItems(userId, {
       prefix,
       limit: take,
     });
 
-    const restaurantIds = rows.map((row) => row.restaurantId);
+    const placeIds = rows.map((row) => row.placeId);
     const [previews, addressByLocationId] = await Promise.all([
-      restaurantIds.length > 0
-        ? this.restaurantStatusService.getStatusPreviews({ restaurantIds })
+      placeIds.length > 0
+        ? this.placeStatusService.getStatusPreviews({ placeIds })
         : Promise.resolve([]),
       this.loadLocationAddresses(rows.map((row) => row.locationId ?? null)),
     ]);
     const previewMap = new Map(
-      previews.map((preview) => [preview.restaurantId, preview]),
+      previews.map((preview) => [preview.placeId, preview]),
     );
 
     return rows.map((row) => ({
       connectionId: row.connectionId,
-      foodId: row.foodId,
-      foodName: row.foodName,
-      restaurantId: row.restaurantId,
-      restaurantName: row.restaurantName,
+      itemId: row.itemId,
+      itemName: row.itemName,
+      placeId: row.placeId,
+      placeName: row.placeName,
       lastViewedAt: row.lastViewedAt,
       viewCount: row.viewCount,
       locationId: row.locationId,
       locationAddress: row.locationId
         ? (addressByLocationId.get(row.locationId) ?? null)
         : null,
-      statusPreview: previewMap.get(row.restaurantId) ?? null,
+      statusPreview: previewMap.get(row.placeId) ?? null,
     }));
   }
 
@@ -282,7 +280,7 @@ export class HistoryService {
     if (distinctIds.length === 0) {
       return new Map();
     }
-    const locations = await this.prisma.restaurantLocation.findMany({
+    const locations = await this.prisma.placeLocation.findMany({
       where: { locationId: { in: distinctIds } },
       select: { locationId: true, address: true },
     });

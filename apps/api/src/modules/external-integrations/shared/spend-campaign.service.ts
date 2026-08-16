@@ -76,7 +76,7 @@ export interface PrepareManifestEstimateParams {
    *  loads — discovery follows a measured Heaps-style curve (β≈0.72 in both
    *  seeded cities, 2026-07-25 analysis). Pass the extrapolated NEW-restaurant
    *  count from that curve; the printout labels which method priced the line. */
-  expectedNewRestaurants?: number;
+  expectedNewPlaces?: number;
 }
 
 export interface PreparedManifestEstimate {
@@ -556,8 +556,8 @@ export class SpendCampaignService {
 
     const docCount = params.docCount;
     const expectedEntities =
-      params.expectedNewRestaurants !== undefined
-        ? Math.round(params.expectedNewRestaurants)
+      params.expectedNewPlaces !== undefined
+        ? Math.round(params.expectedNewPlaces)
         : Math.round((docCount * entitiesPerKilodoc) / 1000);
 
     // BILLED-DOLLAR GROSSING (round-six ideal shape, the BigQuery feedback

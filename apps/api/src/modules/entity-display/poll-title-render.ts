@@ -18,10 +18,10 @@ export type PollTitleWriter = 'weekly_ritual' | 'user_created';
 export interface PollTitleContext {
   /** best_dish / *_attribute: the CONCEPT label, already localized. */
   conceptLabel?: string | null;
-  /** what_to_order: the restaurant's name. A proper noun; never localized. */
-  restaurantName?: string | null;
-  /** best_restaurants: the place name. Also a proper noun. */
+  /** what_to_order: the place (venue) name. A proper noun; never localized. */
   placeName?: string | null;
+  /** best_restaurants: the GEOGRAPHIC place name. Also a proper noun. */
+  locationName?: string | null;
 }
 
 const RITUAL_KEYS: Readonly<Record<string, RecipeMessageKey>> = {
@@ -55,11 +55,11 @@ export function renderPollTitle(
     return null;
   }
   if (topicType === 'best_restaurants') {
-    return ctx.placeName
-      ? renderMessage(key, locale, { place: ctx.placeName })
+    return ctx.locationName
+      ? renderMessage(key, locale, { place: ctx.locationName })
       : null;
   }
   const label =
-    topicType === 'what_to_order' ? ctx.restaurantName : ctx.conceptLabel;
+    topicType === 'what_to_order' ? ctx.placeName : ctx.conceptLabel;
   return label ? renderMessage(key, locale, { label }) : null;
 }

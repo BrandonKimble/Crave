@@ -80,7 +80,7 @@ async function main(): Promise<void> {
         FROM derived_entity_sibling_edges e
         JOIN core_entities a ON a.entity_id = e.anchor_entity_id
         JOIN core_entities s ON s.entity_id = e.sibling_entity_id
-          AND s.type = 'food'::entity_type AND s.status = 'active'::entity_status
+          AND s.type = 'item'::entity_type AND s.status = 'active'::entity_status
         WHERE lower(a.name) = lower(${name})
         ORDER BY e.forward_rank
       `);
@@ -125,7 +125,7 @@ async function main(): Promise<void> {
     const [badType] = await prisma.$queryRaw<{ n: bigint }[]>(Prisma.sql`
       SELECT count(*) AS n FROM derived_entity_sibling_edges e
       JOIN core_entities x ON x.entity_id IN (e.anchor_entity_id, e.sibling_entity_id)
-      WHERE x.type <> 'food'::entity_type
+      WHERE x.type <> 'item'::entity_type
     `);
     out(`  non-food endpoints: ${badType.n} (want 0)`);
 
@@ -165,7 +165,7 @@ async function main(): Promise<void> {
         prisma.$queryRaw<{ entityId: string }[]>(Prisma.sql`
           SELECT e.entity_id AS "entityId"
           FROM core_entities e
-          WHERE e.type = 'food'::entity_type
+          WHERE e.type = 'item'::entity_type
             AND e.status = 'active'::entity_status
             AND e.name_embedding IS NOT NULL
             AND e.entity_id <> ${row.sibling_entity_id}::uuid

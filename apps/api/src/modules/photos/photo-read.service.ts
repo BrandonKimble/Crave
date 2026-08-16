@@ -17,8 +17,8 @@ export interface PhotoStripItemDto {
   urls: PhotoUrls;
 }
 
-export interface RestaurantGalleryDto {
-  restaurantId: string;
+export interface PlaceGalleryDto {
+  placeId: string;
   totalCount: number;
   /** "All photos" — newest first, paged. */
   all: PhotoStripItemDto[];
@@ -28,9 +28,9 @@ export interface RestaurantGalleryDto {
   byDish: Array<{ connectionId: string; photos: PhotoStripItemDto[] }>;
 }
 
-export interface FoodLogGroupDto {
-  restaurantId: string;
-  restaurantName: string;
+export interface ItemLogGroupDto {
+  placeId: string;
+  placeName: string;
   photos: PhotoStripItemDto[];
 }
 
@@ -74,18 +74,18 @@ export class PhotoReadService {
     /** Authors the viewer must not see. Applied IN the query so the page and
      *  the count agree; see windowedStrip. */
     excludeUserIds?: readonly string[];
-    restaurantIds?: string[];
+    placeIds?: string[];
     connectionIds?: string[];
     userId?: string;
   }): Promise<{
-    byRestaurant: Map<string, PhotoStripItemDto[]>;
+    byPlace: Map<string, PhotoStripItemDto[]>;
     byConnection: Map<string, PhotoStripItemDto[]>;
-    countsByRestaurant: Map<string, number>;
+    countsByPlace: Map<string, number>;
     countsByConnection: Map<string, number>;
   }> {
-    const byRestaurant = new Map<string, PhotoStripItemDto[]>();
+    const byPlace = new Map<string, PhotoStripItemDto[]>();
     const byConnection = new Map<string, PhotoStripItemDto[]>();
-    const countsByRestaurant = new Map<string, number>();
+    const countsByPlace = new Map<string, number>();
     const countsByConnection = new Map<string, number>();
 
     if (params.connectionIds?.length) {
@@ -120,16 +120,16 @@ export class PhotoReadService {
         countsByConnection.set(count.connectionId!, count._count.photoId);
       }
     }
-    if (params.restaurantIds?.length) {
+    if (params.placeIds?.length) {
       const [rows, counts] = await Promise.all([
-        this.windowedStrip('restaurant_id', params.restaurantIds, {
+        this.windowedStrip('restaurant_id', params.placeIds, {
           userId: params.userId,
           excludeUserIds: params.excludeUserIds,
         }),
         this.prisma.photo.groupBy({
-          by: ['restaurantId'],
+          by: ['placeId'],
           where: {
-            restaurantId: { in: params.restaurantIds },
+            placeId: { in: params.placeIds },
             status: PhotoStatus.live,
             visibility: PhotoVisibility.public,
             ...(params.userId ? { userId: params.userId } : {}),
@@ -141,19 +141,19 @@ export class PhotoReadService {
         }),
       ]);
       for (const row of rows) {
-        const key = row.restaurantId;
-        const bucket = byRestaurant.get(key) ?? [];
+        const key = row.placeId;
+        const bucket = byPlace.get(key) ?? [];
         bucket.push(this.toStripItem(row));
-        byRestaurant.set(key, bucket);
+        byPlace.set(key, bucket);
       }
       for (const count of counts) {
-        countsByRestaurant.set(count.restaurantId, count._count.photoId);
+        countsByPlace.set(count.placeId, count._count.photoId);
       }
     }
     return {
-      byRestaurant,
+      byPlace,
       byConnection,
-      countsByRestaurant,
+      countsByPlace,
       countsByConnection,
     };
   }
@@ -164,7 +164,7 @@ export class PhotoReadService {
    *  (all the restaurant's photos). Rides the same windowed strip query +
    *  ordering policy as everything else. */
   async cardStrips(
-    refs: Array<{ restaurantId: string; connectionId?: string }>,
+    refs: Array<{ placeId: string; connectionId?: string }>,
     options: { excludeUserIds?: readonly string[] } = {},
   ): Promise<{ strips: CardStripDto[] }> {
     const connectionIds = [
@@ -172,30 +172,26 @@ export class PhotoReadService {
         refs.flatMap((ref) => (ref.connectionId ? [ref.connectionId] : [])),
       ),
     ];
-    const restaurantIds = [
+    const placeIds = [
       ...new Set(
-        refs.flatMap((ref) => (ref.connectionId ? [] : [ref.restaurantId])),
+        refs.flatMap((ref) => (ref.connectionId ? [] : [ref.placeId])),
       ),
     ];
-    const {
-      byRestaurant,
-      byConnection,
-      countsByRestaurant,
-      countsByConnection,
-    } = await this.stripPhotos({
-      restaurantIds,
-      connectionIds,
-      excludeUserIds: options.excludeUserIds,
-    });
+    const { byPlace, byConnection, countsByPlace, countsByConnection } =
+      await this.stripPhotos({
+        placeIds,
+        connectionIds,
+        excludeUserIds: options.excludeUserIds,
+      });
     return {
       strips: refs.map((ref) => {
-        const key = ref.connectionId ?? ref.restaurantId;
+        const key = ref.connectionId ?? ref.placeId;
         const photos = ref.connectionId
           ? (byConnection.get(ref.connectionId) ?? [])
-          : (byRestaurant.get(ref.restaurantId) ?? []);
+          : (byPlace.get(ref.placeId) ?? []);
         const totalCount = ref.connectionId
           ? (countsByConnection.get(ref.connectionId) ?? 0)
-          : (countsByRestaurant.get(ref.restaurantId) ?? 0);
+          : (countsByPlace.get(ref.placeId) ?? 0);
         return { key, totalCount, photos };
       }),
     };
@@ -254,7 +250,7 @@ export class PhotoReadService {
     return {
       photoId: row.photo_id,
       userId: row.user_id,
-      restaurantId: row.restaurant_id,
+      placeId: row.place_id,
       connectionId: row.connection_id,
       publicId: row.public_id,
       caption: row.caption,
@@ -265,14 +261,14 @@ export class PhotoReadService {
   }
 
   /** The restaurant gallery (selector-row shaped: All + per-dish). */
-  async restaurantGallery(
-    restaurantId: string,
+  async placeGallery(
+    placeId: string,
     params: {
       limit?: number;
       offset?: number;
       excludeUserIds?: readonly string[];
     } = {},
-  ): Promise<RestaurantGalleryDto> {
+  ): Promise<PlaceGalleryDto> {
     const limit = Math.min(params.limit ?? 60, 120);
     const offset = params.offset ?? 0;
     // The exclusion goes in the WHERE of both the page and the count, so
@@ -283,7 +279,7 @@ export class PhotoReadService {
       ? { userId: { notIn: [...params.excludeUserIds] } }
       : {};
     const visibleWhere = {
-      restaurantId,
+      placeId,
       status: PhotoStatus.live,
       visibility: PhotoVisibility.public,
       ...blocked,
@@ -297,7 +293,7 @@ export class PhotoReadService {
         select: PHOTO_STRIP_SELECT,
       }),
       this.prisma.photo.count({ where: visibleWhere }),
-      this.dishSlices(restaurantId, params.excludeUserIds),
+      this.dishSlices(placeId, params.excludeUserIds),
     ]);
     const byDishMap = new Map<string, PhotoStripItemDto[]>();
     for (const row of dishRows) {
@@ -307,7 +303,7 @@ export class PhotoReadService {
       byDishMap.set(key, bucket);
     }
     return {
-      restaurantId,
+      placeId,
       totalCount,
       all: all.map((row) => this.toStripItem(row)),
       byDish: [...byDishMap.entries()].map(([connectionId, photos]) => ({
@@ -320,7 +316,7 @@ export class PhotoReadService {
   /** Windowed per-dish slices for the gallery selector (≤20/dish leave the
    *  DB — never a full scan of a photo-heavy restaurant). */
   private async dishSlices(
-    restaurantId: string,
+    placeId: string,
     excludeUserIds?: readonly string[],
     perDish = 20,
   ): Promise<PhotoStripRow[]> {
@@ -338,7 +334,7 @@ export class PhotoReadService {
                    photo_id DESC
         ) AS rn
         FROM photos
-        WHERE restaurant_id = ${restaurantId}::uuid
+        WHERE restaurant_id = ${placeId}::uuid
           ${blockFilter}
           AND status = 'live' AND visibility = 'public'
           AND connection_id IS NOT NULL
@@ -352,11 +348,11 @@ export class PhotoReadService {
   /** The profile food log: grouped by restaurant, newest activity first.
    *  Owner sees everything except removed (including their private photos);
    *  visitors see live + public only. */
-  async userFoodLog(
+  async userItemLog(
     userId: string,
     viewerUserId: string | undefined,
     params: { limit?: number } = {},
-  ): Promise<FoodLogGroupDto[]> {
+  ): Promise<ItemLogGroupDto[]> {
     const isOwner = userId === viewerUserId;
     const rows = await this.prisma.photo.findMany({
       where: isOwner
@@ -375,19 +371,18 @@ export class PhotoReadService {
       take: Math.min(params.limit ?? 200, 500),
       select: {
         ...PHOTO_STRIP_SELECT,
-        restaurant: { select: { name: true } },
+        place: { select: { name: true } },
       },
     });
-    const groups = new Map<string, FoodLogGroupDto>();
+    const groups = new Map<string, ItemLogGroupDto>();
     for (const row of rows) {
-      const group = groups.get(row.restaurantId) ?? {
-        restaurantId: row.restaurantId,
-        restaurantName:
-          (row as { restaurant?: { name: string } }).restaurant?.name ?? '',
+      const group = groups.get(row.placeId) ?? {
+        placeId: row.placeId,
+        placeName: (row as { place?: { name: string } }).place?.name ?? '',
         photos: [],
       };
       group.photos.push(this.toStripItem(row));
-      groups.set(row.restaurantId, group);
+      groups.set(row.placeId, group);
     }
     return [...groups.values()];
   }
@@ -410,7 +405,7 @@ export class PhotoReadService {
 const PHOTO_STRIP_SELECT = {
   photoId: true,
   userId: true,
-  restaurantId: true,
+  placeId: true,
   connectionId: true,
   publicId: true,
   caption: true,
@@ -422,7 +417,7 @@ const PHOTO_STRIP_SELECT = {
 interface RawStripRow {
   photo_id: string;
   user_id: string;
-  restaurant_id: string;
+  place_id: string;
   connection_id: string | null;
   public_id: string;
   caption: string | null;
@@ -434,7 +429,7 @@ interface RawStripRow {
 interface PhotoStripRow {
   photoId: string;
   userId: string;
-  restaurantId: string;
+  placeId: string;
   connectionId: string | null;
   publicId: string;
   caption: string | null;

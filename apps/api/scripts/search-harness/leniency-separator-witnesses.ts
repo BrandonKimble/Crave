@@ -29,11 +29,11 @@ import { EntityTextSearchService } from '../../src/modules/entity-text-search/en
 import { analyzeQuery } from '../../src/modules/entity-text-search/query-analyzer';
 
 const TYPES: EntityType[] = [
-  'food',
+  'item',
   'ingredient',
-  'food_attribute',
-  'restaurant_attribute',
-  'restaurant',
+  'item_attribute',
+  'place_attribute',
+  'place',
 ] as EntityType[];
 
 const ZWSP = '​';

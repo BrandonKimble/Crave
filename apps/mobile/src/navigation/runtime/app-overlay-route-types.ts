@@ -17,7 +17,7 @@ export type { AppOverlayTopLevelProductRouteKey } from './docked-scene-target';
 export type AppOverlaySaveListType = 'restaurant' | 'dish';
 
 export type AppOverlaySaveListTarget = {
-  restaurantId?: string;
+  placeId?: string;
   connectionId?: string;
   /** Location-centric saves (master plan §7): the IN-CONTEXT location the save
    *  was triggered from (row displayLocation / dish restaurantLocationId /
@@ -456,7 +456,7 @@ export type OverlayRouteParamsMap = {
     profileUserId?: string | null;
   };
   restaurant?: {
-    restaurantId: string | null;
+    placeId: string | null;
     source?: 'search';
   };
   saveList?: {
@@ -534,8 +534,8 @@ export type OverlayRouteParamsMap = {
   // nonce — the picker/camera assets are NON-serializable and ride the module-scope
   // postPhotosPendingAssets store; sessionNonce is the key into it.
   postPhotos?: {
-    restaurantId?: string | null;
-    restaurantName?: string | null;
+    placeId?: string | null;
+    placeName?: string | null;
     dishId?: string | null;
     dishName?: string | null;
     sessionNonce?: string | null;

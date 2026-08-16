@@ -47,10 +47,10 @@ export const executeProfileRefreshSelectionAction = ({
   actionModel: ProfileRefreshSelectionActionModel;
   ports: ProfileRefreshSelectionExecutionPorts;
 }): void => {
-  ports.setMapHighlightedRestaurantId(restaurant.restaurantId);
+  ports.setMapHighlightedRestaurantId(restaurant.placeId);
   ports.seedRestaurantProfile(restaurant, queryLabel);
   ports.focusRestaurantProfileCamera(restaurant, 'autocomplete');
-  ports.hydrateRestaurantProfileById(restaurant.restaurantId);
+  ports.hydrateRestaurantProfileById(restaurant.placeId);
 };
 
 export const executeProfileAutoOpenAction = ({

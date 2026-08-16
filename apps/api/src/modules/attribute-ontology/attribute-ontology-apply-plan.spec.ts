@@ -56,14 +56,14 @@ describe('buildPlan tuning knobs are refused non-positive at the boundary (F4946
     'rejects %s instead of silently running the whole set unbatched',
     async (_label, options) => {
       await expect(
-        service.buildPlan('restaurant_attribute', 'all', options as never),
+        service.buildPlan('place_attribute', 'all', options as never),
       ).rejects.toThrow(/positive integer/);
     },
   );
 });
 
 describe('applyPlan rename derives identity from plan.type (F4947)', () => {
-  it('writes a restaurant_attribute-keyed identity WITHOUT re-querying the row type', async () => {
+  it('writes a place_attribute-keyed identity WITHOUT re-querying the row type', async () => {
     const tx = {
       $executeRawUnsafe: jest.fn().mockResolvedValue(1),
       $queryRawUnsafe: jest.fn().mockResolvedValue([]),
@@ -79,7 +79,7 @@ describe('applyPlan rename derives identity from plan.type (F4947)', () => {
     );
 
     const rename = { entityId: 'e-1', from: 'old label', to: 'new label' };
-    await service.applyPlan(makePlan('restaurant_attribute', rename), {
+    await service.applyPlan(makePlan('place_attribute', rename), {
       apply: true,
     });
 
@@ -93,7 +93,7 @@ describe('applyPlan rename derives identity from plan.type (F4947)', () => {
       String(call[0]).includes('identity_key ='),
     );
     expect(renameUpdate).toBeDefined();
-    const expected = identityInsertData('new label', 'restaurant_attribute');
+    const expected = identityInsertData('new label', 'place_attribute');
     // args: (sql, entityId, to, identityKey, identityKeySorted)
     expect(renameUpdate?.[3]).toBe(expected.identityKey);
     expect(renameUpdate?.[4]).toBe(expected.identityKeySorted);

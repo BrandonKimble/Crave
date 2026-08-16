@@ -22,14 +22,14 @@ async function main(): Promise<void> {
   const prisma = new PrismaClient();
   try {
     const rows = await prisma.$queryRawUnsafe<
-      Array<{ type: string; restaurants: number }>
+      Array<{ type: string; places: number }>
     >(
       `SELECT t.value AS type, count(DISTINCT e.entity_id)::int AS restaurants
          FROM core_entities e
         CROSS JOIN LATERAL jsonb_array_elements_text(
           e.restaurant_metadata->'googlePlaces'->'types'
         ) t
-        WHERE e.type = 'restaurant'
+        WHERE e.type = 'place'
           AND jsonb_typeof(e.restaurant_metadata->'googlePlaces'->'types') = 'array'
         GROUP BY t.value
         ORDER BY t.value`,
@@ -41,7 +41,7 @@ async function main(): Promise<void> {
     );
     if (unknown.length) {
       for (const row of unknown) {
-        console.log(`  UNCLASSIFIED: ${row.type} (${row.restaurants} rows)`);
+        console.log(`  UNCLASSIFIED: ${row.type} (${row.places} rows)`);
       }
       process.exitCode = 1;
     }

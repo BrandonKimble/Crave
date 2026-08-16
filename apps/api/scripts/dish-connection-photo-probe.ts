@@ -39,8 +39,8 @@ async function main(): Promise<void> {
     {
       list_name: string;
       connection_id: string;
-      restaurant_id: string;
-      restaurant: string;
+      place_id: string;
+      place: string;
       dish: string;
     }[]
   >(
@@ -59,7 +59,7 @@ async function main(): Promise<void> {
   );
   const { strips } = await photoRead.cardStrips(
     rows.map((row) => ({
-      restaurantId: row.restaurant_id,
+      placeId: row.place_id,
       connectionId: row.connection_id,
     })),
   );
@@ -71,7 +71,7 @@ async function main(): Promise<void> {
     if (!n) {
       empty += 1;
       console.error(
-        `RED: [${row.list_name}] ${row.restaurant} / ${row.dish} — 0 photos (${row.connection_id})`,
+        `RED: [${row.list_name}] ${row.place} / ${row.dish} — 0 photos (${row.connection_id})`,
       );
     }
   }

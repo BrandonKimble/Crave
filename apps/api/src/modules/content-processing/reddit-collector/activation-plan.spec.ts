@@ -16,7 +16,7 @@ const planPath = join(dir, 'plan.json');
 
 const computed = {
   plan: [{ runId: 'run-1', documentIds: ['d1', 'd2'] }],
-  restaurantIds: ['r1'],
+  placeIds: ['r1'],
 };
 
 afterEach(() => {
@@ -52,7 +52,7 @@ describe('the activation plan artifact (F9976)', () => {
     // skip every flipped run and the artifact would be clobbered.
     const emptyRecompute = jest
       .fn()
-      .mockResolvedValue({ plan: [], restaurantIds: [] });
+      .mockResolvedValue({ plan: [], placeIds: [] });
     const { plan, resumed } = await resolveActivationPlan({
       planPath,
       promptVersion: 2,
@@ -62,7 +62,7 @@ describe('the activation plan artifact (F9976)', () => {
     expect(resumed).toBe(true);
     expect(emptyRecompute).not.toHaveBeenCalled();
     expect(plan.plan).toEqual(computed.plan);
-    expect(plan.restaurantIds).toEqual(['r1']);
+    expect(plan.placeIds).toEqual(['r1']);
     // artifact intact, byte-for-byte
     const onDisk = JSON.parse(
       readFileSync(planPath, 'utf-8'),

@@ -30,7 +30,7 @@ type LocalTimeContext = {
   timezoneApplied: boolean;
 };
 
-export type RestaurantMetadata = Record<string, unknown> & {
+export type PlaceMetadata = Record<string, unknown> & {
   hours?: Record<string, unknown> | Array<unknown> | string;
   timezone?: string;
   timeZone?: string;
@@ -97,7 +97,7 @@ export const buildOperatingMetadataFromLocation = (
   hoursValue: unknown,
   utcOffsetMinutesValue: Prisma.Decimal | number | string | null | undefined,
   timeZoneValue: string | null | undefined,
-): RestaurantMetadata | null => {
+): PlaceMetadata | null => {
   const hours = coerceRecord(hoursValue);
   const timeZone =
     typeof timeZoneValue === 'string' && timeZoneValue.trim()
@@ -109,7 +109,7 @@ export const buildOperatingMetadataFromLocation = (
     return null;
   }
 
-  const metadata: RestaurantMetadata = {};
+  const metadata: PlaceMetadata = {};
   if (hours) {
     metadata.hours = hours;
   }
@@ -122,9 +122,9 @@ export const buildOperatingMetadataFromLocation = (
   return metadata;
 };
 
-export const buildOperatingMetadataFromRestaurantMetadata = (
+export const buildOperatingMetadataFromPlaceMetadata = (
   metadataValue: Prisma.JsonValue | null | undefined,
-): RestaurantMetadata | null => {
+): PlaceMetadata | null => {
   const metadataRecord = coerceRecord(metadataValue);
   if (!metadataRecord) {
     return null;
@@ -155,8 +155,8 @@ export const buildOperatingMetadata = (params: {
   hoursValue?: unknown;
   utcOffsetMinutesValue?: Prisma.Decimal | number | string | null;
   timeZoneValue?: string | null;
-  restaurantMetadataValue?: Prisma.JsonValue | null;
-}): RestaurantMetadata | null => {
+  placeMetadataValue?: Prisma.JsonValue | null;
+}): PlaceMetadata | null => {
   const locationMetadata = buildOperatingMetadataFromLocation(
     params.hoursValue,
     params.utcOffsetMinutesValue,
@@ -165,9 +165,7 @@ export const buildOperatingMetadata = (params: {
   if (locationMetadata) {
     return locationMetadata;
   }
-  return buildOperatingMetadataFromRestaurantMetadata(
-    params.restaurantMetadataValue,
-  );
+  return buildOperatingMetadataFromPlaceMetadata(params.placeMetadataValue);
 };
 
 export const evaluateOperatingStatus = (
@@ -175,7 +173,7 @@ export const evaluateOperatingStatus = (
   referenceDate: Date,
   options: { onTimezoneError?: TimezoneErrorLogger } = {},
 ): OperatingStatus | null => {
-  const metadata = coerceRecord(metadataValue) as RestaurantMetadata | null;
+  const metadata = coerceRecord(metadataValue) as PlaceMetadata | null;
   if (!metadata) {
     return null;
   }
@@ -259,7 +257,7 @@ export const buildStructuredWeeklyHours = (
 ): StructuredWeeklyHours | null => {
   const permanentlyClosed = businessStatus === 'CLOSED_PERMANENTLY';
   const temporarilyClosed = businessStatus === 'CLOSED_TEMPORARILY';
-  const metadata = coerceRecord(metadataValue) as RestaurantMetadata | null;
+  const metadata = coerceRecord(metadataValue) as PlaceMetadata | null;
   const schedule = metadata ? buildDailySchedule(metadata) : null;
 
   const days = DAY_KEYS.map((dayKey) => {
@@ -338,9 +336,7 @@ const describeDayOffset = (dayKey: DayKey, offset: number): string => {
   return label.charAt(0).toUpperCase() + label.slice(1);
 };
 
-const buildDailySchedule = (
-  metadata: RestaurantMetadata,
-): DailySchedule | null => {
+const buildDailySchedule = (metadata: PlaceMetadata): DailySchedule | null => {
   const hoursValue = metadata.hours;
   if (!hoursValue) {
     return null;
@@ -497,7 +493,7 @@ const parseTimeString = (value: string): number | null => {
 };
 
 const getLocalTimeContext = (
-  metadata: RestaurantMetadata,
+  metadata: PlaceMetadata,
   referenceDate: Date,
   onTimezoneError?: TimezoneErrorLogger,
 ): LocalTimeContext | null => {
@@ -557,7 +553,7 @@ const getLocalTimeContext = (
   return null;
 };
 
-const extractTimeZone = (metadata: RestaurantMetadata): string | null => {
+const extractTimeZone = (metadata: PlaceMetadata): string | null => {
   const candidates: Array<string | undefined> = [
     metadata.timezone,
     metadata.timeZone,
@@ -586,7 +582,7 @@ const extractTimeZone = (metadata: RestaurantMetadata): string | null => {
   return null;
 };
 
-const extractUtcOffset = (metadata: RestaurantMetadata): number | null => {
+const extractUtcOffset = (metadata: PlaceMetadata): number | null => {
   const candidates: Array<number | string | undefined> = [
     metadata.utc_offset_minutes,
   ];

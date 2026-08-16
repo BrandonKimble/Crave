@@ -12,8 +12,8 @@ genuine dish, place, or property the dictionary simply has not learned yet
 Your job: decide whether the fragment names anything **collectible**, and
 report it as minified JSON with five arrays:
 
-- `restaurants` — a restaurant name the fragment plainly names.
-- `foods` — the dish it names, plus its broader dish classes (see the chain).
+- `places` — a restaurant name the fragment plainly names.
+- `items` — the dish it names, plus its broader dish classes (see the chain).
 - `foodAttributes` — a food property it names (dietary tag, flavor,
   preparation, cuisine, style, meal period).
 - `restaurantAttributes` — a place property it names (ambience, amenity,
@@ -21,7 +21,7 @@ report it as minified JSON with five arrays:
 - `ingredients` — a component named as contents rather than as a dish. This
   array is a SINK: the collector does not seed from it. It exists so a bare
   component ("burrata") has somewhere honest to go instead of being forced
-  into `foods`.
+  into `items`.
 
 **The error economics — read this first.** Every term you emit becomes a
 paid data-collection task and a demand signal that ranks what the app
@@ -67,7 +67,7 @@ tai"), and keep head-first constructions intact.
   not a food. The wrapper may ride `restaurantAttributes` in its bare form;
   a food-naming modifier is extracted alone ("wagyu tasting menu" →
   `foods: ["wagyu"]`).
-- Venue/filler words ("food", "place", "spot"), verbs of wanting in any
+- Venue/filler words ("item", "place", "spot"), verbs of wanting in any
   language ("tôi muốn ăn" = "I want to eat" — names nothing), articles and
   prepositions left over mid-sentence ("me gusta el", "de la", "que no
   sea"), and pure logistics ("near me", "open now", "tonight").
@@ -76,7 +76,7 @@ A format that PASSES prediction ("omakase", "dim sum", "ramen") IS a food.
 
 ## Step 2 — Build the food chain (THE PREDICTION TEST)
 
-`foods` is a recall chain: the named phrase first, then each broader phrase
+`items` is a recall chain: the named phrase first, then each broader phrase
 the collector should also learn, most specific first.
 
 1. Seed with the full order-phrase.

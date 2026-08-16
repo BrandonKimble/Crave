@@ -2,17 +2,17 @@ import type { EntityType } from '@prisma/client';
 import type { MapBoundsDto } from './dto/search-query.dto';
 
 export interface ConstraintInputPresence {
-  restaurants: number;
-  food: number;
-  foodAttributes: number;
-  restaurantAttributes: number;
+  places: number;
+  items: number;
+  itemAttributes: number;
+  placeAttributes: number;
 }
 
 export interface ConstraintResolvedIds {
-  restaurantIds: string[];
-  foodIds: string[];
-  foodAttributeIds: string[];
-  restaurantAttributeIds: string[];
+  placeIds: string[];
+  itemIds: string[];
+  itemAttributeIds: string[];
+  placeAttributeIds: string[];
   /** Ingredient lane — filters connections by evidence OR canonical tier.
    *  (The excluded-ingredient lane was deleted 2026-07-30 — spec §1.1:
    *  negation is not interpreted, allergen toggles rejected.) */
@@ -33,7 +33,7 @@ export interface ConstraintResolvedIds {
  *   lexical adds) — tier 1, each id with its calibrated relevance;
  * - twinIngredientIds: same-named ingredient entities (containment union).
  */
-export interface FoodGrounding {
+export interface ItemGrounding {
   anchors: string[];
   family: string[];
   similar: Record<string, number>;
@@ -46,13 +46,13 @@ export interface SearchConstraints {
   // execution, so the former per-stage `stage`/`stagePresence` (a duplicate of
   // inputPresence) are gone; the pooled richness gate replaced staged drops.
   inputPresence: ConstraintInputPresence;
-  hadFoodGroup: boolean;
-  hadRestaurantGroup: boolean;
-  hadFoodAttributeGroup: boolean;
-  hadRestaurantAttributeGroup: boolean;
-  primaryFoodAttributeQuery: boolean;
+  hadItemGroup: boolean;
+  hadPlaceGroup: boolean;
+  hadItemAttributeGroup: boolean;
+  hadPlaceAttributeGroup: boolean;
+  primaryItemAttributeQuery: boolean;
   /** Structured food grounding — `ids.foodIds` is derived from it. */
-  grounding: { food: FoodGrounding };
+  grounding: { item: ItemGrounding };
   ids: ConstraintResolvedIds;
   filters: {
     bounds?: MapBoundsDto;

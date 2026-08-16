@@ -11,7 +11,7 @@ import {
   classifyEnrichmentError,
   classifyNoMatchReason,
 } from './enrichment-failure-taxonomy';
-import { RestaurantLocationEnrichmentService } from './restaurant-location-enrichment.service';
+import { PlaceLocationEnrichmentService } from './restaurant-location-enrichment.service';
 
 /**
  * THREE TIMEOUTS MUST NOT BURY A REAL RESTAURANT.
@@ -127,7 +127,7 @@ describe('the enrichment failure taxonomy (transient failures do not archive)', 
         error: jest.fn(),
         debug: jest.fn(),
       };
-      const service = new RestaurantLocationEnrichmentService(
+      const service = new PlaceLocationEnrichmentService(
         { entity: { update } } as never,
         {} as never,
         {} as never,
@@ -165,13 +165,13 @@ describe('the enrichment failure taxonomy (transient failures do not archive)', 
 
     const ENTITY = {
       entityId: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
-      restaurantMetadata: {},
+      placeMetadata: {},
     };
 
     function lastAttempt(
       update: jest.Mock<Promise<unknown>, [EntityUpdateArgs]>,
     ) {
-      const metadata = update.mock.calls[0][0].data.restaurantMetadata as {
+      const metadata = update.mock.calls[0][0].data.placeMetadata as {
         lastEnrichmentAttempt: Record<string, unknown>;
       };
       return metadata.lastEnrichmentAttempt;

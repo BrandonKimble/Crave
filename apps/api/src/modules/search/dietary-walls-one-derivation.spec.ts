@@ -40,11 +40,11 @@ function createRegistry() {
     entity: {
       findMany: () =>
         Promise.resolve([
-          { entityId: VEGAN_FOOD, name: 'vegan', type: 'food_attribute' },
+          { entityId: VEGAN_FOOD, name: 'vegan', type: 'item_attribute' },
           {
             entityId: VEGAN_VENUE,
             name: 'vegan',
-            type: 'restaurant_attribute',
+            type: 'place_attribute',
           },
         ]),
     },
@@ -60,14 +60,14 @@ describe('one dietary wall derivation', () => {
     const walls = await createRegistry().resolveDietaryWalls({
       // Exactly what "vegan tacos" produces: the word grounded to the dietary
       // attribute, and the strip untouched.
-      foodAttributeIds: [VEGAN_FOOD],
+      itemAttributeIds: [VEGAN_FOOD],
     });
 
     expect(walls).toEqual([
       {
         name: 'vegan',
-        foodAttributeId: VEGAN_FOOD,
-        restaurantAttributeId: VEGAN_VENUE,
+        itemAttributeId: VEGAN_FOOD,
+        placeAttributeId: VEGAN_VENUE,
       },
     ]);
   });
@@ -76,10 +76,10 @@ describe('one dietary wall derivation', () => {
     // A venue-side match must still wall dishes, and vice versa — otherwise
     // the two projections disagree about what "vegan" means.
     const walls = await createRegistry().resolveDietaryWalls({
-      restaurantAttributeIds: [VEGAN_VENUE],
+      placeAttributeIds: [VEGAN_VENUE],
     });
 
-    expect(walls[0].foodAttributeId).toBe(VEGAN_FOOD);
+    expect(walls[0].itemAttributeId).toBe(VEGAN_FOOD);
   });
 
   it('binds the wall into the MAP COVERAGE query on grounding alone', async () => {
@@ -101,7 +101,7 @@ describe('one dietary wall derivation', () => {
         northEast: { lat: 30.4, lng: -97.6 },
         southWest: { lat: 30.1, lng: -97.9 },
       },
-      entities: { foodAttributes: [{ entityIds: [VEGAN_FOOD] }] },
+      entities: { itemAttributes: [{ entityIds: [VEGAN_FOOD] }] },
     } as never);
 
     // The wall reaches the database as a BOUND VALUE — asserting on the id in

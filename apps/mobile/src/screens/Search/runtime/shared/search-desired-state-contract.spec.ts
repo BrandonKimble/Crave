@@ -147,7 +147,7 @@ describe('entity query-identity — seeLocations is identity', () => {
     overrides: Partial<Extract<SearchQueryIdentity, { kind: 'entity' }>> = {}
   ): Extract<SearchQueryIdentity, { kind: 'entity' }> => ({
     kind: 'entity',
-    entityType: 'restaurant',
+    entityType: 'place',
     entityId: 'rest-1',
     displayName: "Torchy's Tacos",
     ...overrides,

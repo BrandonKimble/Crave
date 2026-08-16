@@ -46,7 +46,7 @@ const P2 = '77777777-7777-4777-8777-77777777f103';
 const P3 = 'ffffffff-ffff-4fff-8fff-fffffffff103';
 const TIED_AT = new Date('2026-08-01T12:00:00.000Z');
 
-let restaurantId: string;
+let placeId: string;
 let userId: string;
 
 beforeAll(async () => {
@@ -55,10 +55,10 @@ beforeAll(async () => {
       'DATABASE_URL is required — this spec proves a SQL ordering under pagination and must not be skipped',
     );
   }
-  const restaurant = await prisma.entity.create({
-    data: { name: `${TEST_TAG}-restaurant`, type: 'restaurant' },
+  const place = await prisma.entity.create({
+    data: { name: `${TEST_TAG}-restaurant`, type: 'place' },
   });
-  restaurantId = restaurant.entityId;
+  placeId = place.entityId;
   const user = await prisma.user.create({
     data: { email: `${TEST_TAG}@example.test` },
   });
@@ -69,7 +69,7 @@ beforeAll(async () => {
       data: {
         photoId,
         userId,
-        restaurantId,
+        placeId,
         publicId: `${TEST_TAG}-${photoId}`,
         status: 'live',
         visibility: 'public',
@@ -85,7 +85,7 @@ afterAll(async () => {
     where: { photoId: { in: [P1, P2, P3] } },
   });
   await prisma.user.deleteMany({ where: { userId } });
-  await prisma.entity.deleteMany({ where: { entityId: restaurantId } });
+  await prisma.entity.deleteMany({ where: { entityId: placeId } });
   await prisma.$disconnect();
 });
 
@@ -94,11 +94,11 @@ describe('restaurantGallery: tied ticketed_at rows page without dup/drop (F3103)
     // Run several times: a physical-row-order defect is a planning decision,
     // not guaranteed to flip on every single execution.
     for (let i = 0; i < 5; i++) {
-      const page1 = await service.restaurantGallery(restaurantId, {
+      const page1 = await service.placeGallery(placeId, {
         limit: 2,
         offset: 0,
       });
-      const page2 = await service.restaurantGallery(restaurantId, {
+      const page2 = await service.placeGallery(placeId, {
         limit: 2,
         offset: 2,
       });

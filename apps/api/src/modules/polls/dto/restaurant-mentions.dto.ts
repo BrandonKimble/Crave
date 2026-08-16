@@ -8,7 +8,7 @@ import {
   MaxLength,
 } from 'class-validator';
 
-export class RestaurantMentionsQueryDto {
+export class PlaceMentionsQueryDto {
   /** `top` (by comment score, default) or `new` (most recent). */
   @IsOptional()
   @IsIn(['top', 'new'])

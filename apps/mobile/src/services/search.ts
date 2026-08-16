@@ -30,10 +30,10 @@ export interface StructuredSearchRequest {
   // `unknown[]` — a mistyped or misnamed entity field now reds tsc here and,
   // via `QueryEntityDto implements QueryEntity`, on the server too.
   entities: {
-    restaurants?: QueryEntity[];
-    food?: QueryEntity[];
-    foodAttributes?: QueryEntity[];
-    restaurantAttributes?: QueryEntity[];
+    places?: QueryEntity[];
+    items?: QueryEntity[];
+    itemAttributes?: QueryEntity[];
+    placeAttributes?: QueryEntity[];
   };
   bounds?: MapBounds;
   // Screen-accurate viewport polygon ([lng, lat] pairs, pitch/twist-aware). When present the
@@ -71,8 +71,8 @@ export type RecentSearch = {
 };
 
 export type RecentlyViewedRestaurant = {
-  restaurantId: string;
-  restaurantName: string;
+  placeId: string;
+  placeName: string;
   city?: string | null;
   region?: string | null;
   lastViewedAt: string;
@@ -86,10 +86,10 @@ export type RecentlyViewedRestaurant = {
 
 export type RecentlyViewedFood = {
   connectionId: string;
-  foodId: string;
-  foodName: string;
-  restaurantId: string;
-  restaurantName: string;
+  itemId: string;
+  itemName: string;
+  placeId: string;
+  placeName: string;
   lastViewedAt: string;
   viewCount: number;
   /** The specific viewed location (recently-viewed rows carry locationId). */
@@ -169,7 +169,7 @@ type SearchRequestLifecycleContext = {
 //
 // MAX_ENTRIES: the caps are LRU bounds on a module-scope Map — their job is to keep memory
 // finite, not to hit a hit-rate target. The profile cap is larger because its entries are
-// small and a browse session revisits far more distinct restaurants than distinct QUERIES.
+// small and a browse session revisits far more distinct places than distinct QUERIES.
 const SEARCH_PAGE_ONE_CACHE_TTL_MS = 5 * 60 * 1000;
 const SEARCH_PAGE_ONE_CACHE_MAX_ENTRIES = 25;
 const RESTAURANT_PROFILE_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -623,14 +623,14 @@ export const searchService = {
             startedAtMs: requestStartedAtMs,
             details: {
               responseDishCount: data.dishes?.length ?? 0,
-              responseRestaurantCount: data.restaurants?.length ?? 0,
+              responseRestaurantCount: data.places?.length ?? 0,
             },
           });
           logSearchServiceLifecycle('http_response', lifecycleContext, {
             responseSearchRequestId: data.metadata?.searchRequestId ?? null,
             responsePage: data.metadata?.page ?? null,
             responseDishCount: data.dishes?.length ?? 0,
-            responseRestaurantCount: data.restaurants?.length ?? 0,
+            responseRestaurantCount: data.places?.length ?? 0,
           });
           return data;
         } catch (error) {
@@ -684,14 +684,14 @@ export const searchService = {
             startedAtMs: requestStartedAtMs,
             details: {
               responseDishCount: data.dishes?.length ?? 0,
-              responseRestaurantCount: data.restaurants?.length ?? 0,
+              responseRestaurantCount: data.places?.length ?? 0,
             },
           });
           logSearchServiceLifecycle('http_response', lifecycleContext, {
             responseSearchRequestId: data.metadata?.searchRequestId ?? null,
             responsePage: data.metadata?.page ?? null,
             responseDishCount: data.dishes?.length ?? 0,
-            responseRestaurantCount: data.restaurants?.length ?? 0,
+            responseRestaurantCount: data.places?.length ?? 0,
           });
           return data;
         } catch (error) {
@@ -744,24 +744,22 @@ export const searchService = {
       await api.get<Array<{ name: string; label: string }>>('/search/dietary-options');
     return data;
   },
-  restaurantDishes: async (restaurantId: string): Promise<FoodResult[]> => {
-    const { data } = await api.get<FoodResult[]>(`/search/restaurants/${restaurantId}/dishes`);
+  restaurantDishes: async (placeId: string): Promise<FoodResult[]> => {
+    const { data } = await api.get<FoodResult[]>(`/search/places/${placeId}/dishes`);
     return data;
   },
-  restaurantProfile: async (restaurantId: string): Promise<RestaurantProfile> => {
+  restaurantProfile: async (placeId: string): Promise<RestaurantProfile> => {
     // Leg 2 (geo-demand rebuild §7): the profile is restaurant-scoped — ALL locations,
-    // no market slice. Cache key = restaurantId only.
+    // no market slice. Cache key = placeId only.
     const cacheKey = buildSearchCacheKey({
       kind: 'restaurant-profile',
-      restaurantId,
+      placeId,
     });
     return getCachedRequest(
       restaurantProfileCache,
       cacheKey,
       async () => {
-        const { data } = await api.get<RestaurantProfile>(
-          `/search/restaurants/${restaurantId}/profile`
-        );
+        const { data } = await api.get<RestaurantProfile>(`/search/places/${placeId}/profile`);
         return data;
       },
       undefined,
@@ -784,33 +782,33 @@ export const searchService = {
     return data;
   },
   recentlyViewedRestaurants: async (limit: number): Promise<RecentlyViewedRestaurant[]> => {
-    const { data } = await api.get<RecentlyViewedRestaurant[]>('/history/restaurants/viewed', {
+    const { data } = await api.get<RecentlyViewedRestaurant[]>('/history/places/viewed', {
       params: { limit },
       ...OPTIONAL_AUTH_REQUEST_CONFIG,
     } satisfies OptionalAuthRequestConfig);
     return data;
   },
   recentlyViewedFoods: async (limit: number): Promise<RecentlyViewedFood[]> => {
-    const { data } = await api.get<RecentlyViewedFood[]>('/history/foods/viewed', {
+    const { data } = await api.get<RecentlyViewedFood[]>('/history/items/viewed', {
       params: { limit },
       ...OPTIONAL_AUTH_REQUEST_CONFIG,
     } satisfies OptionalAuthRequestConfig);
     return data;
   },
   recordRestaurantView: async (payload: {
-    restaurantId: string;
+    placeId: string;
     searchRequestId?: string;
     source?: 'search_suggestion' | 'results_sheet' | 'auto_open_single_candidate' | 'autocomplete';
   }): Promise<void> => {
-    await api.post('/history/restaurants/viewed', payload, OPTIONAL_AUTH_REQUEST_CONFIG);
+    await api.post('/history/places/viewed', payload, OPTIONAL_AUTH_REQUEST_CONFIG);
   },
   recordFoodView: async (payload: {
     connectionId: string;
-    foodId?: string;
+    itemId?: string;
     searchRequestId?: string;
     source?: 'search_suggestion' | 'results_sheet' | 'auto_open_single_candidate' | 'autocomplete';
   }): Promise<void> => {
-    await api.post('/history/foods/viewed', payload, OPTIONAL_AUTH_REQUEST_CONFIG);
+    await api.post('/history/items/viewed', payload, OPTIONAL_AUTH_REQUEST_CONFIG);
   },
 };
 

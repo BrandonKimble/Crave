@@ -58,15 +58,15 @@ type Case = {
     /** No mention at all may be emitted. */
     emitsNothing?: boolean;
     /** Every listed restaurant must appear in some mention. */
-    restaurants?: string[];
+    places?: string[];
     /** These foods must appear. */
-    foods?: string[];
+    items?: string[];
     /** These must NOT appear as food anywhere. */
-    notFoods?: string[];
+    notItems?: string[];
     /** These must NOT appear in any attribute array. */
     notAttributes?: string[];
     /** These must NOT appear as a restaurant. */
-    notRestaurants?: string[];
+    notPlaces?: string[];
     /** These must appear in some attribute array. */
     attributes?: string[];
     /** At least one mention must carry general_praise: true. */
@@ -79,7 +79,7 @@ type Case = {
     noMenuItemTrue?: boolean;
     /** Every general_praise:true mention must be restaurant-only (food null)
      *  — the F.1 one-carrier invariant (v8 audit class 5). */
-    praiseOnlyRestaurantOnly?: boolean;
+    praiseOnlyPlaceOnly?: boolean;
     /** Per-source expectations (remaining-classes drain, 2026-08-12): a real
      *  thread's OTHER comments may legitimately emit the very thing the
      *  TARGET source must not (e.g. a parent that praises a place its child
@@ -147,41 +147,41 @@ function gradeExpect(
 ): string[] {
   const failures: string[] = [];
 
-  const restaurants = mentions.map((m) =>
-    typeof m.restaurant === 'string' ? m.restaurant : '',
+  const places = mentions.map((m) =>
+    typeof m.place === 'string' ? m.place : '',
   );
-  const foods = mentions
-    .map((m) => m.food)
+  const items = mentions
+    .map((m) => m.item)
     .filter((f): f is string => typeof f === 'string' && f.length > 0);
   const categories = mentions.flatMap((m) =>
-    Array.isArray(m.food_categories) ? (m.food_categories as string[]) : [],
+    Array.isArray(m.item_categories) ? (m.item_categories as string[]) : [],
   );
   const attributes = mentions.flatMap((m) => [
-    ...(Array.isArray(m.food_attributes)
-      ? (m.food_attributes as string[])
+    ...(Array.isArray(m.item_attributes)
+      ? (m.item_attributes as string[])
       : []),
-    ...(Array.isArray(m.restaurant_attributes)
-      ? (m.restaurant_attributes as string[])
+    ...(Array.isArray(m.place_attributes)
+      ? (m.place_attributes as string[])
       : []),
   ]);
 
   if (expect.emitsNothing && mentions.length > 0) {
     failures.push(
-      `expected NOTHING, got ${mentions.length}: ${restaurants.join(', ')}`,
+      `expected NOTHING, got ${mentions.length}: ${places.join(', ')}`,
     );
   }
-  for (const r of expect.restaurants ?? []) {
-    if (!has(restaurants, r)) failures.push(`missing restaurant "${r}"`);
+  for (const r of expect.places ?? []) {
+    if (!has(places, r)) failures.push(`missing restaurant "${r}"`);
   }
-  for (const r of expect.notRestaurants ?? []) {
-    if (has(restaurants, r)) failures.push(`FORBIDDEN restaurant "${r}"`);
+  for (const r of expect.notPlaces ?? []) {
+    if (has(places, r)) failures.push(`FORBIDDEN restaurant "${r}"`);
   }
-  for (const f of expect.foods ?? []) {
-    if (!has(foods, f) && !has(categories, f))
+  for (const f of expect.items ?? []) {
+    if (!has(items, f) && !has(categories, f))
       failures.push(`missing food "${f}"`);
   }
-  for (const f of expect.notFoods ?? []) {
-    if (has(foods, f) || has(categories, f))
+  for (const f of expect.notItems ?? []) {
+    if (has(items, f) || has(categories, f))
       failures.push(`FORBIDDEN food "${f}"`);
   }
   for (const a of expect.attributes ?? []) {
@@ -200,12 +200,12 @@ function gradeExpect(
     failures.push('FORBIDDEN is_menu_item:true (inherited/family dish)');
   }
   if (
-    expect.praiseOnlyRestaurantOnly &&
+    expect.praiseOnlyPlaceOnly &&
     mentions.some(
       (m) =>
         m.general_praise === true &&
-        typeof m.food === 'string' &&
-        m.food.length > 0,
+        typeof m.item === 'string' &&
+        m.item.length > 0,
     )
   ) {
     failures.push('general_praise:true on a mention that carries a dish');

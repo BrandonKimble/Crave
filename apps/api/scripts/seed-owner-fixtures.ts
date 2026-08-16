@@ -105,7 +105,7 @@ const SEED_POLLS: SeedPoll[] = [
     origin: PollOrigin.seeded,
     state: PollState.active,
     question: 'Best breakfast taco in Austin right now?',
-    target: { name: 'breakfast taco', type: EntityType.food },
+    target: { name: 'breakfast taco', type: EntityType.item },
     comments: [
       {
         author: 0,
@@ -135,7 +135,7 @@ const SEED_POLLS: SeedPoll[] = [
     origin: PollOrigin.seeded,
     state: PollState.active,
     question: 'Best brisket in Austin?',
-    target: { name: 'brisket', type: EntityType.food },
+    target: { name: 'brisket', type: EntityType.item },
     comments: [
       {
         author: 3,
@@ -195,7 +195,7 @@ const SEED_POLLS: SeedPoll[] = [
     origin: PollOrigin.seeded,
     state: PollState.closed,
     question: 'Best ramen in Austin? (closed)',
-    target: { name: 'ramen', type: EntityType.food },
+    target: { name: 'ramen', type: EntityType.item },
     comments: [
       {
         author: 2,
@@ -336,17 +336,17 @@ async function main(): Promise<void> {
     console.log(`follows: ${friendIds.length} followers, 3 following`);
 
     // ---- entity lookups --------------------------------------------------
-    const restaurantIdByName = new Map<string, string>();
+    const placeIdByName = new Map<string, string>();
     const allNames = [
       ...new Set([...BEEN, ...WANT_TO_GO, ...CUSTOM_RESTAURANT_LIST.items]),
     ];
     for (const name of allNames) {
       const row = await prisma.entity.findFirst({
-        where: { name, type: 'restaurant' },
+        where: { name, type: 'place' },
         select: { entityId: true },
       });
       if (!row) throw new Error(`restaurant not found: ${name}`);
-      restaurantIdByName.set(name, row.entityId);
+      placeIdByName.set(name, row.entityId);
     }
     const connectionIdByPair = new Map<string, string>();
     const allPairs = [...TRIED, ...WANT_TO_TRY, ...CUSTOM_DISH_LIST.items];
@@ -368,13 +368,13 @@ async function main(): Promise<void> {
     // ---- lists -----------------------------------------------------------
     async function fillList(
       listId: string,
-      items: { restaurantId?: string; connectionId?: string }[],
+      items: { placeId?: string; connectionId?: string }[],
     ): Promise<void> {
       await prisma.userListItem.createMany({
         data: items.map((it, i) => ({
           listId,
           addedByUserId: owner.userId,
-          restaurantId: it.restaurantId ?? null,
+          placeId: it.placeId ?? null,
           connectionId: it.connectionId ?? null,
           position: i,
         })),
@@ -395,11 +395,11 @@ async function main(): Promise<void> {
 
     await fillList(
       await systemList('been'),
-      BEEN.map((n) => ({ restaurantId: restaurantIdByName.get(n)! })),
+      BEEN.map((n) => ({ placeId: placeIdByName.get(n)! })),
     );
     await fillList(
       await systemList('want_to_go'),
-      WANT_TO_GO.map((n) => ({ restaurantId: restaurantIdByName.get(n)! })),
+      WANT_TO_GO.map((n) => ({ placeId: placeIdByName.get(n)! })),
     );
     await fillList(
       await systemList('tried'),
@@ -414,7 +414,7 @@ async function main(): Promise<void> {
       })),
     );
 
-    const customRestaurant = await prisma.userList.upsert({
+    const customPlace = await prisma.userList.upsert({
       where: {
         ownerUserId_listType_name: {
           ownerUserId: owner.userId,
@@ -432,9 +432,9 @@ async function main(): Promise<void> {
       select: { listId: true },
     });
     await fillList(
-      customRestaurant.listId,
+      customPlace.listId,
       CUSTOM_RESTAURANT_LIST.items.map((n) => ({
-        restaurantId: restaurantIdByName.get(n)!,
+        placeId: placeIdByName.get(n)!,
       })),
     );
 
@@ -490,7 +490,7 @@ async function main(): Promise<void> {
 
     for (const seed of SEED_POLLS) {
       let targetDishId: string | null = null;
-      let targetRestaurantId: string | null = null;
+      let targetPlaceId: string | null = null;
       if (seed.target) {
         const spans = await gazetteer.scanForKnownEntities(
           seed.target.name,
@@ -504,8 +504,8 @@ async function main(): Promise<void> {
           throw new Error(
             `could not resolve poll target "${seed.target.name}"`,
           );
-        if (seed.target.type === EntityType.food) targetDishId = entityId;
-        else targetRestaurantId = entityId;
+        if (seed.target.type === EntityType.item) targetDishId = entityId;
+        else targetPlaceId = entityId;
       }
 
       const closed = seed.state === PollState.closed;
@@ -517,7 +517,7 @@ async function main(): Promise<void> {
           topicType: seed.topicType,
           title: seed.question,
           targetDishId,
-          targetRestaurantId,
+          targetPlaceId,
           metadata: { ownerFixture: true },
         },
         select: { topicId: true },
@@ -542,7 +542,7 @@ async function main(): Promise<void> {
         const c = seed.comments[i];
         const spans = await gazetteer.scanForKnownEntities(
           c.body,
-          [EntityType.restaurant, EntityType.food],
+          [EntityType.place, EntityType.item],
           { engineId: null },
         );
         const row = await prisma.pollComment.create({

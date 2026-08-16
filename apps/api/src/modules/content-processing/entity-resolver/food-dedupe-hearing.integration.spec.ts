@@ -37,7 +37,7 @@ import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
 import {
   DedupeMergeSummary,
   DedupeVerdictSubject,
-  FoodDedupeMergeService,
+  ItemDedupeMergeService,
 } from './food-dedupe-merge.service';
 import { EntityAnchorRehomeService } from './entity-anchor-rehome.service';
 import {
@@ -89,8 +89,8 @@ const forbiddenJudge = (): LLMService =>
     }),
   }) as unknown as LLMService;
 
-const serviceWith = (llm: LLMService): FoodDedupeMergeService =>
-  new FoodDedupeMergeService(
+const serviceWith = (llm: LLMService): ItemDedupeMergeService =>
+  new ItemDedupeMergeService(
     prisma as never,
     llm,
     new EntityAnchorRehomeService(noopLogger()),
@@ -99,7 +99,7 @@ const serviceWith = (llm: LLMService): FoodDedupeMergeService =>
   );
 
 /** The same service with the EFFECT step killed — the crash seam. */
-class CrashingDedupe extends FoodDedupeMergeService {
+class CrashingDedupe extends ItemDedupeMergeService {
   protected applyDedupeEffect(): Promise<void> {
     return Promise.reject(new Error('process died before the merge ran'));
   }
@@ -120,7 +120,7 @@ type Driveable = {
 };
 
 const drive = (
-  service: FoodDedupeMergeService,
+  service: ItemDedupeMergeService,
   pairs: Array<{ a_id: string; a_name: string; b_id: string; b_name: string }>,
   summary: DedupeMergeSummary,
 ): Promise<void> =>
@@ -141,9 +141,9 @@ const emptySummary = (): DedupeMergeSummary => ({
   judgeUnjudged: 0,
 });
 
-async function mintFood(name: string): Promise<string> {
+async function mintItem(name: string): Promise<string> {
   const entity = await prisma.entity.create({
-    data: { name, type: 'food', identityKey: canonicalFold(name) },
+    data: { name, type: 'item', identityKey: canonicalFold(name) },
   });
   madeEntities.push(entity.entityId);
   return entity.entityId;
@@ -157,7 +157,7 @@ async function mintPair(suffix: string): Promise<{
 }> {
   const aName = `zzq dedupe a ${suffix}`;
   const bName = `zzq dedupe b longer ${suffix}`;
-  const [a, b] = [await mintFood(aName), await mintFood(bName)];
+  const [a, b] = [await mintItem(aName), await mintItem(bName)];
   madeKeys.push(
     entityDedupeLane.canonicalClaimKey({ entityId: a, otherEntityId: b }),
   );

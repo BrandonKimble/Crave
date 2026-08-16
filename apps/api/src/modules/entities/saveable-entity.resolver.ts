@@ -42,15 +42,13 @@ export class SaveableEntityResolver {
   constructor(private readonly prisma: PrismaService) {}
 
   /** The survivor restaurant for this id, or null if it is not one / not live. */
-  async resolveSaveableRestaurant(
-    entityId: string,
-  ): Promise<ResolvedEntity | null> {
-    return this.resolve(entityId, EntityType.restaurant);
+  async resolveSaveablePlace(entityId: string): Promise<ResolvedEntity | null> {
+    return this.resolve(entityId, EntityType.place);
   }
 
   /** The survivor food (dish) for this id, or null. */
-  async resolveSaveableFood(entityId: string): Promise<ResolvedEntity | null> {
-    return this.resolve(entityId, EntityType.food);
+  async resolveSaveableItem(entityId: string): Promise<ResolvedEntity | null> {
+    return this.resolve(entityId, EntityType.item);
   }
 
   /**

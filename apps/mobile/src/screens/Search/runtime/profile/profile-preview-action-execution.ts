@@ -9,12 +9,12 @@ import {
 
 export const executeProfilePreviewPresentationPlan = ({
   plan,
-  restaurantId,
+  placeId,
   transitionSnapshotCapture,
   ports,
 }: {
   plan: ProfilePreviewPresentationPlan;
-  restaurantId: string;
+  placeId: string;
   transitionSnapshotCapture: ProfileTransitionSnapshotCapture;
   ports: ProfileActionExecutionPorts;
 }): void => {
@@ -25,30 +25,30 @@ export const executeProfilePreviewPresentationPlan = ({
   if (plan.updatedLastCameraState !== undefined) {
     ports.setLastCameraState(plan.updatedLastCameraState);
   }
-  ports.setMapHighlightedRestaurantId(restaurantId);
-  ports.seedRestaurantProfile(plan.seededRestaurant, plan.seededRestaurant.restaurantName);
-  ports.openPreparedProfilePresentation(restaurantId, plan.targetCamera);
-  ports.hydrateRestaurantProfileById(restaurantId);
+  ports.setMapHighlightedRestaurantId(placeId);
+  ports.seedRestaurantProfile(plan.seededRestaurant, plan.seededRestaurant.placeName);
+  ports.openPreparedProfilePresentation(placeId, plan.targetCamera);
+  ports.hydrateRestaurantProfileById(placeId);
 };
 
 export const executeProfilePreviewAction = ({
-  restaurantId,
-  restaurantName,
+  placeId,
+  placeName,
   pressedCoordinate,
   previewModel,
   transitionSnapshotCapture,
   ports,
 }: {
-  restaurantId: string;
-  restaurantName: string;
+  placeId: string;
+  placeName: string;
   pressedCoordinate: Coordinate | null;
   previewModel: ProfilePreviewActionModel;
   transitionSnapshotCapture: ProfileTransitionSnapshotCapture;
   ports: ProfileActionExecutionPorts;
 }): void => {
   const plan = resolveProfilePreviewPresentationPlan({
-    restaurantId,
-    restaurantName,
+    placeId,
+    placeName,
     pressedCoordinate,
     previewModel,
   });
@@ -57,7 +57,7 @@ export const executeProfilePreviewAction = ({
   }
   executeProfilePreviewPresentationPlan({
     plan,
-    restaurantId,
+    placeId,
     transitionSnapshotCapture,
     ports,
   });

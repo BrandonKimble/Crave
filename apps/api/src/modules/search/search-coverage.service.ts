@@ -4,7 +4,7 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { activeRestaurantEventExistsSql } from '../content-processing/reddit-collector/extraction-scope.service';
+import { activePlaceEventExistsSql } from '../content-processing/reddit-collector/extraction-scope.service';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
@@ -15,10 +15,10 @@ import {
   evaluateOperatingStatus,
 } from './utils/restaurant-status';
 
-type CoverageRestaurantRow = {
+type CoveragePlaceRow = {
   location_id?: string | null;
   restaurant_id: string;
-  restaurant_name: string;
+  place_name: string;
   longitude: unknown;
   latitude: unknown;
   location_hours?: unknown;
@@ -28,10 +28,10 @@ type CoverageRestaurantRow = {
   crave_score_exact?: unknown;
   rising: unknown;
   top_connection_id?: unknown;
-  top_food_name?: unknown;
-  top_food_crave_score?: unknown;
-  top_food_crave_score_exact?: unknown;
-  top_food_rising?: unknown;
+  top_item_name?: unknown;
+  top_item_crave_score?: unknown;
+  top_item_crave_score_exact?: unknown;
+  top_item_rising?: unknown;
 };
 
 /**
@@ -67,15 +67,13 @@ export class SearchCoverageService {
   async buildShortcutCoverageGeoJson(
     request: ShortcutCoverageRequestDto,
   ): Promise<unknown> {
-    const restaurantEntityIds = this.collectEntityIds(
-      request.entities?.restaurants,
+    const placeEntityIds = this.collectEntityIds(request.entities?.places);
+    const itemEntityIds = this.collectEntityIds(request.entities?.items);
+    const itemAttributeIds = this.collectEntityIds(
+      request.entities?.itemAttributes,
     );
-    const foodEntityIds = this.collectEntityIds(request.entities?.food);
-    const foodAttributeIds = this.collectEntityIds(
-      request.entities?.foodAttributes,
-    );
-    const restaurantAttributeIds = this.collectEntityIds(
-      request.entities?.restaurantAttributes,
+    const placeAttributeIds = this.collectEntityIds(
+      request.entities?.placeAttributes,
     );
 
     const bounds = request.bounds;
@@ -93,7 +91,7 @@ export class SearchCoverageService {
     }
 
     const conditions: Prisma.Sql[] = [
-      Prisma.sql`e.type = 'restaurant'`,
+      Prisma.sql`e.type = 'place'`,
       // ARCHIVED IS NEVER PAINTED — as a PREDICATE, not an accident of score-table
       // membership. The ranked builder (search-query.builder buildConnectionConditions,
       // red-team MEDIUM-1) already carries `status <> 'archived'`; the coverage/dots
@@ -108,7 +106,7 @@ export class SearchCoverageService {
       // restaurant should still get a dot. In dish-mode (includeTopDish=true) the INNER top-dish
       // JOIN LATERAL below still requires a matching dish, so dishless restaurants correctly stay
       // off the dish layer.
-      Prisma.sql`(EXISTS (SELECT 1 FROM core_restaurant_items c WHERE c.restaurant_id = e.entity_id) OR ${Prisma.raw(activeRestaurantEventExistsSql('e.entity_id'))})`,
+      Prisma.sql`(EXISTS (SELECT 1 FROM core_restaurant_items c WHERE c.restaurant_id = e.entity_id) OR ${Prisma.raw(activePlaceEventExistsSql('e.entity_id'))})`,
     ];
 
     // TR5-N: price filter — same semantics as the ranked lane (entity price_level IN set).
@@ -132,48 +130,48 @@ export class SearchCoverageService {
     // a walled card list beside an unwalled map, and the map was the liar.
     const dietaryWalls = await this.dietaryConstraints.resolveDietaryWalls({
       dietary: request.dietary,
-      foodAttributeIds,
-      restaurantAttributeIds,
+      itemAttributeIds,
+      placeAttributeIds,
     });
     conditions.push(
-      ...DietaryConstraintRegistry.restaurantWallConditions(dietaryWalls, 'e'),
+      ...DietaryConstraintRegistry.placeWallConditions(dietaryWalls, 'e'),
     );
 
-    if (restaurantEntityIds.length) {
+    if (placeEntityIds.length) {
       conditions.push(
         Prisma.sql`e.entity_id = ANY(ARRAY[${Prisma.join(
-          restaurantEntityIds,
+          placeEntityIds,
         )}]::uuid[])`,
       );
     }
 
-    if (restaurantAttributeIds.length) {
+    if (placeAttributeIds.length) {
       conditions.push(
         Prisma.sql`e.restaurant_attributes && ARRAY[${Prisma.join(
-          restaurantAttributeIds,
+          placeAttributeIds,
         )}]::uuid[]`,
       );
     }
 
-    if (foodEntityIds.length) {
+    if (itemEntityIds.length) {
       conditions.push(
         Prisma.sql`EXISTS (
           SELECT 1
           FROM core_restaurant_items c
           WHERE c.restaurant_id = e.entity_id
-            AND c.food_id = ANY(ARRAY[${Prisma.join(foodEntityIds)}]::uuid[])
+            AND c.food_id = ANY(ARRAY[${Prisma.join(itemEntityIds)}]::uuid[])
         )`,
       );
     }
 
-    if (foodAttributeIds.length) {
+    if (itemAttributeIds.length) {
       conditions.push(
         Prisma.sql`EXISTS (
           SELECT 1
           FROM core_restaurant_items c
           WHERE c.restaurant_id = e.entity_id
             AND c.food_attributes && ARRAY[${Prisma.join(
-              foodAttributeIds,
+              itemAttributeIds,
             )}]::uuid[]
         )`,
       );
@@ -223,8 +221,8 @@ export class SearchCoverageService {
     const includeTopDish = request.includeTopDish === true;
     const topDishJoinSql = includeTopDish
       ? this.buildTopDishJoinSql({
-          foodEntityIds,
-          foodAttributeIds,
+          itemEntityIds,
+          itemAttributeIds,
         })
       : Prisma.sql``;
     const topDishSelectSql = includeTopDish
@@ -256,9 +254,7 @@ export class SearchCoverageService {
         ? Prisma.sql`prs.rising DESC NULLS LAST, prs.percentile_rank DESC, prs.display_score DESC, ${locationTiebreakSql}`
         : Prisma.sql`prs.percentile_rank DESC, prs.display_score DESC, ${locationTiebreakSql}`;
     const startedAt = Date.now();
-    const rows = await this.prisma.$queryRaw<
-      CoverageRestaurantRow[]
-    >(Prisma.sql`
+    const rows = await this.prisma.$queryRaw<CoveragePlaceRow[]>(Prisma.sql`
       WITH candidate_locations AS (
         SELECT
           rl.location_id,
@@ -426,26 +422,26 @@ export class SearchCoverageService {
             typeof row.top_connection_id === 'string'
               ? row.top_connection_id
               : null;
-          const topFoodCraveScore = includeTopDish
+          const topItemCraveScore = includeTopDish
             ? this.requirePublicScore(
-                row.top_food_crave_score,
+                row.top_item_crave_score,
                 `connection:${topConnectionId ?? 'missing'}`,
               )
             : null;
-          const topFoodRising = includeTopDish
-            ? this.optionalNumber(row.top_food_rising)
+          const topItemRising = includeTopDish
+            ? this.optionalNumber(row.top_item_rising)
             : null;
-          const topFoodCraveScoreExact = includeTopDish
-            ? this.optionalNumber(row.top_food_crave_score_exact)
+          const topItemCraveScoreExact = includeTopDish
+            ? this.optionalNumber(row.top_item_crave_score_exact)
             : null;
           if (includeTopDish && !topConnectionId) {
             throw new InternalServerErrorException(
               `Missing scored top dish for restaurant:${row.restaurant_id}`,
             );
           }
-          const publicScore = includeTopDish ? topFoodCraveScore : craveScore;
+          const publicScore = includeTopDish ? topItemCraveScore : craveScore;
           const publicScoreExact = includeTopDish
-            ? topFoodCraveScoreExact
+            ? topItemCraveScoreExact
             : craveScoreExact;
           const locationId =
             typeof row.location_id === 'string' && row.location_id.length
@@ -461,27 +457,27 @@ export class SearchCoverageService {
               : row.restaurant_id,
             geometry: { type: 'Point', coordinates: [longitude, latitude] },
             properties: {
-              restaurantId: row.restaurant_id,
+              placeId: row.restaurant_id,
               locationId: locationId ?? undefined,
-              restaurantName: row.restaurant_name,
+              placeName: row.place_name,
               craveScore: publicScore,
               craveScoreExact: publicScoreExact ?? undefined,
               scoreSubjectType: includeTopDish ? 'connection' : 'restaurant',
               scoreSubjectId: includeTopDish
                 ? topConnectionId
                 : row.restaurant_id,
-              rising: includeTopDish ? topFoodRising : rising,
+              rising: includeTopDish ? topItemRising : rising,
               rank: index + 1,
-              restaurantCraveScore: craveScore,
+              placeCraveScore: craveScore,
               isOpen: resolveRowIsOpen(row),
               isDishPin: includeTopDish ? true : undefined,
               dishName:
-                includeTopDish && typeof row.top_food_name === 'string'
-                  ? row.top_food_name
+                includeTopDish && typeof row.top_item_name === 'string'
+                  ? row.top_item_name
                   : undefined,
               connectionId:
                 includeTopDish && topConnectionId ? topConnectionId : undefined,
-              topDishCraveScore: includeTopDish ? topFoodCraveScore : null,
+              topDishCraveScore: includeTopDish ? topItemCraveScore : null,
             },
           };
         })
@@ -490,24 +486,24 @@ export class SearchCoverageService {
   }
 
   private buildTopDishJoinSql(params: {
-    foodEntityIds: string[];
-    foodAttributeIds: string[];
+    itemEntityIds: string[];
+    itemAttributeIds: string[];
   }): Prisma.Sql {
-    const { foodEntityIds, foodAttributeIds } = params;
+    const { itemEntityIds, itemAttributeIds } = params;
     const conditions: Prisma.Sql[] = [
       Prisma.sql`c.restaurant_id = e.entity_id`,
     ];
-    if (foodEntityIds.length) {
+    if (itemEntityIds.length) {
       conditions.push(
         Prisma.sql`c.food_id = ANY(ARRAY[${Prisma.join(
-          foodEntityIds,
+          itemEntityIds,
         )}]::uuid[])`,
       );
     }
-    if (foodAttributeIds.length) {
+    if (itemAttributeIds.length) {
       conditions.push(
         Prisma.sql`c.food_attributes && ARRAY[${Prisma.join(
-          foodAttributeIds,
+          itemAttributeIds,
         )}]::uuid[]`,
       );
     }

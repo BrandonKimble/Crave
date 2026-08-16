@@ -43,8 +43,8 @@ export type SearchWorldPaginationMeta = {
   hasMoreRestaurants: boolean;
   isPaginationExhausted: boolean;
   canLoadMore: boolean;
-  totalRestaurantResults: number;
-  totalFoodResults: number;
+  totalPlaceResults: number;
+  totalItemResults: number;
 };
 
 /** The cards-world VALUE (cache entry payload): everything the seam needs to present the
@@ -277,11 +277,11 @@ export const createSearchWorldPresentationSeam = (
         // (contract carried from the response owner) a page-1 response with zero rows on
         // both tabs but nonzero totals is internally inconsistent — loud, not fatal.
         const rowCount =
-          (value.committedResponse.restaurants?.length ?? 0) +
+          (value.committedResponse.places?.length ?? 0) +
           (value.committedResponse.dishes?.length ?? 0);
         const totals =
-          (value.committedResponse.metadata?.totalRestaurantResults ?? 0) +
-          (value.committedResponse.metadata?.totalFoodResults ?? 0);
+          (value.committedResponse.metadata?.totalPlaceResults ?? 0) +
+          (value.committedResponse.metadata?.totalItemResults ?? 0);
         if (rowCount === 0 && totals > 0) {
           reportSearchFlowContractViolation('empty_page_with_nonzero_totals', {
             resultsIdentityKey: value.resultsIdentityKey,
@@ -354,7 +354,7 @@ export const createSearchWorldPresentationSeam = (
           dataReadyFrom,
           activeTab,
           dishCount: value.committedResponse.dishes?.length ?? 0,
-          restaurantCount: value.committedResponse.restaurants?.length ?? 0,
+          restaurantCount: value.committedResponse.places?.length ?? 0,
           isVersionUpdate: Boolean(isVersionUpdateOfPresentedWorld),
         });
       }

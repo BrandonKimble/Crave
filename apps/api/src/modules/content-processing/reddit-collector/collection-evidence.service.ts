@@ -30,6 +30,10 @@ export interface ExtractionTraceContext {
    *  crash made that loss permanent). Restricted by the caller to
    *  documents of chunks that actually produced output. */
   activateDocumentIds?: string[];
+  /** REHEARSAL GENERATION (plans/shadow-sandbox.md): mints carry
+   *  status='rehearsal' + born_extraction_run_id and the side-effect doors
+   *  do not fire. Explicit — never inferred from an empty activation list. */
+  rehearsal?: boolean;
 }
 
 type CollectionRunStatus = 'running' | 'completed' | 'failed';

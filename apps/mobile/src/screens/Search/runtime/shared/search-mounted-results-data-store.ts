@@ -71,7 +71,7 @@ export type SearchMountedResultsCoverage = {
 export type SearchMountedResultsDataSnapshot = {
   activeTab: 'dishes' | 'restaurants' | null;
   // R1a-2: marker projections precomputed at response commit for BOTH tabs (the dual_list
-  // response carries dishes[] AND restaurants[]), so a tab toggle finds its target-tab
+  // response carries dishes[] AND places[]), so a tab toggle finds its target-tab
   // catalog ready and the controller's fallback full-catalog rebuild never fires. A tab's
   // entry is null when the committed response genuinely lacks that axis — the controller's
   // fallback then legitimately computes it without tripping the R1a contract.
@@ -237,14 +237,13 @@ let snapshot = EMPTY_SEARCH_MOUNTED_RESULTS_DATA_SNAPSHOT;
 // independently of any committed results (e.g. a profile opened from an autocomplete suggestion
 // tap, where there is no committed search response). Kept separate from `snapshot.results` so the
 // results/rows pipeline is never polluted; the map source controller reads it via
-// `getSeededMarkerRestaurants()` and uses it only when there are no committed restaurants.
+// `getSeededMarkerRestaurants()` and uses it only when there are no committed places.
 let seededMarkerRestaurants: RestaurantResult[] | null = null;
 
 export const getSeededMarkerRestaurants = (): RestaurantResult[] | null => seededMarkerRestaurants;
 
-export const publishMapMarkerSource = (restaurants: RestaurantResult[] | null): void => {
-  const nextSeededMarkerRestaurants =
-    restaurants != null && restaurants.length > 0 ? restaurants : null;
+export const publishMapMarkerSource = (places: RestaurantResult[] | null): void => {
+  const nextSeededMarkerRestaurants = places != null && places.length > 0 ? places : null;
   if (seededMarkerRestaurants === nextSeededMarkerRestaurants) {
     return;
   }
@@ -476,7 +475,7 @@ const markSearchMountedResultsCountContract = ({
     admittedRestaurantCardRowCount: countRestaurantRows(admission.primaryRows),
     admittedRestaurantRowCount: admission.primaryRows.length,
     backendDishCountOnPage: mountedResults.dishes?.length ?? 0,
-    backendRestaurantCountOnPage: mountedResults.restaurants?.length ?? 0,
+    backendRestaurantCountOnPage: mountedResults.places?.length ?? 0,
     mode: admission.mode,
     renderRowCount: admission.renderRowCount,
     resultsIdentityKey: quietMeasuredLoopActive ? null : resultsIdentityKey,
@@ -536,7 +535,7 @@ const resolveMountedRowsProjection = ({
   }
   const rowsByTab = buildSafeResultsDataByTab({
     dishes: mountedResults.dishes ?? [],
-    restaurants: mountedResults.restaurants ?? [],
+    restaurants: mountedResults.places ?? [],
   }) as {
     dishes: ResultsListItem[];
     restaurants: ResultsListItem[];
@@ -835,10 +834,10 @@ const createSearchMountedResultsDataIdentityKey = (
   return [
     `request:${metadata.searchRequestId ?? ''}`,
     `query:${metadata.sourceQuery ?? ''}`,
-    `food:${metadata.primaryFoodTerm ?? ''}`,
+    `food:${metadata.primaryItemTerm ?? ''}`,
     `page:${metadata.page ?? ''}`,
     `dishes:${results.dishes?.length ?? 0}`,
-    `restaurants:${results.restaurants?.length ?? 0}`,
+    `places:${results.places?.length ?? 0}`,
   ].join('|');
 };
 
@@ -887,7 +886,7 @@ export const publishSearchMountedResultsDataSnapshot = (
       activeTab: nextActiveTab,
       dishCount: results?.dishes?.length ?? 0,
       hydrationKey: nextResultsIdentityKey,
-      restaurantCount: results?.restaurants?.length ?? 0,
+      restaurantCount: results?.places?.length ?? 0,
       listenerCount: listeners.size,
     },
   });
@@ -1204,26 +1203,26 @@ const isRestaurantResultRow = (row: ResultsListItem): row is RestaurantResult =>
   row != null &&
   typeof row === 'object' &&
   !('kind' in row) &&
-  'restaurantId' in row &&
+  'placeId' in row &&
   !('foodId' in row);
 
 const prepareRestaurantCardDescriptorsById = ({
   preparationKey,
-  restaurants,
+  places,
   results,
 }: {
   preparationKey: string;
-  restaurants: ResultsListItem[];
+  places: ResultsListItem[];
   results: SearchResponse | null;
 }): Map<string, RestaurantResultCardDescriptor> => {
-  if (restaurants.length === 0) {
+  if (places.length === 0) {
     return EMPTY_RESTAURANT_CARD_DESCRIPTORS;
   }
 
   const startedAtMs = nowMs();
   const descriptorsById = new Map<string, RestaurantResultCardDescriptor>();
-  const primaryFoodTerm = results?.metadata?.primaryFoodTerm ?? null;
-  restaurants.forEach((row) => {
+  const primaryItemTerm = results?.metadata?.primaryItemTerm ?? null;
+  places.forEach((row) => {
     if (!isRestaurantResultRow(row)) {
       return;
     }
@@ -1232,9 +1231,9 @@ const prepareRestaurantCardDescriptorsById = ({
       return;
     }
     descriptorsById.set(
-      row.restaurantId,
+      row.placeId,
       buildRestaurantResultCardDescriptor({
-        primaryFoodTerm,
+        primaryItemTerm,
         qualityColor: getMarkerColorForRestaurant(row),
         rank,
         restaurant: row,
@@ -1277,7 +1276,7 @@ const prepareSearchMountedResultsRowsSnapshotInner = ({
   const fullRowsByTab = resolveMountedRowsProjection({ mountedResults });
   const restaurantCardDescriptorsById = prepareRestaurantCardDescriptorsById({
     preparationKey,
-    restaurants: fullRowsByTab.restaurants,
+    places: fullRowsByTab.restaurants,
     results: mountedResults,
   });
   const preparationRowsByTab = fullRowsByTab;
@@ -1287,15 +1286,15 @@ const prepareSearchMountedResultsRowsSnapshotInner = ({
       if (!isRestaurantResultRow(row)) {
         return row;
       }
-      const preparedDescriptor = restaurantCardDescriptorsById.get(row.restaurantId);
+      const preparedDescriptor = restaurantCardDescriptorsById.get(row.placeId);
       return preparedDescriptor == null
         ? row
         : {
             kind: 'mounted_restaurant_card',
-            key: `mounted-restaurant-card:${row.restaurantId}`,
+            key: `mounted-restaurant-card:${row.placeId}`,
             preparedDescriptor,
             restaurant: row,
-            restaurantId: row.restaurantId,
+            placeId: row.placeId,
           };
     }),
   };

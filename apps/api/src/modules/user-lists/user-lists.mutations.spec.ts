@@ -36,13 +36,13 @@ function makeItem(overrides: any = {}) {
     itemId: overrides.itemId ?? 'itemid',
     listId: LIST_ID,
     addedByUserId: OWNER,
-    restaurantId: null,
+    placeId: null,
     connectionId: null,
     note: null,
     position: 0,
     createdAt: new Date('2026-07-01T00:00:00Z'),
     updatedAt: new Date('2026-07-01T00:00:00Z'),
-    restaurant: null,
+    place: null,
     connection: null,
     ...overrides,
   };
@@ -150,9 +150,9 @@ function makeHarness(opts: {
     debug: jest.fn(),
   };
   const execResult = (over: any = {}) => ({
-    restaurants: [],
+    places: [],
     dishes: [],
-    totalRestaurantCount: 0,
+    totalPlaceCount: 0,
     totalDishCount: 0,
     metadata: {
       openNowApplied: false,
@@ -177,7 +177,7 @@ function makeHarness(opts: {
   };
   const access = new UserListAccessPolicy(prisma as never, blocks as never);
   const assemblerPrisma = {
-    $queryRaw: jest.fn(() => Promise.resolve([{ restaurantId: R1 }])),
+    $queryRaw: jest.fn(() => Promise.resolve([{ placeId: R1 }])),
   };
   const assembler = new ListResultsAssembler(
     executor as never,
@@ -197,14 +197,14 @@ function makeHarness(opts: {
     {
       record: () => undefined,
       bboxFromPoint: () => null,
-      bboxFromRestaurantLocation: () => Promise.resolve(null),
+      bboxFromPlaceLocation: () => Promise.resolve(null),
     } as never,
     blocks as never,
     // D36: the one saveable-entity law (stubbed live here).
     {
-      resolveSaveableRestaurant: (id: string) =>
+      resolveSaveablePlace: (id: string) =>
         Promise.resolve({ entityId: id, name: 'R', city: null }),
-      resolveSaveableFood: (id: string) =>
+      resolveSaveableItem: (id: string) =>
         Promise.resolve({ entityId: id, name: 'F', city: null }),
       resolveActiveByIds: (ids: string[]) =>
         Promise.resolve(
@@ -233,14 +233,14 @@ const R1 = '11111111-1111-4111-8111-111111111111';
 const R2 = '22222222-2222-4222-8222-222222222222';
 const R3 = '33333333-3333-4333-8333-333333333333';
 
-const restaurantRow = (id: string) => ({
-  restaurantId: id,
-  restaurantName: id,
-  restaurantAliases: [],
+const placeRow = (id: string) => ({
+  placeId: id,
+  placeName: id,
+  placeAliases: [],
   scoreSubjectType: 'restaurant',
   scoreSubjectId: id,
   craveScore: 9,
-  topFood: [],
+  topItem: [],
   totalDishCount: 0,
 });
 
@@ -319,7 +319,7 @@ describe('visibility canon (owner 2026-07-12): visibility = discovery, never acc
     };
     prisma.userListItem.create = jest.fn().mockResolvedValue({ itemId: 'x' });
     await expect(
-      service.addItem(COLLABORATOR, LIST_ID, { restaurantId: R1 } as never),
+      service.addItem(COLLABORATOR, LIST_ID, { placeId: R1 } as never),
     ).resolves.toMatchObject({ itemId: 'x' });
   });
 
@@ -384,7 +384,7 @@ describe('collaborators (spec B.1.3)', () => {
     };
     prisma.userListItem.create = jest.fn().mockResolvedValue({ itemId: 'x' });
     await expect(
-      service.addItem(COLLABORATOR, LIST_ID, { restaurantId: R1 } as never),
+      service.addItem(COLLABORATOR, LIST_ID, { placeId: R1 } as never),
     ).resolves.toMatchObject({ itemId: 'x' });
   });
 
@@ -398,8 +398,8 @@ describe('collaborators (spec B.1.3)', () => {
 
 describe('batch reorder (spec B.1.4)', () => {
   const items = [
-    makeItem({ itemId: R1, restaurantId: R1, position: 1 }),
-    makeItem({ itemId: R2, restaurantId: R2, position: 2 }),
+    makeItem({ itemId: R1, placeId: R1, position: 1 }),
+    makeItem({ itemId: R2, placeId: R2, position: 2 }),
   ];
 
   it('rejects duplicates and foreign itemIds (still a loud 400)', async () => {
@@ -433,9 +433,9 @@ describe('batch reorder (spec B.1.4)', () => {
     // The client orders from executor-backed rows, which silently drop
     // score-less/un-geocoded items — a subset must not brick the drag-save.
     const threeItems = [
-      makeItem({ itemId: R1, restaurantId: R1, position: 1 }),
-      makeItem({ itemId: R2, restaurantId: R2, position: 2 }),
-      makeItem({ itemId: R3, restaurantId: R3, position: 3 }),
+      makeItem({ itemId: R1, placeId: R1, position: 1 }),
+      makeItem({ itemId: R2, placeId: R2, position: 2 }),
+      makeItem({ itemId: R3, placeId: R3, position: 3 }),
     ];
     const { service, itemUpdate } = makeHarness({
       lists: [makeList({ items: threeItems })],
@@ -474,20 +474,20 @@ describe('sort + note projection on results (spec B.1.4/B.1.5)', () => {
   const items = [
     makeItem({
       itemId: 'i1',
-      restaurantId: R1,
+      placeId: R1,
       position: 3,
       note: 'get the brisket',
       createdAt: new Date('2026-07-01T00:00:00Z'),
     }),
     makeItem({
       itemId: 'i2',
-      restaurantId: R2,
+      placeId: R2,
       position: 1,
       createdAt: new Date('2026-07-02T00:00:00Z'),
     }),
     makeItem({
       itemId: 'i3',
-      restaurantId: R3,
+      placeId: R3,
       position: 2,
       createdAt: new Date('2026-07-03T00:00:00Z'),
     }),
@@ -499,20 +499,16 @@ describe('sort + note projection on results (spec B.1.4/B.1.5)', () => {
     });
     executor.executeSingle.mockResolvedValue(
       execResult({
-        restaurants: [restaurantRow(R1), restaurantRow(R3), restaurantRow(R2)],
-        totalRestaurantCount: 3,
+        places: [placeRow(R1), placeRow(R3), placeRow(R2)],
+        totalPlaceCount: 3,
       }),
     );
     const response = await service.getListResults(OWNER, LIST_ID, {
       sort: 'custom',
     } as never);
-    expect(response.restaurants.map((r) => r.restaurantId)).toEqual([
-      R2,
-      R3,
-      R1,
-    ]);
-    expect(response.restaurants[2].note).toBe('get the brisket');
-    expect(response.restaurants[0].note).toBeNull();
+    expect(response.places.map((r) => r.placeId)).toEqual([R2, R3, R1]);
+    expect(response.places[2].note).toBe('get the brisket');
+    expect(response.places[0].note).toBeNull();
   });
 
   it("sort:'recent' orders by createdAt desc", async () => {
@@ -521,18 +517,14 @@ describe('sort + note projection on results (spec B.1.4/B.1.5)', () => {
     });
     executor.executeSingle.mockResolvedValue(
       execResult({
-        restaurants: [restaurantRow(R1), restaurantRow(R2), restaurantRow(R3)],
-        totalRestaurantCount: 3,
+        places: [placeRow(R1), placeRow(R2), placeRow(R3)],
+        totalPlaceCount: 3,
       }),
     );
     const response = await service.getListResults(OWNER, LIST_ID, {
       sort: 'recent',
     } as never);
-    expect(response.restaurants.map((r) => r.restaurantId)).toEqual([
-      R3,
-      R2,
-      R1,
-    ]);
+    expect(response.places.map((r) => r.placeId)).toEqual([R3, R2, R1]);
   });
 
   it('detail DTO carries viewerRole + defaultSort (custom iff order diverges from insertion)', async () => {
@@ -556,10 +548,10 @@ describe('sort + note projection on results (spec B.1.4/B.1.5)', () => {
     const detailItems = [
       makeItem({
         itemId: 'item-1',
-        restaurantId: R1,
+        placeId: R1,
         position: 1,
         note: 'the brisket',
-        restaurant: { entityId: R1, name: 'Place', city: 'Austin' },
+        place: { entityId: R1, name: 'Place', city: 'Austin' },
       }),
     ];
     const { service, prisma } = makeHarness({
@@ -571,8 +563,8 @@ describe('sort + note projection on results (spec B.1.4/B.1.5)', () => {
         { subjectId: R1, displayScore: 9, percentileRank: null, rising: null },
       ]);
     const detail: any = await service.getListForUser(OWNER, LIST_ID);
-    expect(detail.restaurants[0].note).toBe('the brisket');
-    expect(detail.restaurants[0].userListItemId).toBe('item-1');
+    expect(detail.places[0].note).toBe('the brisket');
+    expect(detail.places[0].userListItemId).toBe('item-1');
   });
 });
 
@@ -580,22 +572,21 @@ describe('virtual All list (spec B.1.6)', () => {
   const LIST_B = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
   const lists = [
     makeList({
-      items: [makeItem({ itemId: 'a1', restaurantId: R1, position: 1 })],
+      items: [makeItem({ itemId: 'a1', placeId: R1, position: 1 })],
       visibility: 'private',
     }),
     makeList({
       listId: LIST_B,
       name: 'other',
       visibility: 'public',
-      items: [makeItem({ itemId: 'b1', restaurantId: R2, position: 1 })],
+      items: [makeItem({ itemId: 'b1', placeId: R2, position: 1 })],
     }),
   ];
 
   it('own All unions ALL own lists of the type through the executor', async () => {
     const { service, executor } = makeHarness({ lists });
     await service.getListResults(OWNER, 'all:restaurants', {} as never);
-    const filter =
-      executor.executeSingle.mock.calls[0][0].plan.restaurantFilters[0];
+    const filter = executor.executeSingle.mock.calls[0][0].plan.placeFilters[0];
     expect(new Set(filter.entityIds)).toEqual(new Set([R1, R2]));
   });
 
@@ -604,8 +595,7 @@ describe('virtual All list (spec B.1.6)', () => {
     await service.getListResults(STRANGER, 'all:restaurants', {
       targetUserId: OWNER,
     } as never);
-    const filter =
-      executor.executeSingle.mock.calls[0][0].plan.restaurantFilters[0];
+    const filter = executor.executeSingle.mock.calls[0][0].plan.placeFilters[0];
     expect(filter.entityIds).toEqual([R2]);
   });
 
@@ -614,8 +604,7 @@ describe('virtual All list (spec B.1.6)', () => {
     await service.getListResults(OWNER, 'all:restaurants', {
       priceLevels: [2],
     } as never);
-    const filter =
-      executor.executeSingle.mock.calls[0][0].plan.restaurantFilters[0];
+    const filter = executor.executeSingle.mock.calls[0][0].plan.placeFilters[0];
     expect(filter.payload).toEqual({ priceLevels: [2] });
   });
 
@@ -628,7 +617,7 @@ describe('virtual All list (spec B.1.6)', () => {
     expect(assemblerPrisma.$queryRaw).toHaveBeenCalledTimes(1);
     // …and the executor received only the in-city ids, with NO directives.
     const call = executor.executeSingle.mock.calls[0][0];
-    expect(call.plan.restaurantFilters[0].entityIds).toEqual([R1]);
+    expect(call.plan.placeFilters[0].entityIds).toEqual([R1]);
     expect(call.directives).toBeUndefined();
   });
 
@@ -637,8 +626,8 @@ describe('virtual All list (spec B.1.6)', () => {
       lists: [
         makeList({
           items: [
-            makeItem({ itemId: 'a1', restaurantId: R1, position: 1 }),
-            makeItem({ itemId: 'a2', restaurantId: R2, position: 2 }),
+            makeItem({ itemId: 'a1', placeId: R1, position: 1 }),
+            makeItem({ itemId: 'a2', placeId: R2, position: 2 }),
           ],
         }),
       ],
@@ -651,7 +640,7 @@ describe('virtual All list (spec B.1.6)', () => {
     expect(assemblerPrisma.$queryRaw).toHaveBeenCalledTimes(1);
     const call = executor.executeSingle.mock.calls[0][0];
     // The page the executor receives is the sliced ordering, not the raw one.
-    expect(call.plan.restaurantFilters[0].entityIds).toEqual([R1]);
+    expect(call.plan.placeFilters[0].entityIds).toEqual([R1]);
   });
 
   it('omitted cityPlaceId runs no geometry query and passes no directives', async () => {
@@ -718,15 +707,15 @@ describe('score-gap resilience on the home lists read (red-team finding 4)', () 
     const items = [
       makeItem({
         itemId: 'good',
-        restaurantId: R1,
+        placeId: R1,
         position: 1,
-        restaurant: { entityId: R1, name: 'Scored place', city: 'Austin' },
+        place: { entityId: R1, name: 'Scored place', city: 'Austin' },
       }),
       makeItem({
         itemId: 'bad',
-        restaurantId: R2,
+        placeId: R2,
         position: 2,
-        restaurant: { entityId: R2, name: 'Unscored place', city: 'Austin' },
+        place: { entityId: R2, name: 'Unscored place', city: 'Austin' },
       }),
     ];
     const { service, prisma } = makeHarness({

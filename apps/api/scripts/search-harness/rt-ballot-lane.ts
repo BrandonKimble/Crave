@@ -33,17 +33,17 @@ async function main() {
       FROM core_entities e
       JOIN core_restaurant_locations l ON l.restaurant_id = e.entity_id
       JOIN place_geometries pg ON ST_Covers(pg.geometry, ST_SetSRID(ST_MakePoint(l.longitude::float8, l.latitude::float8),4326))
-      WHERE e.type='restaurant' AND e.status='active' AND l.google_place_id IS NOT NULL
+      WHERE e.type='place' AND e.status='active' AND l.google_place_id IS NOT NULL
       LIMIT 1`);
     if (!target.length) {
       console.log('no grounded restaurant/place found');
       await app.close();
       return;
     }
-    const restaurantId = target[0].entity_id;
-    const placeId = target[0].place_id;
+    const placeId = target[0].entity_id;
+    const geoPlaceId = target[0].place_id;
     console.log(
-      `target restaurant: ${target[0].name} ${restaurantId}\nplace: ${placeId}`,
+      `target restaurant: ${target[0].name} ${placeId}\nplace: ${geoPlaceId}`,
     );
 
     // --- synthetic users
@@ -64,7 +64,7 @@ async function main() {
        VALUES (gen_random_uuid(), $1, 'closed'::poll_state, 'ranked'::poll_mode, 'user'::poll_origin, $2::uuid, now()-interval '2 days', now()-interval '1 day', now(), now(), '{}'::jsonb)
        RETURNING poll_id`,
       `${TAG} best thing here?`,
-      placeId,
+      geoPlaceId,
     );
     ids.pollId = p[0].poll_id;
     console.log('synthetic poll:', ids.pollId);
@@ -75,7 +75,7 @@ async function main() {
         `INSERT INTO poll_endorsements (poll_id, subject_type, subject_id, user_id, created_at)
          VALUES ($1::uuid, 'entity'::poll_leaderboard_subject_type, $2, $3::uuid, now())`,
         ids.pollId,
-        restaurantId,
+        placeId,
         uid,
       );
     }
@@ -85,7 +85,7 @@ async function main() {
        VALUES ($1::uuid, 'entity'::poll_leaderboard_subject_type, $2, $3::uuid, now()+interval '1 minute')
        ON CONFLICT DO NOTHING`,
       ids.pollId,
-      restaurantId,
+      placeId,
       ids.users[0],
     );
 

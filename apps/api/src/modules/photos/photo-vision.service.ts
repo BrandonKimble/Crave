@@ -47,7 +47,7 @@ export class PhotoVisionService {
    *  not. Fail-OPEN on infra errors (a broken classifier must not block
    *  legitimate photos — safety is GoogleVisionService's job and fails
    *  CLOSED; this is topicality). See the class comment for the asymmetry. */
-  async isFoodContent(thumbUrl: string): Promise<boolean> {
+  async isItemContent(thumbUrl: string): Promise<boolean> {
     try {
       const imageResponse = await fetch(thumbUrl);
       if (!imageResponse.ok) {

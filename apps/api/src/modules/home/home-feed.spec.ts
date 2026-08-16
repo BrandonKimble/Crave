@@ -50,7 +50,7 @@ interface ListFixture {
   items?: Array<{
     rank: number;
     entityId: string;
-    restaurantId: string | null;
+    placeId: string | null;
     connectionId?: string | null;
     entity: {
       entityId: string;
@@ -59,7 +59,7 @@ interface ListFixture {
       latitude: number | null;
       longitude: number | null;
     };
-    restaurant?: {
+    place?: {
       entityId: string;
       name: string;
       latitude: number | null;
@@ -258,9 +258,9 @@ function createHarness(options: {
   for (const list of options.lists) {
     for (const item of list.items ?? []) {
       entities.set(item.entity.entityId, { ...item.entity });
-      if (item.restaurant) {
-        entities.set(item.restaurant.entityId, {
-          ...item.restaurant,
+      if (item.place) {
+        entities.set(item.place.entityId, {
+          ...item.place,
           city: null,
         });
       }
@@ -289,8 +289,8 @@ function createHarness(options: {
     return entities.get(resolvedId) ?? null;
   };
   const saveable = {
-    resolveSaveableRestaurant: (id: string) => Promise.resolve(resolveOne(id)),
-    resolveSaveableFood: (id: string) => Promise.resolve(resolveOne(id)),
+    resolveSaveablePlace: (id: string) => Promise.resolve(resolveOne(id)),
+    resolveSaveableItem: (id: string) => Promise.resolve(resolveOne(id)),
     resolveActiveByIds: (ids: string[]) =>
       Promise.resolve(
         new Map(
@@ -309,9 +309,9 @@ function createHarness(options: {
     (
       _userId: string,
       _listId: string,
-      target: { restaurantId?: string; connectionId?: string },
+      target: { placeId?: string; connectionId?: string },
     ) => {
-      if (target.restaurantId && !resolveOne(target.restaurantId)) {
+      if (target.placeId && !resolveOne(target.placeId)) {
         return Promise.reject(new Error('Restaurant not found'));
       }
       return Promise.resolve({ itemId: 'item' });
@@ -552,7 +552,7 @@ describe('HomeFeedService.getListDetail — the ListDetail-shaped read', () => {
             {
               rank: 1,
               entityId: uuid(10),
-              restaurantId: null,
+              placeId: null,
               entity: {
                 entityId: uuid(10),
                 name: 'Quiet Corner',
@@ -560,7 +560,7 @@ describe('HomeFeedService.getListDetail — the ListDetail-shaped read', () => {
                 latitude: 30.27,
                 longitude: -97.74,
               },
-              restaurant: null,
+              place: null,
             },
           ],
         }),
@@ -588,7 +588,7 @@ describe('HomeFeedService.getListDetail — the ListDetail-shaped read', () => {
       {
         rank: 1,
         entityId: uuid(10),
-        restaurantId: null,
+        placeId: null,
         connectionId: null,
         label: 'Quiet Corner',
         subLabel: 'Austin',
@@ -612,7 +612,7 @@ describe('HomeFeedService.getListDetail — the ListDetail-shaped read', () => {
             {
               rank: 1,
               entityId: uuid(20), // the FOOD entity
-              restaurantId: uuid(30),
+              placeId: uuid(30),
               connectionId: uuid(40), // build fact stored on the curated row
               entity: {
                 entityId: uuid(20),
@@ -621,7 +621,7 @@ describe('HomeFeedService.getListDetail — the ListDetail-shaped read', () => {
                 latitude: null,
                 longitude: null,
               },
-              restaurant: {
+              place: {
                 entityId: uuid(30),
                 name: 'Taco Haus',
                 latitude: 30.3,
@@ -645,7 +645,7 @@ describe('HomeFeedService.getListDetail — the ListDetail-shaped read', () => {
       {
         rank: 1,
         entityId: uuid(20),
-        restaurantId: uuid(30),
+        placeId: uuid(30),
         connectionId: uuid(40),
         label: 'Breakfast Taco',
         subLabel: 'Taco Haus',
@@ -670,7 +670,7 @@ describe('HomeFeedService.getListDetail — the ListDetail-shaped read', () => {
             {
               rank: 1,
               entityId: uuid(10),
-              restaurantId: null,
+              placeId: null,
               entity: {
                 entityId: uuid(10),
                 name: 'Closed Down',
@@ -678,12 +678,12 @@ describe('HomeFeedService.getListDetail — the ListDetail-shaped read', () => {
                 latitude: 30.27,
                 longitude: -97.74,
               },
-              restaurant: null,
+              place: null,
             },
             {
               rank: 2,
               entityId: uuid(11),
-              restaurantId: null,
+              placeId: null,
               entity: {
                 entityId: uuid(11),
                 name: 'Still Open',
@@ -691,7 +691,7 @@ describe('HomeFeedService.getListDetail — the ListDetail-shaped read', () => {
                 latitude: 30.3,
                 longitude: -97.7,
               },
-              restaurant: null,
+              place: null,
             },
           ],
         }),
@@ -723,7 +723,7 @@ describe('HomeFeedService.getListDetail — the ListDetail-shaped read', () => {
             {
               rank: 1,
               entityId: uuid(10),
-              restaurantId: null,
+              placeId: null,
               entity: {
                 entityId: uuid(10),
                 name: 'Merged Away',
@@ -731,7 +731,7 @@ describe('HomeFeedService.getListDetail — the ListDetail-shaped read', () => {
                 latitude: 30.27,
                 longitude: -97.74,
               },
-              restaurant: null,
+              place: null,
             },
           ],
         }),
@@ -773,11 +773,11 @@ describe('HomeFeedService.getListDetail — the ListDetail-shaped read', () => {
 });
 
 describe("HomeFeedService.saveListToUserLists — save-a-copy into the caller's lists", () => {
-  const restaurantItems = [
+  const placeItems = [
     {
       rank: 1,
       entityId: uuid(10),
-      restaurantId: null,
+      placeId: null,
       entity: {
         entityId: uuid(10),
         name: 'Quiet Corner',
@@ -785,12 +785,12 @@ describe("HomeFeedService.saveListToUserLists — save-a-copy into the caller's 
         latitude: 30.27,
         longitude: -97.74,
       },
-      restaurant: null,
+      place: null,
     },
     {
       rank: 2,
       entityId: uuid(11),
-      restaurantId: null,
+      placeId: null,
       entity: {
         entityId: uuid(11),
         name: 'Second Spot',
@@ -798,7 +798,7 @@ describe("HomeFeedService.saveListToUserLists — save-a-copy into the caller's 
         latitude: 30.3,
         longitude: -97.7,
       },
-      restaurant: null,
+      place: null,
     },
   ];
 
@@ -809,7 +809,7 @@ describe("HomeFeedService.saveListToUserLists — save-a-copy into the caller's 
         globalList(1, 'hidden_gems', {
           title: 'Hidden gems of Austin',
           itemCount: 2,
-          items: restaurantItems,
+          items: placeItems,
         }),
       ],
     });
@@ -832,14 +832,14 @@ describe("HomeFeedService.saveListToUserLists — save-a-copy into the caller's 
       1,
       USER,
       saved.listId,
-      { restaurantId: uuid(10) },
+      { placeId: uuid(10) },
       { idempotent: true },
     );
     expect(addItem).toHaveBeenNthCalledWith(
       2,
       USER,
       saved.listId,
-      { restaurantId: uuid(11) },
+      { placeId: uuid(11) },
       { idempotent: true },
     );
     // No second write path, and no stored counter to keep in step (F600/F691).
@@ -860,7 +860,7 @@ describe("HomeFeedService.saveListToUserLists — save-a-copy into the caller's 
         globalList(1, 'hidden_gems', {
           title: 'Hidden gems of Austin',
           itemCount: 2,
-          items: restaurantItems,
+          items: placeItems,
         }),
       ],
     });
@@ -880,7 +880,7 @@ describe("HomeFeedService.saveListToUserLists — save-a-copy into the caller's 
             {
               rank: 1,
               entityId: uuid(20),
-              restaurantId: uuid(30),
+              placeId: uuid(30),
               connectionId: uuid(40),
               entity: {
                 entityId: uuid(20),
@@ -889,7 +889,7 @@ describe("HomeFeedService.saveListToUserLists — save-a-copy into the caller's 
                 latitude: null,
                 longitude: null,
               },
-              restaurant: {
+              place: {
                 entityId: uuid(30),
                 name: 'Taco Haus',
                 latitude: 30.3,
@@ -901,7 +901,7 @@ describe("HomeFeedService.saveListToUserLists — save-a-copy into the caller's 
               // list row, skipped rather than faked.
               rank: 2,
               entityId: uuid(21),
-              restaurantId: uuid(31),
+              placeId: uuid(31),
               connectionId: null,
               entity: {
                 entityId: uuid(21),
@@ -910,7 +910,7 @@ describe("HomeFeedService.saveListToUserLists — save-a-copy into the caller's 
                 latitude: null,
                 longitude: null,
               },
-              restaurant: null,
+              place: null,
             },
           ],
         }),
@@ -949,7 +949,7 @@ describe("HomeFeedService.saveListToUserLists — save-a-copy into the caller's 
         globalList(1, 'hidden_gems', {
           title: 'Hidden gems of Austin',
           itemCount: 2,
-          items: restaurantItems,
+          items: placeItems,
         }),
       ],
     });

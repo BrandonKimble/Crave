@@ -34,7 +34,7 @@ import { randomUUID } from 'crypto';
 import { ClaimVerdictLedgerService } from '../content-processing/entity-resolver/claim-verdict-ledger.service';
 import { AliasManagementService } from '../content-processing/entity-resolver/alias-management.service';
 import {
-  RestaurantLocationEnrichmentService,
+  PlaceLocationEnrichmentService,
   type PlaceGroundingVerdictSubject,
 } from './restaurant-location-enrichment.service';
 import {
@@ -104,7 +104,7 @@ function serviceWith(opts: {
   placeId: string;
   name: string;
   crashTheEffect?: boolean;
-}): RestaurantLocationEnrichmentService {
+}): PlaceLocationEnrichmentService {
   const googlePlaces = {
     autocompletePlace: jest.fn(() =>
       Promise.resolve(autocompleteFor(opts.placeId, opts.name)),
@@ -114,18 +114,18 @@ function serviceWith(opts: {
     ),
   };
   const Ctor = opts.crashTheEffect
-    ? class CrashingGrounding extends RestaurantLocationEnrichmentService {
+    ? class CrashingGrounding extends PlaceLocationEnrichmentService {
         protected executeGroundingTransaction(): Promise<void> {
           return Promise.reject(
             new Error('process died before the grounding ran'),
           );
         }
       }
-    : RestaurantLocationEnrichmentService;
+    : PlaceLocationEnrichmentService;
   return new Ctor(
     prisma as never,
     googlePlaces as never,
-    { chooseRestaurantPlaceCandidate: opts.chooser } as never,
+    { choosePlaceCandidate: opts.chooser } as never,
     aliasManagement as never,
     {} as never,
     {} as never,
@@ -146,7 +146,7 @@ async function mintRestaurant(name: string) {
   const entity = await prisma.entity.create({
     data: {
       name,
-      type: 'restaurant',
+      type: 'place',
       status: 'active',
       city: 'Austin',
       region: 'TX',
@@ -170,8 +170,8 @@ const groundingKey = (restaurantId: string, placeId: string): string =>
   trackKey(
     placeGroundingLane.canonicalClaimKey({
       kind: 'grounding',
-      restaurantId,
-      placeId,
+      placeEntityId: restaurantId,
+      googlePlaceId: placeId,
     }),
   );
 
@@ -321,7 +321,7 @@ describe('the place-grounding lane on the hearing ledger — live database', () 
     );
 
     // THE CRASH: the judge selects, the verdict records, the process dies
-    // before the location transaction. (`enrichRestaurant` is private by
+    // before the location transaction. (`enrichPlace` is private by
     // design; the spec reaches it structurally, the standard way this file's
     // siblings drive private lanes.)
     const crashed = await (
@@ -331,12 +331,12 @@ describe('the place-grounding lane on the hearing ledger — live database', () 
         name,
         crashTheEffect: true,
       }) as unknown as {
-        enrichRestaurant(
+        enrichPlace(
           entity: unknown,
           options: { sourceText?: string },
         ): Promise<{ status: string }>;
       }
-    ).enrichRestaurant(entity, { sourceText: 'zzq source text' });
+    ).enrichPlace(entity, { sourceText: 'zzq source text' });
     expect(crashed.status).toBe('error');
 
     // The hearing SURVIVED the crash: decided, unexecuted, with the
@@ -364,11 +364,11 @@ describe('the place-grounding lane on the hearing ledger — live database', () 
     });
     expect(await resumer.resumePendingGroundingEffects()).toBe(1);
 
-    const grounded = await prisma.restaurantLocation.findUnique({
+    const grounded = await prisma.placeLocation.findUnique({
       where: { googlePlaceId: placeId },
     });
     expect(grounded).not.toBeNull();
-    expect(grounded!.restaurantId).toBe(entity.entityId);
+    expect(grounded!.placeId).toBe(entity.entityId);
     expect(grounded!.isPrimary).toBe(true);
     const connected = await prisma.entity.findUnique({
       where: { entityId: entity.entityId },
@@ -402,7 +402,7 @@ describe('the place-grounding lane on the hearing ledger — live database', () 
     const setKey = trackKey(
       placeGroundingLane.canonicalClaimKey({
         kind: 'rejection',
-        restaurantId: entity.entityId,
+        placeEntityId: entity.entityId,
         candidatePlaceIds: [placeId],
       }),
     );
@@ -416,7 +416,7 @@ describe('the place-grounding lane on the hearing ledger — live database', () 
       }),
     );
     const service = serviceWith({ chooser, placeId, name });
-    const evaluate = (svc: RestaurantLocationEnrichmentService) =>
+    const evaluate = (svc: PlaceLocationEnrichmentService) =>
       (svc as unknown as EvaluateDriveable).evaluateGeminiCandidateSet(
         {
           autocompleteRanked: rankedFor(placeId, name),
@@ -518,7 +518,7 @@ describe('the place-grounding lane on the hearing ledger — live database', () 
     const setKey = trackKey(
       placeGroundingLane.canonicalClaimKey({
         kind: 'rejection',
-        restaurantId: entity.entityId,
+        placeEntityId: entity.entityId,
         candidatePlaceIds: [placeId],
       }),
     );

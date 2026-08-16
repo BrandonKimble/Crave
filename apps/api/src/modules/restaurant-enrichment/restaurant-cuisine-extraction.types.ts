@@ -1,5 +1,5 @@
-export type RestaurantCuisineExtractionJobData = {
-  restaurantId: string;
+export type PlaceCuisineExtractionJobData = {
+  placeId: string;
   requestedAt: string;
   source?: string;
 };

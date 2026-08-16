@@ -93,7 +93,7 @@ async function findDrifted(): Promise<{
     Array<{ entity_id: string; name: string; type: string }>
   >`SELECT entity_id, name, type::text AS type
       FROM core_entities
-     WHERE status <> 'archived' AND type <> 'restaurant'::entity_type`;
+     WHERE status <> 'archived' AND type <> 'place'::entity_type`;
   const byNameFold = new Map<string, Array<{ id: string; label: string }>>();
   for (const concept of concepts) {
     const key = canonicalFold(concept.name);

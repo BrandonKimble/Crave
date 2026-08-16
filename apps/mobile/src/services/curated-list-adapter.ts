@@ -46,12 +46,12 @@ export const mapCuratedDetailToUserListDetail = (
 });
 
 const mapCuratedItemToRestaurantResult = (item: CuratedListDetailItem): RestaurantResult => ({
-  // Restaurant-type curated items: entityId IS the restaurant id (restaurantId null).
-  restaurantId: item.restaurantId ?? item.entityId,
-  restaurantName: item.label,
+  // Restaurant-type curated items: entityId IS the restaurant id (placeId null).
+  placeId: item.placeId ?? item.entityId,
+  placeName: item.label,
   rank: item.rank,
   scoreSubjectType: 'restaurant',
-  scoreSubjectId: item.restaurantId ?? item.entityId,
+  scoreSubjectId: item.placeId ?? item.entityId,
   // Non-null by the honesty filter at the call site (score-less rows are
   // dropped, never rendered as 0 — no-fake-estimates law).
   craveScore: item.craveScore!,
@@ -60,7 +60,7 @@ const mapCuratedItemToRestaurantResult = (item: CuratedListDetailItem): Restaura
   latitude: item.latitude,
   longitude: item.longitude,
   address: item.subLabel,
-  topFood: [],
+  topItem: [],
   totalDishCount: 0,
 });
 
@@ -69,10 +69,10 @@ const mapCuratedItemToFoodResult = (
 ): FoodResult => ({
   // Build-time connectionId (see module doc) — real by construction.
   connectionId: item.connectionId,
-  foodId: item.entityId,
-  foodName: item.label,
-  restaurantId: item.restaurantId ?? '',
-  restaurantName: item.subLabel ?? '',
+  itemId: item.entityId,
+  itemName: item.label,
+  placeId: item.placeId ?? '',
+  placeName: item.subLabel ?? '',
   scoreSubjectType: 'connection',
   scoreSubjectId: item.connectionId,
   // Non-null by the honesty filter at the call site (score-less rows are
@@ -82,10 +82,10 @@ const mapCuratedItemToFoodResult = (
   rising: item.rising,
   mentionCount: 0,
   totalUpvotes: 0,
-  foodAttributes: [],
-  restaurantCraveScore: 0,
-  restaurantLatitude: item.latitude,
-  restaurantLongitude: item.longitude,
+  itemAttributes: [],
+  placeCraveScore: 0,
+  placeLatitude: item.latitude,
+  placeLongitude: item.longitude,
 });
 
 export const mapCuratedDetailToSearchResponse = (
@@ -107,7 +107,7 @@ export const mapCuratedDetailToSearchResponse = (
           )
           .map(mapCuratedItemToFoodResult)
       : [];
-  const restaurants =
+  const places =
     listType === 'restaurant'
       ? detail.items.filter((item) => item.craveScore != null).map(mapCuratedItemToRestaurantResult)
       : [];
@@ -115,20 +115,20 @@ export const mapCuratedDetailToSearchResponse = (
     format: 'dual_list',
     plan: {
       format: 'dual_list',
-      restaurantFilters: [],
+      placeFilters: [],
       connectionFilters: [],
-      ranking: { foodOrder: 'rank', restaurantOrder: 'rank' },
+      ranking: { itemOrder: 'rank', placeOrder: 'rank' },
       diagnostics: { missingEntities: [], notes: ['curated-list projection'] },
     },
     dishes,
-    restaurants,
+    places,
     metadata: {
       // The world constructor requires a request identity; the curated read has no
       // server searchRequestId, so the projection's identity is the build fact itself
       // (listId + builtAt) — deterministic, never invented.
       searchRequestId: `curated:${detail.listId}:${detail.builtAt}`,
-      totalFoodResults: dishes.length,
-      totalRestaurantResults: restaurants.length,
+      totalItemResults: dishes.length,
+      totalPlaceResults: places.length,
       queryExecutionTimeMs: 0,
       boundsApplied: false,
       openNowApplied: false,

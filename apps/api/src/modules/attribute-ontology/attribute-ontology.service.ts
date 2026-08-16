@@ -12,7 +12,7 @@ import { EmbeddingService } from '../external-integrations/llm/embedding.service
 import { LLMAttributePlacementResult } from '../external-integrations/llm/llm.types';
 
 /** Attribute entity types this service canonicalizes. */
-export type AttributeEntityType = 'food_attribute' | 'restaurant_attribute';
+export type AttributeEntityType = 'item_attribute' | 'place_attribute';
 
 export type CanonicalizationScope =
   | 'pending' // steady state: place new pending terms against the active ontology
@@ -861,7 +861,7 @@ export class AttributeOntologyService {
     mergedId: string,
     canonicalId: string,
   ): Promise<number> {
-    if (type === 'food_attribute') {
+    if (type === 'item_attribute') {
       return tx.$executeRawUnsafe(
         `UPDATE core_restaurant_items
          SET food_attributes = (
@@ -891,7 +891,7 @@ export class AttributeOntologyService {
     type: AttributeEntityType,
     id: string,
   ): Promise<number> {
-    if (type === 'food_attribute') {
+    if (type === 'item_attribute') {
       return tx.$executeRawUnsafe(
         `UPDATE core_restaurant_items
          SET food_attributes = array_remove(food_attributes, $1::uuid)

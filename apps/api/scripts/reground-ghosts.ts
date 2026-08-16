@@ -36,7 +36,7 @@ process.env.PROCESS_ROLE ||= 'api';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
-import { RestaurantLocationEnrichmentService } from '../src/modules/restaurant-enrichment';
+import { PlaceLocationEnrichmentService } from '../src/modules/restaurant-enrichment';
 import { UnifiedProcessingService } from '../src/modules/content-processing/reddit-collector/unified-processing.service';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
@@ -68,7 +68,7 @@ const GHOSTS_SQL = `
                WHERE ri.restaurant_id = c.entity_id)
     ) AS user_anchored
   FROM core_entities c
-  WHERE c.type = 'restaurant' AND c.status = 'active'
+  WHERE c.type = 'place' AND c.status = 'active'
     AND c.restaurant_metadata->'googlePlaces'->>'placeId' IS NULL
     AND NOT EXISTS (
       SELECT 1 FROM core_restaurant_locations l
@@ -91,7 +91,7 @@ async function main(): Promise<void> {
   });
   stopCronsForScript(app);
   const prisma = app.get(PrismaService);
-  const enrichment = app.get(RestaurantLocationEnrichmentService);
+  const enrichment = app.get(PlaceLocationEnrichmentService);
   const unified = app.get(UnifiedProcessingService);
 
   if (tombstoneClosed) {
@@ -142,7 +142,7 @@ async function main(): Promise<void> {
     string,
     Awaited<
       ReturnType<
-        UnifiedProcessingService['resolveRestaurantEnrichmentDispatchContext']
+        UnifiedProcessingService['resolvePlaceEnrichmentDispatchContext']
       >
     >
   >();
@@ -152,9 +152,7 @@ async function main(): Promise<void> {
     if (!contextCache.has(communityKey)) {
       contextCache.set(
         communityKey,
-        await unified.resolveRestaurantEnrichmentDispatchContext(
-          ghost.community,
-        ),
+        await unified.resolvePlaceEnrichmentDispatchContext(ghost.community),
       );
     }
     const context = contextCache.get(communityKey)!;
@@ -166,7 +164,7 @@ async function main(): Promise<void> {
       continue;
     }
 
-    const result = await enrichment.enrichRestaurantById(ghost.entity_id, {
+    const result = await enrichment.enrichPlaceById(ghost.entity_id, {
       sourceLocale: context.sourceLocale ?? undefined,
       countryCode: context.countryCode ?? undefined,
       locationBias: context.locationBias ?? undefined,

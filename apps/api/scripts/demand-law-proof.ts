@@ -29,7 +29,7 @@ async function main() {
       const [{ entity_id: entityId }] = await tx.$queryRaw<
         { entity_id: string }[]
       >`SELECT entity_id::text AS entity_id FROM core_entities
-        WHERE type = 'restaurant' LIMIT 1`;
+        WHERE type = 'place' LIMIT 1`;
       const [{ actor_id: actorId }] = await tx.$queryRaw<
         { actor_id: string }[]
       >`SELECT actor_id::text AS actor_id FROM signal_demand_daily LIMIT 1`;
@@ -80,7 +80,7 @@ async function main() {
         placeIds: [placeId],
         windowDays: 30,
         limit: 50,
-        entityTypes: ['restaurant', 'food'],
+        entityTypes: ['place', 'item'],
       });
 
       const round = (n: number) => Number(n.toFixed(6));

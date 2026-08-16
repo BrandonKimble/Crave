@@ -102,8 +102,8 @@ describe('canonicalFold — collapses it must NOT make (over-folding guards)', (
 
 describe('entityIdentityKey — order/plural invariance still holds on the new fold', () => {
   it('word-order twins converge for foods', () => {
-    expect(entityIdentityKey('pizza square', EntityType.food)).toBe(
-      entityIdentityKey('square pizza', EntityType.food),
+    expect(entityIdentityKey('pizza square', EntityType.item)).toBe(
+      entityIdentityKey('square pizza', EntityType.item),
     );
   });
 

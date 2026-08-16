@@ -178,9 +178,14 @@ const SIGNAL_META_KEYS: ReadonlySet<string> = new Set([
   'originalBackendSearchRequestId',
   'cacheRevealRequestId',
   'resultCount',
+  // Pre-R14 spellings kept for the persisted history's legibility; the
+  // R14 spellings below are what current writers emit.
   'restaurantCount',
   'resultRestaurantCount',
   'resultFoodCount',
+  'placeCount',
+  'resultPlaceCount',
+  'resultItemCount',
   'inViewLocationCount',
   'cached',
   'reason',
@@ -189,7 +194,7 @@ const SIGNAL_META_KEYS: ReadonlySet<string> = new Set([
   'resolvedEntityId',
   // Entity / place context (ids, never names)
   'contextRestaurantId',
-  'restaurantId',
+  'placeId',
   'locationId',
   'connectionId',
   // Polls
@@ -299,22 +304,22 @@ export class SignalsService {
    * provided, else the restaurant's primary (or any coordinated) location.
    * Never rejects — safe to pass un-awaited as RecordSignalInput.geo.
    */
-  async bboxFromRestaurantLocation(args: {
-    restaurantId: string;
+  async bboxFromPlaceLocation(args: {
+    placeId: string;
     locationId?: string | null;
   }): Promise<SignalBbox | null> {
     try {
       const location = args.locationId
-        ? await this.prisma.restaurantLocation.findFirst({
+        ? await this.prisma.placeLocation.findFirst({
             where: {
               locationId: args.locationId,
-              restaurantId: args.restaurantId,
+              placeId: args.placeId,
             },
             select: { latitude: true, longitude: true },
           })
-        : await this.prisma.restaurantLocation.findFirst({
+        : await this.prisma.placeLocation.findFirst({
             where: {
-              restaurantId: args.restaurantId,
+              placeId: args.placeId,
               latitude: { not: null },
               longitude: { not: null },
             },
@@ -330,7 +335,7 @@ export class SignalsService {
       );
     } catch (error) {
       this.logger.debug('Restaurant location bbox lookup failed', {
-        restaurantId: args.restaurantId,
+        placeId: args.placeId,
         error: {
           message: error instanceof Error ? error.message : String(error),
         },
@@ -344,22 +349,22 @@ export class SignalsService {
    * connection resolves the restaurant, whose location provides the point.
    * Never rejects — safe to pass un-awaited as RecordSignalInput.geo.
    */
-  async bboxFromFoodLocation(foodId: string): Promise<SignalBbox | null> {
+  async bboxFromItemLocation(itemId: string): Promise<SignalBbox | null> {
     try {
       const connection = await this.prisma.connection.findFirst({
-        where: { foodId },
+        where: { itemId },
         orderBy: { mentionCount: 'desc' },
-        select: { restaurantId: true },
+        select: { placeId: true },
       });
       if (!connection) {
         return null;
       }
-      return await this.bboxFromRestaurantLocation({
-        restaurantId: connection.restaurantId,
+      return await this.bboxFromPlaceLocation({
+        placeId: connection.placeId,
       });
     } catch (error) {
       this.logger.debug('Food connection bbox lookup failed', {
-        foodId,
+        itemId,
         error: {
           message: error instanceof Error ? error.message : String(error),
         },

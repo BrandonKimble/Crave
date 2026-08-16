@@ -44,8 +44,8 @@ export type SearchForegroundHistoryRuntime = Pick<
 >;
 
 export type SearchForegroundOpenRestaurantProfilePreview = (
-  restaurantId: string,
-  restaurantName: string
+  placeId: string,
+  placeName: string
 ) => void;
 
 // Open a community poll's detail (the §8.1 autocomplete poll lane). Routes via
@@ -98,7 +98,7 @@ export type SearchForegroundLaunchIntentRuntimeArgs = {
   // S-E: the URL-addressable search desires (/q, /s) land through the intent channel.
   submitSearch: SearchForegroundSubmitRuntime['submitSearch'];
   submitViewportShortcut: SearchForegroundSubmitRuntime['submitViewportShortcut'];
-  pendingRestaurantSelectionRef: React.MutableRefObject<{ restaurantId: string } | null>;
+  pendingRestaurantSelectionRef: React.MutableRefObject<{ placeId: string } | null>;
 };
 
 export type SearchForegroundSubmitRuntimeArgs = {
@@ -130,7 +130,7 @@ export type SearchForegroundSubmitRuntimeArgs = {
   // rather than on a ref the next render erased.
   setIsAutocompleteSuppressed: React.Dispatch<React.SetStateAction<boolean>>;
   pendingRestaurantSelectionRef: React.MutableRefObject<{
-    restaurantId: string;
+    placeId: string;
   } | null>;
   isSearchEditingRef: React.MutableRefObject<boolean>;
   allowSearchBlurExitRef: React.MutableRefObject<boolean>;

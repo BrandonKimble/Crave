@@ -23,12 +23,12 @@ describe('claim_judge_version survives every fold — live database', () => {
   const prisma = new PrismaClient();
   const made: string[] = [];
 
-  const mintFood = async (name: string): Promise<string> => {
+  const mintItem = async (name: string): Promise<string> => {
     const id = randomUUID();
-    const identity = identityInsertData(name, 'food' as never);
+    const identity = identityInsertData(name, 'item' as never);
     await prisma.$executeRawUnsafe(
       `INSERT INTO core_entities (entity_id, name, type, status, identity_key, identity_key_sorted)
-       VALUES ($1::uuid, $2, 'food'::entity_type, 'active'::entity_status, $3, $4)`,
+       VALUES ($1::uuid, $2, 'item'::entity_type, 'active'::entity_status, $3, $4)`,
       id,
       name,
       identity.identityKey,
@@ -68,7 +68,7 @@ describe('claim_judge_version survives every fold — live database', () => {
   });
 
   it('an ordinary re-offer neither erases NOR walks back the stamp', async () => {
-    const id = await mintFood(`zzq stamp dish ${randomUUID().slice(0, 8)}`);
+    const id = await mintItem(`zzq stamp dish ${randomUUID().slice(0, 8)}`);
     const form = `zzq stamped form ${randomUUID().slice(0, 8)}`;
 
     await prisma.$transaction((tx) =>
@@ -104,8 +104,8 @@ describe('claim_judge_version survives every fold — live database', () => {
   });
 
   it('a merge fold carries the loser row’s stamp onto the winner', async () => {
-    const winner = await mintFood(`zzq winner ${randomUUID().slice(0, 8)}`);
-    const loser = await mintFood(`zzq loser ${randomUUID().slice(0, 8)}`);
+    const winner = await mintItem(`zzq winner ${randomUUID().slice(0, 8)}`);
+    const loser = await mintItem(`zzq loser ${randomUUID().slice(0, 8)}`);
     const form = `zzq settled claim ${randomUUID().slice(0, 8)}`;
 
     await prisma.$transaction((tx) =>
@@ -122,8 +122,8 @@ describe('claim_judge_version survives every fold — live database', () => {
   });
 
   it('when both sides hold the form, the NEWER hearing is the one that survives', async () => {
-    const winner = await mintFood(`zzq winner2 ${randomUUID().slice(0, 8)}`);
-    const loser = await mintFood(`zzq loser2 ${randomUUID().slice(0, 8)}`);
+    const winner = await mintItem(`zzq winner2 ${randomUUID().slice(0, 8)}`);
+    const loser = await mintItem(`zzq loser2 ${randomUUID().slice(0, 8)}`);
     const form = `zzq contested ${randomUUID().slice(0, 8)}`;
 
     await prisma.$transaction((tx) =>
@@ -142,8 +142,8 @@ describe('claim_judge_version survives every fold — live database', () => {
 
     // ...and in the other direction too: a loser with the OLDER hearing
     // cannot drag the winner's stamp backwards.
-    const winner3 = await mintFood(`zzq winner3 ${randomUUID().slice(0, 8)}`);
-    const loser3 = await mintFood(`zzq loser3 ${randomUUID().slice(0, 8)}`);
+    const winner3 = await mintItem(`zzq winner3 ${randomUUID().slice(0, 8)}`);
+    const loser3 = await mintItem(`zzq loser3 ${randomUUID().slice(0, 8)}`);
     const form3 = `zzq contested3 ${randomUUID().slice(0, 8)}`;
     await prisma.$transaction((tx) =>
       addSurfaces(tx, winner3, [

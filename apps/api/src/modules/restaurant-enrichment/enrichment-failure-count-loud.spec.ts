@@ -1,4 +1,4 @@
-import { RestaurantLocationEnrichmentService } from './restaurant-location-enrichment.service';
+import { PlaceLocationEnrichmentService } from './restaurant-location-enrichment.service';
 
 /**
  * THE COUNT WRITE FAILS LOUD (F4907, the F205 doctrine).
@@ -43,7 +43,7 @@ describe('the enrichment attempt counters are not silent (F4907 + F5100)', () =>
       debug: jest.fn(),
     };
     const prisma = { entity: { update } };
-    const service = new RestaurantLocationEnrichmentService(
+    const service = new PlaceLocationEnrichmentService(
       prisma as never,
       {} as never,
       {} as never,
@@ -87,7 +87,7 @@ describe('the enrichment attempt counters are not silent (F4907 + F5100)', () =>
 
   const ENTITY = {
     entityId: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
-    restaurantMetadata: {},
+    placeMetadata: {},
   };
 
   it('a throwing count write raises an ops alert naming the entity and the re-spend', async () => {
@@ -125,7 +125,7 @@ describe('the enrichment attempt counters are not silent (F4907 + F5100)', () =>
 
     expect(update).toHaveBeenCalledTimes(1);
     // The counter increment is IN the write this test just proved happened.
-    expect(update.mock.calls[0][0].data).toHaveProperty('restaurantMetadata');
+    expect(update.mock.calls[0][0].data).toHaveProperty('placeMetadata');
     expect(emit).not.toHaveBeenCalled();
     expect(logger.error).not.toHaveBeenCalled();
   });
@@ -170,7 +170,7 @@ describe('the enrichment attempt counters are not silent (F4907 + F5100)', () =>
     await recordNoMatchCandidates(ENTITY, 'places_no_candidates');
 
     expect(update).toHaveBeenCalledTimes(1);
-    expect(update.mock.calls[0][0].data).toHaveProperty('restaurantMetadata');
+    expect(update.mock.calls[0][0].data).toHaveProperty('placeMetadata');
     expect(emit).not.toHaveBeenCalled();
     expect(logger.error).not.toHaveBeenCalled();
   });

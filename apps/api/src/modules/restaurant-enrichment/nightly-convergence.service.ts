@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { FoodDedupeMergeService } from '../content-processing/entity-resolver/food-dedupe-merge.service';
+import { ItemDedupeMergeService } from '../content-processing/entity-resolver/food-dedupe-merge.service';
 import { RescoreCoordinatorService } from '../content-processing/public-crave-score/rescore-coordinator.service';
 import { ProjectionRebuildService } from '../content-processing/reddit-collector/projection-rebuild.service';
 import { LoggerService } from '../../shared';
-import { RestaurantEntityMergeService } from './restaurant-entity-merge.service';
+import { PlaceEntityMergeService } from './restaurant-entity-merge.service';
 import { PlaceTypeCensusService } from './place-type-census.service';
 
 /**
@@ -24,8 +24,8 @@ export class NightlyConvergenceService {
   private readonly logger: LoggerService;
 
   constructor(
-    private readonly restaurantMerge: RestaurantEntityMergeService,
-    private readonly foodDedupe: FoodDedupeMergeService,
+    private readonly placeMerge: PlaceEntityMergeService,
+    private readonly itemDedupe: ItemDedupeMergeService,
     private readonly projectionRebuild: ProjectionRebuildService,
     private readonly rescoreCoordinator: RescoreCoordinatorService,
     private readonly placeTypeCensus: PlaceTypeCensusService,
@@ -39,10 +39,10 @@ export class NightlyConvergenceService {
     const startedAt = Date.now();
     const phases: Array<[string, () => Promise<unknown>]> = [
       // identity heal + food dedupe (heal is fail-isolated inside)
-      ['food-dedupe', () => this.foodDedupe.runNightly()],
+      ['food-dedupe', () => this.itemDedupe.runNightly()],
       [
         'restaurant-merge-sweep',
-        () => this.restaurantMerge.sweepSameNameDuplicates({ apply: true }),
+        () => this.placeMerge.sweepSameNameDuplicates({ apply: true }),
       ],
       // evidence re-points through redirects the merges just wrote
       ['tombstone-sweep', () => this.projectionRebuild.sweepTombstoneEvents()],

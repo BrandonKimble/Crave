@@ -93,7 +93,7 @@ function serviceWith(opts: {
 type Driveable = {
   performLlmMatches: (
     entities: EntityResolutionInput[],
-    entityType: 'food',
+    entityType: 'item',
     engineId: string | null,
     documentLocale: string | null,
   ) => Promise<
@@ -107,7 +107,7 @@ const drive = (
 ) =>
   (service as unknown as Driveable).performLlmMatches(
     inputs,
-    'food',
+    'item',
     null,
     null,
   );
@@ -116,18 +116,18 @@ const inputFor = (term: string): EntityResolutionInput => ({
   tempId: randomUUID(),
   normalizedName: term,
   originalText: term,
-  entityType: 'food',
+  entityType: 'item',
 });
 
-async function mintFood(name: string): Promise<RecallCandidate> {
+async function mintItem(name: string): Promise<RecallCandidate> {
   const entity = await prisma.entity.create({
-    data: { name, type: 'food', identityKey: canonicalFold(name) },
+    data: { name, type: 'item', identityKey: canonicalFold(name) },
   });
   madeEntities.push(entity.entityId);
   return {
     entityId: entity.entityId,
     name,
-    type: 'food',
+    type: 'item',
     rrf: 1,
     sparseRank: 1,
     sparseSimilarity: 0.9,
@@ -139,7 +139,7 @@ async function mintFood(name: string): Promise<RecallCandidate> {
 
 const keyOf = (term: string, candidateEntityId: string): string => {
   const key = entityMatchLane.canonicalClaimKey({
-    kind: 'food',
+    kind: 'item',
     term,
     candidateEntityId,
   });
@@ -224,8 +224,8 @@ describe('the resolution-match lane on the hearing ledger — live database', ()
   it("remembers a judged 'new' per pair and skips the LLM — and pays again when the memory is neutered", async () => {
     const suffix = randomUUID().slice(0, 8);
     const term = `zzq resmatch ${suffix}`;
-    const a = await mintFood(`zzq resmatch cand a ${suffix}`);
-    const b = await mintFood(`zzq resmatch cand b ${suffix}`);
+    const a = await mintItem(`zzq resmatch cand a ${suffix}`);
+    const b = await mintItem(`zzq resmatch cand b ${suffix}`);
     const candidates = new Map([[term, [a, b]]]);
 
     // FIRST ASK — the judge rules 'new' with a stated ground.
@@ -285,8 +285,8 @@ describe('the resolution-match lane on the hearing ledger — live database', ()
   it("resolves from a remembered 'match' without paying a judge", async () => {
     const suffix = randomUUID().slice(0, 8);
     const term = `zzq resmatch hit ${suffix}`;
-    const winner = await mintFood(`zzq resmatch winner ${suffix}`);
-    const other = await mintFood(`zzq resmatch other ${suffix}`);
+    const winner = await mintItem(`zzq resmatch winner ${suffix}`);
+    const other = await mintItem(`zzq resmatch other ${suffix}`);
     await ledger.record({
       lane: ENTITY_MATCH_LANE,
       claimKey: keyOf(term, winner.entityId),
@@ -296,7 +296,7 @@ describe('the resolution-match lane on the hearing ledger — live database', ()
       reason: 'another name for the same dish',
       ruleFingerprint: ENTITY_DEDUPE_RULE_FINGERPRINT,
       subject: {
-        kind: 'food',
+        kind: 'item',
         term,
         candidateEntityId: winner.entityId,
         outcome: 'match',
@@ -323,7 +323,7 @@ describe('the resolution-match lane on the hearing ledger — live database', ()
   it("a reasonless fail-closed 'new' records NOTHING — the question stays open and is paid for again", async () => {
     const suffix = randomUUID().slice(0, 8);
     const term = `zzq resmatch outage ${suffix}`;
-    const candidate = await mintFood(`zzq resmatch outage cand ${suffix}`);
+    const candidate = await mintItem(`zzq resmatch outage cand ${suffix}`);
     const candidates = new Map([[term, [candidate]]]);
 
     // matchEntitiesBatch's real outage shape: 'new', no reason.
@@ -348,8 +348,8 @@ describe('the resolution-match lane on the hearing ledger — live database', ()
   it("a 'match' binds only the matched pair — the other candidates stay unheard", async () => {
     const suffix = randomUUID().slice(0, 8);
     const term = `zzq resmatch partial ${suffix}`;
-    const first = await mintFood(`zzq resmatch partial a ${suffix}`);
-    const second = await mintFood(`zzq resmatch partial b ${suffix}`);
+    const first = await mintItem(`zzq resmatch partial a ${suffix}`);
+    const second = await mintItem(`zzq resmatch partial b ${suffix}`);
     const judge = judgeSaying({
       decision: 'match',
       candidateId: 1,
@@ -373,12 +373,12 @@ describe('the resolution-match lane on the hearing ledger — live database', ()
   it('spells the claim by the accent-preserving fold — bò and bơ are two claims', () => {
     const candidateEntityId = randomUUID();
     const keyBo1 = entityMatchLane.canonicalClaimKey({
-      kind: 'food',
+      kind: 'item',
       term: 'bò kho',
       candidateEntityId,
     });
     const keyBo2 = entityMatchLane.canonicalClaimKey({
-      kind: 'food',
+      kind: 'item',
       term: 'bơ kho',
       candidateEntityId,
     });
@@ -386,7 +386,7 @@ describe('the resolution-match lane on the hearing ledger — live database', ()
     // ...while case and punctuation still fold into one claim.
     expect(
       entityMatchLane.canonicalClaimKey({
-        kind: 'food',
+        kind: 'item',
         term: 'Bò  Kho',
         candidateEntityId,
       }),

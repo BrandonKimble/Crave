@@ -14,7 +14,7 @@ process.env.PROCESS_ROLE ||= 'api';
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { AppModule } from '../src/app.module';
-import { RestaurantLocationEnrichmentService } from '../src/modules/restaurant-enrichment/restaurant-location-enrichment.service';
+import { PlaceLocationEnrichmentService } from '../src/modules/restaurant-enrichment/restaurant-location-enrichment.service';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 /**
@@ -30,7 +30,7 @@ async function main(): Promise<void> {
   });
   stopCronsForScript(app);
   try {
-    const service = app.get(RestaurantLocationEnrichmentService);
+    const service = app.get(PlaceLocationEnrichmentService);
     const summary = await service.refreshStaleLocations({
       olderThanDays: Number(process.env.REFRESH_OLDER_THAN_DAYS ?? 30),
       limit: Number(process.env.REFRESH_LIMIT ?? 100),

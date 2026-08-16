@@ -35,7 +35,7 @@ async function main(): Promise<void> {
     for (const q of probes) {
       const res = await svc.autocompleteEntities({
         query: q,
-        entityTypes: [EntityType.food, EntityType.restaurant],
+        entityTypes: [EntityType.item, EntityType.place],
         limit: 8,
       });
       out('');

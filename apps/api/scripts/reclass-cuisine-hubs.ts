@@ -17,13 +17,13 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { LLMService } from '../src/modules/external-integrations/llm/llm.service';
 import { EntitySiblingEdgeBuilderService } from '../src/modules/entity-text-search/entity-sibling-edge-builder.service';
-import { FoodCategoryEdgeBuilderService } from '../src/modules/search/food-category-edge-builder.service';
+import { ItemCategoryEdgeBuilderService } from '../src/modules/search/food-category-edge-builder.service';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 /**
  * One-shot CUISINE-HUB reclass migration. `{cuisine} food/meal/dish` names were
  * LLM-fabricated as dishes before the collection prompt's Step-4.2 empty-set
- * gate existed; as type='food' entities they poison search (a hub id in the
+ * gate existed; as type='item' entities they poison search (a hub id in the
  * filter drags every restaurant of that cuisine into the ranking) and pollute
  * the dense sibling graph. This ARCHIVES them (reversible; every read path
  * filters status='active') and rebuilds the sibling edges so hub neighbors
@@ -52,7 +52,7 @@ async function main(): Promise<void> {
       `SELECT e.entity_id, e.name,
               (SELECT count(*) FROM core_restaurant_items c WHERE c.food_id = e.entity_id) AS conns
        FROM core_entities e
-       WHERE e.type='food' AND e.status='active'
+       WHERE e.type='item' AND e.status='active'
          AND (lower(e.name) LIKE '% food' OR lower(e.name) LIKE '% meal'
               OR lower(e.name) LIKE '% dish' OR lower(e.name) LIKE '% dishes')
        ORDER BY e.name`,
@@ -90,7 +90,7 @@ async function main(): Promise<void> {
     if (ids.length) {
       const updated = await prisma.$executeRawUnsafe(
         `UPDATE core_entities SET status='archived', last_updated=now()
-         WHERE entity_id = ANY($1::uuid[]) AND type='food'`,
+         WHERE entity_id = ANY($1::uuid[]) AND type='item'`,
         ids,
       );
       out(`Archived ${updated} entities.`);
@@ -115,7 +115,7 @@ async function main(): Promise<void> {
       // job's public driver, so this rebuild carries the derived-index law
       // (disable flag, in-flight guard, zero-output critical alert) and
       // re-derives the whole table from the post-archive truth.
-      const edgeBuilder = app.get(FoodCategoryEdgeBuilderService);
+      const edgeBuilder = app.get(ItemCategoryEdgeBuilderService);
       const edges = await edgeBuilder.runNow();
       out(
         edges

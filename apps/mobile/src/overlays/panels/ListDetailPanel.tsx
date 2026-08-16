@@ -118,7 +118,7 @@ import { AVATAR_SIZES } from '../../constants/avatar-sizes';
 // (['listDetail', listId] — two stacked entries of one list share the row, C3), persistent
 // header descriptor, and an honest failure/empty/dead-slug body set (§5.6).
 //
-// Identity (spec D.5 adjudication): params = {listId | virtual 'all:restaurants'/'all:dishes',
+// Identity (spec D.5 adjudication): params = {listId | virtual 'all:places'/'all:dishes',
 // shareSlug?, targetUserId?, joinIntent?} — the Desire list arm; shareSlug is RT-18 ACCESS
 // MATERIAL, presented on every server read (meta + results), never identity. joinIntent marks
 // an entry that came from an invite link (crave://l/<slug>?join=1) — the ONLY entry that
@@ -154,7 +154,7 @@ type ListDetailParams = {
 };
 
 const VIRTUAL_LIST_TYPE_BY_ID: Record<string, UserListType> = {
-  'all:restaurants': 'restaurant',
+  'all:places': 'restaurant',
   'all:dishes': 'dish',
 };
 
@@ -343,7 +343,7 @@ const StateBody = ({ message, testID }: { message: string; testID: string }) => 
 // note under the gallery, add-photo lead tile). The edit surface renders the SAME cards
 // inside the variable-height reorder slot map — rows stay rich while dragging.
 type ListDetailRichRow = {
-  /** The row's stable entity key (restaurantId / connectionId). */
+  /** The row's stable entity key (placeId / connectionId). */
   key: string;
   /** The UserListItem id backing the row (the reorder PATCH vocabulary). */
   itemId: string | null;
@@ -420,7 +420,7 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
   const isScreenReaderEnabled = useIsScreenReaderEnabled();
 
   const restaurantRows: RestaurantResult[] =
-    data.listType === 'restaurant' ? (data.response?.restaurants ?? []) : [];
+    data.listType === 'restaurant' ? (data.response?.places ?? []) : [];
   const dishRows: FoodResult[] = data.listType === 'dish' ? (data.response?.dishes ?? []) : [];
 
   // The ONE rich-row model — read mode maps it directly; edit mode reorders its keys.
@@ -428,7 +428,7 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
     () =>
       data.listType === 'restaurant'
         ? restaurantRows.map((restaurant) => ({
-            key: restaurant.restaurantId,
+            key: restaurant.placeId,
             itemId: restaurant.userListItemId ?? null,
             kind: 'restaurant' as const,
             restaurant,
@@ -460,9 +460,9 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
   const openRestaurantProfileFromList = React.useCallback(
     (restaurant: RestaurantResult) => {
       executeEntityRef({
-        entityId: restaurant.restaurantId,
-        entityType: 'restaurant',
-        label: restaurant.restaurantName,
+        entityId: restaurant.placeId,
+        entityType: 'place',
+        label: restaurant.placeName,
       });
     },
     [executeEntityRef]
@@ -471,8 +471,8 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
   // results data.response carries it for the map pins — same source results uses).
   const restaurantsByIdForDishRows = React.useMemo(() => {
     const byId = new Map<string, RestaurantResult>();
-    for (const restaurant of data.response?.restaurants ?? []) {
-      byId.set(restaurant.restaurantId, restaurant);
+    for (const restaurant of data.response?.places ?? []) {
+      byId.set(restaurant.placeId, restaurant);
     }
     return byId;
   }, [data.response]);
@@ -587,7 +587,7 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
       }
       return; // virtual-All / projection rows carry no editable item
     }
-    const label = row.kind === 'restaurant' ? row.restaurant.restaurantName : row.dish.foodName;
+    const label = row.kind === 'restaurant' ? row.restaurant.placeName : row.dish.itemName;
     const note = (row.kind === 'restaurant' ? row.restaurant.note : row.dish.note) ?? '';
     showAppModal({
       title: `Edit ${label}`,
@@ -655,22 +655,20 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
                 canEditRef.current
                   ? () => openItemEditor(row)
                   : getRestaurantSaveHandler(
-                      restaurant.restaurantId,
-                      restaurant.restaurantLocationId ??
-                        restaurant.displayLocation?.locationId ??
-                        null
+                      restaurant.placeId,
+                      restaurant.placeLocationId ?? restaurant.displayLocation?.locationId ?? null
                     )
               }
               openRestaurantProfile={openRestaurantProfileFromList}
               openScoreInfo={openScoreInfo}
-              primaryFoodTerm={null}
+              primaryItemTerm={null}
               note={restaurant.note ?? null}
               onAddPhoto={
                 canAdd
                   ? () =>
                       openPostPhotosFunnel({
-                        restaurantId: restaurant.restaurantId,
-                        restaurantName: restaurant.restaurantName,
+                        placeId: restaurant.placeId,
+                        placeName: restaurant.placeName,
                       })
                   : undefined
               }
@@ -687,11 +685,11 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
             qualityColor={getMarkerColorForDish(dish)}
             // F1045: see the restaurant row above — the card derives saved-ness.
             pillEditMode={canEditRef.current}
-            restaurantForDish={restaurantsByIdForDishRows.get(dish.restaurantId)}
+            restaurantForDish={restaurantsByIdForDishRows.get(dish.placeId)}
             onSavePress={
               canEditRef.current
                 ? () => openItemEditor(row)
-                : getDishSaveHandler(dish.connectionId, dish.restaurantLocationId ?? null)
+                : getDishSaveHandler(dish.connectionId, dish.placeLocationId ?? null)
             }
             openRestaurantProfile={openRestaurantProfileFromList}
             openScoreInfo={openScoreInfo}
@@ -700,10 +698,10 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
               canAdd
                 ? () =>
                     openPostPhotosFunnel({
-                      restaurantId: dish.restaurantId,
-                      restaurantName: dish.restaurantName,
+                      placeId: dish.placeId,
+                      placeName: dish.placeName,
                       dishId: dish.connectionId,
-                      dishName: dish.foodName,
+                      dishName: dish.itemName,
                     })
                 : undefined
             }
@@ -754,10 +752,10 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
     { value: 'best' as const, label: SORT_LABELS.best },
     { value: 'recent' as const, label: SORT_LABELS.recent },
   ];
-  // §2a: username · metadata dot · TYPED count ("N dishes"/"N restaurants").
+  // §2a: username · metadata dot · TYPED count ("N dishes"/"N places").
   const countLabel =
     data.listType === 'restaurant'
-      ? `${rowCount} ${rowCount === 1 ? 'restaurant' : 'restaurants'}`
+      ? `${rowCount} ${rowCount === 1 ? 'restaurant' : 'places'}`
       : `${rowCount} ${rowCount === 1 ? 'dish' : 'dishes'}`;
   // F2051: the hand-rolled chain that lived here skipped `isDeleted`, so a list owned by a
   // deleted account still rendered that account's stale @handle in the meta line.
@@ -1574,7 +1572,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   // ─── Header seat (leg 9 §2a/§2 charter): name-as-header + the ellipsis menu ────────────────
   const resolvedName = isVirtualAll
     ? listType === 'restaurant'
-      ? 'All restaurants'
+      ? 'All places'
       : 'All dishes'
     : (metaQuery.data?.list.name ?? warmTitle);
 

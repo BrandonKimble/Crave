@@ -3,8 +3,8 @@ import { UserBlockService } from '../identity/user-block.service';
 import {
   PhotoReadService,
   type CardStripDto,
-  type FoodLogGroupDto,
-  type RestaurantGalleryDto,
+  type ItemLogGroupDto,
+  type PlaceGalleryDto,
 } from './photo-read.service';
 
 /**
@@ -68,7 +68,7 @@ export class ViewerScopedPhotoReads {
   ) {}
 
   async cardStrips(
-    refs: Array<{ restaurantId: string; connectionId?: string }>,
+    refs: Array<{ placeId: string; connectionId?: string }>,
   ): Promise<{ strips: CardStripDto[] }> {
     return this.reads.cardStrips(refs, {
       excludeUserIds: await this.hiddenAuthors(),
@@ -92,11 +92,11 @@ export class ViewerScopedPhotoReads {
     });
   }
 
-  async restaurantGallery(
-    restaurantId: string,
+  async placeGallery(
+    placeId: string,
     params: { limit?: number; offset?: number } = {},
-  ): Promise<RestaurantGalleryDto> {
-    return this.reads.restaurantGallery(restaurantId, {
+  ): Promise<PlaceGalleryDto> {
+    return this.reads.placeGallery(placeId, {
       ...params,
       excludeUserIds: await this.hiddenAuthors(),
     });
@@ -109,10 +109,10 @@ export class ViewerScopedPhotoReads {
    * check the controller already performs, which returns an empty log so the
    * profile can render "unavailable".
    */
-  async userFoodLog(
-    ...args: Parameters<PhotoReadService['userFoodLog']>
-  ): Promise<FoodLogGroupDto[]> {
-    return this.reads.userFoodLog(...args);
+  async userItemLog(
+    ...args: Parameters<PhotoReadService['userItemLog']>
+  ): Promise<ItemLogGroupDto[]> {
+    return this.reads.userItemLog(...args);
   }
 
   /**

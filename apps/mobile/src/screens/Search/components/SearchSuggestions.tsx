@@ -74,7 +74,7 @@ const summarizeRenderedAutocompleteMatches = (
       const source = match.querySuggestionSource ?? 'unknown';
       byQuerySuggestionSource[source] = (byQuerySuggestionSource[source] ?? 0) + 1;
     }
-    if (match.entityType === 'food_attribute' || match.entityType === 'restaurant_attribute') {
+    if (match.entityType === 'item_attribute' || match.entityType === 'place_attribute') {
       attributeCount += 1;
     }
   });
@@ -151,11 +151,10 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   );
   const recentlyViewedItems = React.useMemo(() => {
     const items: Array<
-      | { type: 'food'; item: RecentlyViewedFood }
-      | { type: 'restaurant'; item: RecentlyViewedRestaurant }
+      { type: 'item'; item: RecentlyViewedFood } | { type: 'place'; item: RecentlyViewedRestaurant }
     > = [
-      ...recentlyViewedFoods.map((item) => ({ type: 'food' as const, item })),
-      ...recentlyViewedDeduped.map((item) => ({ type: 'restaurant' as const, item })),
+      ...recentlyViewedFoods.map((item) => ({ type: 'item' as const, item })),
+      ...recentlyViewedDeduped.map((item) => ({ type: 'place' as const, item })),
     ];
 
     items.sort((left, right) => {
@@ -196,7 +195,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   ];
 
   // §7 (see-locations): the suggestion surface NEVER shows a location count —
-  // multi-location restaurants get the "See locations" chip instead; earned
+  // multi-location places get the "See locations" chip instead; earned
   // address labels ride the prefix slot (recently-viewed rows).
   const renderStatusLine = (
     statusPreview?: RecentSearch['statusPreview'] | null,
@@ -241,22 +240,20 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
             // count): multi-location fact from the status preview the
             // pipeline already carries.
             const isMultiLocationRestaurant =
-              match.entityType === 'restaurant' &&
+              match.entityType === 'place' &&
               Boolean(match.entityId) &&
               (match.statusPreview?.locationCount ?? 0) > 1;
             const isRecentQuery = Boolean(match.badges?.recentQuery);
             const isViewed = Boolean(match.badges?.viewed);
             const isAttribute =
-              match.entityType === 'food_attribute' || match.entityType === 'restaurant_attribute';
+              match.entityType === 'item_attribute' || match.entityType === 'place_attribute';
             // Match highlighting (Spotify-style, owner-corrected 2026-07-24):
             // the MATCHED portion renders muted gray, the completion regular —
             // the eye reads what the engine added, not what it already typed.
             const titleSegments = splitSuggestionMatchSegments(highlightQuery, match.name);
             const shouldEmphasizeCompletion = hasSuggestionMatchSegments(titleSegments);
             const statusLine =
-              match.entityType === 'restaurant'
-                ? renderStatusLine(match.statusPreview ?? null)
-                : null;
+              match.entityType === 'place' ? renderStatusLine(match.statusPreview ?? null) : null;
             // Person rows (user lane): the handle is the meta line.
             const userHandleLine =
               isUser && match.username ? (
@@ -277,7 +274,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
               <SearchIcon size={20} color={ICON_COLOR} strokeWidth={2} />
             ) : isAttribute ? (
               <Sparkles size={20} color={ICON_COLOR} strokeWidth={2} />
-            ) : match.entityType === 'restaurant' ? (
+            ) : match.entityType === 'place' ? (
               <Store size={20} color={ICON_COLOR} strokeWidth={2} />
             ) : (
               <HandPlatter size={20} color={ICON_COLOR} strokeWidth={2} />
@@ -358,7 +355,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
               </View>
               {recentSearchesToRender.map((term, index) => {
                 const statusLine =
-                  term.selectedEntityType === 'restaurant'
+                  term.selectedEntityType === 'place'
                     ? renderStatusLine(term.statusPreview ?? null)
                     : null;
                 const hasMetaLine = Boolean(statusLine);
@@ -410,14 +407,14 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                 </Text>
               </View>
               {recentlyViewedToRender.map((entry, index) => {
-                if (entry.type === 'food') {
+                if (entry.type === 'item') {
                   const item = entry.item;
                   const statusLine = renderMetaDetailLine(
                     item.statusPreview?.operatingStatus ?? null,
                     null,
                     null,
                     'left',
-                    item.restaurantName,
+                    item.placeName,
                     false,
                     false,
                     styles.metaLineText
@@ -435,7 +432,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                       <View style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}>
                         <View style={styles.recentRowTextGroup}>
                           <Text style={styles.recentText} numberOfLines={1}>
-                            {item.foodName}
+                            {item.itemName}
                           </Text>
                           {hasMetaLine ? <View style={styles.metaLine}>{statusLine}</View> : null}
                         </View>
@@ -454,7 +451,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                 const hasMetaLine = Boolean(statusLine);
                 return (
                   <TouchableOpacity
-                    key={`${item.restaurantId}-${index}`}
+                    key={`${item.placeId}-${index}`}
                     onPress={() => onSelectRecentlyViewed(item)}
                     style={styles.recentRow}
                   >
@@ -464,7 +461,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                     <View style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}>
                       <View style={styles.recentRowTextGroup}>
                         <Text style={styles.recentText} numberOfLines={1}>
-                          {item.restaurantName}
+                          {item.placeName}
                         </Text>
                         {hasMetaLine ? <View style={styles.metaLine}>{statusLine}</View> : null}
                       </View>

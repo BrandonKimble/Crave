@@ -33,23 +33,23 @@ const c = (id: string, type: string): Candidate => ({
 
 describe('pickPlacedWinner — unknown types go to the BACK (M9, second copy)', () => {
   it('an EntityType absent from CROSS_TYPE_PLACEMENT_ORDER never beats a listed one', () => {
-    const winner = pick([c('new', 'brand_new_type'), c('taco', 'food')]);
+    const winner = pick([c('new', 'brand_new_type'), c('taco', 'item')]);
     expect(winner.entityId).toBe('taco');
   });
 
   it('order of arrival does not rescue the unlisted type', () => {
-    const winner = pick([c('r1', 'restaurant'), c('new', 'brand_new_type')]);
+    const winner = pick([c('r1', 'place'), c('new', 'brand_new_type')]);
     expect(winner.entityId).toBe('r1');
   });
 
   it('the placement order still decides among listed types', () => {
-    const winner = pick([c('r1', 'restaurant'), c('fa', 'food_attribute')]);
+    const winner = pick([c('r1', 'place'), c('fa', 'item_attribute')]);
     expect(winner.entityId).toBe('fa');
   });
 
   it('the dietary flag still wins by rule, even for an unlisted type', () => {
     const winner = pick(
-      [c('taco', 'food'), c('vegan-x', 'brand_new_type')],
+      [c('taco', 'item'), c('vegan-x', 'brand_new_type')],
       ['vegan-x'],
     );
     expect(winner.entityId).toBe('vegan-x');

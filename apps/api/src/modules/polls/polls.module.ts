@@ -5,7 +5,7 @@ import { ModerationModule } from '../moderation/moderation.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SearchModule } from '../search/search.module';
 import { IdentityModule } from '../identity/identity.module';
-import { RestaurantEnrichmentModule } from '../restaurant-enrichment/restaurant-enrichment.module';
+import { PlaceEnrichmentModule } from '../restaurant-enrichment/restaurant-enrichment.module';
 import { EntityResolverModule } from '../content-processing/entity-resolver/entity-resolver.module';
 import { PublicCraveScoreModule } from '../content-processing/public-crave-score';
 import { LLMModule } from '../external-integrations/llm/llm.module';
@@ -20,7 +20,7 @@ import { PollAggregationService } from './poll-aggregation.service';
 import { PollLifecycleService } from './poll-lifecycle.service';
 import { PollGraduationService } from './poll-graduation.service';
 import { PollEntitySeedService } from './poll-entity-seed.service';
-import { RestaurantMentionsService } from './restaurant-mentions.service';
+import { PlaceMentionsService } from './restaurant-mentions.service';
 import { DemandMassReader } from './supply/demand-mass.reader';
 import { PollSupplyEstimators } from './supply/poll-supply-estimators';
 import { PollWeeklyRitualService } from './supply/poll-weekly-ritual.service';
@@ -35,7 +35,7 @@ import { PollBallotMentionService } from './supply/poll-ballot-mention.service';
     NotificationsModule,
     forwardRef(() => SearchModule),
     IdentityModule,
-    RestaurantEnrichmentModule,
+    PlaceEnrichmentModule,
     EntityResolverModule,
     PublicCraveScoreModule,
     LLMModule,
@@ -48,7 +48,7 @@ import { PollBallotMentionService } from './supply/poll-ballot-mention.service';
   controllers: [PollsController],
   providers: [
     PollsService,
-    RestaurantMentionsService,
+    PlaceMentionsService,
     PollEntitySeedService,
     PollsGateway,
     PollAggregationService,

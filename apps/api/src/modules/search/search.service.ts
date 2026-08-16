@@ -16,12 +16,12 @@ import { LoggerService, TextSanitizerService } from '../../shared';
 import { JudgedVocabularyService } from '../content-processing/entity-resolver/judged-vocabulary.service';
 import {
   EntityScope,
-  FoodResultDto,
+  ItemResultDto,
   QueryEntityDto,
   QueryPlan,
   SearchQueryRequestDto,
-  RestaurantResultDto,
-  RestaurantProfileDto,
+  PlaceResultDto,
+  PlaceProfileDto,
   SearchResponseDto,
   SearchResponseMetadataDto,
   PaginationDto,
@@ -44,7 +44,7 @@ import {
   ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES,
 } from './on-demand-tuning.constants';
 import { admitsForExpansion } from './evidence-admission';
-import type { FoodGrounding, SearchConstraints } from './search-constraints';
+import type { ItemGrounding, SearchConstraints } from './search-constraints';
 import { compileQueryPlanFromConstraints } from './search-constraints.compiler';
 import {
   OnDemandRequestService,
@@ -57,8 +57,8 @@ import { PlacesCatalogService } from '../places/places-catalog.service';
 import { PlacesPromotionService } from '../places/places-promotion.service';
 import { PlacesReconcilerService } from '../places/places-reconciler.service';
 import { type GeoBbox } from '@crave-search/shared';
-import { RestaurantStatusService } from './restaurant-status.service';
-import type { RestaurantStatusPreviewDto } from './dto/restaurant-status-preview.dto';
+import { PlaceStatusService } from './restaurant-status.service';
+import type { PlaceStatusPreviewDto } from './dto/restaurant-status-preview.dto';
 import { renderInlinedSql } from './sql-preview';
 import { isProdEnv, resolveAppEnv } from '../../shared/config/app-env';
 import {
@@ -73,20 +73,20 @@ import {
   evaluateOperatingStatus,
 } from './utils/restaurant-status';
 
-type RestaurantDishRow = {
+type PlaceDishRow = {
   connection_id: string;
-  restaurant_id: string;
-  food_id: string;
-  food_attributes: string[];
+  place_id: string;
+  item_id: string;
+  item_attributes: string[];
   mention_count: number;
   total_upvotes: number;
   last_mentioned_at: Date | null;
   crave_score: unknown;
   rising: unknown;
-  restaurant_crave_score: unknown;
-  restaurant_name: string;
-  restaurant_price_level: number | null;
-  food_name: string;
+  place_crave_score: unknown;
+  place_name: string;
+  place_price_level: number | null;
+  item_name: string;
 };
 
 const DEFAULT_RESULT_LIMIT = 100;
@@ -100,27 +100,27 @@ interface PaginationState {
 }
 
 interface EntityPresenceSummary {
-  restaurants: number;
-  food: number;
-  foodAttributes: number;
-  restaurantAttributes: number;
+  places: number;
+  items: number;
+  itemAttributes: number;
+  placeAttributes: number;
 }
 
 interface PlanExpansionState {
-  foodIds: string[];
-  foodAttributeIds: string[];
-  restaurantAttributeIds: string[];
-  foodIdsFromPrimaryFoodAttributeText: string[];
+  itemIds: string[];
+  itemAttributeIds: string[];
+  placeAttributeIds: string[];
+  itemIdsFromPrimaryItemAttributeText: string[];
   // Dense sibling co-inclusion (precomputed mutual-rank edges — see
   // SearchSiblingExpansionService). Kept as its OWN field, not folded into
   // foodIds: attribution stays clean in metadata/debug, lexical expansion can
   // dedupe against it, and a future relevancy sort needs exact-vs-sibling ids
   // distinguishable.
-  denseSiblingFoodIds: string[];
+  denseSiblingItemIds: string[];
   // Canonical category members of the EXACT query foods (one-hop; see
-  // getCategoryMemberFoodIds). Replaces the per-connection `c.categories &&`
+  // getCategoryMemberItemIds). Replaces the per-connection `c.categories &&`
   // SQL arm — membership is resolved at plan time from the per-food edge table.
-  categoryMemberFoodIds: string[];
+  categoryMemberItemIds: string[];
   /** Same-named ingredient entities of the query foods (twin union — the
    *  builder ORs their containment into the food clause). */
   twinIngredientIds: string[];
@@ -130,7 +130,7 @@ interface PlanExpansionState {
   // cosine whose family ceilings span ~0.77–0.95), lexical variants carry their
   // match similarity, is-a instances are 1.0. Attached to result rows for the
   // future relevancy treatment; unread by ranking today.
-  relevanceByFoodId: Record<string, number>;
+  relevanceByItemId: Record<string, number>;
 }
 
 type DualExecutionResult = Awaited<
@@ -152,7 +152,7 @@ type SearchExplainInput = {
   pooledCounts: {
     restaurantsOnPage: number;
     dishesOnPage: number;
-    totalRestaurants: number;
+    totalPlaces: number;
     totalDishes: number;
   };
   // CUTOVER 2026-08-02: relaxation is gone (one pooled execution). Only the
@@ -172,7 +172,7 @@ export type SearchHistoryEntry = {
   lastSearchedAt: string;
   selectedEntityId: string | null;
   selectedEntityType: EntityType | null;
-  statusPreview?: RestaurantStatusPreviewDto | null;
+  statusPreview?: PlaceStatusPreviewDto | null;
 };
 
 /** Merge two relevance maps keeping the STRONGER signal per food id. */
@@ -211,7 +211,7 @@ export class SearchService {
    *  that used to sit here described a step-3 rollout flag deleted with the
    *  ladder — CUTOVER 2026-08-02; there is one pooled execution now.) */
   private readonly expansionStrictCoverageTarget: number;
-  private readonly expansionFoodCap: number;
+  private readonly expansionItemCap: number;
   private readonly expansionAttributeCap: number;
   private readonly expansionMaxTermsPerType: number;
   private readonly denseSiblingsCut: SiblingCutOptions;
@@ -228,7 +228,7 @@ export class SearchService {
     private readonly textSanitizer: TextSanitizerService,
     private readonly prisma: PrismaService,
     private readonly engineCoverage: EngineCoverageService,
-    private readonly restaurantStatusService: RestaurantStatusService,
+    private readonly placeStatusService: PlaceStatusService,
     private readonly signals: SignalsService,
     private readonly signalDemandRead: SignalDemandReadService,
     private readonly placesCatalog: PlacesCatalogService,
@@ -247,7 +247,7 @@ export class SearchService {
     this.debugMode = resolveSearchDebugMode();
     this.expansionStrictCoverageTarget =
       this.resolveExpansionStrictCoverageTarget();
-    this.expansionFoodCap = this.resolveExpansionFoodCap();
+    this.expansionItemCap = this.resolveExpansionItemCap();
     this.expansionAttributeCap = this.resolveExpansionAttributeCap();
     this.expansionMaxTermsPerType = this.resolveExpansionMaxTermsPerType();
     this.denseSiblingsCut = this.resolveDenseSiblingsCut();
@@ -270,7 +270,7 @@ export class SearchService {
 
     this.logger.debug('Generated query plan', {
       format: plan.format,
-      restaurantFilterCount: plan.restaurantFilters.length,
+      placeFilterCount: plan.placeFilters.length,
       connectionFilterCount: plan.connectionFilters.length,
     });
 
@@ -309,23 +309,23 @@ export class SearchService {
     const { plan, sqlPreview } = this.buildPlanResponse(request);
     const pagination = this.resolvePagination(request.pagination);
 
-    const primaryFoodTermRaw =
-      request.entities.food?.[0]?.originalText ??
-      request.entities.food?.[0]?.normalizedName ??
+    const primaryItemTermRaw =
+      request.entities.items?.[0]?.originalText ??
+      request.entities.items?.[0]?.normalizedName ??
       null;
-    const primaryFoodTerm = primaryFoodTermRaw
-      ? primaryFoodTermRaw.trim()
+    const primaryItemTerm = primaryItemTermRaw
+      ? primaryItemTermRaw.trim()
       : null;
 
     return {
       format: plan.format,
       plan,
       dishes: [],
-      restaurants: [],
+      places: [],
       sqlPreview,
       metadata: {
-        totalFoodResults: 0,
-        totalRestaurantResults: 0,
+        totalItemResults: 0,
+        totalPlaceResults: 0,
         queryExecutionTimeMs: Date.now() - start,
         searchRequestId,
         boundsApplied: false,
@@ -336,7 +336,7 @@ export class SearchService {
         page: pagination.page,
         pageSize: pagination.pageSize,
         resultCoverageStatus: 'unresolved',
-        primaryFoodTerm: primaryFoodTerm || undefined,
+        primaryItemTerm: primaryItemTerm || undefined,
         emptyQueryMessage: options.emptyQueryMessage,
       },
     };
@@ -437,11 +437,11 @@ export class SearchService {
     // goes through this memoized reader.
     const widening = this.siblingExpansion.forRequest();
     {
-      const anchorFoodIds = this.collectEntityIds(request.entities.food);
-      if (anchorFoodIds.length) {
+      const anchorItemIds = this.collectEntityIds(request.entities.items);
+      if (anchorItemIds.length) {
         const [
-          edgeMemberFoodIds,
-          nameVariantFoodIds,
+          edgeMemberItemIds,
+          nameVariantItemIds,
           twinIngredientIds,
           siblingMatches,
           judgedRelations,
@@ -449,39 +449,39 @@ export class SearchService {
           // Category members apply on EVERY search (they replace the old
           // per-connection `c.categories &&` SQL arm) — one-hop: resolved
           // from the exact query foods only.
-          widening.getCategoryMemberFoodIds(anchorFoodIds),
+          widening.getCategoryMemberItemIds(anchorItemIds),
           // Name-containment failsafe (owner ruling 2026-07-25): 57% of
           // name-evident variants lacked a category edge — a dish literally
           // SAYING the word is instance evidence, same tier as edges.
-          widening.getNameContainmentVariantFoodIds(anchorFoodIds),
+          widening.getNameContainmentVariantItemIds(anchorItemIds),
           // Twin-ingredient union: "burrata" the food also means dishes
           // CONTAINING burrata (the builder ORs containment in).
-          widening.getSameNamedIngredientIds(anchorFoodIds),
+          widening.getSameNamedIngredientIds(anchorItemIds),
           this.siblingsWanted(request, 'preProbe')
-            ? widening.getSiblingFoodIds(anchorFoodIds, this.denseSiblingsCut)
+            ? widening.getSiblingItemIds(anchorItemIds, this.denseSiblingsCut)
             : Promise.resolve([] as { siblingId: string; relevance: number }[]),
           // LLM-judged substitutability (concept-graph rung 4) — the residual
           // that grammar and the category graph could not decide. `satisfies`
           // is a tier-0 claim, `cousin` rides the tier-1 widened set.
-          widening.getSatisfiesFoodIds(anchorFoodIds),
+          widening.getSatisfiesItemIds(anchorItemIds),
         ]);
         // Head-final name variants ARE the thing (tier 0 with verified
         // category members); terms that merely mention the query food
         // ("pizza sauce") are related, so they ride the tier-1 widened set.
-        const categoryMemberFoodIds = Array.from(
+        const categoryMemberItemIds = Array.from(
           new Set([
-            ...edgeMemberFoodIds,
-            ...nameVariantFoodIds.isVariantOf,
+            ...edgeMemberItemIds,
+            ...nameVariantItemIds.isVariantOf,
             // A judged `satisfies` is the same class of claim as a verified
             // category member or a head-final variant: it IS what was asked
             // for, so it belongs in the front section.
             ...judgedRelations.satisfies,
           ]),
         );
-        const denseSiblingFoodIds = Array.from(
+        const denseSiblingItemIds = Array.from(
           new Set([
             ...siblingMatches.map((s) => s.siblingId),
-            ...nameVariantFoodIds.mentionsIt,
+            ...nameVariantItemIds.mentionsIt,
             // COUSINS RIDE THE SAME GATE AS DENSE SIBLINGS. A cousin is by
             // definition a DIFFERENT craving, which is exactly the class
             // `siblingsWanted` exists to suppress — admitting them
@@ -493,41 +493,41 @@ export class SearchService {
           ]),
         );
         if (
-          categoryMemberFoodIds.length ||
-          denseSiblingFoodIds.length ||
+          categoryMemberItemIds.length ||
+          denseSiblingItemIds.length ||
           twinIngredientIds.length
         ) {
-          const relevanceByFoodId: Record<string, number> = {};
-          for (const id of categoryMemberFoodIds) relevanceByFoodId[id] = 1;
+          const relevanceByItemId: Record<string, number> = {};
+          for (const id of categoryMemberItemIds) relevanceByItemId[id] = 1;
           for (const s of siblingMatches)
-            relevanceByFoodId[s.siblingId] = s.relevance;
-          for (const id of nameVariantFoodIds.mentionsIt)
-            relevanceByFoodId[id] = relevanceByFoodId[id] ?? 1;
+            relevanceByItemId[s.siblingId] = s.relevance;
+          for (const id of nameVariantItemIds.mentionsIt)
+            relevanceByItemId[id] = relevanceByItemId[id] ?? 1;
           // A `satisfies` IS the thing asked for, so it carries the same 1
           // as a verified category member. A cousin is NOT, and must not be
           // handed the same value as an exact match — measured siblings carry
           // a ceiling-normalized cosine below 1, so a cousin at 1 would
           // outrank every real sibling.
           for (const id of judgedRelations.satisfies)
-            relevanceByFoodId[id] = relevanceByFoodId[id] ?? 1;
+            relevanceByItemId[id] = relevanceByItemId[id] ?? 1;
           for (const id of judgedRelations.cousin)
-            relevanceByFoodId[id] = relevanceByFoodId[id] ?? COUSIN_RELEVANCE;
+            relevanceByItemId[id] = relevanceByItemId[id] ?? COUSIN_RELEVANCE;
           planExpansion = {
-            foodIds: [],
-            foodAttributeIds: [],
-            restaurantAttributeIds: [],
-            foodIdsFromPrimaryFoodAttributeText: [],
-            denseSiblingFoodIds,
-            categoryMemberFoodIds,
+            itemIds: [],
+            itemAttributeIds: [],
+            placeAttributeIds: [],
+            itemIdsFromPrimaryItemAttributeText: [],
+            denseSiblingItemIds,
+            categoryMemberItemIds,
             twinIngredientIds,
-            relevanceByFoodId,
+            relevanceByItemId,
           };
           if (this.debugMode !== 'off') {
             this.logger.info('Search debug: pre-probe food widening seeded', {
               searchRequestId,
-              anchors: anchorFoodIds.length,
-              categoryMembers: categoryMemberFoodIds.length,
-              siblings: denseSiblingFoodIds.length,
+              anchors: anchorItemIds.length,
+              categoryMembers: categoryMemberItemIds.length,
+              siblings: denseSiblingItemIds.length,
             });
           }
         }
@@ -535,7 +535,7 @@ export class SearchService {
     }
 
     const executeStage = async (params: {
-      restaurantPagination: { skip: number; take: number };
+      placePagination: { skip: number; take: number };
       dishPagination: { skip: number; take: number };
       includeSqlPreview?: boolean;
     }): Promise<StageExecutionResult> => {
@@ -546,7 +546,7 @@ export class SearchService {
         planExpansion,
         widening,
         pagination,
-        restaurantPagination: params.restaurantPagination,
+        placePagination: params.placePagination,
         dishPagination: params.dishPagination,
         topDishesLimit: TOP_DISHES_LIMIT,
         threshold: POOLED_COVERAGE_THRESHOLD,
@@ -563,7 +563,7 @@ export class SearchService {
     const pooledPagination = pagination;
 
     let pooledPage = await executeStage({
-      restaurantPagination: pooledPagination,
+      placePagination: pooledPagination,
       dishPagination: pooledPagination,
       // Red team 2026-08-09 (#6): this was hardcoded false since 2026-07-24,
       // so /search/run could NEVER emit the preview its own gate approved —
@@ -577,9 +577,9 @@ export class SearchService {
     // strict-equivalent is the TIER-0 (all-words) count (red team C4) —
     // otherwise thin queries never expand, exactly the ring they need.
     const pooledCoverageCount = pooledPage.exec.pooledFullCounts
-      ? pooledPage.exec.pooledFullCounts.restaurants +
+      ? pooledPage.exec.pooledFullCounts.places +
         pooledPage.exec.pooledFullCounts.dishes
-      : pooledPage.exec.totalRestaurantCount + pooledPage.exec.totalDishCount;
+      : pooledPage.exec.totalPlaceCount + pooledPage.exec.totalDishCount;
     const unresolvedGroups =
       request.submissionContext?.unresolvedEntities ?? [];
     const hasUnresolvedTerms = unresolvedGroups.some(
@@ -590,9 +590,9 @@ export class SearchService {
         searchRequestId,
         pooledCoverageCount,
         pooledCounts: {
-          restaurantsOnPage: pooledPage.exec.restaurants.length,
+          restaurantsOnPage: pooledPage.exec.places.length,
           dishesOnPage: pooledPage.exec.dishes.length,
-          totalRestaurants: pooledPage.exec.totalRestaurantCount,
+          totalPlaces: pooledPage.exec.totalPlaceCount,
           totalDishes: pooledPage.exec.totalDishCount,
         },
         planMs: Math.round(pooledPage.timings.planMs),
@@ -655,33 +655,33 @@ export class SearchService {
       if (expansionResult && this.hasPlanExpansion(expansionResult)) {
         // Preserve an 'always'-mode sibling seed: the expansion object owns the
         // lexical adds; the seeded dense siblings ride along (union, deduped).
-        const seededSiblings = planExpansion?.denseSiblingFoodIds ?? [];
+        const seededSiblings = planExpansion?.denseSiblingItemIds ?? [];
         const seededCategoryMembers =
-          planExpansion?.categoryMemberFoodIds ?? [];
+          planExpansion?.categoryMemberItemIds ?? [];
         planExpansion = {
           ...expansionResult,
           // Twins are seeded pre-probe only — the lexical expansionResult
           // carries [], so preserve the seeded set.
           twinIngredientIds: planExpansion?.twinIngredientIds ?? [],
-          denseSiblingFoodIds: Array.from(
+          denseSiblingItemIds: Array.from(
             new Set([
               ...seededSiblings,
-              ...expansionResult.denseSiblingFoodIds,
+              ...expansionResult.denseSiblingItemIds,
             ]),
           ),
-          categoryMemberFoodIds: Array.from(
+          categoryMemberItemIds: Array.from(
             new Set([
               ...seededCategoryMembers,
-              ...expansionResult.categoryMemberFoodIds,
+              ...expansionResult.categoryMemberItemIds,
             ]),
           ),
           // MAX-merge, never overwrite: a tier-0 category member that ALSO
           // returns as a weak lexical match must keep its stronger
           // relevance (a blind spread let 0.5 clobber 1.0 — display-only,
           // but the number the client shows should be the best evidence).
-          relevanceByFoodId: mergeRelevanceMax(
-            planExpansion?.relevanceByFoodId ?? {},
-            expansionResult.relevanceByFoodId,
+          relevanceByItemId: mergeRelevanceMax(
+            planExpansion?.relevanceByItemId ?? {},
+            expansionResult.relevanceByItemId,
           ),
         };
         expansionAnalysisMetadata = this.buildExpansionMetadata(
@@ -704,25 +704,27 @@ export class SearchService {
               hasUnresolvedTerms,
             },
             added: {
-              foods: planExpansion.foodIds.length,
-              foodAttributes: planExpansion.foodAttributeIds.length,
-              restaurantAttributes: planExpansion.restaurantAttributeIds.length,
-              foodsFromPrimaryFoodAttributeText:
-                planExpansion.foodIdsFromPrimaryFoodAttributeText.length,
-              denseSiblingFoods: planExpansion.denseSiblingFoodIds.length,
+              items: planExpansion.itemIds.length,
+              itemAttributes: planExpansion.itemAttributeIds.length,
+              placeAttributes: planExpansion.placeAttributeIds.length,
+              foodsFromPrimaryItemAttributeText:
+                planExpansion.itemIdsFromPrimaryItemAttributeText.length,
+              denseSiblingItems: planExpansion.denseSiblingItemIds.length,
             },
             samples:
               this.debugMode === 'verbose'
                 ? {
-                    foodIds: planExpansion.foodIds.slice(0, 20),
-                    foodAttributeIds: planExpansion.foodAttributeIds.slice(
+                    itemIds: planExpansion.itemIds.slice(0, 20),
+                    itemAttributeIds: planExpansion.itemAttributeIds.slice(
                       0,
                       20,
                     ),
-                    restaurantAttributeIds:
-                      planExpansion.restaurantAttributeIds.slice(0, 20),
-                    foodIdsFromPrimaryFoodAttributeText:
-                      planExpansion.foodIdsFromPrimaryFoodAttributeText.slice(
+                    placeAttributeIds: planExpansion.placeAttributeIds.slice(
+                      0,
+                      20,
+                    ),
+                    itemIdsFromPrimaryItemAttributeText:
+                      planExpansion.itemIdsFromPrimaryItemAttributeText.slice(
                         0,
                         20,
                       ),
@@ -731,7 +733,7 @@ export class SearchService {
           });
         }
         pooledPage = await executeStage({
-          restaurantPagination: pooledPagination,
+          placePagination: pooledPagination,
           dishPagination: pooledPagination,
           includeSqlPreview,
         });
@@ -744,12 +746,12 @@ export class SearchService {
     // The probe ran with the request's real pagination — it IS the page.
     const pooledResult = pooledPage;
 
-    const primaryFoodTermRaw =
-      request.entities.food?.[0]?.originalText ??
-      request.entities.food?.[0]?.normalizedName ??
+    const primaryItemTermRaw =
+      request.entities.items?.[0]?.originalText ??
+      request.entities.items?.[0]?.normalizedName ??
       null;
-    const primaryFoodTerm = primaryFoodTermRaw
-      ? primaryFoodTermRaw.trim()
+    const primaryItemTerm = primaryItemTermRaw
+      ? primaryItemTermRaw.trim()
       : null;
 
     {
@@ -758,9 +760,9 @@ export class SearchService {
         Object.assign(phaseTimings, pooledResult.exec.timings);
       }
 
-      const totalRestaurantResults = pooledResult.exec.totalRestaurantCount;
-      const totalFoodResults = pooledResult.exec.totalDishCount;
-      const totalResults = totalFoodResults + totalRestaurantResults;
+      const totalPlaceResults = pooledResult.exec.totalPlaceCount;
+      const totalItemResults = pooledResult.exec.totalDishCount;
+      const totalResults = totalItemResults + totalPlaceResults;
 
       const viewportEligible = this.isViewportEligibleForOnDemand(
         request.bounds,
@@ -797,17 +799,14 @@ export class SearchService {
         }
       }
       const shouldTriggerOnDemand =
-        this.shouldTriggerOnDemand(
-          request,
-          plan.format,
-          totalRestaurantResults,
-        ) || Boolean(starved);
+        this.shouldTriggerOnDemand(request, plan.format, totalPlaceResults) ||
+        Boolean(starved);
       const onDemandResult = shouldTriggerOnDemand
         ? await this.recordLowResultOnDemand({
             request,
             planFormat: plan.format,
-            restaurantCount: totalRestaurantResults,
-            dishCount: totalFoodResults,
+            placeCount: totalPlaceResults,
+            dishCount: totalItemResults,
             viewportEligible,
             onDemandEngineContext,
             expansionSignals: expansionAnalysisMetadata,
@@ -819,8 +818,8 @@ export class SearchService {
 
       const resultCoverageStatus = this.calculateCoverageStatus({
         request,
-        totalFoodResults,
-        totalRestaurantResults,
+        totalItemResults,
+        totalPlaceResults,
         triggeredOnDemand: onDemandQueued,
       });
 
@@ -830,13 +829,13 @@ export class SearchService {
       // say NOTHING — the one case where we know exactly what the user meant
       // and exactly why the page is empty. State it: found, but not near you.
       const outOfViewportMessage =
-        totalFoodResults + totalRestaurantResults === 0
+        totalItemResults + totalPlaceResults === 0
           ? await this.buildOutOfViewportMessage(request)
           : null;
 
       const metadata: SearchResponseMetadataDto = {
-        totalFoodResults,
-        totalRestaurantResults,
+        totalItemResults,
+        totalPlaceResults,
         queryExecutionTimeMs: Date.now() - start,
         searchRequestId,
         boundsApplied: pooledResult.exec.metadata.boundsApplied,
@@ -846,7 +845,7 @@ export class SearchService {
         page: pagination.page,
         pageSize: pagination.pageSize,
         resultCoverageStatus,
-        primaryFoodTerm: primaryFoodTerm || undefined,
+        primaryItemTerm: primaryItemTerm || undefined,
         // ENGINE-COVERAGE (leg 2): raw territory-ground share of the
         // viewport + the engines present. Consumers judge per their own
         // law (§16 — no threshold baked here); nothing market-shaped.
@@ -869,9 +868,9 @@ export class SearchService {
         hasUnresolvedTerms,
         planExpansion,
         pooledCounts: {
-          restaurantsOnPage: pooledResult.exec.restaurants.length,
+          restaurantsOnPage: pooledResult.exec.places.length,
           dishesOnPage: pooledResult.exec.dishes.length,
-          totalRestaurants: pooledResult.exec.totalRestaurantCount,
+          totalPlaces: pooledResult.exec.totalPlaceCount,
           totalDishes: pooledResult.exec.totalDishCount,
         },
         pooledCoverage: { threshold: POOLED_COVERAGE_THRESHOLD },
@@ -892,8 +891,8 @@ export class SearchService {
           this.recordQueryImpressions(request, {
             searchRequestId,
             totalResults,
-            totalFoodResults,
-            totalRestaurantResults,
+            totalItemResults,
+            totalPlaceResults,
             queryExecutionTimeMs: metadata.queryExecutionTimeMs,
             resultCoverageStatus,
           });
@@ -909,7 +908,7 @@ export class SearchService {
 
       this.logger.debug('Search query executed', {
         dishCount: pooledResult.exec.dishes.length,
-        restaurantCount: pooledResult.exec.restaurants.length,
+        placeCount: pooledResult.exec.places.length,
         metadata,
       });
 
@@ -919,13 +918,13 @@ export class SearchService {
           queryExecutionTimeMs: metadata.queryExecutionTimeMs,
           resultCoverageStatus: metadata.resultCoverageStatus,
           totals: {
-            totalRestaurantResults,
-            totalFoodResults,
+            totalPlaceResults,
+            totalItemResults,
           },
           onDemandQueued: metadata.onDemandQueued ?? false,
           onDemandEtaMs: metadata.onDemandEtaMs ?? null,
           pooledCounts: {
-            restaurantsOnPage: pooledResult.exec.restaurants.length,
+            restaurantsOnPage: pooledResult.exec.places.length,
             dishesOnPage: pooledResult.exec.dishes.length,
           },
           phaseTimings:
@@ -943,7 +942,7 @@ export class SearchService {
         format: plan.format,
         plan,
         dishes: pooledResult.exec.dishes,
-        restaurants: pooledResult.exec.restaurants,
+        places: pooledResult.exec.places,
         sqlPreview: includeSqlPreview
           ? (pooledResult.exec.sqlPreview ?? null)
           : null,
@@ -970,14 +969,12 @@ export class SearchService {
   private buildCompactSearchResponse(
     response: SearchResponseDto,
   ): SearchResponseDto {
-    const restaurants = Array.isArray(response.restaurants)
-      ? response.restaurants.map((restaurant) =>
-          this.compactRestaurantResult(restaurant),
-        )
+    const places = Array.isArray(response.places)
+      ? response.places.map((place) => this.compactPlaceResult(place))
       : [];
     return {
       ...response,
-      restaurants,
+      places,
       metadata: {
         ...response.metadata,
         analysisMetadata: undefined,
@@ -985,21 +982,18 @@ export class SearchService {
     };
   }
 
-  private compactRestaurantResult(
-    restaurant: RestaurantResultDto,
-  ): RestaurantResultDto {
-    const displayLocation = this.compactRestaurantLocation(
-      restaurant.displayLocation ?? null,
+  private compactPlaceResult(place: PlaceResultDto): PlaceResultDto {
+    const displayLocation = this.compactPlaceLocation(
+      place.displayLocation ?? null,
     );
-    const compactLocations = Array.isArray(restaurant.locations)
-      ? restaurant.locations
-          .map((location) => this.compactRestaurantLocation(location))
+    const compactLocations = Array.isArray(place.locations)
+      ? place.locations
+          .map((location) => this.compactPlaceLocation(location))
           .filter(
             (
               location,
-            ): location is NonNullable<
-              RestaurantResultDto['displayLocation']
-            > => location != null,
+            ): location is NonNullable<PlaceResultDto['displayLocation']> =>
+              location != null,
           )
       : [];
     const locations =
@@ -1010,22 +1004,20 @@ export class SearchService {
           : [];
 
     return {
-      ...restaurant,
+      ...place,
       displayLocation,
       locations,
       locationCount:
-        typeof restaurant.locationCount === 'number'
-          ? restaurant.locationCount
+        typeof place.locationCount === 'number'
+          ? place.locationCount
           : locations.length,
-      topFood: Array.isArray(restaurant.topFood)
-        ? restaurant.topFood.slice(0, 3)
-        : [],
+      topItem: Array.isArray(place.topItem) ? place.topItem.slice(0, 3) : [],
     };
   }
 
-  private compactRestaurantLocation(
-    location: RestaurantResultDto['displayLocation'] | null | undefined,
-  ): NonNullable<RestaurantResultDto['displayLocation']> | null {
+  private compactPlaceLocation(
+    location: PlaceResultDto['displayLocation'] | null | undefined,
+  ): NonNullable<PlaceResultDto['displayLocation']> | null {
     if (!location) {
       return null;
     }
@@ -1042,17 +1034,17 @@ export class SearchService {
     };
   }
 
-  async listRestaurantDishes(restaurantId: string): Promise<FoodResultDto[]> {
+  async listPlaceDishes(placeId: string): Promise<ItemResultDto[]> {
     // Same redirect-hop + archived guard as getRestaurantProfile (HIGH-3).
     const redirect = await this.prisma.entityRedirect.findUnique({
-      where: { fromEntityId: restaurantId },
+      where: { fromEntityId: placeId },
       select: { toEntityId: true },
     });
-    const resolvedId = redirect?.toEntityId ?? restaurantId;
+    const resolvedId = redirect?.toEntityId ?? placeId;
     const host = await this.prisma.entity.findFirst({
       where: {
         entityId: resolvedId,
-        type: EntityType.restaurant,
+        type: EntityType.place,
         status: { not: EntityStatus.archived },
       },
       select: { entityId: true },
@@ -1060,7 +1052,7 @@ export class SearchService {
     if (!host) {
       return [];
     }
-    restaurantId = host.entityId;
+    placeId = host.entityId;
     const toNumber = (value: unknown): number | null => {
       if (typeof value === 'number' && Number.isFinite(value)) {
         return value;
@@ -1084,21 +1076,21 @@ export class SearchService {
     };
 
     const startedAt = Date.now();
-    const rows = await this.prisma.$queryRaw<RestaurantDishRow[]>(Prisma.sql`
+    const rows = await this.prisma.$queryRaw<PlaceDishRow[]>(Prisma.sql`
       SELECT
         c.connection_id AS connection_id,
-        c.restaurant_id AS restaurant_id,
-        c.food_id AS food_id,
-        c.food_attributes AS food_attributes,
+        c.restaurant_id AS place_id,
+        c.food_id AS item_id,
+        c.food_attributes AS item_attributes,
         c.mention_count AS mention_count,
         c.total_upvotes AS total_upvotes,
         c.last_mentioned_at AS last_mentioned_at,
 	        pcs.display_score AS crave_score,
 	        pcs.rising AS rising,
-	        prs.display_score AS restaurant_crave_score,
-	        r.name AS restaurant_name,
-        r.price_level AS restaurant_price_level,
-        f.name AS food_name
+	        prs.display_score AS place_crave_score,
+	        r.name AS place_name,
+        r.price_level AS place_price_level,
+        f.name AS item_name
       FROM core_restaurant_items c
 	      JOIN core_public_entity_scores pcs
 	        ON pcs.subject_type = 'connection'
@@ -1110,7 +1102,7 @@ export class SearchService {
         ON r.entity_id = c.restaurant_id
       JOIN core_entities f
         ON f.entity_id = c.food_id
-      WHERE c.restaurant_id = ${restaurantId}::uuid
+      WHERE c.restaurant_id = ${placeId}::uuid
         -- Rollup rows (is_category_item) exist ONLY as parents of more
         -- specific dishes at this restaurant (projection-rebuild mints them
         -- from child connections) — serving them as dish rows duplicates
@@ -1137,7 +1129,7 @@ export class SearchService {
     `);
 
     this.logger.debug('Loaded restaurant dishes', {
-      restaurantId,
+      placeId,
       count: rows.length,
       durationMs: Date.now() - startedAt,
     });
@@ -1149,10 +1141,10 @@ export class SearchService {
       );
       return {
         connectionId: row.connection_id,
-        foodId: row.food_id,
-        foodName: row.food_name,
-        restaurantId: row.restaurant_id,
-        restaurantName: row.restaurant_name,
+        itemId: row.item_id,
+        itemName: row.item_name,
+        placeId: row.place_id,
+        placeName: row.place_name,
         scoreSubjectType: 'connection',
         scoreSubjectId: row.connection_id,
         craveScore,
@@ -1162,29 +1154,27 @@ export class SearchService {
         lastMentionedAt: row.last_mentioned_at
           ? row.last_mentioned_at.toISOString()
           : null,
-        foodAttributes: Array.isArray(row.food_attributes)
-          ? row.food_attributes
+        itemAttributes: Array.isArray(row.item_attributes)
+          ? row.item_attributes
           : [],
-        restaurantPriceLevel:
-          typeof row.restaurant_price_level === 'number'
-            ? row.restaurant_price_level
+        placePriceLevel:
+          typeof row.place_price_level === 'number'
+            ? row.place_price_level
             : null,
-        restaurantPriceSymbol: null,
-        restaurantDistanceMiles: null,
-        restaurantOperatingStatus: null,
-        restaurantCraveScore: toRequiredPublicScore(
-          row.restaurant_crave_score,
-          `restaurant:${row.restaurant_id}`,
+        placePriceSymbol: null,
+        placeDistanceMiles: null,
+        placeOperatingStatus: null,
+        placeCraveScore: toRequiredPublicScore(
+          row.place_crave_score,
+          `restaurant:${row.place_id}`,
         ),
-        restaurantLatitude: null,
-        restaurantLongitude: null,
+        placeLatitude: null,
+        placeLongitude: null,
       };
     });
   }
 
-  async getRestaurantProfile(
-    restaurantId: string,
-  ): Promise<RestaurantProfileDto | null> {
+  async getPlaceProfile(placeId: string): Promise<PlaceProfileDto | null> {
     const startedAt = Date.now();
     const referenceDate = new Date();
     const toOptionalNumber = (value: unknown): number | null => {
@@ -1238,14 +1228,14 @@ export class SearchService {
     // team HIGH-3 — executed: an archived merge loser rendered a full
     // profile).
     const redirect = await this.prisma.entityRedirect.findUnique({
-      where: { fromEntityId: restaurantId },
+      where: { fromEntityId: placeId },
       select: { toEntityId: true },
     });
-    const resolvedRestaurantId = redirect?.toEntityId ?? restaurantId;
-    const restaurant = await this.prisma.entity.findFirst({
+    const resolvedPlaceId = redirect?.toEntityId ?? placeId;
+    const place = await this.prisma.entity.findFirst({
       where: {
-        entityId: resolvedRestaurantId,
-        type: EntityType.restaurant,
+        entityId: resolvedPlaceId,
+        type: EntityType.place,
         status: { not: EntityStatus.archived },
       },
       select: {
@@ -1258,7 +1248,7 @@ export class SearchService {
         region: true,
         country: true,
         postalCode: true,
-        restaurantMetadata: true,
+        placeMetadata: true,
         primaryLocationId: true,
         priceLevel: true,
         priceLevelUpdatedAt: true,
@@ -1298,17 +1288,17 @@ export class SearchService {
       },
     });
 
-    if (!restaurant) {
+    if (!place) {
       return null;
     }
 
     // A restaurant's locations are a fact about the restaurant, not the
     // caller's market/camera (master plan §7): the profile is ALWAYS global.
     const [publicScore, aggregate, dishes] = await Promise.all([
-      this.getPublicRestaurantScore(restaurant.entityId),
+      this.getPublicPlaceScore(place.entityId),
       this.prisma.connection.aggregate({
         where: {
-          restaurantId: restaurant.entityId,
+          placeId: place.entityId,
           // Match listRestaurantDishes: rollup rows are not dishes, so the
           // profile's dish count must not count them either.
           isCategoryItem: false,
@@ -1321,21 +1311,21 @@ export class SearchService {
           _all: true,
         },
       }),
-      this.listRestaurantDishes(restaurant.entityId),
+      this.listPlaceDishes(place.entityId),
     ]);
 
-    type RestaurantProfileLocation = NonNullable<
-      RestaurantProfileDto['restaurant']['locations']
+    type PlaceProfileLocation = NonNullable<
+      PlaceProfileDto['place']['locations']
     >[number];
 
     const mapLocation = (
-      location: (typeof restaurant.locations)[number],
-    ): RestaurantProfileLocation => {
+      location: (typeof place.locations)[number],
+    ): PlaceProfileLocation => {
       const metadata = buildOperatingMetadata({
         hoursValue: location.hours,
         utcOffsetMinutesValue: location.utcOffsetMinutes,
         timeZoneValue: location.timeZone,
-        restaurantMetadataValue: restaurant.restaurantMetadata,
+        placeMetadataValue: place.placeMetadata,
       });
       const operatingStatus = metadata
         ? evaluateOperatingStatus(metadata, referenceDate)
@@ -1367,22 +1357,22 @@ export class SearchService {
       };
     };
 
-    const locationResults: RestaurantProfileLocation[] =
-      restaurant.locations.map(mapLocation);
+    const locationResults: PlaceProfileLocation[] =
+      place.locations.map(mapLocation);
     const fallbackMetadata = buildOperatingMetadata({
-      restaurantMetadataValue: restaurant.restaurantMetadata,
+      placeMetadataValue: place.placeMetadata,
     });
     if (locationResults.length === 0) {
       locationResults.push({
-        locationId: restaurant.primaryLocationId ?? restaurant.entityId,
+        locationId: place.primaryLocationId ?? place.entityId,
         googlePlaceId: null,
-        latitude: toOptionalNumber(restaurant.latitude),
-        longitude: toOptionalNumber(restaurant.longitude),
-        address: restaurant.address ?? null,
-        city: restaurant.city ?? null,
-        region: restaurant.region ?? null,
-        country: restaurant.country ?? null,
-        postalCode: restaurant.postalCode ?? null,
+        latitude: toOptionalNumber(place.latitude),
+        longitude: toOptionalNumber(place.longitude),
+        address: place.address ?? null,
+        city: place.city ?? null,
+        region: place.region ?? null,
+        country: place.country ?? null,
+        postalCode: place.postalCode ?? null,
         phoneNumber: null,
         websiteUrl: null,
         hours: asRecord(fallbackMetadata?.hours),
@@ -1407,27 +1397,27 @@ export class SearchService {
       locationResults.find((location) => location.isPrimary) ??
       locationResults[0] ??
       null;
-    const parsedPriceLevel = toOptionalNumber(restaurant.priceLevel);
+    const parsedPriceLevel = toOptionalNumber(place.priceLevel);
     const priceDetails = describePriceLevel(parsedPriceLevel);
     // Profile revamp (Google-parity): the metadata is already selected — surface the REAL
     // Google price range ("$10–20") and primary-type category ("Brunch restaurant") the
     // profile previously dropped.
-    const restaurantMeta = asRecord(restaurant.restaurantMetadata);
-    const priceRangeMeta = asRecord(restaurantMeta?.priceRange);
+    const placeMeta = asRecord(place.placeMetadata);
+    const priceRangeMeta = asRecord(placeMeta?.priceRange);
     const priceRangeText =
       typeof priceRangeMeta?.formattedText === 'string' &&
       priceRangeMeta.formattedText.trim()
         ? priceRangeMeta.formattedText.trim()
         : null;
     const categoryLabel =
-      typeof restaurantMeta?.primaryTypeDisplayName === 'string' &&
-      restaurantMeta.primaryTypeDisplayName.trim()
-        ? restaurantMeta.primaryTypeDisplayName.trim()
+      typeof placeMeta?.primaryTypeDisplayName === 'string' &&
+      placeMeta.primaryTypeDisplayName.trim()
+        ? placeMeta.primaryTypeDisplayName.trim()
         : null;
-    const topFood = dishes.slice(0, 10).map((dish) => ({
+    const topItem = dishes.slice(0, 10).map((dish) => ({
       connectionId: dish.connectionId,
-      foodId: dish.foodId,
-      foodName: dish.foodName,
+      itemId: dish.itemId,
+      itemName: dish.itemName,
       scoreSubjectType: 'connection' as const,
       scoreSubjectId: dish.connectionId,
       craveScore: dish.craveScore,
@@ -1437,48 +1427,46 @@ export class SearchService {
       typeof aggregate._count?._all === 'number'
         ? aggregate._count._all
         : dishes.length;
-    const profile: RestaurantProfileDto = {
-      restaurant: {
-        restaurantId: restaurant.entityId,
-        restaurantName: restaurant.name,
+    const profile: PlaceProfileDto = {
+      place: {
+        placeId: place.entityId,
+        placeName: place.name,
         scoreSubjectType: 'restaurant',
-        scoreSubjectId: restaurant.entityId,
+        scoreSubjectId: place.entityId,
         craveScore: toRequiredPublicScore(
           publicScore?.craveScore,
-          `restaurant:${restaurant.entityId}`,
+          `restaurant:${place.entityId}`,
         ),
         rising: publicScore?.rising ?? null,
         mentionCount: aggregate._sum.mentionCount ?? 0,
         totalUpvotes: aggregate._sum.totalUpvotes ?? 0,
-        latitude:
-          displayLocation?.latitude ?? toOptionalNumber(restaurant.latitude),
+        latitude: displayLocation?.latitude ?? toOptionalNumber(place.latitude),
         longitude:
-          displayLocation?.longitude ?? toOptionalNumber(restaurant.longitude),
-        address: displayLocation?.address ?? restaurant.address ?? null,
-        restaurantLocationId: displayLocation?.locationId ?? null,
+          displayLocation?.longitude ?? toOptionalNumber(place.longitude),
+        address: displayLocation?.address ?? place.address ?? null,
+        placeLocationId: displayLocation?.locationId ?? null,
         priceLevel: parsedPriceLevel ?? null,
         priceSymbol: priceDetails.symbol,
         priceText: priceDetails.text,
         priceRangeText,
         categoryLabel,
-        priceLevelUpdatedAt:
-          restaurant.priceLevelUpdatedAt?.toISOString() ?? null,
-        topFood,
+        priceLevelUpdatedAt: place.priceLevelUpdatedAt?.toISOString() ?? null,
+        topItem,
         totalDishCount,
         operatingStatus: displayLocation?.operatingStatus ?? null,
         distanceMiles: null,
         displayLocation: displayLocation ?? undefined,
         locations: locationResults,
         locationCount:
-          typeof restaurant._count.locations === 'number'
-            ? restaurant._count.locations
+          typeof place._count.locations === 'number'
+            ? place._count.locations
             : locationResults.length,
       },
       dishes,
     };
 
     this.logger.debug('Loaded restaurant profile', {
-      restaurantId: restaurant.entityId,
+      placeId: place.entityId,
       dishCount: dishes.length,
       durationMs: Date.now() - startedAt,
     });
@@ -1486,7 +1474,7 @@ export class SearchService {
     return profile;
   }
 
-  private async getPublicRestaurantScore(restaurantId: string): Promise<{
+  private async getPublicPlaceScore(placeId: string): Promise<{
     craveScore: number;
     rising: number | null;
   } | null> {
@@ -1520,7 +1508,7 @@ export class SearchService {
         rising AS "rising"
       FROM core_public_entity_scores
       WHERE subject_type = 'restaurant'
-        AND subject_id = ${restaurantId}::uuid
+        AND subject_id = ${placeId}::uuid
       LIMIT 1
     `);
 
@@ -1532,7 +1520,7 @@ export class SearchService {
     return {
       craveScore: toRequiredPublicScore(
         row.craveScore,
-        `restaurant:${restaurantId}`,
+        `restaurant:${placeId}`,
       ),
       rising: toOptionalNumber(row.rising),
     };
@@ -1543,19 +1531,19 @@ export class SearchService {
     constraints: SearchConstraints,
     planExpansion: PlanExpansionState | null,
   ): SearchExecutionDirectives | undefined {
-    const textFoodIds =
-      planExpansion?.foodIdsFromPrimaryFoodAttributeText ?? [];
-    const hasPrimaryFoodAttributeQuery = constraints.primaryFoodAttributeQuery;
-    const twinIngredientIds = constraints.grounding.food.twinIngredientIds;
-    if (!hasPrimaryFoodAttributeQuery && !twinIngredientIds.length) {
+    const textItemIds =
+      planExpansion?.itemIdsFromPrimaryItemAttributeText ?? [];
+    const hasPrimaryItemAttributeQuery = constraints.primaryItemAttributeQuery;
+    const twinIngredientIds = constraints.grounding.item.twinIngredientIds;
+    if (!hasPrimaryItemAttributeQuery && !twinIngredientIds.length) {
       return undefined;
     }
 
     return {
-      primaryFoodAttributeQuery: hasPrimaryFoodAttributeQuery || undefined,
-      primaryFoodAttributeTextFoodIds:
-        hasPrimaryFoodAttributeQuery && textFoodIds.length
-          ? textFoodIds
+      primaryItemAttributeQuery: hasPrimaryItemAttributeQuery || undefined,
+      primaryItemAttributeTextItemIds:
+        hasPrimaryItemAttributeQuery && textItemIds.length
+          ? textItemIds
           : undefined,
       twinIngredientIds: twinIngredientIds.length
         ? twinIngredientIds
@@ -1577,7 +1565,7 @@ export class SearchService {
     planExpansion: PlanExpansionState | null;
     widening: SiblingExpansionReader;
     pagination: PaginationState;
-    restaurantPagination: { skip: number; take: number };
+    placePagination: { skip: number; take: number };
     dishPagination: { skip: number; take: number };
     topDishesLimit: number;
     threshold: number;
@@ -1606,21 +1594,21 @@ export class SearchService {
     // (canDropFoodAttributes requires primary entities) and so do we:
     // the query runs as a plain strict single query, attributes as walls.
     const hasPrimarySubject =
-      constraints.ids.foodIds.length > 0 ||
-      constraints.ids.restaurantIds.length > 0 ||
+      constraints.ids.itemIds.length > 0 ||
+      constraints.ids.placeIds.length > 0 ||
       constraints.ids.ingredientIds.length > 0;
     // DoS bound (red team R4-P5): each soft id adds a full re-scan arm to
     // the count query (+~85ms each, attacker-controlled by attribute word
     // count). 8 covers every real query shape; beyond it the extra words
     // still filter via provenance of the first 8.
     const SOFT_ID_CAP = 8;
-    const softFoodAttributeIds = hasPrimarySubject
-      ? constraints.ids.foodAttributeIds
+    const softItemAttributeIds = hasPrimarySubject
+      ? constraints.ids.itemAttributeIds
           .filter((id) => !dietary.has(id))
           .slice(0, SOFT_ID_CAP)
       : [];
-    const softRestaurantAttributeIds = hasPrimarySubject
-      ? constraints.ids.restaurantAttributeIds
+    const softPlaceAttributeIds = hasPrimarySubject
+      ? constraints.ids.placeAttributeIds
           .filter((id) => !dietary.has(id))
           .slice(0, SOFT_ID_CAP)
       : [];
@@ -1637,25 +1625,25 @@ export class SearchService {
     // beside an unwalled map.
     const dietaryWalls = await this.dietaryConstraints.resolveDietaryWalls({
       dietary: params.request.dietary,
-      foodAttributeIds: constraints.ids.foodAttributeIds,
-      restaurantAttributeIds: constraints.ids.restaurantAttributeIds,
+      itemAttributeIds: constraints.ids.itemAttributeIds,
+      placeAttributeIds: constraints.ids.placeAttributeIds,
     });
 
     // Membership: soft ids move to provenance; dietary ids move to WALLS.
     // Presence bookkeeping is untouched — it describes the QUERY the user
     // asked, not the WHERE we execute.
     const softSet = new Set([
-      ...softFoodAttributeIds,
-      ...softRestaurantAttributeIds,
+      ...softItemAttributeIds,
+      ...softPlaceAttributeIds,
     ]);
     const pooledConstraints: SearchConstraints = {
       ...constraints,
       ids: {
         ...constraints.ids,
-        foodAttributeIds: constraints.ids.foodAttributeIds.filter(
+        itemAttributeIds: constraints.ids.itemAttributeIds.filter(
           (id) => !softSet.has(id) && !dietary.has(id),
         ),
-        restaurantAttributeIds: constraints.ids.restaurantAttributeIds.filter(
+        placeAttributeIds: constraints.ids.placeAttributeIds.filter(
           (id) => !softSet.has(id) && !dietary.has(id),
         ),
       },
@@ -1667,19 +1655,19 @@ export class SearchService {
     // rides the SAME dish scan as provenance tier 2 — counted, never
     // served. The Include-similar chip re-queries with the ring as tier-1
     // MEMBERS (the siblingsWanted path), so no second execution exists.
-    let similarFoodIds: string[] = [];
+    let similarItemIds: string[] = [];
     if (params.request.includeSimilar !== true) {
-      const anchorIds = this.collectEntityIds(params.request.entities.food);
+      const anchorIds = this.collectEntityIds(params.request.entities.items);
       if (anchorIds.length) {
-        const memberIds = new Set(constraints.ids.foodIds);
+        const memberIds = new Set(constraints.ids.itemIds);
         const [siblings, judged] = await Promise.all([
-          params.widening.getSiblingFoodIds(anchorIds, this.denseSiblingsCut),
+          params.widening.getSiblingItemIds(anchorIds, this.denseSiblingsCut),
           // Judged cousins (rung 4) belong in the ring alongside dense
           // siblings — they are the BETTER-vetted half of "adjacent things",
           // and the ring is what the auto-fill gate and the chip both read.
-          params.widening.getSatisfiesFoodIds(anchorIds),
+          params.widening.getSatisfiesItemIds(anchorIds),
         ]);
-        similarFoodIds = Array.from(
+        similarItemIds = Array.from(
           new Set([
             ...siblings.map((sibling) => sibling.siblingId),
             ...judged.cousin,
@@ -1692,7 +1680,7 @@ export class SearchService {
     // degenerates to the plain strict single query (an empty soft-id list
     // must not reach the builder — Prisma.join([]) throws).
     const hasSoftIds =
-      softFoodAttributeIds.length > 0 || softRestaurantAttributeIds.length > 0;
+      softItemAttributeIds.length > 0 || softPlaceAttributeIds.length > 0;
     const directives = {
       ...this.buildExecutionDirectives(
         params.request,
@@ -1700,34 +1688,34 @@ export class SearchService {
         params.planExpansion,
       ),
       ...(dietaryWalls.length ? { dietaryWalls } : {}),
-      ...(hasSoftIds || similarFoodIds.length
+      ...(hasSoftIds || similarItemIds.length
         ? {
             pooledGate: {
-              softFoodAttributeIds,
-              softRestaurantAttributeIds,
+              softItemAttributeIds,
+              softPlaceAttributeIds,
               // One page = what the CLIENT asked for (red team A3): a
               // pageSize above the default must not come back short
               // because the gate closed at 25.
               threshold: Math.max(
                 params.threshold,
                 params.dishPagination.take,
-                params.restaurantPagination.take,
+                params.placePagination.take,
               ),
-              ...(similarFoodIds.length ? { similarFoodIds } : {}),
+              ...(similarItemIds.length ? { similarItemIds } : {}),
             },
           }
         : {}),
     };
 
     const executeStart = performance.now();
-    const relevanceByFoodId = this.relevanceFromGrounding(
-      constraints.grounding.food,
+    const relevanceByItemId = this.relevanceFromGrounding(
+      constraints.grounding.item,
     );
     const exec = await this.queryExecutor.executeDual({
       plan: stagePlan,
       request: params.request,
       pagination: params.pagination,
-      restaurantPagination: params.restaurantPagination,
+      placePagination: params.placePagination,
       dishPagination: params.dishPagination,
       topDishesLimit: params.topDishesLimit,
       includeSqlPreview: params.includeSqlPreview,
@@ -1735,7 +1723,7 @@ export class SearchService {
     });
     const executeMs = performance.now() - executeStart;
 
-    if (relevanceByFoodId) {
+    if (relevanceByItemId) {
       // AUDIT H5, second site: a NON-exact row with no measured relevance must
       // never default to 1 — that is the exact-match value. The pooled-stage
       // cousin ring reaches here through the pooled tier (not always through
@@ -1743,18 +1731,18 @@ export class SearchService {
       // so the fallback is the same cousin floor, not "unknown".
       for (const dish of exec.dishes) {
         dish.relevance =
-          relevanceByFoodId[dish.foodId] ??
+          relevanceByItemId[dish.itemId] ??
           (dish.exactMatch === false ? COUSIN_RELEVANCE : 1);
       }
-      for (const restaurant of exec.restaurants) {
-        const snippetScores = (restaurant.topFood ?? [])
+      for (const place of exec.places) {
+        const snippetScores = (place.topItem ?? [])
           .map(
             (snippet) =>
-              relevanceByFoodId[snippet.foodId] ??
-              (restaurant.exactMatch === false ? COUSIN_RELEVANCE : 1),
+              relevanceByItemId[snippet.itemId] ??
+              (place.exactMatch === false ? COUSIN_RELEVANCE : 1),
           )
           .filter((value): value is number => typeof value === 'number');
-        restaurant.relevance = snippetScores.length
+        place.relevance = snippetScores.length
           ? Math.max(...snippetScores)
           : undefined;
       }
@@ -1780,7 +1768,7 @@ export class SearchService {
    *  anchors and family are the thing itself (1); similar carries its
    *  calibrated relevance. No side-map reconstruction. */
   private relevanceFromGrounding(
-    grounding: FoodGrounding,
+    grounding: ItemGrounding,
   ): Record<string, number> | null {
     if (!grounding.anchors.length) return null;
     const map: Record<string, number> = { ...grounding.similar };
@@ -1803,40 +1791,36 @@ export class SearchService {
     // is one presence summary (no per-stage copy).
     const inputPresence = this.getEntityPresenceSummary(request);
     const staged = {
-      foodAttributeIds: this.collectEntityIds(request.entities.foodAttributes),
-      restaurantAttributeIds: this.collectEntityIds(
-        request.entities.restaurantAttributes,
+      itemAttributeIds: this.collectEntityIds(request.entities.itemAttributes),
+      placeAttributeIds: this.collectEntityIds(
+        request.entities.placeAttributes,
       ),
     };
 
-    const hadFoodGroup = Boolean(request.entities.food?.length);
-    const hadRestaurantGroup = Boolean(request.entities.restaurants?.length);
-    const hadFoodAttributeGroup = Boolean(
-      request.entities.foodAttributes?.length,
+    const hadItemGroup = Boolean(request.entities.items?.length);
+    const hadPlaceGroup = Boolean(request.entities.places?.length);
+    const hadItemAttributeGroup = Boolean(
+      request.entities.itemAttributes?.length,
     );
-    const hadRestaurantAttributeGroup = Boolean(
-      request.entities.restaurantAttributes?.length,
+    const hadPlaceAttributeGroup = Boolean(
+      request.entities.placeAttributes?.length,
     );
 
-    const primaryFoodAttributeQuery =
-      !hadFoodGroup && !hadRestaurantGroup && hadFoodAttributeGroup;
+    const primaryItemAttributeQuery =
+      !hadItemGroup && !hadPlaceGroup && hadItemAttributeGroup;
 
-    const foodAttributeIds =
-      inputPresence.foodAttributes > 0 ? staged.foodAttributeIds : [];
-    const restaurantAttributeIds =
-      inputPresence.restaurantAttributes > 0
-        ? staged.restaurantAttributeIds
-        : [];
+    const itemAttributeIds =
+      inputPresence.itemAttributes > 0 ? staged.itemAttributeIds : [];
+    const placeAttributeIds =
+      inputPresence.placeAttributes > 0 ? staged.placeAttributeIds : [];
 
     const dedupe = (ids: string[]): string[] =>
       Array.from(new Set(ids.filter(Boolean)));
     const mergeIfBase = (base: string[], added: string[]): string[] =>
       base.length ? dedupe([...base, ...(added ?? [])]) : base;
 
-    const baseRestaurantIds = this.collectEntityIds(
-      request.entities.restaurants,
-    );
-    const baseFoodIds = this.collectEntityIds(request.entities.food);
+    const basePlaceIds = this.collectEntityIds(request.entities.places);
+    const baseItemIds = this.collectEntityIds(request.entities.items);
 
     // STEP-4 STRUCTURED GROUNDING (spec §1.2): build the structure ONCE;
     // the flat foodIds array below is a derived view of it (anchors ∪
@@ -1844,11 +1828,11 @@ export class SearchService {
     // a subject). Downstream consumers (exact tier, relevance attach,
     // widened detection) read the structure, not reconstructions.
     const similar: Record<string, number> = {};
-    if (baseFoodIds.length && planExpansion) {
-      const relevance = planExpansion.relevanceByFoodId;
+    if (baseItemIds.length && planExpansion) {
+      const relevance = planExpansion.relevanceByItemId;
       for (const id of [
-        ...planExpansion.foodIds,
-        ...planExpansion.denseSiblingFoodIds,
+        ...planExpansion.itemIds,
+        ...planExpansion.denseSiblingItemIds,
       ]) {
         // AUDIT H5: an unmeasured widened id must NEVER default to 1 —
         // that is the exact-match value, and it let a relevance-less
@@ -1857,13 +1841,13 @@ export class SearchService {
         if (id) similar[id] = relevance[id] ?? COUSIN_RELEVANCE;
       }
     }
-    const foodGrounding: FoodGrounding = {
-      anchors: baseFoodIds,
-      family: baseFoodIds.length
-        ? dedupe(planExpansion?.categoryMemberFoodIds ?? [])
+    const itemGrounding: ItemGrounding = {
+      anchors: baseItemIds,
+      family: baseItemIds.length
+        ? dedupe(planExpansion?.categoryMemberItemIds ?? [])
         : [],
       similar,
-      twinIngredientIds: baseFoodIds.length
+      twinIngredientIds: baseItemIds.length
         ? dedupe(planExpansion?.twinIngredientIds ?? [])
         : [],
     };
@@ -1871,27 +1855,27 @@ export class SearchService {
     return {
       format: inputs.format,
       inputPresence,
-      hadFoodGroup,
-      hadRestaurantGroup,
-      hadFoodAttributeGroup,
-      hadRestaurantAttributeGroup,
-      primaryFoodAttributeQuery,
-      grounding: { food: foodGrounding },
+      hadItemGroup,
+      hadPlaceGroup,
+      hadItemAttributeGroup,
+      hadPlaceAttributeGroup,
+      primaryItemAttributeQuery,
+      grounding: { item: itemGrounding },
       ids: {
-        restaurantIds: baseRestaurantIds,
+        placeIds: basePlaceIds,
         // DERIVED VIEW of the structure — the membership the builder needs,
         // with exactness/relevance living in `grounding`, not rebuilt later.
-        foodIds: mergeIfBase(foodGrounding.anchors, [
-          ...Object.keys(foodGrounding.similar),
-          ...foodGrounding.family,
+        itemIds: mergeIfBase(itemGrounding.anchors, [
+          ...Object.keys(itemGrounding.similar),
+          ...itemGrounding.family,
         ]),
-        foodAttributeIds: mergeIfBase(
-          foodAttributeIds,
-          planExpansion?.foodAttributeIds ?? [],
+        itemAttributeIds: mergeIfBase(
+          itemAttributeIds,
+          planExpansion?.itemAttributeIds ?? [],
         ),
-        restaurantAttributeIds: mergeIfBase(
-          restaurantAttributeIds,
-          planExpansion?.restaurantAttributeIds ?? [],
+        placeAttributeIds: mergeIfBase(
+          placeAttributeIds,
+          planExpansion?.placeAttributeIds ?? [],
         ),
         // Ingredient lane: always-on when linked (no relaxation coupling —
         // an ingredient is the query's subject, not a droppable modifier).
@@ -1995,10 +1979,10 @@ export class SearchService {
       constraints: {
         inputPresence: constraints.inputPresence,
         ids: {
-          restaurants: constraints.ids.restaurantIds.length,
-          foods: constraints.ids.foodIds.length,
-          foodAttributes: constraints.ids.foodAttributeIds.length,
-          restaurantAttributes: constraints.ids.restaurantAttributeIds.length,
+          places: constraints.ids.placeIds.length,
+          items: constraints.ids.itemIds.length,
+          itemAttributes: constraints.ids.itemAttributeIds.length,
+          placeAttributes: constraints.ids.placeAttributeIds.length,
         },
         filters: {
           bounds: Boolean(constraints.filters.bounds),
@@ -2036,7 +2020,7 @@ export class SearchService {
   private async recordLowResultOnDemand(params: {
     request: SearchQueryRequestDto;
     planFormat: QueryPlan['format'];
-    restaurantCount: number;
+    placeCount: number;
     dishCount: number;
     viewportEligible: boolean;
     onDemandEngineContext: {
@@ -2060,8 +2044,8 @@ export class SearchService {
       const context: Record<string, unknown> = {
         source: 'low_result',
         searchRequestId: params.request.searchRequestId,
-        restaurantCount: params.restaurantCount,
-        foodCount: params.dishCount,
+        placeCount: params.placeCount,
+        itemCount: params.dishCount,
         planFormat: params.planFormat,
         bounds: params.request.bounds,
         openNow: params.request.openNow,
@@ -2116,10 +2100,10 @@ export class SearchService {
     request: SearchQueryRequestDto,
   ): EntityPresenceSummary {
     return {
-      restaurants: request.entities.restaurants?.length ?? 0,
-      food: request.entities.food?.length ?? 0,
-      foodAttributes: request.entities.foodAttributes?.length ?? 0,
-      restaurantAttributes: request.entities.restaurantAttributes?.length ?? 0,
+      places: request.entities.places?.length ?? 0,
+      items: request.entities.items?.length ?? 0,
+      itemAttributes: request.entities.itemAttributes?.length ?? 0,
+      placeAttributes: request.entities.placeAttributes?.length ?? 0,
     };
   }
 
@@ -2142,17 +2126,17 @@ export class SearchService {
   private shouldTriggerOnDemand(
     request: SearchQueryRequestDto,
     _format: QueryPlan['format'],
-    restaurantCount: number,
+    placeCount: number,
   ): boolean {
     // Trigger on-demand primarily when restaurant coverage is low for food-driven queries.
     // (Dish coverage can be high even when restaurant list is under-covered.)
-    if (restaurantCount >= this.onDemandMinResults) {
+    if (placeCount >= this.onDemandMinResults) {
       return false;
     }
     return Boolean(
-      request.entities.food?.length ||
-        request.entities.foodAttributes?.length ||
-        request.entities.restaurantAttributes?.length,
+      request.entities.items?.length ||
+        request.entities.itemAttributes?.length ||
+        request.entities.placeAttributes?.length,
     );
   }
 
@@ -2186,38 +2170,37 @@ export class SearchService {
     searchRequestId: string,
     startedAt: number,
   ): Promise<SearchResponseDto> {
-    const restaurantIds = this.collectEntityIds(request.entities?.restaurants);
-    if (restaurantIds.length !== 1) {
+    const placeIds = this.collectEntityIds(request.entities?.places);
+    if (placeIds.length !== 1) {
       throw new BadRequestException(
         'seeLocations requires exactly one restaurant entity id',
       );
     }
-    const restaurantId = restaurantIds[0];
+    const placeId = placeIds[0];
     const bounds = request.bounds ?? null;
-    const { restaurant, inViewLocationCount } =
+    const { place, inViewLocationCount } =
       await this.queryExecutor.executeSeeLocations({
-        restaurantId,
+        placeId,
         bounds,
         userLocation: request.userLocation ?? null,
       });
     const queryExecutionTimeMs = Date.now() - startedAt;
     // Membership law: a restaurant with ZERO in-view locations yields an empty
     // world (the map has nothing of it to pin), not a zero-location row.
-    const restaurants =
-      restaurant != null && inViewLocationCount > 0 ? [restaurant] : [];
+    const places = place != null && inViewLocationCount > 0 ? [place] : [];
 
     const plan: QueryPlan = {
       format: 'single_list',
-      restaurantFilters: [
+      placeFilters: [
         {
-          scope: 'restaurant',
+          scope: 'place',
           description: 'See locations: in-view locations of one restaurant',
-          entityType: 'restaurant',
-          entityIds: [restaurantId],
+          entityType: 'place',
+          entityIds: [placeId],
         },
       ],
       connectionFilters: [],
-      ranking: { foodOrder: 'none', restaurantOrder: 'none' },
+      ranking: { itemOrder: 'none', placeOrder: 'none' },
       diagnostics: { missingEntities: [], notes: ['see_locations'] },
     };
 
@@ -2225,31 +2208,31 @@ export class SearchService {
       request,
       {
         searchRequestId,
-        totalResults: restaurants.length,
-        totalRestaurantResults: restaurants.length,
+        totalResults: places.length,
+        totalPlaceResults: places.length,
       },
-      [{ entityId: restaurantId, entityType: EntityType.restaurant }],
-      { mode: 'see_locations', restaurantId, inViewLocationCount },
+      [{ entityId: placeId, entityType: EntityType.place }],
+      { mode: 'see_locations', placeId, inViewLocationCount },
     );
 
     return {
       format: 'single_list',
       plan,
       dishes: [],
-      restaurants,
+      places,
       metadata: {
-        totalFoodResults: 0,
-        totalRestaurantResults: restaurants.length,
+        totalItemResults: 0,
+        totalPlaceResults: places.length,
         queryExecutionTimeMs,
         boundsApplied: bounds != null,
         openNowApplied: false,
         page: 1,
-        pageSize: restaurants.length,
+        pageSize: places.length,
         resultCoverageStatus: 'full',
         sourceQuery: request.sourceQuery,
         searchRequestId,
         analysisMetadata: {
-          seeLocations: { restaurantId, inViewLocationCount },
+          seeLocations: { placeId, inViewLocationCount },
         },
       },
     };
@@ -2262,8 +2245,8 @@ export class SearchService {
     context: {
       searchRequestId: string;
       totalResults: number;
-      totalFoodResults: number;
-      totalRestaurantResults: number;
+      totalItemResults: number;
+      totalPlaceResults: number;
       queryExecutionTimeMs: number;
       resultCoverageStatus: 'full' | 'partial' | 'unresolved';
     },
@@ -2287,7 +2270,7 @@ export class SearchService {
     context: {
       searchRequestId: string;
       totalResults: number;
-      totalRestaurantResults: number;
+      totalPlaceResults: number;
     },
     targets: { entityId: string; entityType: EntityType }[],
     /** Mode variants (see-locations) stamp their discriminator here. */
@@ -2316,7 +2299,7 @@ export class SearchService {
       meta: {
         searchRequestId: context.searchRequestId,
         resultCount: context.totalResults,
-        restaurantCount: context.totalRestaurantResults,
+        placeCount: context.totalPlaceResults,
         cached: false,
         resolvedEntityId: primaryEntityId ?? undefined,
         ...(extraMeta ?? {}),
@@ -2423,13 +2406,10 @@ export class SearchService {
       }
     };
 
-    pushMostSpecific(request.entities.food, 'food');
-    pushMostSpecific(request.entities.restaurants, 'restaurant');
-    pushMostSpecific(request.entities.foodAttributes, 'food_attribute');
-    pushMostSpecific(
-      request.entities.restaurantAttributes,
-      'restaurant_attribute',
-    );
+    pushMostSpecific(request.entities.items, 'item');
+    pushMostSpecific(request.entities.places, 'place');
+    pushMostSpecific(request.entities.itemAttributes, 'item_attribute');
+    pushMostSpecific(request.entities.placeAttributes, 'place_attribute');
 
     if (!candidates.length) {
       return [];
@@ -2551,9 +2531,9 @@ export class SearchService {
           typeof originalMeta.resultCount === 'number'
             ? originalMeta.resultCount
             : undefined,
-        restaurantCount:
-          typeof originalMeta.restaurantCount === 'number'
-            ? originalMeta.restaurantCount
+        placeCount:
+          typeof originalMeta.placeCount === 'number'
+            ? originalMeta.placeCount
             : undefined,
         cached: true,
         resolvedEntityId: original.subject_id ?? undefined,
@@ -2631,7 +2611,7 @@ export class SearchService {
         row.resolvedEntityId &&
         entityType &&
         (row.explicitSelection ||
-          (entityType === EntityType.restaurant && nameMatchesQuery))
+          (entityType === EntityType.place && nameMatchesQuery))
           ? { entityId: row.resolvedEntityId, entityType }
           : null;
       return {
@@ -2642,12 +2622,12 @@ export class SearchService {
       };
     });
 
-    const restaurantIds = Array.from(
+    const placeIds = Array.from(
       new Set(
         entries
           .filter(
             (entry) =>
-              entry.selectedEntityType === EntityType.restaurant &&
+              entry.selectedEntityType === EntityType.place &&
               Boolean(entry.selectedEntityId),
           )
           .map((entry) => entry.selectedEntityId!)
@@ -2655,20 +2635,20 @@ export class SearchService {
       ),
     );
 
-    if (restaurantIds.length === 0) {
+    if (placeIds.length === 0) {
       return entries;
     }
 
-    const previews = await this.restaurantStatusService.getStatusPreviews({
-      restaurantIds,
+    const previews = await this.placeStatusService.getStatusPreviews({
+      placeIds,
     });
     const previewMap = new Map(
-      previews.map((preview) => [preview.restaurantId, preview]),
+      previews.map((preview) => [preview.placeId, preview]),
     );
 
     return entries.map((entry) => {
       if (
-        entry.selectedEntityType !== EntityType.restaurant ||
+        entry.selectedEntityType !== EntityType.place ||
         !entry.selectedEntityId
       ) {
         return entry;
@@ -2682,18 +2662,14 @@ export class SearchService {
 
   private calculateCoverageStatus(params: {
     request: SearchQueryRequestDto;
-    totalFoodResults: number;
-    totalRestaurantResults: number;
+    totalItemResults: number;
+    totalPlaceResults: number;
     triggeredOnDemand: boolean;
   }): 'full' | 'partial' | 'unresolved' {
-    const {
-      request,
-      totalFoodResults,
-      totalRestaurantResults,
-      triggeredOnDemand,
-    } = params;
+    const { request, totalItemResults, totalPlaceResults, triggeredOnDemand } =
+      params;
 
-    const totalResults = totalFoodResults + totalRestaurantResults;
+    const totalResults = totalItemResults + totalPlaceResults;
     const hasTargets = this.hasEntityTargets(request);
 
     if (!hasTargets) {
@@ -2705,10 +2681,10 @@ export class SearchService {
     // MEDIUM-2: {normalizedName:'unicorn meat', entityIds:[]} returned
     // the same top-25 as an empty request and called it full).
     const lanes = [
-      ...(request.entities.food ?? []),
-      ...(request.entities.foodAttributes ?? []),
-      ...(request.entities.restaurants ?? []),
-      ...(request.entities.restaurantAttributes ?? []),
+      ...(request.entities.items ?? []),
+      ...(request.entities.itemAttributes ?? []),
+      ...(request.entities.places ?? []),
+      ...(request.entities.placeAttributes ?? []),
     ];
     const hasNamedUnresolvedLane = lanes.some(
       (lane) =>
@@ -2744,14 +2720,14 @@ export class SearchService {
     request: SearchQueryRequestDto,
   ): Promise<string | null> {
     if (!request.bounds && !request.viewportPolygon) return null;
-    const groundedRestaurantIds = (request.entities.restaurants ?? [])
+    const groundedPlaceIds = (request.entities.places ?? [])
       .flatMap((lane) => lane.entityIds ?? [])
       .filter(Boolean);
-    if (!groundedRestaurantIds.length) return null;
+    if (!groundedPlaceIds.length) return null;
     try {
       const rows = await this.prisma.$queryRaw<Array<{ name: string }>>`
         SELECT e.name FROM core_entities e
-         WHERE e.entity_id = ANY(${groundedRestaurantIds}::uuid[])
+         WHERE e.entity_id = ANY(${groundedPlaceIds}::uuid[])
            AND e.status = 'active'::entity_status
            AND EXISTS (
              SELECT 1 FROM core_restaurant_locations rl
@@ -2922,8 +2898,8 @@ export class SearchService {
         }
       }
     };
-    collect(request.entities.foodAttributes);
-    collect(request.entities.restaurantAttributes);
+    collect(request.entities.itemAttributes);
+    collect(request.entities.placeAttributes);
     return { attributeIds, terms };
   }
 
@@ -2932,7 +2908,7 @@ export class SearchService {
     pooledSoftWordCounts:
       | {
           dish: Record<string, number> | null;
-          restaurant: Record<string, number> | null;
+          place: Record<string, number> | null;
         }
       | undefined,
   ): { attributeIds: string[]; terms: string[] } | undefined {
@@ -2940,13 +2916,10 @@ export class SearchService {
       return undefined;
     }
     const dish = pooledSoftWordCounts.dish ?? {};
-    const restaurant = pooledSoftWordCounts.restaurant ?? {};
-    const ids = new Set<string>([
-      ...Object.keys(dish),
-      ...Object.keys(restaurant),
-    ]);
+    const place = pooledSoftWordCounts.place ?? {};
+    const ids = new Set<string>([...Object.keys(dish), ...Object.keys(place)]);
     const starvedIds = Array.from(ids).filter(
-      (id) => (dish[id] ?? 0) === 0 && (restaurant[id] ?? 0) === 0,
+      (id) => (dish[id] ?? 0) === 0 && (place[id] ?? 0) === 0,
     );
     if (!starvedIds.length) {
       return undefined;
@@ -2966,8 +2939,8 @@ export class SearchService {
         }
       }
     };
-    collect(request.entities.foodAttributes);
-    collect(request.entities.restaurantAttributes);
+    collect(request.entities.itemAttributes);
+    collect(request.entities.placeAttributes);
     return { attributeIds: starvedIds, terms };
   }
 
@@ -3048,15 +3021,15 @@ export class SearchService {
           )
         : entities;
 
-    pushEntities(request.entities.food, 'food');
+    pushEntities(request.entities.items, 'item');
     pushEntities(
-      onlyStarved(request.entities.foodAttributes),
-      'food_attribute',
+      onlyStarved(request.entities.itemAttributes),
+      'item_attribute',
     );
-    pushEntities(request.entities.restaurants, 'restaurant');
+    pushEntities(request.entities.places, 'place');
     pushEntities(
-      onlyStarved(request.entities.restaurantAttributes),
-      'restaurant_attribute',
+      onlyStarved(request.entities.placeAttributes),
+      'place_attribute',
     );
 
     return results;
@@ -3130,7 +3103,7 @@ export class SearchService {
     return 25;
   }
 
-  private resolveExpansionFoodCap(): number {
+  private resolveExpansionItemCap(): number {
     const raw = process.env.SEARCH_EXPANSION_FOOD_CAP;
     if (raw) {
       const parsed = Number(raw);
@@ -3215,31 +3188,29 @@ export class SearchService {
 
   private hasEntityTargets(request: SearchQueryRequestDto): boolean {
     return Boolean(
-      request.entities.food?.length ||
-        request.entities.foodAttributes?.length ||
-        request.entities.restaurants?.length ||
-        request.entities.restaurantAttributes?.length,
+      request.entities.items?.length ||
+        request.entities.itemAttributes?.length ||
+        request.entities.places?.length ||
+        request.entities.placeAttributes?.length,
     );
   }
 
-  private isPrimaryFoodAttributeQuery(request: SearchQueryRequestDto): boolean {
-    const hasFood = Boolean(request.entities.food?.length);
-    const hasRestaurant = Boolean(request.entities.restaurants?.length);
+  private isPrimaryItemAttributeQuery(request: SearchQueryRequestDto): boolean {
+    const hasItem = Boolean(request.entities.items?.length);
+    const hasPlace = Boolean(request.entities.places?.length);
     return (
-      !hasFood &&
-      !hasRestaurant &&
-      Boolean(request.entities.foodAttributes?.length)
+      !hasItem && !hasPlace && Boolean(request.entities.itemAttributes?.length)
     );
   }
 
   private hasPlanExpansion(expansion: PlanExpansionState): boolean {
     return Boolean(
-      expansion.foodIds.length ||
-        expansion.foodAttributeIds.length ||
-        expansion.restaurantAttributeIds.length ||
-        expansion.foodIdsFromPrimaryFoodAttributeText.length ||
-        expansion.denseSiblingFoodIds.length ||
-        expansion.categoryMemberFoodIds.length,
+      expansion.itemIds.length ||
+        expansion.itemAttributeIds.length ||
+        expansion.placeAttributeIds.length ||
+        expansion.itemIdsFromPrimaryItemAttributeText.length ||
+        expansion.denseSiblingItemIds.length ||
+        expansion.categoryMemberItemIds.length,
     );
   }
 
@@ -3253,13 +3224,13 @@ export class SearchService {
         pooledCoverageCount,
         strictCoverageTarget: this.expansionStrictCoverageTarget,
         trigger,
-        foodsAdded: expansion.foodIds.length,
-        foodAttributesAdded: expansion.foodAttributeIds.length,
-        restaurantAttributesAdded: expansion.restaurantAttributeIds.length,
-        foodsFromPrimaryFoodAttributeTextAdded:
-          expansion.foodIdsFromPrimaryFoodAttributeText.length,
-        denseSiblingFoodsAdded: expansion.denseSiblingFoodIds.length,
-        categoryMemberFoodsAdded: expansion.categoryMemberFoodIds.length,
+        foodsAdded: expansion.itemIds.length,
+        itemAttributesAdded: expansion.itemAttributeIds.length,
+        placeAttributesAdded: expansion.placeAttributeIds.length,
+        foodsFromPrimaryItemAttributeTextAdded:
+          expansion.itemIdsFromPrimaryItemAttributeText.length,
+        denseSiblingItemsAdded: expansion.denseSiblingItemIds.length,
+        categoryMemberItemsAdded: expansion.categoryMemberItemIds.length,
       },
     };
   }
@@ -3269,27 +3240,27 @@ export class SearchService {
     plan: QueryPlan,
     widening: SiblingExpansionReader,
   ): Promise<PlanExpansionState | null> {
-    const existingFoodIds = new Set<string>();
-    const existingFoodAttributeIds = new Set<string>();
-    const existingRestaurantAttributeIds = new Set<string>();
+    const existingItemIds = new Set<string>();
+    const existingItemAttributeIds = new Set<string>();
+    const existingPlaceAttributeIds = new Set<string>();
 
     for (const clause of plan.connectionFilters ?? []) {
-      if (clause.entityType === EntityScope.FOOD) {
+      if (clause.entityType === EntityScope.ITEM) {
         for (const id of clause.entityIds ?? []) {
-          existingFoodIds.add(id);
+          existingItemIds.add(id);
         }
       }
-      if (clause.entityType === EntityScope.FOOD_ATTRIBUTE) {
+      if (clause.entityType === EntityScope.ITEM_ATTRIBUTE) {
         for (const id of clause.entityIds ?? []) {
-          existingFoodAttributeIds.add(id);
+          existingItemAttributeIds.add(id);
         }
       }
     }
 
-    for (const clause of plan.restaurantFilters ?? []) {
-      if (clause.entityType === EntityScope.RESTAURANT_ATTRIBUTE) {
+    for (const clause of plan.placeFilters ?? []) {
+      if (clause.entityType === EntityScope.PLACE_ATTRIBUTE) {
         for (const id of clause.entityIds ?? []) {
-          existingRestaurantAttributeIds.add(id);
+          existingPlaceAttributeIds.add(id);
         }
       }
     }
@@ -3353,17 +3324,17 @@ export class SearchService {
       return merged;
     };
 
-    const foodTerms = mergeTerms(
-      takeTerms(request.entities.food),
-      takeUnresolvedTerms(EntityType.food),
+    const itemTerms = mergeTerms(
+      takeTerms(request.entities.items),
+      takeUnresolvedTerms(EntityType.item),
     );
-    const foodAttributeTerms = mergeTerms(
-      takeTerms(request.entities.foodAttributes),
-      takeUnresolvedTerms(EntityType.food_attribute),
+    const itemAttributeTerms = mergeTerms(
+      takeTerms(request.entities.itemAttributes),
+      takeUnresolvedTerms(EntityType.item_attribute),
     );
-    const restaurantAttributeTerms = mergeTerms(
-      takeTerms(request.entities.restaurantAttributes),
-      takeUnresolvedTerms(EntityType.restaurant_attribute),
+    const placeAttributeTerms = mergeTerms(
+      takeTerms(request.entities.placeAttributes),
+      takeUnresolvedTerms(EntityType.place_attribute),
     );
 
     type ExpandedMatches = Awaited<
@@ -3371,25 +3342,25 @@ export class SearchService {
     >;
     const emptyMatches: ExpandedMatches = [];
 
-    const [foods, foodAttributes, restaurantAttributes] = await Promise.all([
-      foodTerms.length
+    const [items, itemAttributes, placeAttributes] = await Promise.all([
+      itemTerms.length
         ? this.entityExpansion.expandEntitiesByText({
-            terms: foodTerms,
-            entityTypes: ['food' as EntityType],
-            limit: this.expansionFoodCap,
+            terms: itemTerms,
+            entityTypes: ['item' as EntityType],
+            limit: this.expansionItemCap,
           })
         : Promise.resolve(emptyMatches),
-      foodAttributeTerms.length
+      itemAttributeTerms.length
         ? this.entityExpansion.expandEntitiesByText({
-            terms: foodAttributeTerms,
-            entityTypes: ['food_attribute' as EntityType],
+            terms: itemAttributeTerms,
+            entityTypes: ['item_attribute' as EntityType],
             limit: this.expansionAttributeCap,
           })
         : Promise.resolve(emptyMatches),
-      restaurantAttributeTerms.length
+      placeAttributeTerms.length
         ? this.entityExpansion.expandEntitiesByText({
-            terms: restaurantAttributeTerms,
-            entityTypes: ['restaurant_attribute' as EntityType],
+            terms: placeAttributeTerms,
+            entityTypes: ['place_attribute' as EntityType],
             limit: this.expansionAttributeCap,
           })
         : Promise.resolve(emptyMatches),
@@ -3406,41 +3377,40 @@ export class SearchService {
     // dietary id would otherwise become a non-relaxable constraint the
     // user never asked for.
     const expansionDietaryIds = await this.dietaryConstraints.getDietaryIds();
-    const foodIds = foods
+    const itemIds = items
       .filter(passesExpansionEvidence)
       .map((match) => match.entityId)
-      .filter((id) => !existingFoodIds.has(id));
-    const foodAttributeIds = foodAttributes
+      .filter((id) => !existingItemIds.has(id));
+    const itemAttributeIds = itemAttributes
       .filter(passesExpansionEvidence)
       .map((match) => match.entityId)
       .filter(
         (id) =>
-          !existingFoodAttributeIds.has(id) && !expansionDietaryIds.has(id),
+          !existingItemAttributeIds.has(id) && !expansionDietaryIds.has(id),
       );
-    const restaurantAttributeIds = restaurantAttributes
+    const placeAttributeIds = placeAttributes
       .filter(passesExpansionEvidence)
       .map((match) => match.entityId)
       .filter(
         (id) =>
-          !existingRestaurantAttributeIds.has(id) &&
-          !expansionDietaryIds.has(id),
+          !existingPlaceAttributeIds.has(id) && !expansionDietaryIds.has(id),
       );
 
-    let foodIdsFromPrimaryFoodAttributeText: string[] = [];
+    let itemIdsFromPrimaryItemAttributeText: string[] = [];
     if (
-      this.isPrimaryFoodAttributeQuery(request) &&
-      foodAttributeTerms.length
+      this.isPrimaryItemAttributeQuery(request) &&
+      itemAttributeTerms.length
     ) {
-      const attrFoodMatches = await this.entityExpansion.expandEntitiesByText({
-        terms: foodAttributeTerms,
-        entityTypes: ['food' as EntityType],
-        limit: this.expansionFoodCap,
+      const attrItemMatches = await this.entityExpansion.expandEntitiesByText({
+        terms: itemAttributeTerms,
+        entityTypes: ['item' as EntityType],
+        limit: this.expansionItemCap,
       });
-      const seenFood = new Set([...existingFoodIds, ...foodIds]);
-      foodIdsFromPrimaryFoodAttributeText = attrFoodMatches
+      const seenItem = new Set([...existingItemIds, ...itemIds]);
+      itemIdsFromPrimaryItemAttributeText = attrItemMatches
         .filter(passesExpansionEvidence)
         .map((match) => match.entityId)
-        .filter((id) => !seenFood.has(id));
+        .filter((id) => !seenItem.has(id));
     }
 
     // Dense sibling co-inclusion, 'expansion' mode: this method already runs only
@@ -3449,48 +3419,48 @@ export class SearchService {
     // vector to anchor on — expansion for those stays lexical). Deduped against
     // the winners and every lexical food id already headed into the filter.
     // ('always' mode fetches earlier, before the first strict probe.)
-    let denseSiblingFoodIds: string[] = [];
-    const relevanceByFoodId: Record<string, number> = {};
+    let denseSiblingItemIds: string[] = [];
+    const relevanceByItemId: Record<string, number> = {};
     // Lexical variants: graded by their match similarity (honest per-tier
     // scores from the lattice — exact/instance-class matches read as 1.0).
-    for (const match of foods) {
+    for (const match of items) {
       if (match.evidence === 'exact' || match.evidence === 'prefix') {
-        relevanceByFoodId[match.entityId] = 1;
+        relevanceByItemId[match.entityId] = 1;
       } else if (typeof match.similarity === 'number') {
-        relevanceByFoodId[match.entityId] = Math.min(
+        relevanceByItemId[match.entityId] = Math.min(
           1,
           Math.max(0, match.similarity),
         );
       }
     }
     if (this.siblingsWanted(request, 'expansion')) {
-      const anchorFoodIds = this.collectEntityIds(request.entities.food);
-      if (anchorFoodIds.length) {
+      const anchorItemIds = this.collectEntityIds(request.entities.items);
+      if (anchorItemIds.length) {
         const seen = new Set<string>([
-          ...existingFoodIds,
-          ...foodIds,
-          ...foodIdsFromPrimaryFoodAttributeText,
+          ...existingItemIds,
+          ...itemIds,
+          ...itemIdsFromPrimaryItemAttributeText,
         ]);
         const siblingMatches = (
-          await widening.getSiblingFoodIds(anchorFoodIds, this.denseSiblingsCut)
+          await widening.getSiblingItemIds(anchorItemIds, this.denseSiblingsCut)
         ).filter((s) => !seen.has(s.siblingId));
-        denseSiblingFoodIds = siblingMatches.map((s) => s.siblingId);
+        denseSiblingItemIds = siblingMatches.map((s) => s.siblingId);
         for (const s of siblingMatches)
-          relevanceByFoodId[s.siblingId] = s.relevance;
+          relevanceByItemId[s.siblingId] = s.relevance;
       }
     }
 
     const expansion: PlanExpansionState = {
       twinIngredientIds: [],
-      foodIds,
-      foodAttributeIds,
-      restaurantAttributeIds,
-      foodIdsFromPrimaryFoodAttributeText,
-      denseSiblingFoodIds,
+      itemIds,
+      itemAttributeIds,
+      placeAttributeIds,
+      itemIdsFromPrimaryItemAttributeText,
+      denseSiblingItemIds,
       // Seeded pre-probe (every search), not here — the union at the caller
       // preserves it across this object.
-      categoryMemberFoodIds: [],
-      relevanceByFoodId,
+      categoryMemberItemIds: [],
+      relevanceByItemId,
     };
 
     if (this.debugMode !== 'off') {
@@ -3502,39 +3472,39 @@ export class SearchService {
       this.logger.info('Search debug: id expansion details', {
         searchRequestId: request.searchRequestId ?? null,
         terms: {
-          food: foodTerms,
-          foodAttributes: foodAttributeTerms,
-          restaurantAttributes: restaurantAttributeTerms,
+          item: itemTerms,
+          itemAttributes: itemAttributeTerms,
+          placeAttributes: placeAttributeTerms,
         },
         results: {
-          foods: {
-            count: foods.length,
-            evidence: evidenceCounts(foods),
+          items: {
+            count: items.length,
+            evidence: evidenceCounts(items),
           },
-          foodAttributes: {
-            count: foodAttributes.length,
-            evidence: evidenceCounts(foodAttributes),
+          itemAttributes: {
+            count: itemAttributes.length,
+            evidence: evidenceCounts(itemAttributes),
           },
-          restaurantAttributes: {
-            count: restaurantAttributes.length,
-            evidence: evidenceCounts(restaurantAttributes),
+          placeAttributes: {
+            count: placeAttributes.length,
+            evidence: evidenceCounts(placeAttributes),
           },
-          foodsFromPrimaryFoodAttributeText: {
-            count: foodIdsFromPrimaryFoodAttributeText.length,
+          foodsFromPrimaryItemAttributeText: {
+            count: itemIdsFromPrimaryItemAttributeText.length,
           },
         },
         addedAfterPlanDedup: {
-          foodIds: foodIds.length,
-          foodAttributeIds: foodAttributeIds.length,
-          restaurantAttributeIds: restaurantAttributeIds.length,
-          denseSiblingFoodIds: denseSiblingFoodIds.length,
+          itemIds: itemIds.length,
+          itemAttributeIds: itemAttributeIds.length,
+          placeAttributeIds: placeAttributeIds.length,
+          denseSiblingItemIds: denseSiblingItemIds.length,
         },
         samples:
           this.debugMode === 'verbose'
             ? {
-                foods: foods.slice(0, 10),
-                foodAttributes: foodAttributes.slice(0, 10),
-                restaurantAttributes: restaurantAttributes.slice(0, 10),
+                items: items.slice(0, 10),
+                itemAttributes: itemAttributes.slice(0, 10),
+                placeAttributes: placeAttributes.slice(0, 10),
               }
             : undefined,
       });
@@ -3563,9 +3533,9 @@ export class SearchService {
       }
     };
 
-    sanitizeList(request.entities.restaurants);
-    sanitizeList(request.entities.food);
-    sanitizeList(request.entities.foodAttributes);
-    sanitizeList(request.entities.restaurantAttributes);
+    sanitizeList(request.entities.places);
+    sanitizeList(request.entities.items);
+    sanitizeList(request.entities.itemAttributes);
+    sanitizeList(request.entities.placeAttributes);
   }
 }

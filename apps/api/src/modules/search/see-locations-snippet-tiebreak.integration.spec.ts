@@ -69,24 +69,24 @@ beforeAll(async () => {
   });
   scoreRunId = run.scoreRunId;
 
-  const restaurant = await prisma.entity.create({
-    data: { name: `${TEST_TAG}-restaurant`, type: 'restaurant' },
+  const place = await prisma.entity.create({
+    data: { name: `${TEST_TAG}-restaurant`, type: 'place' },
   });
-  seeded.push(restaurant.entityId);
+  seeded.push(place.entityId);
 
   for (const [connectionId, label] of [
     [HIGH_ID, 'high-inserted-first'],
     [LOW_ID, 'low-inserted-second'],
   ] as const) {
-    const food = await prisma.entity.create({
-      data: { name: `${TEST_TAG}-food-${label}`, type: 'food' },
+    const item = await prisma.entity.create({
+      data: { name: `${TEST_TAG}-food-${label}`, type: 'item' },
     });
-    seeded.push(food.entityId);
+    seeded.push(item.entityId);
     await prisma.connection.create({
       data: {
         connectionId,
-        restaurantId: restaurant.entityId,
-        foodId: food.entityId,
+        placeId: place.entityId,
+        itemId: item.entityId,
         mentionCount: 3,
         totalUpvotes: 3,
       },
@@ -123,17 +123,17 @@ afterAll(async () => {
 
 describe('executeSeeLocations: tied top snippets get a deterministic order (F3102)', () => {
   it('orders the tied pair by connection_id ASC, independent of insertion order, across repeated runs', async () => {
-    const restaurantId = seeded[0];
+    const placeId = seeded[0];
 
     // Run several times: a physical-row-order defect is a Postgres planning
     // decision, not guaranteed to flip on every single execution. Every run
     // must agree with the specified order for this to count as determinism.
     for (let i = 0; i < 5; i++) {
-      const { restaurant } = await executor.executeSeeLocations({
-        restaurantId,
+      const { place } = await executor.executeSeeLocations({
+        placeId,
         bounds: null,
       });
-      const ids = (restaurant?.topFood ?? []).map((s) => s.connectionId);
+      const ids = (place?.topItem ?? []).map((s) => s.connectionId);
       expect(ids).toEqual([LOW_ID, HIGH_ID]);
     }
   });

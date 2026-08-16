@@ -134,31 +134,31 @@ function norm(value: string): string {
 type Tally = {
   docsEmitting: number;
   mentions: number;
-  restaurants: Set<string>;
-  foods: Set<string>;
+  places: Set<string>;
+  items: Set<string>;
   categories: number;
   attributes: number;
   praiseMentions: number;
   /** defect counters */
-  cuisineAsFood: string[];
-  formatAsFood: string[];
+  cuisineAsItem: string[];
+  formatAsItem: string[];
   badAttribute: string[];
-  emptyRestaurantName: number;
+  emptyPlaceName: number;
 };
 
 function newTally(): Tally {
   return {
     docsEmitting: 0,
     mentions: 0,
-    restaurants: new Set(),
-    foods: new Set(),
+    places: new Set(),
+    items: new Set(),
     categories: 0,
     attributes: 0,
     praiseMentions: 0,
-    cuisineAsFood: [],
-    formatAsFood: [],
+    cuisineAsItem: [],
+    formatAsItem: [],
     badAttribute: [],
-    emptyRestaurantName: 0,
+    emptyPlaceName: 0,
   };
 }
 
@@ -166,35 +166,34 @@ function absorb(tally: Tally, mentions: Mention[]): void {
   if (mentions.length) tally.docsEmitting += 1;
   tally.mentions += mentions.length;
   for (const mention of mentions) {
-    const restaurant =
-      typeof mention.restaurant === 'string' ? norm(mention.restaurant) : '';
-    if (!restaurant) tally.emptyRestaurantName += 1;
-    else tally.restaurants.add(restaurant);
+    const place = typeof mention.place === 'string' ? norm(mention.place) : '';
+    if (!place) tally.emptyPlaceName += 1;
+    else tally.places.add(place);
 
     if (mention.general_praise === true) tally.praiseMentions += 1;
 
-    const food = typeof mention.food === 'string' ? norm(mention.food) : '';
-    if (food) tally.foods.add(food);
+    const item = typeof mention.item === 'string' ? norm(mention.item) : '';
+    if (item) tally.items.add(item);
 
-    const categories = Array.isArray(mention.food_categories)
-      ? (mention.food_categories as unknown[])
+    const categories = Array.isArray(mention.item_categories)
+      ? (mention.item_categories as unknown[])
       : [];
     tally.categories += categories.length;
 
-    const foodTerms = [food, ...categories.map((c) => norm(String(c)))].filter(
+    const itemTerms = [item, ...categories.map((c) => norm(String(c)))].filter(
       Boolean,
     );
-    for (const term of foodTerms) {
-      if (CUISINE_TERMS.has(term)) tally.cuisineAsFood.push(term);
-      if (NON_CATEGORY_TERMS.has(term)) tally.formatAsFood.push(term);
+    for (const term of itemTerms) {
+      if (CUISINE_TERMS.has(term)) tally.cuisineAsItem.push(term);
+      if (NON_CATEGORY_TERMS.has(term)) tally.formatAsItem.push(term);
     }
 
     const attributes = [
-      ...(Array.isArray(mention.food_attributes)
-        ? (mention.food_attributes as unknown[])
+      ...(Array.isArray(mention.item_attributes)
+        ? (mention.item_attributes as unknown[])
         : []),
-      ...(Array.isArray(mention.restaurant_attributes)
-        ? (mention.restaurant_attributes as unknown[])
+      ...(Array.isArray(mention.place_attributes)
+        ? (mention.place_attributes as unknown[])
         : []),
     ].map((a) => norm(String(a)));
     tally.attributes += attributes.length;
@@ -220,21 +219,21 @@ function report(label: string, tally: Tally, docs: number): void {
     `docs emitting      ${tally.docsEmitting}/${docs} (${((100 * tally.docsEmitting) / docs).toFixed(1)}%)`,
   );
   console.log(`mentions           ${tally.mentions}`);
-  console.log(`distinct rests     ${tally.restaurants.size}`);
-  console.log(`distinct dishes    ${tally.foods.size}`);
+  console.log(`distinct rests     ${tally.places.size}`);
+  console.log(`distinct dishes    ${tally.items.size}`);
   console.log(`category slots     ${tally.categories}`);
   console.log(`attribute slots    ${tally.attributes}`);
   console.log(`praise mentions    ${tally.praiseMentions}`);
   console.log(
-    `DEFECT cuisine-as-food  ${tally.cuisineAsFood.length}  [${top(tally.cuisineAsFood)}]`,
+    `DEFECT cuisine-as-food  ${tally.cuisineAsItem.length}  [${top(tally.cuisineAsItem)}]`,
   );
   console.log(
-    `DEFECT format-as-food   ${tally.formatAsFood.length}  [${top(tally.formatAsFood)}]`,
+    `DEFECT format-as-food   ${tally.formatAsItem.length}  [${top(tally.formatAsItem)}]`,
   );
   console.log(
     `DEFECT bad-attribute    ${tally.badAttribute.length}  [${top(tally.badAttribute)}]`,
   );
-  console.log(`DEFECT empty rest name  ${tally.emptyRestaurantName}`);
+  console.log(`DEFECT empty rest name  ${tally.emptyPlaceName}`);
 }
 
 async function main(): Promise<void> {
@@ -387,8 +386,8 @@ async function main(): Promise<void> {
         id,
         liveCount: entry.live.length,
         candidateCount: entry.candidate.length,
-        live: entry.live.map((m) => ({ r: m.restaurant, f: m.food })),
-        candidate: entry.candidate.map((m) => ({ r: m.restaurant, f: m.food })),
+        live: entry.live.map((m) => ({ r: m.place, f: m.item })),
+        candidate: entry.candidate.map((m) => ({ r: m.place, f: m.item })),
       });
     }
   }
@@ -403,10 +402,10 @@ async function main(): Promise<void> {
     `mentions        ${delta(tallies.live.mentions, tallies.candidate.mentions)}`,
   );
   console.log(
-    `distinct rests  ${delta(tallies.live.restaurants.size, tallies.candidate.restaurants.size)}`,
+    `distinct rests  ${delta(tallies.live.places.size, tallies.candidate.places.size)}`,
   );
   console.log(
-    `distinct dishes ${delta(tallies.live.foods.size, tallies.candidate.foods.size)}`,
+    `distinct dishes ${delta(tallies.live.items.size, tallies.candidate.items.size)}`,
   );
   console.log(
     `docs emitting   ${delta(tallies.live.docsEmitting, tallies.candidate.docsEmitting)}`,

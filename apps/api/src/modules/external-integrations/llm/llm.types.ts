@@ -114,22 +114,22 @@ interface LLMMentionBase {
   temp_id: string;
 
   // Restaurant fields (REQUIRED)
-  restaurant: string; // Normalized name only
-  restaurant_surface?: string | null; // Exact string as observed in source
+  place: string; // Normalized name only
+  place_surface?: string | null; // Exact string as observed in source
 
   // Food entity fields (optional - null when no food mentioned)
-  food?: string | null; // Normalized name only
-  food_surface?: string | null; // Exact string as observed in source
-  food_categories?: string[] | null; // Hierarchical decomposition
+  item?: string | null; // Normalized name only
+  item_surface?: string | null; // Exact string as observed in source
+  item_categories?: string[] | null; // Hierarchical decomposition
   ingredients?: string[] | null; // Source-named ingredient nouns for this dish (4.6) — evidence tier; canonical dish ingredients are synthesized offline
-  food_category_surfaces?: (string | null)[] | null; // Surface tokens aligned with food_categories
+  item_category_surfaces?: (string | null)[] | null; // Surface tokens aligned with item_categories
   is_menu_item?: boolean | null;
 
   // Attributes (preserved as arrays)
-  restaurant_attributes?: string[] | null;
-  restaurant_attribute_surfaces?: (string | null)[] | null;
-  food_attributes?: string[] | null;
-  food_attribute_surfaces?: (string | null)[] | null;
+  place_attributes?: string[] | null;
+  place_attribute_surfaces?: (string | null)[] | null;
+  item_attributes?: string[] | null;
+  item_attribute_surfaces?: (string | null)[] | null;
 
   // Core processing fields (VITAL)
   general_praise: boolean;
@@ -160,9 +160,9 @@ export interface EnrichedLLMMention extends LLMMentionBase {
   post_context?: string;
 
   // Internal processing fields populated server-side
-  __restaurantTempId?: string | null;
-  __foodEntityTempId?: string | null;
-  __foodCategoryTempIds?: Array<{
+  __placeTempId?: string | null;
+  __itemEntityTempId?: string | null;
+  __itemCategoryTempIds?: Array<{
     name: string;
     tempId: string;
     surface?: string | null;
@@ -214,10 +214,10 @@ export interface LLMApiResponse {
  * Gemini API request structure
  */
 export interface LLMSearchQueryAnalysis {
-  restaurants: string[];
-  foods: string[];
-  foodAttributes: string[];
-  restaurantAttributes: string[];
+  places: string[];
+  items: string[];
+  itemAttributes: string[];
+  placeAttributes: string[];
   /** Ingredient nouns searched BY ("burrata", "miso") — the ingredient lane. */
   ingredients?: string[];
   /** Ingredient nouns the user wants ABSENT ("no egg", "without cilantro",
@@ -241,7 +241,7 @@ export interface LLMAttributePlacementCandidate {
 
 export interface LLMAttributePlacementInput {
   term: string;
-  kind: 'food_attribute' | 'restaurant_attribute';
+  kind: 'item_attribute' | 'place_attribute';
   candidates: LLMAttributePlacementCandidate[];
 }
 
@@ -253,7 +253,7 @@ export interface LLMAttributePlacementResult {
 }
 
 export interface LLMAttributeNameInput {
-  kind: 'food_attribute' | 'restaurant_attribute';
+  kind: 'item_attribute' | 'place_attribute';
   /** The synonym group (canonical + aliases) to pick a display name from. */
   names: string[];
 }
@@ -276,7 +276,7 @@ export interface LLMEntityMatchInput {
   /** The newly-extracted entity name to resolve. */
   term: string;
   /** restaurant (a place), food (a dish), or ingredient (a component). */
-  kind: 'restaurant' | 'food' | 'ingredient';
+  kind: 'place' | 'item' | 'ingredient';
   /** Existing entities recalled as the closest matches to `term`. */
   candidates: LLMEntityMatchCandidate[];
 }
@@ -289,12 +289,12 @@ export interface LLMEntityMatchResult {
 }
 
 export interface LLMPollAxisConstraint {
-  kind: 'category' | 'cuisine' | 'dish_attribute' | 'restaurant_attribute';
+  kind: 'category' | 'cuisine' | 'dish_attribute' | 'place_attribute';
   value: string;
 }
 
 export interface LLMPollAxis {
-  targetType: 'dish' | 'restaurant';
+  targetType: 'dish' | 'place';
   constraint: LLMPollAxisConstraint | null;
   anchor: string | null;
   marketHint: string | null;
@@ -307,7 +307,7 @@ export interface LLMPollSubjectResult {
   reason: string;
 }
 
-export interface LLMRestaurantPlaceChooserCandidate {
+export interface LLMPlaceChooserCandidate {
   candidateId: string;
   name: string;
   address?: string | null;
@@ -317,17 +317,17 @@ export interface LLMRestaurantPlaceChooserCandidate {
   searchTextRank?: number | null;
 }
 
-export interface LLMRestaurantPlaceChooserInput {
+export interface LLMPlaceChooserInput {
   query: string;
   sourceText?: string | null;
   sourceLocale?: {
     city?: string | null;
     region?: string | null;
   } | null;
-  candidates: LLMRestaurantPlaceChooserCandidate[];
+  candidates: LLMPlaceChooserCandidate[];
 }
 
-export interface LLMRestaurantPlaceChooserDecision {
+export interface LLMPlaceChooserDecision {
   decision: 'select' | 'reject';
   candidateId?: string | null;
   /** The judge's stated ground, when the model returned one. The grounding

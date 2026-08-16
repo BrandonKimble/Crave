@@ -55,7 +55,7 @@ describe('UserListMapper score drop policy (F604)', () => {
       {
         itemId: 'item-1',
         note: null,
-        restaurant: {
+        place: {
           entityId: 'rest-1',
           name: 'Test Restaurant',
           aliases: [],
@@ -69,10 +69,10 @@ describe('UserListMapper score drop policy (F604)', () => {
     ] as unknown as UserListItemDetail[];
 
     const results = await expect(
-      mapper.mapRestaurantResults(items),
+      mapper.mapPlaceResults(items),
     ).resolves.toBeDefined();
     void results;
-    const out = await mapper.mapRestaurantResults(items);
+    const out = await mapper.mapPlaceResults(items);
     expect(out).toHaveLength(1);
     expect(out[0].craveScore).toBeNull();
   });
@@ -86,15 +86,15 @@ describe('UserListMapper score drop policy (F604)', () => {
         note: null,
         connection: {
           connectionId: 'conn-1',
-          foodId: 'food-1',
-          restaurantId: 'rest-1',
+          itemId: 'food-1',
+          placeId: 'rest-1',
           mentionCount: 0,
           totalUpvotes: 0,
           lastMentionedAt: null,
           categories: [],
-          foodAttributes: [],
-          food: { name: 'Taco', aliases: [] },
-          restaurant: {
+          itemAttributes: [],
+          item: { name: 'Taco', aliases: [] },
+          place: {
             name: 'Test Restaurant',
             aliases: [],
             priceLevel: null,
@@ -104,8 +104,8 @@ describe('UserListMapper score drop policy (F604)', () => {
       },
     ] as unknown as UserListItemDetail[];
 
-    await expect(mapper.mapFoodResults(items)).resolves.not.toThrow?.();
-    const out = await mapper.mapFoodResults(items);
+    await expect(mapper.mapItemResults(items)).resolves.not.toThrow?.();
+    const out = await mapper.mapItemResults(items);
     expect(out).toHaveLength(0);
   });
 
@@ -117,15 +117,15 @@ describe('UserListMapper score drop policy (F604)', () => {
         note: null,
         connection: {
           connectionId: 'conn-1',
-          foodId: 'food-1',
-          restaurantId: 'rest-1',
+          itemId: 'food-1',
+          placeId: 'rest-1',
           mentionCount: 0,
           totalUpvotes: 0,
           lastMentionedAt: null,
           categories: [],
-          foodAttributes: [],
-          food: { name: 'Taco', aliases: [] },
-          restaurant: {
+          itemAttributes: [],
+          item: { name: 'Taco', aliases: [] },
+          place: {
             name: 'Test Restaurant',
             aliases: [],
             priceLevel: null,
@@ -135,10 +135,10 @@ describe('UserListMapper score drop policy (F604)', () => {
       },
     ] as unknown as UserListItemDetail[];
 
-    const out = await mapper.mapFoodResults(items);
+    const out = await mapper.mapItemResults(items);
     expect(out).toHaveLength(1);
     expect(out[0].craveScore).toBeCloseTo(4.2);
-    expect(out[0].restaurantCraveScore).toBeCloseTo(4.2);
+    expect(out[0].placeCraveScore).toBeCloseTo(4.2);
   });
 
   it('sanity: CraveScoreSubjectType import unused directly, kept for prisma typing parity', () => {

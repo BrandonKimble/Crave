@@ -113,10 +113,7 @@ const HEARING_METERS: ReadonlyMap<string, HearingMeter> = new Map([
   ],
   ['word-negation', { caller: 'vocabulary.negation_judge', claimsPerCall: 40 }],
   ['word-role', { caller: 'vocabulary.word_role_judge', claimsPerCall: 40 }],
-  [
-    'restaurant_name',
-    { caller: 'aliases.restaurant_name_judge', claimsPerCall: 8 },
-  ],
+  ['restaurant_name', { caller: 'aliases.place_name_judge', claimsPerCall: 8 }],
 ]);
 
 /** The lane this service was born for, and the meter every legacy call site

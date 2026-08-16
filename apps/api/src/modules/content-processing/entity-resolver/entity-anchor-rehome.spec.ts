@@ -63,9 +63,9 @@ describe('EntityAnchorRehomeService', () => {
       .sort();
     expect(pollWheres).toEqual([
       'targetDishId',
-      'targetFoodAttributeId',
-      'targetRestaurantAttributeId',
-      'targetRestaurantId',
+      'targetItemAttributeId',
+      'targetPlaceAttributeId',
+      'targetPlaceId',
     ]);
     // raws: 2 topic array_replace + 6 endorsement (3 shapes × delete+update)
     // + 6 leaderboard (same shapes — F4) + 1 comment entity_spans rewrite

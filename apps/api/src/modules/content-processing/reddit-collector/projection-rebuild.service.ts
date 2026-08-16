@@ -3,16 +3,16 @@ import { Connection, EntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import {
-  FOOD_CATEGORY_EDGE_LOCK,
-  foodCategoryEdgeDeleteSql,
-  foodCategoryEdgeInsertSql,
+  ITEM_CATEGORY_EDGE_LOCK,
+  itemCategoryEdgeDeleteSql,
+  itemCategoryEdgeInsertSql,
 } from './food-category-edge-sql';
 
 type PrismaTransaction = Prisma.TransactionClient;
 
-type ActiveRestaurantEvent = {
+type ActivePlaceEvent = {
   extractionRunId: string;
-  restaurantId: string;
+  placeId: string;
   sourceDocumentId: string;
   mentionKey: string;
   evidenceType: string;
@@ -20,9 +20,9 @@ type ActiveRestaurantEvent = {
   sourceUpvotes: number;
 };
 
-type ActiveRestaurantEntityEvent = {
+type ActivePlaceEntityEvent = {
   extractionRunId: string;
-  restaurantId: string;
+  placeId: string;
   sourceDocumentId: string;
   mentionKey: string;
   entityId: string;
@@ -34,29 +34,29 @@ type ActiveRestaurantEntityEvent = {
 };
 
 type MentionEventGroup = {
-  restaurantId: string;
+  placeId: string;
   mentionKey: string;
-  events: ActiveRestaurantEntityEvent[];
+  events: ActivePlaceEntityEvent[];
 };
 
 type ItemSupportMention = {
-  restaurantId: string;
+  placeId: string;
   categoryIds: string[];
   mentionedAt: Date;
   sourceUpvotes: number;
   /** §8 provenance unification — the calibration room this support came from. */
   sourceDocumentId: string | null;
-  foodAttributeIds: string[];
+  itemAttributeIds: string[];
 };
 
-type RestaurantItemProjection = {
-  restaurantId: string;
-  foodId: string;
+type PlaceItemProjection = {
+  placeId: string;
+  itemId: string;
   /** Phase 4: this row is a CATEGORY claim materialized as an item. */
   isCategoryItem: boolean;
   categories: string[];
-  baseFoodAttributes: string[];
-  foodAttributes: string[];
+  baseItemAttributes: string[];
+  itemAttributes: string[];
   /** Source-faithful ingredient entity ids (evidence tier). */
   ingredients: string[];
   mentionCount: number;
@@ -99,37 +99,34 @@ export class ProjectionRebuildService implements OnModuleInit {
    * Rebuild all restaurant-level projections from the currently active event set.
    * This is the authoritative, order-independent path used after ingestion and replay cutovers.
    */
-  async rebuildForRestaurants(
-    restaurantIds: string[],
+  async rebuildForPlaces(
+    placeIds: string[],
     tx?: PrismaTransaction,
-  ): Promise<{ connectionIds: string[]; restaurantIds: string[] }> {
-    const uniqueRestaurantIds = Array.from(
-      new Set(restaurantIds.filter((value): value is string => Boolean(value))),
+  ): Promise<{ connectionIds: string[]; placeIds: string[] }> {
+    const uniquePlaceIds = Array.from(
+      new Set(placeIds.filter((value): value is string => Boolean(value))),
     );
-    if (!uniqueRestaurantIds.length) {
-      return { connectionIds: [], restaurantIds: [] };
+    if (!uniquePlaceIds.length) {
+      return { connectionIds: [], placeIds: [] };
     }
 
     if (tx) {
-      const connectionIds = await this.rebuildForRestaurantsTx(
-        tx,
-        uniqueRestaurantIds,
-      );
-      return { connectionIds, restaurantIds: uniqueRestaurantIds };
+      const connectionIds = await this.rebuildForPlacesTx(tx, uniquePlaceIds);
+      return { connectionIds, placeIds: uniquePlaceIds };
     }
 
     const connectionIds = await this.prismaService.$transaction(
       async (transaction) =>
-        this.rebuildForRestaurantsTx(transaction, uniqueRestaurantIds),
+        this.rebuildForPlacesTx(transaction, uniquePlaceIds),
       { timeout: 15 * 60 * 1000 },
     );
 
-    return { connectionIds, restaurantIds: uniqueRestaurantIds };
+    return { connectionIds, placeIds: uniquePlaceIds };
   }
 
-  private async rebuildForRestaurantsTx(
+  private async rebuildForPlacesTx(
     tx: PrismaTransaction,
-    restaurantIds: string[],
+    placeIds: string[],
   ): Promise<string[]> {
     // SERIALIZE PER RESTAURANT (async-integrity step 4, H4): rebuilds are
     // full-replace (read events → delete → insert); two concurrent
@@ -137,34 +134,34 @@ export class ProjectionRebuildService implements OnModuleInit {
     // commit last and silently erase the fresher one's contribution. Ids
     // are sorted so overlapping sets always lock in the same order (no
     // deadlock). Same primitive as entity-identity creation locks.
-    for (const restaurantId of [...restaurantIds].sort()) {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`rebuild:restaurant:${restaurantId}`}))`;
+    for (const placeId of [...placeIds].sort()) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`rebuild:place:${placeId}`}))`;
     }
-    const [restaurantEvents, entityEvents] = await Promise.all([
-      this.loadActiveRestaurantEvents(tx, restaurantIds),
-      this.loadActiveRestaurantEntityEvents(tx, restaurantIds),
+    const [placeEvents, entityEvents] = await Promise.all([
+      this.loadActivePlaceEvents(tx, placeIds),
+      this.loadActivePlaceEntityEvents(tx, placeIds),
     ]);
 
     await Promise.all([
-      this.replaceRestaurantPraise(tx, restaurantIds, restaurantEvents),
-      this.replaceRestaurantEntitySignals(tx, restaurantIds, entityEvents),
-      this.replaceRedditAttributeEvidence(tx, restaurantIds, entityEvents),
+      this.replacePlacePraise(tx, placeIds, placeEvents),
+      this.replacePlaceEntitySignals(tx, placeIds, entityEvents),
+      this.replaceRedditAttributeEvidence(tx, placeIds, entityEvents),
     ]);
 
     // Phase 4b: the attribute array is DERIVED from evidence now — this is
     // the line that makes re-extraction able to correct a wrong attribute.
-    await this.deriveRestaurantAttributes(tx, restaurantIds);
+    await this.derivePlaceAttributes(tx, placeIds);
 
     const mentionGroups = this.groupEntityEventsByMention(entityEvents);
     const itemSupportMentions = this.buildItemSupportMentions(mentionGroups);
-    const itemProjections = this.buildRestaurantItemProjections(
+    const itemProjections = this.buildPlaceItemProjections(
       mentionGroups,
       itemSupportMentions,
     );
 
-    const connectionIds = await this.replaceRestaurantItems(
+    const connectionIds = await this.replacePlaceItems(
       tx,
-      restaurantIds,
+      placeIds,
       itemProjections,
     );
 
@@ -173,12 +170,12 @@ export class ProjectionRebuildService implements OnModuleInit {
     // rebuilt connection arrays: recompute edges for every food these
     // restaurants touch, across ALL of that food's connections (per-food
     // reconciliation, self-edges excluded). Incremental + tx-consistent.
-    await this.refreshFoodCategoryEdgesForRestaurants(tx, restaurantIds);
+    await this.refreshItemCategoryEdgesForPlaces(tx, placeIds);
 
     this.logger.debug('Rebuilt restaurant projections from active evidence', {
-      restaurantCount: restaurantIds.length,
-      restaurantEventCount: restaurantEvents.length,
-      restaurantEntityEventCount: entityEvents.length,
+      placeCount: placeIds.length,
+      placeEventCount: placeEvents.length,
+      placeEntityEventCount: entityEvents.length,
       itemSupportMentionCount: itemSupportMentions.length,
       rebuiltConnectionCount: connectionIds.length,
     });
@@ -186,18 +183,18 @@ export class ProjectionRebuildService implements OnModuleInit {
     return connectionIds;
   }
 
-  private async refreshFoodCategoryEdgesForRestaurants(
+  private async refreshItemCategoryEdgesForPlaces(
     tx: PrismaTransaction,
-    restaurantIds: string[],
+    placeIds: string[],
   ): Promise<void> {
-    if (!restaurantIds.length) return;
+    if (!placeIds.length) return;
     // The SQL is FoodCategoryEdgeBuilderService's too — see
     // food-category-edge-sql.ts for why the incremental and full-replace
     // writers must derive membership from one text.
-    const scope = { restaurantIdsParam: '$1' };
-    await tx.$executeRawUnsafe(FOOD_CATEGORY_EDGE_LOCK);
-    await tx.$executeRawUnsafe(foodCategoryEdgeDeleteSql(scope), restaurantIds);
-    await tx.$executeRawUnsafe(foodCategoryEdgeInsertSql(scope), restaurantIds);
+    const scope = { placeIdsParam: '$1' };
+    await tx.$executeRawUnsafe(ITEM_CATEGORY_EDGE_LOCK);
+    await tx.$executeRawUnsafe(itemCategoryEdgeDeleteSql(scope), placeIds);
+    await tx.$executeRawUnsafe(itemCategoryEdgeInsertSql(scope), placeIds);
   }
 
   /* ACTIVE-RUN IS A JOIN PREDICATE, NOT A POST-FILTER (D47 scale pass).
@@ -220,17 +217,17 @@ export class ProjectionRebuildService implements OnModuleInit {
    * filter, 59 ms via the join. Each retained generation multiplies the
    * former and leaves the latter flat, because the index the predicate wants
    * (idx_source_documents_active_run) can only be used inside the query. */
-  private async loadActiveRestaurantEvents(
+  private async loadActivePlaceEvents(
     tx: PrismaTransaction,
-    restaurantIds: string[],
-  ): Promise<ActiveRestaurantEvent[]> {
-    if (!restaurantIds.length) {
+    placeIds: string[],
+  ): Promise<ActivePlaceEvent[]> {
+    if (!placeIds.length) {
       return [];
     }
-    return tx.$queryRaw<ActiveRestaurantEvent[]>`
+    return tx.$queryRaw<ActivePlaceEvent[]>`
       SELECT
         ev.extraction_run_id::text AS "extractionRunId",
-        ev.restaurant_id::text     AS "restaurantId",
+        ev.restaurant_id::text     AS "placeId",
         ev.source_document_id::text AS "sourceDocumentId",
         ev.mention_key             AS "mentionKey",
         ev.evidence_type::text     AS "evidenceType",
@@ -240,21 +237,21 @@ export class ProjectionRebuildService implements OnModuleInit {
       JOIN collection_source_documents sd
         ON sd.document_id = ev.source_document_id
        AND sd.active_extraction_run_id = ev.extraction_run_id
-      WHERE ev.restaurant_id = ANY(${restaurantIds}::uuid[])
+      WHERE ev.restaurant_id = ANY(${placeIds}::uuid[])
     `;
   }
 
-  private async loadActiveRestaurantEntityEvents(
+  private async loadActivePlaceEntityEvents(
     tx: PrismaTransaction,
-    restaurantIds: string[],
-  ): Promise<ActiveRestaurantEntityEvent[]> {
-    if (!restaurantIds.length) {
+    placeIds: string[],
+  ): Promise<ActivePlaceEntityEvent[]> {
+    if (!placeIds.length) {
       return [];
     }
-    return tx.$queryRaw<ActiveRestaurantEntityEvent[]>`
+    return tx.$queryRaw<ActivePlaceEntityEvent[]>`
       SELECT
         ev.extraction_run_id::text  AS "extractionRunId",
-        ev.restaurant_id::text      AS "restaurantId",
+        ev.restaurant_id::text      AS "placeId",
         ev.source_document_id::text AS "sourceDocumentId",
         ev.mention_key              AS "mentionKey",
         ev.entity_id::text          AS "entityId",
@@ -267,17 +264,17 @@ export class ProjectionRebuildService implements OnModuleInit {
       JOIN collection_source_documents sd
         ON sd.document_id = ev.source_document_id
        AND sd.active_extraction_run_id = ev.extraction_run_id
-      WHERE ev.restaurant_id = ANY(${restaurantIds}::uuid[])
+      WHERE ev.restaurant_id = ANY(${placeIds}::uuid[])
     `;
   }
 
   private groupEntityEventsByMention(
-    entityEvents: ActiveRestaurantEntityEvent[],
+    entityEvents: ActivePlaceEntityEvent[],
   ): MentionEventGroup[] {
     const groups = new Map<string, MentionEventGroup>();
 
     entityEvents.forEach((event) => {
-      const key = `${event.restaurantId}:${event.mentionKey}`;
+      const key = `${event.placeId}:${event.mentionKey}`;
       const existing = groups.get(key);
       if (existing) {
         existing.events.push(event);
@@ -285,7 +282,7 @@ export class ProjectionRebuildService implements OnModuleInit {
       }
 
       groups.set(key, {
-        restaurantId: event.restaurantId,
+        placeId: event.placeId,
         mentionKey: event.mentionKey,
         events: [event],
       });
@@ -300,9 +297,9 @@ export class ProjectionRebuildService implements OnModuleInit {
     const mentions: ItemSupportMention[] = [];
 
     mentionGroups.forEach((group) => {
-      const foodEvent = group.events.find(
+      const itemEvent = group.events.find(
         (event) =>
-          event.entityType === 'food' &&
+          event.entityType === 'item' &&
           (event.evidenceType === 'menu_item_food' ||
             event.evidenceType === 'food_mention'),
       );
@@ -311,7 +308,7 @@ export class ProjectionRebuildService implements OnModuleInit {
       // support mention — that would credit one comment twice on the same
       // (restaurant, food) row. Support is now purely for category/
       // attribute-only groups.
-      if (foodEvent) {
+      if (itemEvent) {
         return;
       }
 
@@ -322,24 +319,24 @@ export class ProjectionRebuildService implements OnModuleInit {
             .map((event) => event.entityId),
         ),
       );
-      const foodAttributeIds = Array.from(
+      const itemAttributeIds = Array.from(
         new Set(
           group.events
-            .filter((event) => event.evidenceType === 'food_attribute')
+            .filter((event) => event.evidenceType === 'item_attribute')
             .map((event) => event.entityId),
         ),
       );
-      if (categoryIds.length === 0 && foodAttributeIds.length === 0) {
+      if (categoryIds.length === 0 && itemAttributeIds.length === 0) {
         return;
       }
 
       mentions.push({
-        restaurantId: group.restaurantId,
+        placeId: group.placeId,
         categoryIds,
         mentionedAt: group.events[0]?.mentionedAt ?? new Date(0),
         sourceUpvotes: group.events[0]?.sourceUpvotes ?? 0,
         sourceDocumentId: group.events[0]?.sourceDocumentId ?? null,
-        foodAttributeIds,
+        itemAttributeIds,
       });
     });
 
@@ -348,11 +345,11 @@ export class ProjectionRebuildService implements OnModuleInit {
     );
   }
 
-  private buildRestaurantItemProjections(
+  private buildPlaceItemProjections(
     mentionGroups: MentionEventGroup[],
     itemSupportMentions: ItemSupportMention[],
-  ): RestaurantItemProjection[] {
-    const items = new Map<string, RestaurantItemProjection>();
+  ): PlaceItemProjection[] {
+    const items = new Map<string, PlaceItemProjection>();
 
     mentionGroups.forEach((group) => {
       // A DIRECT food claim mints the connection whether or not it is a
@@ -363,14 +360,14 @@ export class ProjectionRebuildService implements OnModuleInit {
       // produced NOTHING (round-2 census; owner ruled 2026-08-06 they
       // project as the family-level link, with the specific dish arriving
       // only when the source names one — which extraction already handles).
-      const foodEvent = group.events.find(
+      const itemEvent = group.events.find(
         (event) =>
-          event.entityType === 'food' &&
+          event.entityType === 'item' &&
           ((event.isMenuItem === true &&
             event.evidenceType === 'menu_item_food') ||
             event.evidenceType === 'food_mention'),
       );
-      if (!foodEvent) {
+      if (!itemEvent) {
         return;
       }
 
@@ -381,10 +378,10 @@ export class ProjectionRebuildService implements OnModuleInit {
             .map((event) => event.entityId),
         ),
       );
-      const foodAttributes = Array.from(
+      const itemAttributes = Array.from(
         new Set(
           group.events
-            .filter((event) => event.evidenceType === 'food_attribute')
+            .filter((event) => event.evidenceType === 'item_attribute')
             .map((event) => event.entityId),
         ),
       );
@@ -395,16 +392,16 @@ export class ProjectionRebuildService implements OnModuleInit {
             .map((event) => event.entityId),
         ),
       );
-      const key = `${foodEvent.restaurantId}:${foodEvent.entityId}`;
+      const key = `${itemEvent.placeId}:${itemEvent.entityId}`;
       const aggregate =
         items.get(key) ??
         ({
-          restaurantId: foodEvent.restaurantId,
-          foodId: foodEvent.entityId,
+          placeId: itemEvent.placeId,
+          itemId: itemEvent.entityId,
           isCategoryItem: false,
           categories: [],
-          baseFoodAttributes: [],
-          foodAttributes: [],
+          baseItemAttributes: [],
+          itemAttributes: [],
           ingredients: [],
           mentionCount: 0,
           totalUpvotes: 0,
@@ -413,16 +410,16 @@ export class ProjectionRebuildService implements OnModuleInit {
           lastMentionedAt: null,
           firstMentionedAt: null,
           mentions: [],
-        } satisfies RestaurantItemProjection);
+        } satisfies PlaceItemProjection);
 
       aggregate.categories = Array.from(
         new Set([...aggregate.categories, ...categories]),
       ).sort();
-      aggregate.baseFoodAttributes = Array.from(
-        new Set([...aggregate.baseFoodAttributes, ...foodAttributes]),
+      aggregate.baseItemAttributes = Array.from(
+        new Set([...aggregate.baseItemAttributes, ...itemAttributes]),
       ).sort();
-      aggregate.foodAttributes = Array.from(
-        new Set([...aggregate.foodAttributes, ...foodAttributes]),
+      aggregate.itemAttributes = Array.from(
+        new Set([...aggregate.itemAttributes, ...itemAttributes]),
       ).sort();
       aggregate.ingredients = Array.from(
         new Set([...aggregate.ingredients, ...ingredients]),
@@ -430,37 +427,37 @@ export class ProjectionRebuildService implements OnModuleInit {
 
       this.applyTimedContribution(
         aggregate,
-        foodEvent.mentionedAt,
-        foodEvent.sourceUpvotes ?? 0,
-        foodEvent.sourceDocumentId,
+        itemEvent.mentionedAt,
+        itemEvent.sourceUpvotes ?? 0,
+        itemEvent.sourceDocumentId,
       );
 
       items.set(key, aggregate);
     });
 
-    const itemsByRestaurant = new Map<string, RestaurantItemProjection[]>();
+    const itemsByPlace = new Map<string, PlaceItemProjection[]>();
     items.forEach((aggregate) => {
-      const existing = itemsByRestaurant.get(aggregate.restaurantId) ?? [];
+      const existing = itemsByPlace.get(aggregate.placeId) ?? [];
       existing.push(aggregate);
-      itemsByRestaurant.set(aggregate.restaurantId, existing);
+      itemsByPlace.set(aggregate.placeId, existing);
     });
 
     itemSupportMentions.forEach((support) => {
-      const restaurantItems = itemsByRestaurant.get(support.restaurantId) ?? [];
-      if (restaurantItems.length === 0) {
+      const placeItems = itemsByPlace.get(support.placeId) ?? [];
+      if (placeItems.length === 0) {
         return;
       }
 
-      restaurantItems.forEach((aggregate) => {
+      placeItems.forEach((aggregate) => {
         const matchesCategory =
           support.categoryIds.length > 0 &&
           support.categoryIds.some((categoryId) =>
             aggregate.categories.includes(categoryId),
           );
         const matchesAttribute =
-          support.foodAttributeIds.length > 0 &&
-          support.foodAttributeIds.some((attributeId) =>
-            aggregate.baseFoodAttributes.includes(attributeId),
+          support.itemAttributeIds.length > 0 &&
+          support.itemAttributeIds.some((attributeId) =>
+            aggregate.baseItemAttributes.includes(attributeId),
           );
 
         if (!matchesCategory && !matchesAttribute) {
@@ -468,7 +465,7 @@ export class ProjectionRebuildService implements OnModuleInit {
         }
 
         if (
-          support.foodAttributeIds.length > 0 &&
+          support.itemAttributeIds.length > 0 &&
           !matchesAttribute &&
           matchesCategory
         ) {
@@ -503,7 +500,7 @@ export class ProjectionRebuildService implements OnModuleInit {
     // from minting a self-edge).
     itemSupportMentions.forEach((support) => {
       support.categoryIds.forEach((categoryId) => {
-        const key = `${support.restaurantId}:${categoryId}`;
+        const key = `${support.placeId}:${categoryId}`;
         const existing = items.get(key);
         if (existing && !existing.isCategoryItem) {
           // A real dish already occupies this (restaurant, food) pair — the
@@ -514,12 +511,12 @@ export class ProjectionRebuildService implements OnModuleInit {
         const aggregate =
           existing ??
           ({
-            restaurantId: support.restaurantId,
-            foodId: categoryId,
+            placeId: support.placeId,
+            itemId: categoryId,
             isCategoryItem: true,
             categories: [],
-            baseFoodAttributes: [],
-            foodAttributes: [],
+            baseItemAttributes: [],
+            itemAttributes: [],
             ingredients: [],
             mentionCount: 0,
             totalUpvotes: 0,
@@ -528,9 +525,9 @@ export class ProjectionRebuildService implements OnModuleInit {
             lastMentionedAt: null,
             firstMentionedAt: null,
             mentions: [],
-          } satisfies RestaurantItemProjection);
-        aggregate.foodAttributes = Array.from(
-          new Set([...aggregate.foodAttributes, ...support.foodAttributeIds]),
+          } satisfies PlaceItemProjection);
+        aggregate.itemAttributes = Array.from(
+          new Set([...aggregate.itemAttributes, ...support.itemAttributeIds]),
         ).sort();
         this.applyTimedContribution(
           aggregate,
@@ -548,7 +545,7 @@ export class ProjectionRebuildService implements OnModuleInit {
   /** One (document, kind) claim per connection — the doc-null lane (ballot
    *  mentions etc.) is never deduped, it has no document identity. */
   private alreadyContributed(
-    aggregate: RestaurantItemProjection,
+    aggregate: PlaceItemProjection,
     kind: 'direct' | 'support',
     sourceDocumentId: string | null,
   ): boolean {
@@ -565,7 +562,7 @@ export class ProjectionRebuildService implements OnModuleInit {
   }
 
   private applyTimedContribution(
-    aggregate: RestaurantItemProjection,
+    aggregate: PlaceItemProjection,
     mentionedAt: Date,
     upvotes: number,
     sourceDocumentId: string | null,
@@ -597,7 +594,7 @@ export class ProjectionRebuildService implements OnModuleInit {
   }
 
   private applySupportContribution(
-    aggregate: RestaurantItemProjection,
+    aggregate: PlaceItemProjection,
     mentionedAt: Date,
     upvotes: number,
     sourceDocumentId: string | null,
@@ -622,10 +619,10 @@ export class ProjectionRebuildService implements OnModuleInit {
     }
   }
 
-  private async replaceRestaurantPraise(
+  private async replacePlacePraise(
     tx: PrismaTransaction,
-    restaurantIds: string[],
-    restaurantEvents: ActiveRestaurantEvent[],
+    placeIds: string[],
+    placeEvents: ActivePlaceEvent[],
   ): Promise<void> {
     const praiseTotals = new Map<string, number>();
     // `general_praise` is a RESTAURANT-level fact riding a dish-scoped mention key,
@@ -634,37 +631,36 @@ export class ProjectionRebuildService implements OnModuleInit {
     // so the source's upvotes count once, not N times (undoes the fan-out inflation).
     const countedSourcePraise = new Set<string>();
 
-    restaurantEvents
+    placeEvents
       .filter((event) => event.evidenceType === 'general_praise')
       .forEach((event) => {
-        const sourceKey = `${event.restaurantId}:${event.sourceDocumentId}`;
+        const sourceKey = `${event.placeId}:${event.sourceDocumentId}`;
         if (countedSourcePraise.has(sourceKey)) {
           return;
         }
         countedSourcePraise.add(sourceKey);
         praiseTotals.set(
-          event.restaurantId,
-          (praiseTotals.get(event.restaurantId) ?? 0) +
-            (event.sourceUpvotes ?? 0),
+          event.placeId,
+          (praiseTotals.get(event.placeId) ?? 0) + (event.sourceUpvotes ?? 0),
         );
       });
 
     await tx.entity.updateMany({
-      where: { entityId: { in: restaurantIds } },
+      where: { entityId: { in: placeIds } },
       data: {
         generalPraiseUpvotes: 0,
         lastUpdated: new Date(),
       },
     });
 
-    for (const restaurantId of restaurantIds) {
-      const total = praiseTotals.get(restaurantId) ?? 0;
+    for (const placeId of placeIds) {
+      const total = praiseTotals.get(placeId) ?? 0;
       if (total <= 0) {
         continue;
       }
 
       await tx.entity.update({
-        where: { entityId: restaurantId },
+        where: { entityId: placeId },
         data: {
           generalPraiseUpvotes: total,
           lastUpdated: new Date(),
@@ -684,18 +680,18 @@ export class ProjectionRebuildService implements OnModuleInit {
    */
   private async replaceRedditAttributeEvidence(
     tx: PrismaTransaction,
-    restaurantIds: string[],
-    entityEvents: ActiveRestaurantEntityEvent[],
+    placeIds: string[],
+    entityEvents: ActivePlaceEntityEvent[],
   ): Promise<void> {
     const counts = new Map<
       string,
-      { restaurantId: string; attributeId: string; observations: number }
+      { placeId: string; attributeId: string; observations: number }
     >();
     entityEvents.forEach((event) => {
-      if (event.evidenceType !== 'restaurant_attribute') return;
-      const key = `${event.restaurantId}:${event.entityId}`;
+      if (event.evidenceType !== 'place_attribute') return;
+      const key = `${event.placeId}:${event.entityId}`;
       const existing = counts.get(key) ?? {
-        restaurantId: event.restaurantId,
+        placeId: event.placeId,
         attributeId: event.entityId,
         observations: 0,
       };
@@ -703,16 +699,16 @@ export class ProjectionRebuildService implements OnModuleInit {
       counts.set(key, existing);
     });
 
-    await tx.restaurantAttributeEvidence.deleteMany({
+    await tx.placeAttributeEvidence.deleteMany({
       where: {
-        restaurantId: { in: restaurantIds },
+        placeId: { in: placeIds },
         sourceClass: 'reddit_evidence',
       },
     });
     if (counts.size === 0) return;
-    await tx.restaurantAttributeEvidence.createMany({
+    await tx.placeAttributeEvidence.createMany({
       data: Array.from(counts.values()).map((row) => ({
-        restaurantId: row.restaurantId,
+        placeId: row.placeId,
         attributeId: row.attributeId,
         sourceClass: 'reddit_evidence',
         observations: row.observations,
@@ -729,11 +725,11 @@ export class ProjectionRebuildService implements OnModuleInit {
    * wrong attribute survived every re-extraction. Now it tracks the
    * evidence, which is the system's law everywhere else.
    */
-  private async deriveRestaurantAttributes(
+  private async derivePlaceAttributes(
     tx: PrismaTransaction,
-    restaurantIds: string[],
+    placeIds: string[],
   ): Promise<void> {
-    if (!restaurantIds.length) return;
+    if (!placeIds.length) return;
     await tx.$executeRaw`
       UPDATE core_entities r
       SET restaurant_attributes = COALESCE(ev.attrs, ARRAY[]::uuid[])
@@ -744,22 +740,22 @@ export class ProjectionRebuildService implements OnModuleInit {
                 JOIN core_entities ae
                   ON ae.entity_id = a.attribute_id AND ae.status = 'active'
                 WHERE a.restaurant_id = rid) AS attrs
-        FROM unnest(${restaurantIds}::uuid[]) AS rid
+        FROM unnest(${placeIds}::uuid[]) AS rid
       ) ev
       WHERE r.entity_id = ev.restaurant_id
-        AND r.type = 'restaurant'
+        AND r.type = 'place'
     `;
   }
 
-  private async replaceRestaurantEntitySignals(
+  private async replacePlaceEntitySignals(
     tx: PrismaTransaction,
-    restaurantIds: string[],
-    entityEvents: ActiveRestaurantEntityEvent[],
+    placeIds: string[],
+    entityEvents: ActivePlaceEntityEvent[],
   ): Promise<void> {
     const counts = new Map<
       string,
       {
-        restaurantId: string;
+        placeId: string;
         entityId: string;
         entityType: EntityType;
         mentionCount: number;
@@ -767,16 +763,16 @@ export class ProjectionRebuildService implements OnModuleInit {
     >();
 
     entityEvents.forEach((event) => {
-      const key = `${event.restaurantId}:${event.entityId}`;
+      const key = `${event.placeId}:${event.entityId}`;
       const existing =
         counts.get(key) ??
         ({
-          restaurantId: event.restaurantId,
+          placeId: event.placeId,
           entityId: event.entityId,
           entityType: event.entityType,
           mentionCount: 0,
         } as {
-          restaurantId: string;
+          placeId: string;
           entityId: string;
           entityType: EntityType;
           mentionCount: number;
@@ -785,17 +781,17 @@ export class ProjectionRebuildService implements OnModuleInit {
       counts.set(key, existing);
     });
 
-    await tx.restaurantEntitySignal.deleteMany({
-      where: { restaurantId: { in: restaurantIds } },
+    await tx.placeEntitySignal.deleteMany({
+      where: { placeId: { in: placeIds } },
     });
 
     if (counts.size === 0) {
       return;
     }
 
-    await tx.restaurantEntitySignal.createMany({
+    await tx.placeEntitySignal.createMany({
       data: Array.from(counts.values()).map((row) => ({
-        restaurantId: row.restaurantId,
+        placeId: row.placeId,
         entityId: row.entityId,
         entityType: row.entityType,
         mentionCount: row.mentionCount,
@@ -803,19 +799,19 @@ export class ProjectionRebuildService implements OnModuleInit {
     });
   }
 
-  private async replaceRestaurantItems(
+  private async replacePlaceItems(
     tx: PrismaTransaction,
-    restaurantIds: string[],
-    items: RestaurantItemProjection[],
+    placeIds: string[],
+    items: PlaceItemProjection[],
   ): Promise<string[]> {
     const existingConnections = await tx.connection.findMany({
-      where: { restaurantId: { in: restaurantIds } },
+      where: { placeId: { in: placeIds } },
     });
 
     const existingByKey = new Map<string, Connection>();
     existingConnections.forEach((connection) => {
       existingByKey.set(
-        `${connection.restaurantId}:${connection.foodId}`,
+        `${connection.placeId}:${connection.itemId}`,
         connection,
       );
     });
@@ -832,7 +828,7 @@ export class ProjectionRebuildService implements OnModuleInit {
     const now = new Date();
 
     for (const item of items) {
-      const key = `${item.restaurantId}:${item.foodId}`;
+      const key = `${item.placeId}:${item.itemId}`;
       retainedKeys.add(key);
 
       const existing = existingByKey.get(key);
@@ -842,7 +838,7 @@ export class ProjectionRebuildService implements OnModuleInit {
           where: { connectionId: existing.connectionId },
           data: {
             categories: item.categories,
-            foodAttributes: item.foodAttributes,
+            itemAttributes: item.itemAttributes,
             ingredients: item.ingredients,
             mentionCount: item.mentionCount,
             totalUpvotes: item.totalUpvotes,
@@ -857,10 +853,10 @@ export class ProjectionRebuildService implements OnModuleInit {
       } else {
         const created = await tx.connection.create({
           data: {
-            restaurantId: item.restaurantId,
-            foodId: item.foodId,
+            placeId: item.placeId,
+            itemId: item.itemId,
             categories: item.categories,
-            foodAttributes: item.foodAttributes,
+            itemAttributes: item.itemAttributes,
             ingredients: item.ingredients,
             mentionCount: item.mentionCount,
             totalUpvotes: item.totalUpvotes,
@@ -892,18 +888,18 @@ export class ProjectionRebuildService implements OnModuleInit {
     // (Cascade on connection delete handles stale-connection rows.)
     const touchedConnectionIds = Array.from(new Set(affectedConnectionIds));
     if (touchedConnectionIds.length > 0) {
-      await tx.restaurantItemMention.deleteMany({
+      await tx.placeItemMention.deleteMany({
         where: { connectionId: { in: touchedConnectionIds } },
       });
     }
     if (mentionRecords.length > 0) {
-      await tx.restaurantItemMention.createMany({ data: mentionRecords });
+      await tx.placeItemMention.createMany({ data: mentionRecords });
     }
 
     const staleConnectionIds = existingConnections
       .filter(
         (connection) =>
-          !retainedKeys.has(`${connection.restaurantId}:${connection.foodId}`),
+          !retainedKeys.has(`${connection.placeId}:${connection.itemId}`),
       )
       .map((connection) => connection.connectionId);
 
@@ -947,7 +943,7 @@ export class ProjectionRebuildService implements OnModuleInit {
             // recency signal. A starved anchor survives; it does not rank.
             lastMentionedAt: null,
             categories: [],
-            foodAttributes: [],
+            itemAttributes: [],
             ingredients: [],
           },
         });
@@ -955,7 +951,7 @@ export class ProjectionRebuildService implements OnModuleInit {
         // mention ledger let the scorer keep scoring starved anchors from
         // dead evidence — 5 of 115 zeroed connections still held live
         // scores. The ledger is derived; clear it with the counters.
-        await tx.restaurantItemMention.deleteMany({
+        await tx.placeItemMention.deleteMany({
           where: { connectionId: { in: Array.from(anchored) } },
         });
       }
@@ -1004,7 +1000,7 @@ export class ProjectionRebuildService implements OnModuleInit {
     // restaurant, type) would otherwise both move inside one snapshot and
     // abort the whole statement on the content unique (red team F5).
     const repointed = await this.prismaService.$queryRaw<
-      Array<{ restaurant_id: string }>
+      Array<{ place_id: string }>
     >`
       WITH candidates AS (
         SELECT DISTINCT ON (
@@ -1052,7 +1048,7 @@ export class ProjectionRebuildService implements OnModuleInit {
     // join the rebuild set — their counts were inflated by the duplicate
     // (round 2 ③).
     const dupDeleted = await this.prismaService.$queryRaw<
-      Array<{ restaurant_id: string }>
+      Array<{ place_id: string }>
     >`
       WITH gone AS (
         DELETE FROM core_restaurant_entity_events ev
@@ -1076,7 +1072,7 @@ export class ProjectionRebuildService implements OnModuleInit {
     // the restaurant's redirect; content-unique collisions are redundant
     // copies (the winner already heard this document) and are deleted.
     const restRepointed = await this.prismaService.$queryRaw<
-      Array<{ restaurant_id: string }>
+      Array<{ place_id: string }>
     >`
       WITH candidates AS (
         SELECT DISTINCT ON (
@@ -1118,7 +1114,7 @@ export class ProjectionRebuildService implements OnModuleInit {
         AND winner.status = 'active'
     `;
     const praiseRepointed = await this.prismaService.$queryRaw<
-      Array<{ restaurant_id: string }>
+      Array<{ place_id: string }>
     >`
       WITH candidates AS (
         SELECT DISTINCT ON (
@@ -1165,7 +1161,7 @@ export class ProjectionRebuildService implements OnModuleInit {
     // awaiting the class-② repointing ruling — expected to drain then, not
     // a regression signal until it does.
     const stranded = await this.prismaService.$queryRaw<
-      Array<{ entity_dim: number; restaurant_dim: number; praise_dim: number }>
+      Array<{ entity_dim: number; place_dim: number; praise_dim: number }>
     >`
       SELECT
         (SELECT count(*)::int FROM core_restaurant_entity_events ev
@@ -1180,10 +1176,10 @@ export class ProjectionRebuildService implements OnModuleInit {
     `;
     const strandedCount =
       Number(stranded[0]?.entity_dim ?? 0) +
-      Number(stranded[0]?.restaurant_dim ?? 0) +
+      Number(stranded[0]?.place_dim ?? 0) +
       Number(stranded[0]?.praise_dim ?? 0);
     // Archived restaurants' derived rows are dead weight the per-batch
-    // rebuild never sweeps (it only touches the batch's restaurantIds) —
+    // rebuild never sweeps (it only touches the batch's placeIds) —
     // big-one red team: 900 stale signal rows + scores survived archival.
     await this.prismaService.$executeRaw`
       DELETE FROM core_restaurant_entity_signals s
@@ -1198,25 +1194,25 @@ export class ProjectionRebuildService implements OnModuleInit {
     const rebuildSet = Array.from(
       new Set(
         [...repointed, ...dupDeleted, ...restRepointed, ...praiseRepointed].map(
-          (row) => row.restaurant_id,
+          (row) => row.place_id,
         ),
       ),
     );
     if (rebuildSet.length > 0 || strandedCount > 0) {
       this.logger.warn('Tombstone-event sweep', {
         operation: 'tombstone_event_sweep',
-        rebuiltRestaurants: rebuildSet.length,
+        rebuiltPlaces: rebuildSet.length,
         // label matches the MEASUREMENT (round 5): events still on
         // archived entities post-sweep — no active-winner redirect existed
         // for them (moved/deleted rows are already gone by this point).
         strandedOnTombstones: strandedCount,
         strandedEntityDim: Number(stranded[0]?.entity_dim ?? 0),
-        strandedRestaurantDim: Number(stranded[0]?.restaurant_dim ?? 0),
+        strandedPlaceDim: Number(stranded[0]?.place_dim ?? 0),
         strandedPraiseDim: Number(stranded[0]?.praise_dim ?? 0),
       });
     }
     for (let i = 0; i < rebuildSet.length; i += 50) {
-      await this.rebuildForRestaurants(rebuildSet.slice(i, i + 50));
+      await this.rebuildForPlaces(rebuildSet.slice(i, i + 50));
     }
   }
 
@@ -1234,11 +1230,11 @@ export class ProjectionRebuildService implements OnModuleInit {
     // ~6.7k restaurants in ~3 minutes nightly; no enumeration of failure
     // modes, so no future bug class ever needs a new arm.
     const orphans = await this.prismaService.$queryRaw<
-      Array<{ restaurantId: string }>
+      Array<{ placeId: string }>
     >`
-      SELECT e.entity_id AS "restaurantId"
+      SELECT e.entity_id AS "placeId"
       FROM core_entities e
-      WHERE e.type = 'restaurant'
+      WHERE e.type = 'place'
         AND (
           EXISTS (
             SELECT 1 FROM core_restaurant_entity_events ev
@@ -1276,9 +1272,9 @@ export class ProjectionRebuildService implements OnModuleInit {
     ) {
       const batch = orphans
         .slice(offset, offset + ProjectionRebuildService.REPAIR_BATCH_SIZE)
-        .map((o) => o.restaurantId);
+        .map((o) => o.placeId);
       try {
-        await this.rebuildForRestaurants(batch);
+        await this.rebuildForPlaces(batch);
         repaired += batch.length;
       } catch (error) {
         // logger.error IS the Sentry seam — a failing repair batch is loud.

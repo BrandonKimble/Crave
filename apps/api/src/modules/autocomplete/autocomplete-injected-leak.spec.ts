@@ -63,7 +63,7 @@ function createService(prisma: Record<string, unknown>): ServicePrivate {
 
 const match = (entityId: string, name: string): Record<string, unknown> => ({
   entityId,
-  entityType: EntityType.restaurant,
+  entityType: EntityType.place,
   name,
   confidence: 0.65,
   aliases: [],
@@ -147,7 +147,7 @@ describe('autocomplete resolver name-refetch archived guard (F572)', () => {
           {
             entityId: ARCHIVED,
             confidence: 0.9,
-            entityType: EntityType.restaurant,
+            entityType: EntityType.place,
             matchedName: null,
             originalInput: { aliases: [] },
           },
@@ -163,7 +163,7 @@ describe('autocomplete resolver name-refetch archived guard (F572)', () => {
     const matches = await service.resolveViaEntityResolver(
       { query: 'ghost' },
       'ghost',
-      EntityType.restaurant,
+      EntityType.place,
       8,
     );
     expect(matches).toHaveLength(0);

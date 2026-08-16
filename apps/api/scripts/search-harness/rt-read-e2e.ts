@@ -23,13 +23,13 @@ async function run(search: any, label: string, req: any) {
     const res = await search.runQuery(req);
     console.log(
       `\n### ${label}  (${Date.now() - t}ms)\n` +
-        `  dishes=${res.dishes?.length ?? 0} restaurants=${res.restaurants?.length ?? 0} ` +
-        `totalDishes=${res.metadata?.totalDishes} totalRestaurants=${res.metadata?.totalRestaurants} ` +
+        `  dishes=${res.dishes?.length ?? 0} restaurants=${res.places?.length ?? 0} ` +
+        `totalDishes=${res.metadata?.totalDishes} totalRestaurants=${res.metadata?.totalPlaces} ` +
         `stage=${res.metadata?.relaxationStage} coverage=${res.metadata?.resultCoverageStatus}`,
     );
     console.log(
       '  top restaurants:',
-      (res.restaurants ?? [])
+      (res.places ?? [])
         .slice(0, 5)
         .map((r: any) => r.name)
         .join(' | '),
@@ -38,7 +38,7 @@ async function run(search: any, label: string, req: any) {
       '  top dishes:',
       (res.dishes ?? [])
         .slice(0, 5)
-        .map((d: any) => `${d.foodName ?? d.name}@${d.restaurantName}`)
+        .map((d: any) => `${d.itemName ?? d.name}@${d.placeName}`)
         .join(' | '),
     );
     return res;
@@ -53,38 +53,34 @@ async function main() {
   const search = app.get(SearchService);
   const prisma = app.get(PrismaService);
 
-  const tacos = await idOf(prisma, 'breakfast tacos', 'food');
-  const mexican = await idOf(prisma, 'mexican', 'restaurant_attribute');
-  const patio = await idOf(prisma, 'patio', 'restaurant_attribute');
-  const bbqAttr = await idOf(prisma, 'bbq', 'restaurant_attribute');
+  const tacos = await idOf(prisma, 'breakfast tacos', 'item');
+  const mexican = await idOf(prisma, 'mexican', 'place_attribute');
+  const patio = await idOf(prisma, 'patio', 'place_attribute');
+  const bbqAttr = await idOf(prisma, 'bbq', 'place_attribute');
   console.log('resolved seeds:', { tacos, mexican, patio, bbqAttr });
 
   const results: any = {};
   results.dish = await run(search, 'DISH: breakfast tacos (strict)', {
     entities: {
-      food: [
+      item: [
         { normalizedName: 'breakfast tacos', entityIds: [tacos?.entity_id] },
       ],
     },
     pagination: { page: 1, pageSize: 20 },
   });
   if (mexican)
-    results.cuisine = await run(
-      search,
-      'CUISINE: mexican (restaurant_attribute)',
-      {
-        entities: {
-          restaurantAttributes: [
-            { normalizedName: 'mexican', entityIds: [mexican.entity_id] },
-          ],
-        },
-        pagination: { page: 1, pageSize: 20 },
+    results.cuisine = await run(search, 'CUISINE: mexican (place_attribute)', {
+      entities: {
+        placeAttributes: [
+          { normalizedName: 'mexican', entityIds: [mexican.entity_id] },
+        ],
       },
-    );
+      pagination: { page: 1, pageSize: 20 },
+    });
   if (patio)
     results.patio = await run(search, 'ATTRIBUTE: patio', {
       entities: {
-        restaurantAttributes: [
+        placeAttributes: [
           { normalizedName: 'patio', entityIds: [patio.entity_id] },
         ],
       },
@@ -93,10 +89,10 @@ async function main() {
   if (tacos && patio)
     results.combo = await run(search, 'COMBO: breakfast tacos + patio', {
       entities: {
-        food: [
+        item: [
           { normalizedName: 'breakfast tacos', entityIds: [tacos.entity_id] },
         ],
-        restaurantAttributes: [
+        placeAttributes: [
           { normalizedName: 'patio', entityIds: [patio.entity_id] },
         ],
       },
@@ -110,7 +106,7 @@ async function main() {
       `ARCHIVED-ATTR: bbq (status=${bbqAttr.status})`,
       {
         entities: {
-          restaurantAttributes: [
+          placeAttributes: [
             { normalizedName: 'bbq', entityIds: [bbqAttr.entity_id] },
           ],
         },
@@ -121,7 +117,7 @@ async function main() {
   // HOSTILE: garbage / nonexistent ids
   results.badId = await run(search, 'HOSTILE: non-existent uuid', {
     entities: {
-      food: [
+      item: [
         {
           normalizedName: 'zzz',
           entityIds: ['00000000-0000-0000-0000-000000000000'],
@@ -134,17 +130,17 @@ async function main() {
     entities: {},
   });
   results.noIds = await run(search, 'HOSTILE: name only, no ids', {
-    entities: { food: [{ normalizedName: 'breakfast tacos', entityIds: [] }] },
+    entities: { item: [{ normalizedName: 'breakfast tacos', entityIds: [] }] },
   });
 
   // ARCHIVED RESTAURANT DIRECT: pick an archived restaurant that still has a score row
   const arch = await prisma.$queryRawUnsafe<any[]>(
-    `SELECT e.entity_id, e.name FROM core_public_entity_scores s JOIN core_entities e ON e.entity_id=s.subject_id WHERE e.status='archived' AND e.type='restaurant' LIMIT 1`,
+    `SELECT e.entity_id, e.name FROM core_public_entity_scores s JOIN core_entities e ON e.entity_id=s.subject_id WHERE e.status='archived' AND e.type='place' LIMIT 1`,
   );
   if (arch.length) {
     console.log('\n### archived-but-scored restaurant probe:', arch[0]);
     try {
-      const prof = await search.getRestaurantProfile(arch[0].entity_id);
+      const prof = await search.getPlaceProfile(arch[0].entity_id);
       console.log(
         '  getRestaurantProfile RETURNED:',
         prof ? `name=${(prof as any).name ?? '(shape)'} ` : 'null',
@@ -156,7 +152,7 @@ async function main() {
       // (F1255) This call passed a second argument that the method has not
       // accepted for some time — rot the tsconfig exclusion hid until it was
       // removed 2026-08-03.
-      const dishes = await search.listRestaurantDishes(arch[0].entity_id);
+      const dishes = await search.listPlaceDishes(arch[0].entity_id);
       console.log(
         '  listRestaurantDishes RETURNED:',
         JSON.stringify(dishes).slice(0, 200),

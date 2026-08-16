@@ -47,7 +47,7 @@ function buildPrisma(params: {
    *  default 0 so pre-existing fixtures publish no per-class rows. */
   docsCollected?: number;
   verdictsJudged?: number;
-  newRestaurants?: number;
+  newPlaces?: number;
   /** Honest interactive denominator (round-six): docs through completed
    *  extraction runs in the window. Default 0 → no umbrella row publishes. */
   docsExtracted?: number;
@@ -139,7 +139,7 @@ function buildPrisma(params: {
       count: jest.fn().mockResolvedValue(params.verdictsJudged ?? 0),
     },
     entity: {
-      count: jest.fn().mockResolvedValue(params.newRestaurants ?? 0),
+      count: jest.fn().mockResolvedValue(params.newPlaces ?? 0),
     },
     spendUnitCost: {
       upsert,
@@ -667,7 +667,7 @@ describe('SpendAnalyticsService.refreshPipelineClassRates (§24.2 all-in per-cla
   function build(counts: {
     docsCollected: number;
     verdictsJudged: number;
-    newRestaurants: number;
+    newPlaces: number;
     docsExtracted?: number;
     refreshDetailsCalls?: number;
   }) {
@@ -730,7 +730,7 @@ describe('SpendAnalyticsService.refreshPipelineClassRates (§24.2 all-in per-cla
     const { service, gateEvent, embedEvent, blurEvent } = build({
       docsCollected: 200,
       verdictsJudged: 120,
-      newRestaurants: 150,
+      newPlaces: 150,
     });
     const rows = await service.refreshUnitCosts(WINDOW_END);
 
@@ -782,7 +782,7 @@ describe('SpendAnalyticsService.refreshPipelineClassRates (§24.2 all-in per-cla
     const { service } = build({
       docsCollected: 50,
       verdictsJudged: 40,
-      newRestaurants: 30,
+      newPlaces: 30,
       // The regrounding denominator is the refresh-details CALL count itself
       // — shrink it below MIN_SAMPLE_UNITS too.
       refreshDetailsCalls: 40,

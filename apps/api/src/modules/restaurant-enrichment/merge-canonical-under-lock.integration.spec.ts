@@ -38,7 +38,7 @@
  * Run: yarn test:db (needs DATABASE_URL — a dev database, never prod).
  */
 import { PrismaClient } from '@prisma/client';
-import { RestaurantEntityMergeService } from './restaurant-entity-merge.service';
+import { PlaceEntityMergeService } from './restaurant-entity-merge.service';
 import { EntityAnchorRehomeService } from '../content-processing/entity-resolver/entity-anchor-rehome.service';
 
 const TEST_TAG = 'itest-merge-under-lock';
@@ -58,25 +58,25 @@ const logger = {
  *  that matters here, so it is a spy rather than the real service. */
 const rebuilt: string[][] = [];
 const projectionRebuild = {
-  rebuildForRestaurants: (ids: string[]) => {
+  rebuildForPlaces: (ids: string[]) => {
     rebuilt.push(ids);
     return Promise.resolve();
   },
 } as never;
 
-const service = new RestaurantEntityMergeService(
+const service = new PlaceEntityMergeService(
   prisma as never,
   projectionRebuild,
   new EntityAnchorRehomeService(logger),
   logger,
 );
 
-async function seedRestaurant(
+async function seedPlace(
   label: string,
   status: 'active' | 'archived',
 ): Promise<{ entityId: string; name: string; status: string }> {
   const row = await prisma.entity.create({
-    data: { name: `${TEST_TAG}:${label}`, type: 'restaurant', status },
+    data: { name: `${TEST_TAG}:${label}`, type: 'place', status },
     select: { entityId: true, name: true, status: true },
   });
   return row as { entityId: string; name: string; status: string };
@@ -110,9 +110,9 @@ describe('mergeDuplicateRestaurant re-resolves its canonical under the lock', ()
   it('follows the redirect when the chosen canonical was merged away mid-flight', async () => {
     // The state a caller's stale read cannot see: it picked `loser` while
     // another merge was archiving `loser` into `winner`.
-    const duplicate = await seedRestaurant('duplicate', 'active');
-    const loser = await seedRestaurant('stale-canonical', 'active');
-    const winner = await seedRestaurant('true-winner', 'active');
+    const duplicate = await seedPlace('duplicate', 'active');
+    const loser = await seedPlace('stale-canonical', 'active');
+    const winner = await seedPlace('true-winner', 'active');
 
     // The racing merge, already committed.
     await prisma.entity.update({
@@ -125,7 +125,7 @@ describe('mergeDuplicateRestaurant re-resolves its canonical under the lock', ()
       winner.entityId,
     );
 
-    const result = await service.mergeDuplicateRestaurant({
+    const result = await service.mergeDuplicatePlace({
       canonical: loser as never, // the STALE choice — what every caller holds
       duplicate: duplicate as never,
       canonicalUpdate: {},
@@ -159,11 +159,11 @@ describe('mergeDuplicateRestaurant re-resolves its canonical under the lock', ()
   });
 
   it('refuses when the chosen canonical is archived with nowhere to forward', async () => {
-    const duplicate = await seedRestaurant('duplicate-2', 'active');
-    const stranded = await seedRestaurant('stranded-canonical', 'archived');
+    const duplicate = await seedPlace('duplicate-2', 'active');
+    const stranded = await seedPlace('stranded-canonical', 'archived');
 
     await expect(
-      service.mergeDuplicateRestaurant({
+      service.mergeDuplicatePlace({
         canonical: stranded as never,
         duplicate: duplicate as never,
         canonicalUpdate: {},
@@ -184,11 +184,11 @@ describe('mergeDuplicateRestaurant re-resolves its canonical under the lock', ()
     // The loser side is NOT redirect-followed on purpose: its content already
     // lives at some third entity, and re-targeting would drag that whole
     // unjudged entity into this merge.
-    const canonical = await seedRestaurant('canonical-3', 'active');
-    const duplicate = await seedRestaurant('duplicate-3', 'archived');
+    const canonical = await seedPlace('canonical-3', 'active');
+    const duplicate = await seedPlace('duplicate-3', 'archived');
 
     await expect(
-      service.mergeDuplicateRestaurant({
+      service.mergeDuplicatePlace({
         canonical: canonical as never,
         duplicate: duplicate as never,
         canonicalUpdate: {},

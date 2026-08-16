@@ -260,7 +260,7 @@ async function main(): Promise<void> {
     );
     out('');
 
-    const gibberishTypes: EntityType[] = ['restaurant', 'food'] as EntityType[];
+    const gibberishTypes: EntityType[] = ['place', 'item'] as EntityType[];
     for (const type of gibberishTypes) {
       let linked = 0;
       let nonEmpty = 0;

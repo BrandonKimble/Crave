@@ -5,7 +5,7 @@ import { filterAutocompletePlaceholderMatches } from './search-autocomplete-plac
 
 const makeMatch = (name: string, aliases: string[] = []): AutocompleteMatch => ({
   entityId: `id-${name}`,
-  entityType: 'food',
+  entityType: 'item',
   name,
   aliases,
   confidence: 1,

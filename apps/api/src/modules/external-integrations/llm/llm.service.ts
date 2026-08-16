@@ -66,9 +66,9 @@ import {
   LLMPollAxis,
   LLMPollAxisConstraint,
   LLMAttributeNameInput,
-  LLMRestaurantPlaceChooserCandidate,
-  LLMRestaurantPlaceChooserDecision,
-  LLMRestaurantPlaceChooserInput,
+  LLMPlaceChooserCandidate,
+  LLMPlaceChooserDecision,
+  LLMPlaceChooserInput,
 } from './llm.types';
 import {
   isVendorMonthlyCapError,
@@ -82,7 +82,7 @@ import {
   LLMApiError,
   LLMResponseParsingError,
 } from './llm.exceptions';
-import { buildRestaurantPlaceChooserPrompt } from './prompts/restaurant-place-chooser.prompt';
+import { buildPlaceChooserPrompt } from './prompts/restaurant-place-chooser.prompt';
 import {
   ATTRIBUTE_NAME_RESPONSE_JSON_SCHEMA,
   CUISINE_HUB_CLASSIFY_RESPONSE_JSON_SCHEMA,
@@ -95,7 +95,7 @@ import {
   DISH_KNOWLEDGE_RESPONSE_JSON_SCHEMA,
   CUISINE_EXTRACTION_RESPONSE_JSON_SCHEMA,
   MODERATION_RESPONSE_JSON_SCHEMA,
-  RESTAURANT_PLACE_CHOOSER_RESPONSE_JSON_SCHEMA,
+  PLACE_CHOOSER_RESPONSE_JSON_SCHEMA,
   SEARCH_QUERY_RESPONSE_JSON_SCHEMA,
 } from './prompts/llm-response-schemas';
 
@@ -120,10 +120,10 @@ interface LightweightPost {
 }
 
 interface SearchQueryRawResponse {
-  restaurants: unknown;
-  foods: unknown;
-  foodAttributes: unknown;
-  restaurantAttributes: unknown;
+  places: unknown;
+  items: unknown;
+  itemAttributes: unknown;
+  placeAttributes: unknown;
   ingredients?: unknown;
 }
 
@@ -1067,10 +1067,10 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     const analysis = this.parseSearchQueryResponse(content);
 
     const totalInterpretedEntities =
-      analysis.restaurants.length +
-      analysis.foods.length +
-      analysis.foodAttributes.length +
-      analysis.restaurantAttributes.length +
+      analysis.places.length +
+      analysis.items.length +
+      analysis.itemAttributes.length +
+      analysis.placeAttributes.length +
       (analysis.ingredients?.length ?? 0);
     if (totalInterpretedEntities === 0) {
       this.logger.warn('LLM returned empty search query interpretation', {
@@ -1084,10 +1084,10 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     this.logger.debug('Search query analysis completed', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'analyze_search_query',
-      restaurants: analysis.restaurants.length,
-      foods: analysis.foods.length,
-      foodAttributes: analysis.foodAttributes.length,
-      restaurantAttributes: analysis.restaurantAttributes.length,
+      places: analysis.places.length,
+      items: analysis.items.length,
+      itemAttributes: analysis.itemAttributes.length,
+      placeAttributes: analysis.placeAttributes.length,
     });
 
     if (cacheKeyResult) {
@@ -1628,7 +1628,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
    * to 'new' independently (absent/invalid index in the response = new).
    */
   async matchEntitiesBatch(input: {
-    kind: 'restaurant' | 'food' | 'ingredient';
+    kind: 'place' | 'item' | 'ingredient';
     items: {
       term: string;
       candidates: { id: number; name: string; aliases?: string[] }[];
@@ -2076,7 +2076,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     if (!raw || typeof raw !== 'object') return null;
     const a = raw as Record<string, unknown>;
     const targetType =
-      a.target_type === 'dish' || a.target_type === 'restaurant'
+      a.target_type === 'dish' || a.target_type === 'place'
         ? a.target_type
         : null;
     if (!targetType) return null;
@@ -2085,7 +2085,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       'category',
       'cuisine',
       'dish_attribute',
-      'restaurant_attribute',
+      'place_attribute',
     ]);
     let constraint: LLMPollAxis['constraint'] = null;
     if (a.constraint && typeof a.constraint === 'object') {
@@ -2243,13 +2243,13 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     }));
   }
 
-  async chooseRestaurantPlaceCandidate(
-    input: LLMRestaurantPlaceChooserInput,
-  ): Promise<LLMRestaurantPlaceChooserDecision> {
+  async choosePlaceCandidate(
+    input: LLMPlaceChooserInput,
+  ): Promise<LLMPlaceChooserDecision> {
     const trimmedQuery = input.query?.trim() ?? '';
     const candidates = Array.isArray(input.candidates)
       ? input.candidates.filter(
-          (candidate): candidate is LLMRestaurantPlaceChooserCandidate =>
+          (candidate): candidate is LLMPlaceChooserCandidate =>
             Boolean(candidate?.candidateId?.trim()) &&
             Boolean(candidate?.name?.trim()),
         )
@@ -2262,7 +2262,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
-    const prompt = buildRestaurantPlaceChooserPrompt({
+    const prompt = buildPlaceChooserPrompt({
       ...input,
       query: trimmedQuery,
       candidates,
@@ -2284,7 +2284,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       // mistakes are irreversible was the one nobody could review after the
       // fact. Both halves of that are closed here.
       responseJsonSchema: applyAuditReasonPolicy(
-        RESTAURANT_PLACE_CHOOSER_RESPONSE_JSON_SCHEMA,
+        PLACE_CHOOSER_RESPONSE_JSON_SCHEMA,
       ),
     };
 
@@ -2304,9 +2304,9 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     );
 
     try {
-      const parsed = JSON.parse(
-        content,
-      ) as Partial<LLMRestaurantPlaceChooserDecision> & { reason?: unknown };
+      const parsed = JSON.parse(content) as Partial<LLMPlaceChooserDecision> & {
+        reason?: unknown;
+      };
       const decision = parsed.decision === 'select' ? 'select' : 'reject';
       const candidateId =
         typeof parsed.candidateId === 'string' &&
@@ -2566,10 +2566,10 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     }
 
     const analysisPayload: LLMSearchQueryAnalysis = {
-      restaurants: analysis.restaurants,
-      foods: analysis.foods,
-      foodAttributes: analysis.foodAttributes,
-      restaurantAttributes: analysis.restaurantAttributes,
+      places: analysis.places,
+      items: analysis.items,
+      itemAttributes: analysis.itemAttributes,
+      placeAttributes: analysis.placeAttributes,
       ingredients: analysis.ingredients ?? [],
     };
     const payload = {
@@ -2631,10 +2631,10 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       return;
     }
     const analysisPayload: LLMSearchQueryAnalysis = {
-      restaurants: analysis.restaurants,
-      foods: analysis.foods,
-      foodAttributes: analysis.foodAttributes,
-      restaurantAttributes: analysis.restaurantAttributes,
+      places: analysis.places,
+      items: analysis.items,
+      itemAttributes: analysis.itemAttributes,
+      placeAttributes: analysis.placeAttributes,
       ingredients: analysis.ingredients ?? [],
     };
     const entry = {
@@ -2860,19 +2860,17 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    const restaurants = this.coerceStringArray(parsed.restaurants);
-    const foods = this.coerceStringArray(parsed.foods);
-    const foodAttributes = this.coerceStringArray(parsed.foodAttributes);
-    const restaurantAttributes = this.coerceStringArray(
-      parsed.restaurantAttributes,
-    );
+    const places = this.coerceStringArray(parsed.places);
+    const items = this.coerceStringArray(parsed.items);
+    const itemAttributes = this.coerceStringArray(parsed.itemAttributes);
+    const placeAttributes = this.coerceStringArray(parsed.placeAttributes);
     const ingredients = this.coerceStringArray(parsed.ingredients);
 
     return {
-      restaurants,
-      foods,
-      foodAttributes,
-      restaurantAttributes,
+      places,
+      items,
+      itemAttributes,
+      placeAttributes,
       ingredients,
     };
   }
@@ -2943,10 +2941,10 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
 
     const record = value as Record<string, unknown>;
     return (
-      this.isStringArray(record.restaurants) &&
-      this.isStringArray(record.foods) &&
-      this.isStringArray(record.foodAttributes) &&
-      this.isStringArray(record.restaurantAttributes)
+      this.isStringArray(record.places) &&
+      this.isStringArray(record.items) &&
+      this.isStringArray(record.itemAttributes) &&
+      this.isStringArray(record.placeAttributes)
     );
   }
 
@@ -4771,9 +4769,9 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
           normalized.mentions.length > 0
             ? normalized.mentions.map((m) => ({
                 temp_id: m.temp_id,
-                restaurant: m.restaurant,
-                food: m.food,
-                food_categories: m.food_categories,
+                place: m.place,
+                item: m.item,
+                item_categories: m.item_categories,
               }))
             : [],
       });

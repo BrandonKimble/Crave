@@ -221,10 +221,7 @@ export const RRF_K = 60;
 /** Attribute-shaped types. A constraint span ("sin gluten", "vegetariano")
  *  names one of these; a restaurant proper noun that merely CONTAINS the
  *  constraint words ("Senza Gluten") is a type confusion, not a match. */
-const ATTRIBUTE_TYPES = new Set<string>([
-  'food_attribute',
-  'restaurant_attribute',
-]);
+const ATTRIBUTE_TYPES = new Set<string>(['item_attribute', 'place_attribute']);
 
 export interface DenseDecisionInput {
   /** Cosine of the top dense candidate. */
@@ -260,10 +257,7 @@ export function denseTypeAdmits(
     'candidateType' | 'spanTypeAffinity' | 'inputType'
   >,
 ): boolean {
-  if (
-    input.candidateType === 'restaurant' &&
-    input.inputType !== 'restaurant'
-  ) {
+  if (input.candidateType === 'place' && input.inputType !== 'place') {
     return false;
   }
   if (

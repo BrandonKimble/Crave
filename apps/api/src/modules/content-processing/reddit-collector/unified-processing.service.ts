@@ -66,17 +66,17 @@ const DETERMINISTIC_PRISMA_CODES = new Set([
   'P2013',
   'P2014',
 ]);
-import { RestaurantLocationEnrichmentService } from '../../restaurant-enrichment';
+import { PlaceLocationEnrichmentService } from '../../restaurant-enrichment';
 import { CollectorSourceRegistryService } from './collector-source-registry.service';
 import { AttributeOntologyQueueService } from '../../attribute-ontology/attribute-ontology-queue.service';
 import type { ExtractionTraceContext } from './collection-evidence.service';
-import { RestaurantEnrichmentQueueService } from '../../restaurant-enrichment/restaurant-enrichment-queue.service';
-import { RestaurantSecondaryLocationExpansionQueueService } from '../../restaurant-enrichment/restaurant-secondary-location-expansion-queue.service';
+import { PlaceEnrichmentQueueService } from '../../restaurant-enrichment/restaurant-enrichment-queue.service';
+import { PlaceSecondaryLocationExpansionQueueService } from '../../restaurant-enrichment/restaurant-secondary-location-expansion-queue.service';
 import { ProjectionRebuildService } from './projection-rebuild.service';
 import {
   supersedeAndActivate,
-  writeRestaurantEvents,
-  writeRestaurantEntityEvents,
+  writePlaceEvents,
+  writePlaceEntityEvents,
 } from './extraction-scope.service';
 import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
 
@@ -90,8 +90,8 @@ const DEFAULT_SUBREDDIT_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const DEFAULT_SUBREDDIT_CACHE_MAX_ENTRIES = 1024;
 
 type SourceLedgerRecord = Prisma.ProcessedSourceCreateManyInput;
-type RestaurantEventRecord = Prisma.RestaurantEventCreateManyInput;
-type RestaurantEntityEventRecord = Prisma.RestaurantEntityEventCreateManyInput;
+type PlaceEventRecord = Prisma.PlaceEventCreateManyInput;
+type PlaceEntityEventRecord = Prisma.PlaceEntityEventCreateManyInput;
 
 type SourceBreakdown = {
   pushshift_archive: number;
@@ -100,7 +100,7 @@ type SourceBreakdown = {
   reddit_api_on_demand: number;
 };
 
-type RestaurantEnrichmentDispatchContext = {
+type PlaceEnrichmentDispatchContext = {
   sourceLocale?: {
     city?: string;
     region?: string;
@@ -142,9 +142,9 @@ interface SourceMetadata {
 type ProcessableMention = EnrichedLLMMention;
 type PrismaTransaction = Prisma.TransactionClient;
 
-interface RestaurantMetadataUpdateOperation {
+interface PlaceMetadataUpdateOperation {
   type: 'restaurant_metadata_update';
-  restaurantEntityId: string;
+  placeEntityId: string;
   attributeIds: string[];
 }
 
@@ -156,7 +156,7 @@ const DEFAULT_UNIFIED_BATCH_SIZE = 300;
 const DEFAULT_ENTITY_RESOLUTION_BATCH_SIZE = 100;
 
 const GENERIC_FOOD_PLACEHOLDERS = new Set<string>([
-  'food',
+  'item',
   'foods',
   'the food',
   'good food',
@@ -173,7 +173,7 @@ const GENERIC_FOOD_PLACEHOLDERS = new Set<string>([
 ]);
 
 const GENERIC_RESTAURANT_PLACEHOLDERS = new Set<string>([
-  'restaurant',
+  'place',
   'restaurants',
   'the restaurant',
   'place',
@@ -203,7 +203,7 @@ export class UnifiedProcessingService implements OnModuleInit {
   private readonly entityResolutionBatchSize: number;
   private readonly dryRunEnabled: boolean;
   private readonly transactionTimeoutMs: number;
-  private readonly restaurantEnrichmentConcurrency: number;
+  private readonly placeEnrichmentConcurrency: number;
   private readonly subredditCacheTtlMs: number;
   private readonly subredditCacheMaxEntries: number;
   private readonly subredditLocationCache = new Map<
@@ -222,10 +222,10 @@ export class UnifiedProcessingService implements OnModuleInit {
     private readonly prismaService: PrismaService,
     private readonly entityResolutionService: EntityResolutionService,
     private readonly projectionRebuildService: ProjectionRebuildService,
-    private readonly restaurantEnrichmentQueue: RestaurantEnrichmentQueueService,
-    private readonly secondaryLocationExpansionQueue: RestaurantSecondaryLocationExpansionQueueService,
+    private readonly placeEnrichmentQueue: PlaceEnrichmentQueueService,
+    private readonly secondaryLocationExpansionQueue: PlaceSecondaryLocationExpansionQueueService,
     private readonly configService: ConfigService,
-    private readonly restaurantLocationEnrichmentService: RestaurantLocationEnrichmentService,
+    private readonly placeLocationEnrichmentService: PlaceLocationEnrichmentService,
     private readonly collectorSourceRegistry: CollectorSourceRegistryService,
     private readonly attributeOntologyQueue: AttributeOntologyQueueService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
@@ -236,8 +236,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     this.defaultBatchSize = DEFAULT_UNIFIED_BATCH_SIZE;
     this.entityResolutionBatchSize = DEFAULT_ENTITY_RESOLUTION_BATCH_SIZE;
     this.transactionTimeoutMs = DEFAULT_UNIFIED_PROCESSING_TX_TIMEOUT_MS;
-    this.restaurantEnrichmentConcurrency =
-      DEFAULT_RESTAURANT_ENRICHMENT_CONCURRENCY;
+    this.placeEnrichmentConcurrency = DEFAULT_RESTAURANT_ENRICHMENT_CONCURRENCY;
     this.subredditCacheTtlMs = this.getNumericConfig(
       'UNIFIED_PROCESSING_SUBREDDIT_CACHE_TTL_MS',
       DEFAULT_SUBREDDIT_CACHE_TTL_MS,
@@ -262,7 +261,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     return term.trim().toLowerCase().replace(/\s+/g, ' ');
   }
 
-  private isGenericFoodPlaceholder(term: string): boolean {
+  private isGenericItemPlaceholder(term: string): boolean {
     if (typeof term !== 'string') {
       return true;
     }
@@ -270,7 +269,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     return normalized.length === 0 || GENERIC_FOOD_PLACEHOLDERS.has(normalized);
   }
 
-  private isGenericRestaurantPlaceholder(term: string): boolean {
+  private isGenericPlacePlaceholder(term: string): boolean {
     if (typeof term !== 'string') {
       return true;
     }
@@ -282,12 +281,12 @@ export class UnifiedProcessingService implements OnModuleInit {
     );
   }
 
-  private sanitizeFoodTerm(value: unknown): string | null {
+  private sanitizeItemTerm(value: unknown): string | null {
     if (typeof value !== 'string') {
       return null;
     }
     const trimmed = value.trim();
-    if (!trimmed.length || this.isGenericFoodPlaceholder(trimmed)) {
+    if (!trimmed.length || this.isGenericItemPlaceholder(trimmed)) {
       return null;
     }
     return trimmed;
@@ -333,31 +332,31 @@ export class UnifiedProcessingService implements OnModuleInit {
   }
 
   private sanitizeMention(mention: ProcessableMention): void {
-    mention.food = this.sanitizeFoodTerm(mention.food);
+    mention.item = this.sanitizeItemTerm(mention.item);
 
     const categoryResult = this.filterMentionArray(
-      mention.food_categories,
-      mention.food_category_surfaces,
-      (value) => !this.isGenericFoodPlaceholder(value),
+      mention.item_categories,
+      mention.item_category_surfaces,
+      (value) => !this.isGenericItemPlaceholder(value),
     );
-    mention.food_categories = categoryResult.values;
-    mention.food_category_surfaces = categoryResult.surfaces;
+    mention.item_categories = categoryResult.values;
+    mention.item_category_surfaces = categoryResult.surfaces;
 
-    const foodAttrResult = this.filterMentionArray(
-      mention.food_attributes,
-      mention.food_attribute_surfaces,
-      (value) => !this.isGenericFoodPlaceholder(value),
+    const itemAttrResult = this.filterMentionArray(
+      mention.item_attributes,
+      mention.item_attribute_surfaces,
+      (value) => !this.isGenericItemPlaceholder(value),
     );
-    mention.food_attributes = foodAttrResult.values;
-    mention.food_attribute_surfaces = foodAttrResult.surfaces;
+    mention.item_attributes = itemAttrResult.values;
+    mention.item_attribute_surfaces = itemAttrResult.surfaces;
 
-    const restaurantAttrResult = this.filterMentionArray(
-      mention.restaurant_attributes,
-      mention.restaurant_attribute_surfaces,
-      (value) => !this.isGenericRestaurantPlaceholder(value),
+    const placeAttrResult = this.filterMentionArray(
+      mention.place_attributes,
+      mention.place_attribute_surfaces,
+      (value) => !this.isGenericPlacePlaceholder(value),
     );
-    mention.restaurant_attributes = restaurantAttrResult.values;
-    mention.restaurant_attribute_surfaces = restaurantAttrResult.surfaces;
+    mention.place_attributes = placeAttrResult.values;
+    mention.place_attribute_surfaces = placeAttrResult.surfaces;
   }
 
   /**
@@ -378,7 +377,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     entitiesCreated: number;
     connectionsCreated: number;
     affectedConnectionIds: string[];
-    affectedRestaurantIds: string[];
+    affectedPlaceIds: string[];
     createdEntityIds?: string[];
     createdEntitySummaries?: CreatedEntitySummary[];
     reusedEntitySummaries?: {
@@ -450,16 +449,16 @@ export class UnifiedProcessingService implements OnModuleInit {
       const zeroMentionActivate = this.dryRunEnabled
         ? []
         : (sourceMetadata.extractionTrace?.activateDocumentIds ?? []);
-      let supersededRestaurantIds: string[] = [];
+      let supersededPlaceIds: string[] = [];
       if (zeroMentionActivate.length > 0 && sourceMetadata.extractionTrace) {
         const runId = sourceMetadata.extractionTrace.extractionRunId;
-        supersededRestaurantIds = await this.prismaService.$transaction(
+        supersededPlaceIds = await this.prismaService.$transaction(
           (tx) => this.applyActivationSupersede(tx, runId, zeroMentionActivate),
           { timeout: this.transactionTimeoutMs },
         );
-        if (supersededRestaurantIds.length > 0) {
-          await this.projectionRebuildService.rebuildForRestaurants(
-            supersededRestaurantIds,
+        if (supersededPlaceIds.length > 0) {
+          await this.projectionRebuildService.rebuildForPlaces(
+            supersededPlaceIds,
           );
         }
       }
@@ -468,7 +467,7 @@ export class UnifiedProcessingService implements OnModuleInit {
         entitiesCreated: 0,
         connectionsCreated: 0,
         affectedConnectionIds: [],
-        affectedRestaurantIds: supersededRestaurantIds,
+        affectedPlaceIds: supersededPlaceIds,
         createdEntityIds: [],
         createdEntitySummaries: [],
         reusedEntitySummaries: [],
@@ -505,7 +504,7 @@ export class UnifiedProcessingService implements OnModuleInit {
           entitiesCreated: resolutionResult.newEntitiesCreated,
           connectionsCreated: 0,
           affectedConnectionIds: [],
-          affectedRestaurantIds: [],
+          affectedPlaceIds: [],
           createdEntityIds: [],
           createdEntitySummaries: [],
           reusedEntitySummaries: [],
@@ -536,8 +535,8 @@ export class UnifiedProcessingService implements OnModuleInit {
             batchResult.databaseOperations?.connectionsCreated || 0,
           affectedConnectionIds:
             batchResult.databaseOperations?.affectedConnectionIds || [],
-          affectedRestaurantIds:
-            batchResult.databaseOperations?.affectedRestaurantIds || [],
+          affectedPlaceIds:
+            batchResult.databaseOperations?.affectedPlaceIds || [],
           createdEntityIds:
             batchResult.databaseOperations?.createdEntityIds || [],
           createdEntitySummaries:
@@ -559,7 +558,7 @@ export class UnifiedProcessingService implements OnModuleInit {
 
       const singleBatchEntitySummaries =
         batchResult.databaseOperations?.createdEntitySummaries || [];
-      await this.scheduleRestaurantEnrichment(
+      await this.schedulePlaceEnrichment(
         singleBatchEntitySummaries,
         sourceMetadata,
       );
@@ -574,8 +573,8 @@ export class UnifiedProcessingService implements OnModuleInit {
           batchResult.databaseOperations?.connectionsCreated || 0,
         affectedConnectionIds:
           batchResult.databaseOperations?.affectedConnectionIds || [],
-        affectedRestaurantIds:
-          batchResult.databaseOperations?.affectedRestaurantIds || [],
+        affectedPlaceIds:
+          batchResult.databaseOperations?.affectedPlaceIds || [],
         createdEntityIds:
           batchResult.databaseOperations?.createdEntityIds || [],
         createdEntitySummaries:
@@ -729,7 +728,7 @@ export class UnifiedProcessingService implements OnModuleInit {
       createdEntitySummaryMap.values(),
     );
 
-    await this.scheduleRestaurantEnrichment(
+    await this.schedulePlaceEnrichment(
       uniqueCreatedEntitySummaries,
       sourceMetadata,
     );
@@ -793,6 +792,9 @@ export class UnifiedProcessingService implements OnModuleInit {
     const resolutionResult = await this.resolveEntitiesForOutput(
       llmOutput,
       scope?.engineId ?? null,
+      sourceMetadata.extractionTrace?.rehearsal
+        ? sourceMetadata.extractionTrace.extractionRunId
+        : null,
     );
 
     // Step 4b-5: Single Consolidated Processing Phase with retry logic
@@ -809,7 +811,12 @@ export class UnifiedProcessingService implements OnModuleInit {
       ledgerRecords,
     );
 
-    if (databaseResult.affectedRestaurantIds.length > 0) {
+    // REHEARSAL: doors 11+14 (plans/shadow-sandbox.md) — a non-activated
+    // run's events are invisible to the rebuild's activation-joined reads
+    // (pure churn), and its coined attributes must not be adjudicated into
+    // live vocabulary. Both fire once, at activation.
+    const rehearsalRun = sourceMetadata.extractionTrace?.rehearsal === true;
+    if (!rehearsalRun && databaseResult.affectedPlaceIds.length > 0) {
       // Post-commit projection: the events above are durable — a rebuild
       // failure here must not fail the batch (that stranded 2,220
       // restaurants as mentions-with-no-connection before the 2026-07-26
@@ -817,8 +824,8 @@ export class UnifiedProcessingService implements OnModuleInit {
       // repairOrphanedProjections sweep re-materializes anything missed.
       try {
         const rebuildResult =
-          await this.projectionRebuildService.rebuildForRestaurants(
-            databaseResult.affectedRestaurantIds,
+          await this.projectionRebuildService.rebuildForPlaces(
+            databaseResult.affectedPlaceIds,
           );
         databaseResult.affectedConnectionIds = [
           ...new Set([
@@ -832,7 +839,7 @@ export class UnifiedProcessingService implements OnModuleInit {
           error,
           {
             operation: 'projection_rebuild_post_commit',
-            restaurantCount: databaseResult.affectedRestaurantIds.length,
+            placeCount: databaseResult.affectedPlaceIds.length,
           },
         );
       }
@@ -841,7 +848,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     // New entities may include pending (quarantined) attributes — schedule the
     // debounced adjudicator to canonicalize them. Fire-and-forget: quarantine
     // means a missed run only delays visibility, never correctness.
-    if (resolutionResult.newEntitiesCreated > 0) {
+    if (!rehearsalRun && resolutionResult.newEntitiesCreated > 0) {
       await this.attributeOntologyQueue.queueAdjudication();
     }
 
@@ -890,16 +897,16 @@ export class UnifiedProcessingService implements OnModuleInit {
    * and mutates nothing. If the rate ever climbs, the fix belongs in the
    * prompt, not in a post-hoc filter.
    */
-  private async observeFoodNamespaceCollisions(
+  private async observeItemNamespaceCollisions(
     llmOutput: EnrichedLLMOutputStructure,
   ): Promise<void> {
     const candidates = new Set<string>();
     for (const mention of llmOutput.mentions) {
-      if (typeof mention.food === 'string' && mention.food) {
-        candidates.add(mention.food.trim().toLowerCase());
+      if (typeof mention.item === 'string' && mention.item) {
+        candidates.add(mention.item.trim().toLowerCase());
       }
-      if (Array.isArray(mention.food_categories)) {
-        for (const c of mention.food_categories) {
+      if (Array.isArray(mention.item_categories)) {
+        for (const c of mention.item_categories) {
           if (typeof c === 'string' && c)
             candidates.add(c.trim().toLowerCase());
         }
@@ -912,14 +919,14 @@ export class UnifiedProcessingService implements OnModuleInit {
     >`
       SELECT DISTINCT lower(a.name) AS name
       FROM core_entities a
-      WHERE a.type IN ('food_attribute'::entity_type, 'restaurant_attribute'::entity_type)
+      WHERE a.type IN ('item_attribute'::entity_type, 'place_attribute'::entity_type)
         AND a.status = 'active'
         AND lower(a.name) = ANY(${names})
         AND NOT EXISTS (
           SELECT 1
           FROM core_entities f
           JOIN core_restaurant_items i ON i.food_id = f.entity_id
-          WHERE f.type = 'food' AND lower(f.name) = lower(a.name)
+          WHERE f.type = 'item' AND lower(f.name) = lower(a.name)
         )
     `;
     if (!gatedRows.length) return;
@@ -927,13 +934,13 @@ export class UnifiedProcessingService implements OnModuleInit {
     for (const mention of llmOutput.mentions) {
       const hits: string[] = [];
       if (
-        typeof mention.food === 'string' &&
-        colliding.has(mention.food.trim().toLowerCase())
+        typeof mention.item === 'string' &&
+        colliding.has(mention.item.trim().toLowerCase())
       ) {
-        hits.push(mention.food);
+        hits.push(mention.item);
       }
-      if (Array.isArray(mention.food_categories)) {
-        for (const c of mention.food_categories) {
+      if (Array.isArray(mention.item_categories)) {
+        for (const c of mention.item_categories) {
           if (typeof c === 'string' && colliding.has(c.trim().toLowerCase())) {
             hits.push(c);
           }
@@ -955,8 +962,9 @@ export class UnifiedProcessingService implements OnModuleInit {
   private async resolveEntitiesForOutput(
     llmOutput: EnrichedLLMOutputStructure,
     engineId: string | null,
+    rehearsalRunId: string | null = null,
   ): Promise<BatchResolutionResult> {
-    await this.observeFoodNamespaceCollisions(llmOutput);
+    await this.observeItemNamespaceCollisions(llmOutput);
     const documentLocaleById = await this.loadDocumentLocales(
       llmOutput.mentions,
     );
@@ -967,6 +975,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     return this.entityResolutionService.resolveBatch(entityResolutionInput, {
       batchSize: this.entityResolutionBatchSize,
       enableFuzzyMatching: true,
+      rehearsalRunId,
       // Offline ingestion is the only consumer that opts into the recall → LLM
       // matcher for Tier 3 (it can afford the per-entity LLM latency for graph
       // correctness). Query-time callers leave this off → exact+alias only.
@@ -1090,39 +1099,36 @@ export class UnifiedProcessingService implements OnModuleInit {
           documentLocaleById,
         );
         // Restaurant entities (deterministic temp IDs)
-        if (mention.restaurant) {
-          const restaurantTempId = this.buildRestaurantTempId(mention);
-          mention.__restaurantTempId = restaurantTempId;
-          const restaurantSurface = getSurfaceString(
-            mention.restaurant_surface,
-            mention.restaurant,
+        if (mention.place) {
+          const placeTempId = this.buildPlaceTempId(mention);
+          mention.__placeTempId = placeTempId;
+          const placeSurface = getSurfaceString(
+            mention.place_surface,
+            mention.place,
           );
           entities.push({
             documentLocale,
-            normalizedName: this.normalizeEntityName(
-              mention.restaurant,
-              'restaurant',
-            ),
-            originalText: restaurantSurface,
-            entityType: 'restaurant' as const,
-            tempId: restaurantTempId,
+            normalizedName: this.normalizeEntityName(mention.place, 'place'),
+            originalText: placeSurface,
+            entityType: 'place' as const,
+            tempId: placeTempId,
             engineId,
             aliases:
-              restaurantSurface && restaurantSurface !== mention.restaurant
-                ? [restaurantSurface]
+              placeSurface && placeSurface !== mention.place
+                ? [placeSurface]
                 : [],
           });
         } else {
-          mention.__restaurantTempId = null;
+          mention.__placeTempId = null;
         }
 
         // Food entity (menu item)
-        if (mention.food) {
-          const foodEntityTempId = this.buildFoodEntityTempId(mention);
-          mention.__foodEntityTempId = foodEntityTempId;
-          const foodSurface = getSurfaceString(
-            mention.food_surface,
-            mention.food,
+        if (mention.item) {
+          const itemEntityTempId = this.buildItemEntityTempId(mention);
+          mention.__itemEntityTempId = itemEntityTempId;
+          const itemSurface = getSurfaceString(
+            mention.item_surface,
+            mention.item,
           );
           // Natural-variation capture: the verbatim surface banks as an alias
           // when it differs from the canonical name. (Established-shorthand
@@ -1130,33 +1136,33 @@ export class UnifiedProcessingService implements OnModuleInit {
           // emits only what was said, so no alias field exists here.)
           entities.push({
             documentLocale,
-            normalizedName: this.normalizeEntityName(mention.food, 'food'),
-            originalText: foodSurface,
-            entityType: 'food' as const,
-            tempId: foodEntityTempId,
+            normalizedName: this.normalizeEntityName(mention.item, 'item'),
+            originalText: itemSurface,
+            entityType: 'item' as const,
+            tempId: itemEntityTempId,
             aliases:
-              foodSurface && foodSurface !== mention.food ? [foodSurface] : [],
+              itemSurface && itemSurface !== mention.item ? [itemSurface] : [],
           });
         } else {
-          mention.__foodEntityTempId = null;
+          mention.__itemEntityTempId = null;
         }
 
         // Also process food_categories array if present (deterministic IDs)
-        if (mention.food_categories && Array.isArray(mention.food_categories)) {
-          if (!Array.isArray(mention.__foodCategoryTempIds)) {
-            mention.__foodCategoryTempIds = [];
+        if (mention.item_categories && Array.isArray(mention.item_categories)) {
+          if (!Array.isArray(mention.__itemCategoryTempIds)) {
+            mention.__itemCategoryTempIds = [];
           }
           const seenCategoryIds = new Set<string>();
           const categorySurfaces = getSurfaceArray(
-            mention.food_categories,
-            mention.food_category_surfaces,
+            mention.item_categories,
+            mention.item_category_surfaces,
           );
-          for (let i = 0; i < mention.food_categories.length; i += 1) {
-            const category = mention.food_categories[i];
+          for (let i = 0; i < mention.item_categories.length; i += 1) {
+            const category = mention.item_categories[i];
             if (!category) {
               continue;
             }
-            const categoryTempId = this.buildFoodCategoryTempId(category);
+            const categoryTempId = this.buildItemCategoryTempId(category);
             if (seenCategoryIds.has(categoryTempId)) {
               continue;
             }
@@ -1165,50 +1171,50 @@ export class UnifiedProcessingService implements OnModuleInit {
 
             entities.push({
               documentLocale,
-              normalizedName: this.normalizeEntityName(category, 'food'),
+              normalizedName: this.normalizeEntityName(category, 'item'),
               originalText: categorySurface || category,
-              entityType: 'food' as const,
+              entityType: 'item' as const,
               tempId: categoryTempId,
               aliases:
                 categorySurface && categorySurface !== category
                   ? [categorySurface]
                   : [],
             });
-            mention.__foodCategoryTempIds.push({
+            mention.__itemCategoryTempIds.push({
               name: category,
               tempId: categoryTempId,
               surface: categorySurface || category,
             });
           }
-          if (mention.__foodCategoryTempIds.length === 0) {
-            delete mention.__foodCategoryTempIds;
+          if (mention.__itemCategoryTempIds.length === 0) {
+            delete mention.__itemCategoryTempIds;
           }
         }
 
         // Food attributes
-        if (mention.food_attributes && Array.isArray(mention.food_attributes)) {
-          const seenFoodAttrIds = new Set<string>();
-          const foodAttributeSurfaces = getSurfaceArray(
-            mention.food_attributes,
-            mention.food_attribute_surfaces,
+        if (mention.item_attributes && Array.isArray(mention.item_attributes)) {
+          const seenItemAttrIds = new Set<string>();
+          const itemAttributeSurfaces = getSurfaceArray(
+            mention.item_attributes,
+            mention.item_attribute_surfaces,
           );
-          for (let i = 0; i < mention.food_attributes.length; i += 1) {
-            const attr = mention.food_attributes[i];
+          for (let i = 0; i < mention.item_attributes.length; i += 1) {
+            const attr = mention.item_attributes[i];
             if (typeof attr === 'string' && attr) {
-              const attributeTempId = this.buildAttributeTempId('food', attr);
-              if (seenFoodAttrIds.has(attributeTempId)) {
+              const attributeTempId = this.buildAttributeTempId('item', attr);
+              if (seenItemAttrIds.has(attributeTempId)) {
                 continue;
               }
-              seenFoodAttrIds.add(attributeTempId);
-              const attrSurface = foodAttributeSurfaces[i] || attr;
+              seenItemAttrIds.add(attributeTempId);
+              const attrSurface = itemAttributeSurfaces[i] || attr;
               entities.push({
                 documentLocale,
                 normalizedName: this.normalizeEntityName(
                   attr,
-                  'food_attribute',
+                  'item_attribute',
                 ),
                 originalText: attrSurface || attr,
-                entityType: 'food_attribute' as const,
+                entityType: 'item_attribute' as const,
                 tempId: attributeTempId,
                 aliases:
                   attrSurface && attrSurface !== attr ? [attrSurface] : [],
@@ -1219,7 +1225,7 @@ export class UnifiedProcessingService implements OnModuleInit {
 
         // Source ingredients (prompt 4.6): evidence-tier contents named for
         // THIS dish. Own entity type — never a dish surface.
-        if (mention.food && Array.isArray(mention.ingredients)) {
+        if (mention.item && Array.isArray(mention.ingredients)) {
           const seenIngredientIds = new Set<string>();
           for (const ingredientName of mention.ingredients) {
             if (typeof ingredientName === 'string' && ingredientName.trim()) {
@@ -1246,34 +1252,31 @@ export class UnifiedProcessingService implements OnModuleInit {
 
         // Restaurant attributes (FIXED: Consistent temp_id strategy)
         if (
-          mention.restaurant_attributes &&
-          Array.isArray(mention.restaurant_attributes)
+          mention.place_attributes &&
+          Array.isArray(mention.place_attributes)
         ) {
-          const seenRestaurantAttrIds = new Set<string>();
-          const restaurantAttrSurfaces = getSurfaceArray(
-            mention.restaurant_attributes,
-            mention.restaurant_attribute_surfaces,
+          const seenPlaceAttrIds = new Set<string>();
+          const placeAttrSurfaces = getSurfaceArray(
+            mention.place_attributes,
+            mention.place_attribute_surfaces,
           );
-          for (let i = 0; i < mention.restaurant_attributes.length; i += 1) {
-            const attr = mention.restaurant_attributes[i];
+          for (let i = 0; i < mention.place_attributes.length; i += 1) {
+            const attr = mention.place_attributes[i];
             if (typeof attr === 'string' && attr) {
-              const attributeTempId = this.buildAttributeTempId(
-                'restaurant',
-                attr,
-              );
-              if (seenRestaurantAttrIds.has(attributeTempId)) {
+              const attributeTempId = this.buildAttributeTempId('place', attr);
+              if (seenPlaceAttrIds.has(attributeTempId)) {
                 continue;
               }
-              seenRestaurantAttrIds.add(attributeTempId);
-              const attrSurface = restaurantAttrSurfaces[i] || attr;
+              seenPlaceAttrIds.add(attributeTempId);
+              const attrSurface = placeAttrSurfaces[i] || attr;
               entities.push({
                 documentLocale,
                 normalizedName: this.normalizeEntityName(
                   attr,
-                  'restaurant_attribute',
+                  'place_attribute',
                 ),
                 originalText: attrSurface || attr,
-                entityType: 'restaurant_attribute' as const,
+                entityType: 'place_attribute' as const,
                 tempId: attributeTempId,
                 aliases:
                   attrSurface && attrSurface !== attr ? [attrSurface] : [],
@@ -1332,32 +1335,31 @@ export class UnifiedProcessingService implements OnModuleInit {
       subject ?? '',
       mention?.source_id ?? '',
       mention?.temp_id ?? '',
-      mention?.restaurant ?? '',
-      mention?.food ?? '',
+      mention?.place ?? '',
+      mention?.item ?? '',
     ];
     return `${scope}-${this.stableHash(parts.join('|'))}`;
   }
 
-  private buildRestaurantTempId(mention: ProcessableMention): string {
-    const normalized = this.normalizeForId(mention?.restaurant);
+  private buildPlaceTempId(mention: ProcessableMention): string {
+    const normalized = this.normalizeForId(mention?.place);
     if (normalized) {
       return `restaurant::${normalized}`;
     }
-    return this.createFallbackId('restaurant', mention);
+    return this.createFallbackId('place', mention);
   }
 
-  private buildFoodEntityTempId(mention: ProcessableMention): string {
-    const restaurantTempId =
-      typeof mention?.__restaurantTempId === 'string' &&
-      mention.__restaurantTempId
-        ? mention.__restaurantTempId
-        : this.buildRestaurantTempId(mention);
+  private buildItemEntityTempId(mention: ProcessableMention): string {
+    const placeTempId =
+      typeof mention?.__placeTempId === 'string' && mention.__placeTempId
+        ? mention.__placeTempId
+        : this.buildPlaceTempId(mention);
 
-    const normalizedFoodName = this.normalizeForId(mention?.food);
-    if (normalizedFoodName) {
-      return `${restaurantTempId}::food::${normalizedFoodName}`;
+    const normalizedItemName = this.normalizeForId(mention?.item);
+    if (normalizedItemName) {
+      return `${placeTempId}::food::${normalizedItemName}`;
     }
-    return `${restaurantTempId}::${this.createFallbackId('food', mention)}`;
+    return `${placeTempId}::${this.createFallbackId('item', mention)}`;
   }
 
   private buildIngredientTempId(ingredientName: string): string {
@@ -1365,7 +1367,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     return `ingredient::${this.stableHash(normalized)}`;
   }
 
-  private buildFoodCategoryTempId(categoryName: string): string {
+  private buildItemCategoryTempId(categoryName: string): string {
     const normalized = this.normalizeForId(categoryName);
     if (normalized) {
       return `food-category::${normalized}`;
@@ -1385,7 +1387,7 @@ export class UnifiedProcessingService implements OnModuleInit {
       return sanitized;
     }
 
-    if (type !== 'restaurant') {
+    if (type !== 'place') {
       return sanitized.toLowerCase();
     }
 
@@ -1400,11 +1402,11 @@ export class UnifiedProcessingService implements OnModuleInit {
   }
 
   private buildAttributeTempId(
-    scope: 'food' | 'restaurant',
+    scope: 'item' | 'place',
     attributeName: string,
   ): string {
     const normalized = this.normalizeForId(attributeName);
-    const prefix = scope === 'restaurant' ? 'restaurant-attr' : 'food-attr';
+    const prefix = scope === 'place' ? 'restaurant-attr' : 'food-attr';
 
     if (normalized) {
       return `${prefix}::${normalized}`;
@@ -1413,38 +1415,36 @@ export class UnifiedProcessingService implements OnModuleInit {
     return `${prefix}::${this.stableHash(attributeName ?? '')}`;
   }
 
-  private getRestaurantEntityLookupKey(
-    mention: ProcessableMention,
-  ): string | null {
+  private getPlaceEntityLookupKey(mention: ProcessableMention): string | null {
     if (
       mention &&
-      typeof mention.__restaurantTempId === 'string' &&
-      mention.__restaurantTempId.trim().length > 0
+      typeof mention.__placeTempId === 'string' &&
+      mention.__placeTempId.trim().length > 0
     ) {
-      return mention.__restaurantTempId.trim();
+      return mention.__placeTempId.trim();
     }
 
-    if (mention && mention.restaurant) {
-      const generatedId = this.buildRestaurantTempId(mention);
-      mention.__restaurantTempId = generatedId;
+    if (mention && mention.place) {
+      const generatedId = this.buildPlaceTempId(mention);
+      mention.__placeTempId = generatedId;
       return generatedId;
     }
 
     return null;
   }
 
-  private getFoodEntityLookupKey(mention: ProcessableMention): string | null {
+  private getItemEntityLookupKey(mention: ProcessableMention): string | null {
     if (
       mention &&
-      typeof mention.__foodEntityTempId === 'string' &&
-      mention.__foodEntityTempId.trim().length > 0
+      typeof mention.__itemEntityTempId === 'string' &&
+      mention.__itemEntityTempId.trim().length > 0
     ) {
-      return mention.__foodEntityTempId.trim();
+      return mention.__itemEntityTempId.trim();
     }
 
-    if (mention && mention.food) {
-      const generatedId = this.buildFoodEntityTempId(mention);
-      mention.__foodEntityTempId = generatedId;
+    if (mention && mention.item) {
+      const generatedId = this.buildItemEntityTempId(mention);
+      mention.__itemEntityTempId = generatedId;
       return generatedId;
     }
 
@@ -1455,16 +1455,16 @@ export class UnifiedProcessingService implements OnModuleInit {
     const parts = [
       mention.source_id ?? '',
       mention.temp_id ?? '',
-      mention.restaurant ?? '',
-      mention.food ?? '',
-      Array.isArray(mention.food_categories)
-        ? mention.food_categories.join('|')
+      mention.place ?? '',
+      mention.item ?? '',
+      Array.isArray(mention.item_categories)
+        ? mention.item_categories.join('|')
         : '',
-      Array.isArray(mention.food_attributes)
-        ? mention.food_attributes.join('|')
+      Array.isArray(mention.item_attributes)
+        ? mention.item_attributes.join('|')
         : '',
-      Array.isArray(mention.restaurant_attributes)
-        ? mention.restaurant_attributes.join('|')
+      Array.isArray(mention.place_attributes)
+        ? mention.place_attributes.join('|')
         : '',
       mention.general_praise ? 'praise' : 'neutral',
     ];
@@ -1507,9 +1507,17 @@ export class UnifiedProcessingService implements OnModuleInit {
     entitiesCreated: number;
     connectionsCreated: number;
     affectedConnectionIds: string[];
-    affectedRestaurantIds: string[];
+    affectedPlaceIds: string[];
   }> {
     const startTime = Date.now();
+    // REHEARSAL GENERATION (plans/shadow-sandbox.md): under a non-activated
+    // run, every mint/bank below is born 'rehearsal' keyed to this run, and
+    // the side-effect doors (adjudication queue, enrichment, metro probes,
+    // projection rebuild, live attribute merges, embedding touches) do not
+    // fire — they fire once, at activation.
+    const rehearsalRunId = sourceMetadata.extractionTrace?.rehearsal
+      ? sourceMetadata.extractionTrace.extractionRunId
+      : undefined;
     // P2.2: one anchor lookup per batch — the creation-path restaurant
     // probes are metro-gated against it (null = gate stands down).
     const batchMetroAnchor = await this.metroAnchorForSubreddit(
@@ -1731,7 +1739,10 @@ export class UnifiedProcessingService implements OnModuleInit {
                         form: surface,
                         source: 'extraction' as const,
                       })),
-                      { touchLastUpdated: true },
+                      {
+                        touchLastUpdated: true,
+                        bornExtractionRunId: rehearsalRunId,
+                      },
                     );
                   }
                 }
@@ -1842,7 +1853,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             });
             if (
               !existing &&
-              (entityType === 'food' || entityType === 'ingredient')
+              (entityType === 'item' || entityType === 'ingredient')
             ) {
               // FOOD WORD-ORDER PROBE (round-3 empirical red team: the
               // widened lock serialized "duck confit"/"confit duck" but the
@@ -1892,7 +1903,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             }
             if (
               !existing &&
-              entityType !== 'food' &&
+              entityType !== 'item' &&
               entityType !== 'ingredient'
             ) {
               // Non-food types: the lock key strips punctuation/possessives
@@ -1911,7 +1922,7 @@ export class UnifiedProcessingService implements OnModuleInit {
               // no geography).
               const strippedMatches = !strippedKey
                 ? [] // no foldable identity — nothing to probe
-                : entityType === 'restaurant' && batchMetroAnchor
+                : entityType === 'place' && batchMetroAnchor
                   ? await tx.$queryRaw<
                       Array<{
                         entity_id: string;
@@ -1945,7 +1956,7 @@ export class UnifiedProcessingService implements OnModuleInit {
                     OR (
                       lower(e.name) = lower(${canonicalName})
                       AND (SELECT count(*) FROM core_entities u
-                           WHERE u.type = 'restaurant'
+                           WHERE u.type = 'place'
                              AND u.status <> 'archived'
                              AND lower(u.name) = lower(${canonicalName})) = 1
                     )
@@ -2000,11 +2011,7 @@ export class UnifiedProcessingService implements OnModuleInit {
                   // may not adopt unless its full name matches ours and is
                   // globally unique. (The archived name matched, not the
                   // target's — that's exactly the Rudy's-class trap.)
-                  if (
-                    existing &&
-                    entityType === 'restaurant' &&
-                    batchMetroAnchor
-                  ) {
+                  if (existing && entityType === 'place' && batchMetroAnchor) {
                     const ok = await tx.$queryRaw<Array<{ ok: boolean }>>`
                       SELECT (
                         EXISTS (
@@ -2025,7 +2032,7 @@ export class UnifiedProcessingService implements OnModuleInit {
                         OR (
                           lower(${existing.name}) = lower(${canonicalName})
                           AND (SELECT count(*) FROM core_entities u
-                               WHERE u.type = 'restaurant'
+                               WHERE u.type = 'place'
                                  AND u.status <> 'archived'
                                  AND lower(u.name) = lower(${canonicalName})) = 1
                         )
@@ -2119,7 +2126,10 @@ export class UnifiedProcessingService implements OnModuleInit {
                     form: alias,
                     source: 'extraction' as const,
                   })),
-                  { touchLastUpdated: true },
+                  {
+                    touchLastUpdated: true,
+                    bornExtractionRunId: rehearsalRunId,
+                  },
                 );
               }
 
@@ -2145,8 +2155,8 @@ export class UnifiedProcessingService implements OnModuleInit {
                     ];
 
               const isAttributeType =
-                entityType === 'food_attribute' ||
-                entityType === 'restaurant_attribute';
+                entityType === 'item_attribute' ||
+                entityType === 'place_attribute';
 
               const entityData: Prisma.EntityCreateInput = {
                 name: this.normalizeEntityName(
@@ -2159,15 +2169,20 @@ export class UnifiedProcessingService implements OnModuleInit {
                 // Collection-coined attributes are quarantined (excluded from all read
                 // surfaces) until the ontology worker adjudicates them: merge into an
                 // existing canonical, promote to a new canonical, or reject as junk.
-                status: isAttributeType ? 'pending' : 'active',
+                status: rehearsalRunId
+                  ? 'rehearsal'
+                  : isAttributeType
+                    ? 'pending'
+                    : 'active',
+                bornExtractionRunId: rehearsalRunId ?? null,
                 createdAt: new Date(),
                 lastUpdated: new Date(),
               };
 
-              if (entityType === 'restaurant') {
-                entityData.restaurantAttributes = { set: [] };
+              if (entityType === 'place') {
+                entityData.placeAttributes = { set: [] };
                 entityData.generalPraiseUpvotes = 0;
-                entityData.restaurantMetadata = Prisma.DbNull;
+                entityData.placeMetadata = Prisma.DbNull;
               } else {
                 entityData.generalPraiseUpvotes = null;
               }
@@ -2213,6 +2228,8 @@ export class UnifiedProcessingService implements OnModuleInit {
                         SELECT entity_id FROM core_entities
                         WHERE type = ${entityType}::entity_type
                           AND lower(name) = lower(${canonicalName})
+                          AND (status <> 'rehearsal'::entity_status
+                               OR born_extraction_run_id = ${rehearsalRunId ?? null}::uuid)
                         ORDER BY (status <> 'archived') DESC, created_at
                         LIMIT 1
                       `
@@ -2221,6 +2238,8 @@ export class UnifiedProcessingService implements OnModuleInit {
                         WHERE type = ${entityType}::entity_type
                           AND identity_key = ${canonicalFold(canonicalName) || null}
                           AND identity_key IS NOT NULL
+                          AND (status <> 'rehearsal'::entity_status
+                               OR born_extraction_run_id = ${rehearsalRunId ?? null}::uuid)
                         ORDER BY (status <> 'archived') DESC, created_at
                         LIMIT 1
                       `;
@@ -2266,14 +2285,17 @@ export class UnifiedProcessingService implements OnModuleInit {
                       form: alias,
                       source: 'extraction' as const,
                     })),
-                    { markEmbeddingStale: false },
+                    {
+                      markEmbeddingStale: false,
+                      bornExtractionRunId: rehearsalRunId,
+                    },
                   );
                 }
 
-                if (entityType === 'restaurant') {
-                  const location = await tx.restaurantLocation.create({
+                if (entityType === 'place') {
+                  const location = await tx.placeLocation.create({
                     data: {
-                      restaurantId: createdEntity.entityId,
+                      placeId: createdEntity.entityId,
                       latitude: null,
                       longitude: null,
                       isPrimary: true,
@@ -2353,12 +2375,11 @@ export class UnifiedProcessingService implements OnModuleInit {
             }
           }
 
-          const restaurantMetadataOperations: RestaurantMetadataUpdateOperation[] =
-            [];
+          const placeMetadataOperations: PlaceMetadataUpdateOperation[] = [];
           const affectedConnectionIds: string[] = [];
-          const affectedRestaurantIds = new Set<string>();
-          const restaurantEvents: RestaurantEventRecord[] = [];
-          const restaurantEntityEvents: RestaurantEntityEventRecord[] = [];
+          const affectedPlaceIds = new Set<string>();
+          const placeEvents: PlaceEventRecord[] = [];
+          const placeEntityEvents: PlaceEntityEventRecord[] = [];
 
           for (const mention of llmOutput.mentions) {
             const mentionResult = this.processConsolidatedMention(
@@ -2368,33 +2389,36 @@ export class UnifiedProcessingService implements OnModuleInit {
               sourceMetadata.extractionTrace,
             );
 
-            restaurantMetadataOperations.push(
-              ...mentionResult.restaurantMetadataOperations,
+            placeMetadataOperations.push(
+              ...mentionResult.placeMetadataOperations,
             );
             affectedConnectionIds.push(...mentionResult.affectedConnectionIds);
-            restaurantEvents.push(...mentionResult.restaurantEvents);
-            restaurantEntityEvents.push(
-              ...mentionResult.restaurantEntityEvents,
-            );
-            if (mentionResult.restaurantEntityId) {
-              affectedRestaurantIds.add(mentionResult.restaurantEntityId);
+            placeEvents.push(...mentionResult.placeEvents);
+            placeEntityEvents.push(...mentionResult.placeEntityEvents);
+            if (mentionResult.placeEntityId) {
+              affectedPlaceIds.add(mentionResult.placeEntityId);
             }
           }
 
-          for (const metadataOperation of restaurantMetadataOperations) {
-            await this.handleRestaurantMetadataUpdate(
-              tx,
-              metadataOperation,
-              batchId,
-            );
+          for (const metadataOperation of placeMetadataOperations) {
+            // REHEARSAL door 5: never merge shadow-derived attribute ids
+            // onto live restaurant rows; the activation projection rebuild
+            // re-derives from evidence (plans/shadow-sandbox.md).
+            if (!rehearsalRunId) {
+              await this.handlePlaceMetadataUpdate(
+                tx,
+                metadataOperation,
+                batchId,
+              );
+            }
           }
 
-          if (restaurantEvents.length > 0) {
-            await this.recordRestaurantEvents(tx, restaurantEvents);
+          if (placeEvents.length > 0) {
+            await this.recordPlaceEvents(tx, placeEvents);
           }
 
-          if (restaurantEntityEvents.length > 0) {
-            await this.recordRestaurantEntityEvents(tx, restaurantEntityEvents);
+          if (placeEntityEvents.length > 0) {
+            await this.recordPlaceEntityEvents(tx, placeEntityEvents);
           }
 
           // ACTIVATION IS ATOMIC WITH THE WRITE (red team F1/F2): the
@@ -2415,8 +2439,8 @@ export class UnifiedProcessingService implements OnModuleInit {
               sourceMetadata.extractionTrace.extractionRunId,
               activateDocumentIds,
             );
-            for (const restaurantId of superseded) {
-              affectedRestaurantIds.add(restaurantId);
+            for (const placeId of superseded) {
+              affectedPlaceIds.add(placeId);
             }
           }
 
@@ -2424,7 +2448,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             entitiesCreated,
             connectionsCreated: 0,
             affectedConnectionIds: [...new Set(affectedConnectionIds)],
-            affectedRestaurantIds: Array.from(affectedRestaurantIds),
+            affectedPlaceIds: Array.from(affectedPlaceIds),
             createdEntityIds,
             createdEntitySummaries,
             reusedEntitySummaries,
@@ -2494,7 +2518,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     entitiesCreated: number;
     connectionsCreated: number;
     affectedConnectionIds: string[];
-    affectedRestaurantIds: string[];
+    affectedPlaceIds: string[];
   }> {
     let lastError: Error | undefined;
 
@@ -2610,59 +2634,58 @@ export class UnifiedProcessingService implements OnModuleInit {
     batchId: string,
     extractionTrace: ExtractionTraceContext,
   ): {
-    restaurantMetadataOperations: RestaurantMetadataUpdateOperation[];
+    placeMetadataOperations: PlaceMetadataUpdateOperation[];
     affectedConnectionIds: string[];
-    restaurantEntityId: string;
-    restaurantEvents: RestaurantEventRecord[];
-    restaurantEntityEvents: RestaurantEntityEventRecord[];
+    placeEntityId: string;
+    placeEvents: PlaceEventRecord[];
+    placeEntityEvents: PlaceEntityEventRecord[];
   } {
-    const restaurantMetadataOperations: RestaurantMetadataUpdateOperation[] =
-      [];
+    const placeMetadataOperations: PlaceMetadataUpdateOperation[] = [];
     const affectedConnectionIds: string[] = [];
-    const restaurantEvents: RestaurantEventRecord[] = [];
-    const restaurantEntityEvents: RestaurantEntityEventRecord[] = [];
+    const placeEvents: PlaceEventRecord[] = [];
+    const placeEntityEvents: PlaceEntityEventRecord[] = [];
 
     try {
       // Validate required restaurant data
-      const restaurantLookupKey = this.getRestaurantEntityLookupKey(mention);
-      if (!restaurantLookupKey) {
+      const placeLookupKey = this.getPlaceEntityLookupKey(mention);
+      if (!placeLookupKey) {
         this.logger.warn('Restaurant entity key missing, skipping mention', {
           batchId,
           mentionTempId: mention.temp_id,
         });
         return {
-          restaurantMetadataOperations: [],
+          placeMetadataOperations: [],
           affectedConnectionIds: [],
-          restaurantEntityId: '',
-          restaurantEvents: [],
-          restaurantEntityEvents: [],
+          placeEntityId: '',
+          placeEvents: [],
+          placeEntityEvents: [],
         };
       }
 
-      const restaurantEntityId = tempIdToEntityIdMap.get(restaurantLookupKey);
-      if (!restaurantEntityId) {
+      const placeEntityId = tempIdToEntityIdMap.get(placeLookupKey);
+      if (!placeEntityId) {
         this.logger.warn('Restaurant entity not resolved, skipping mention', {
           batchId,
           mentionTempId: mention.temp_id,
-          restaurantTempId: restaurantLookupKey,
+          placeTempId: placeLookupKey,
         });
         return {
-          restaurantMetadataOperations: [],
+          placeMetadataOperations: [],
           affectedConnectionIds: [],
-          restaurantEntityId: '',
-          restaurantEvents: [],
-          restaurantEntityEvents: [],
+          placeEntityId: '',
+          placeEvents: [],
+          placeEntityEvents: [],
         };
       }
 
       const mentionCreatedAt = new Date(mention.source_created_at);
 
-      const foodEntityLookupKey = this.getFoodEntityLookupKey(mention);
+      const itemEntityLookupKey = this.getItemEntityLookupKey(mention);
 
       // Resolve category entity IDs emitted by the LLM for this mention
       const categoryEntityIds: string[] = [];
-      if (Array.isArray(mention.__foodCategoryTempIds)) {
-        for (const categoryRef of mention.__foodCategoryTempIds) {
+      if (Array.isArray(mention.__itemCategoryTempIds)) {
+        for (const categoryRef of mention.__itemCategoryTempIds) {
           if (categoryRef?.tempId) {
             const categoryEntityId = tempIdToEntityIdMap.get(
               categoryRef.tempId,
@@ -2680,19 +2703,19 @@ export class UnifiedProcessingService implements OnModuleInit {
         this.getMentionProvenance(mention);
 
       // Resolve attribute entity IDs emitted by the LLM for this mention
-      const foodAttributeNames: string[] = Array.isArray(
-        mention.food_attributes,
+      const itemAttributeNames: string[] = Array.isArray(
+        mention.item_attributes,
       )
-        ? mention.food_attributes
+        ? mention.item_attributes
         : [];
 
-      const foodAttributeIds: string[] = [];
+      const itemAttributeIds: string[] = [];
 
-      for (const attr of foodAttributeNames) {
-        const tempId = this.buildAttributeTempId('food', attr);
+      for (const attr of itemAttributeNames) {
+        const tempId = this.buildAttributeTempId('item', attr);
         const attributeEntityId = tempIdToEntityIdMap.get(tempId);
         if (attributeEntityId) {
-          foodAttributeIds.push(attributeEntityId);
+          itemAttributeIds.push(attributeEntityId);
         } else {
           // Vocabulary-miss = silently dropped evidence (attributes audit
           // 2026-07-26: part of the 40% zero-attribute connection gap).
@@ -2710,7 +2733,7 @@ export class UnifiedProcessingService implements OnModuleInit {
       }
 
       const ingredientIds: string[] = [];
-      if (mention.food && Array.isArray(mention.ingredients)) {
+      if (mention.item && Array.isArray(mention.ingredients)) {
         for (const ingredientName of mention.ingredients) {
           if (typeof ingredientName !== 'string' || !ingredientName.trim()) {
             continue;
@@ -2723,36 +2746,33 @@ export class UnifiedProcessingService implements OnModuleInit {
         }
       }
 
-      const restaurantAttributeIds: string[] = [];
+      const placeAttributeIds: string[] = [];
 
-      if (
-        mention.restaurant_attributes &&
-        mention.restaurant_attributes.length > 0
-      ) {
+      if (mention.place_attributes && mention.place_attributes.length > 0) {
         // Get restaurant attribute entity IDs from tempIdToEntityIdMap
-        for (const attr of mention.restaurant_attributes) {
-          const tempId = this.buildAttributeTempId('restaurant', attr);
+        for (const attr of mention.place_attributes) {
+          const tempId = this.buildAttributeTempId('place', attr);
           const attributeEntityId = tempIdToEntityIdMap.get(tempId);
           if (attributeEntityId) {
-            restaurantAttributeIds.push(attributeEntityId);
+            placeAttributeIds.push(attributeEntityId);
           }
         }
 
         // Add restaurant attributes to metadata operation
-        if (restaurantAttributeIds.length > 0) {
-          const metadataOperation: RestaurantMetadataUpdateOperation = {
+        if (placeAttributeIds.length > 0) {
+          const metadataOperation: PlaceMetadataUpdateOperation = {
             type: 'restaurant_metadata_update',
-            restaurantEntityId: restaurantEntityId,
-            attributeIds: restaurantAttributeIds,
+            placeEntityId: placeEntityId,
+            attributeIds: placeAttributeIds,
           };
-          restaurantMetadataOperations.push(metadataOperation);
+          placeMetadataOperations.push(metadataOperation);
 
           this.logger.debug(
             'Restaurant attributes queued for metadata update',
             {
               batchId,
-              restaurantEntityId,
-              attributeIds: restaurantAttributeIds,
+              placeEntityId,
+              attributeIds: placeAttributeIds,
             },
           );
         }
@@ -2763,18 +2783,18 @@ export class UnifiedProcessingService implements OnModuleInit {
           'General praise detected; recording restaurant event only',
           {
             batchId,
-            restaurantEntityId,
+            placeEntityId,
             upvotes: mention.source_ups,
           },
         );
       }
 
       if (inputId && sourceDocumentId && mention.general_praise) {
-        restaurantEvents.push({
+        placeEvents.push({
           extractionRunId: extractionTrace.extractionRunId,
           inputId,
           sourceDocumentId,
-          restaurantId: restaurantEntityId,
+          placeId: placeEntityId,
           mentionKey,
           evidenceType: 'general_praise',
           mentionedAt: mentionCreatedAt,
@@ -2784,19 +2804,19 @@ export class UnifiedProcessingService implements OnModuleInit {
       }
 
       if (inputId && sourceDocumentId) {
-        const foodEntityId = foodEntityLookupKey
-          ? (tempIdToEntityIdMap.get(foodEntityLookupKey) ?? null)
+        const itemEntityId = itemEntityLookupKey
+          ? (tempIdToEntityIdMap.get(itemEntityLookupKey) ?? null)
           : null;
 
-        if (foodEntityId) {
-          restaurantEntityEvents.push({
+        if (itemEntityId) {
+          placeEntityEvents.push({
             extractionRunId: extractionTrace.extractionRunId,
             inputId,
             sourceDocumentId,
-            restaurantId: restaurantEntityId,
+            placeId: placeEntityId,
             mentionKey,
-            entityId: foodEntityId,
-            entityType: 'food',
+            entityId: itemEntityId,
+            entityType: 'item',
             evidenceType:
               mention.is_menu_item === true ? 'menu_item_food' : 'food_mention',
             isMenuItem: mention.is_menu_item ?? null,
@@ -2807,14 +2827,14 @@ export class UnifiedProcessingService implements OnModuleInit {
         }
 
         uniqueCategoryEntityIds.forEach((categoryId) => {
-          restaurantEntityEvents.push({
+          placeEntityEvents.push({
             extractionRunId: extractionTrace.extractionRunId,
             inputId,
             sourceDocumentId,
-            restaurantId: restaurantEntityId,
+            placeId: placeEntityId,
             mentionKey,
             entityId: categoryId,
-            entityType: 'food',
+            entityType: 'item',
             evidenceType: 'food_category',
             isMenuItem: mention.is_menu_item ?? null,
             mentionedAt: mentionCreatedAt,
@@ -2823,16 +2843,16 @@ export class UnifiedProcessingService implements OnModuleInit {
           });
         });
 
-        foodAttributeIds.forEach((attributeId) => {
-          restaurantEntityEvents.push({
+        itemAttributeIds.forEach((attributeId) => {
+          placeEntityEvents.push({
             extractionRunId: extractionTrace.extractionRunId,
             inputId,
             sourceDocumentId,
-            restaurantId: restaurantEntityId,
+            placeId: placeEntityId,
             mentionKey,
             entityId: attributeId,
-            entityType: 'food_attribute',
-            evidenceType: 'food_attribute',
+            entityType: 'item_attribute',
+            evidenceType: 'item_attribute',
             isMenuItem: mention.is_menu_item ?? null,
             mentionedAt: mentionCreatedAt,
             sourceUpvotes: mention.source_ups ?? 0,
@@ -2841,11 +2861,11 @@ export class UnifiedProcessingService implements OnModuleInit {
         });
 
         Array.from(new Set(ingredientIds)).forEach((ingredientId) => {
-          restaurantEntityEvents.push({
+          placeEntityEvents.push({
             extractionRunId: extractionTrace.extractionRunId,
             inputId,
             sourceDocumentId,
-            restaurantId: restaurantEntityId,
+            placeId: placeEntityId,
             mentionKey,
             entityId: ingredientId,
             entityType: 'ingredient',
@@ -2857,16 +2877,16 @@ export class UnifiedProcessingService implements OnModuleInit {
           });
         });
 
-        restaurantAttributeIds.forEach((attributeId) => {
-          restaurantEntityEvents.push({
+        placeAttributeIds.forEach((attributeId) => {
+          placeEntityEvents.push({
             extractionRunId: extractionTrace.extractionRunId,
             inputId,
             sourceDocumentId,
-            restaurantId: restaurantEntityId,
+            placeId: placeEntityId,
             mentionKey,
             entityId: attributeId,
-            entityType: 'restaurant_attribute',
-            evidenceType: 'restaurant_attribute',
+            entityType: 'place_attribute',
+            evidenceType: 'place_attribute',
             isMenuItem: null,
             mentionedAt: mentionCreatedAt,
             sourceUpvotes: mention.source_ups ?? 0,
@@ -2876,11 +2896,11 @@ export class UnifiedProcessingService implements OnModuleInit {
       }
 
       return {
-        restaurantMetadataOperations,
+        placeMetadataOperations,
         affectedConnectionIds,
-        restaurantEntityId,
-        restaurantEvents,
-        restaurantEntityEvents,
+        placeEntityId,
+        placeEvents,
+        placeEntityEvents,
       };
     } catch (error) {
       this.logger.error('Failed to process consolidated mention', {
@@ -2920,67 +2940,67 @@ export class UnifiedProcessingService implements OnModuleInit {
   /** Redirect-aware by construction: the extraction-scope chokepoint owns
    *  the "no new event references a merged-away entity" invariant — a stale
    *  resolution snapshot's ids re-point to the merge winner at insert. */
-  private async recordRestaurantEvents(
+  private async recordPlaceEvents(
     tx: PrismaTransaction,
-    events: RestaurantEventRecord[],
+    events: PlaceEventRecord[],
   ): Promise<void> {
-    await writeRestaurantEvents(tx, events);
+    await writePlaceEvents(tx, events);
   }
 
-  private async recordRestaurantEntityEvents(
+  private async recordPlaceEntityEvents(
     tx: PrismaTransaction,
-    events: RestaurantEntityEventRecord[],
+    events: PlaceEntityEventRecord[],
   ): Promise<void> {
-    await writeRestaurantEntityEvents(tx, events);
+    await writePlaceEntityEvents(tx, events);
   }
 
   /**
    * Handle restaurant attribute updates (Component 2 - PRD 6.5.1)
    * Stores restaurant_attribute entity IDs directly on the restaurant entity
    */
-  private async handleRestaurantMetadataUpdate(
+  private async handlePlaceMetadataUpdate(
     tx: PrismaTransaction,
-    operation: RestaurantMetadataUpdateOperation,
+    operation: PlaceMetadataUpdateOperation,
     batchId: string,
   ): Promise<void> {
     try {
       // Get current restaurant metadata
-      const restaurant = await tx.entity.findUnique({
-        where: { entityId: operation.restaurantEntityId },
-        select: { restaurantAttributes: true },
+      const place = await tx.entity.findUnique({
+        where: { entityId: operation.placeEntityId },
+        select: { placeAttributes: true },
       });
 
-      if (!restaurant) {
+      if (!place) {
         this.logger.error('Restaurant not found for metadata update', {
           batchId,
-          restaurantEntityId: operation.restaurantEntityId,
+          placeEntityId: operation.placeEntityId,
         });
         return;
       }
 
-      const existingAttributeIds = restaurant.restaurantAttributes || [];
+      const existingAttributeIds = place.placeAttributes || [];
       const updatedAttributeIds = [
         ...new Set([...existingAttributeIds, ...operation.attributeIds]),
       ];
 
       // Update restaurant entity with attribute IDs
       await tx.entity.update({
-        where: { entityId: operation.restaurantEntityId },
+        where: { entityId: operation.placeEntityId },
         data: {
-          restaurantAttributes: updatedAttributeIds,
+          placeAttributes: updatedAttributeIds,
           lastUpdated: new Date(),
         },
       });
 
       this.logger.debug('Restaurant attributes updated', {
         batchId,
-        restaurantEntityId: operation.restaurantEntityId,
+        placeEntityId: operation.placeEntityId,
         attributeIds: operation.attributeIds,
       });
     } catch (error) {
       this.logger.error('Failed to handle restaurant metadata update', {
         batchId,
-        restaurantEntityId: operation.restaurantEntityId,
+        placeEntityId: operation.placeEntityId,
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
@@ -3364,18 +3384,23 @@ export class UnifiedProcessingService implements OnModuleInit {
     reused: { entityId: string; entityType: string }[],
     sourceMetadata?: SourceMetadata,
   ): Promise<void> {
+    // REHEARSAL (plans/shadow-sandbox.md door 13): no live spend or
+    // probes for rows that may never activate; fired at activation instead.
+    if (sourceMetadata?.extractionTrace?.rehearsal === true) {
+      return;
+    }
     const handle = sourceMetadata?.subreddit?.trim().toLowerCase();
     if (!handle) {
       return;
     }
-    const restaurantIds = Array.from(
+    const placeIds = Array.from(
       new Set(
         reused
-          .filter((summary) => summary.entityType === 'restaurant')
+          .filter((summary) => summary.entityType === 'place')
           .map((summary) => summary.entityId),
       ),
     );
-    if (!restaurantIds.length) {
+    if (!placeIds.length) {
       return;
     }
     const anchor = await this.metroAnchorForSubreddit(handle);
@@ -3385,7 +3410,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     const local = await this.prismaService.$queryRaw<Array<{ id: string }>>`
       SELECT DISTINCT l.restaurant_id::text AS id
       FROM core_restaurant_locations l
-      WHERE l.restaurant_id = ANY(${restaurantIds}::uuid[])
+      WHERE l.restaurant_id = ANY(${placeIds}::uuid[])
         AND l.latitude IS NOT NULL
         AND 2*6371*asin(sqrt(
               pow(sin(radians(l.latitude::float - ${anchor.lat})/2),2)
@@ -3394,10 +3419,10 @@ export class UnifiedProcessingService implements OnModuleInit {
             )) < 80
     `;
     const localSet = new Set(local.map((row) => row.id));
-    for (const restaurantId of restaurantIds) {
-      if (!localSet.has(restaurantId)) {
+    for (const placeId of placeIds) {
+      if (!localSet.has(placeId)) {
         await this.secondaryLocationExpansionQueue.queueMetroProbe(
-          restaurantId,
+          placeId,
           handle,
         );
       }
@@ -3426,10 +3451,15 @@ export class UnifiedProcessingService implements OnModuleInit {
     return rows[0] ?? null;
   }
 
-  private async scheduleRestaurantEnrichment(
+  private async schedulePlaceEnrichment(
     summaries: CreatedEntitySummary[],
     sourceMetadata?: SourceMetadata,
   ): Promise<void> {
+    // REHEARSAL (plans/shadow-sandbox.md door 12): no live spend or
+    // probes for rows that may never activate; fired at activation instead.
+    if (sourceMetadata?.extractionTrace?.rehearsal === true) {
+      return;
+    }
     if (!summaries.length) {
       return;
     }
@@ -3445,26 +3475,25 @@ export class UnifiedProcessingService implements OnModuleInit {
       )
     ) {
       this.logger.info('Restaurant enrichment skipped (disabled by config)', {
-        restaurantCandidates: summaries.length,
+        placeCandidates: summaries.length,
       });
       return;
     }
 
-    const restaurantIds = Array.from(
+    const placeIds = Array.from(
       new Set(
         summaries
-          .filter((summary) => summary.entityType === 'restaurant')
+          .filter((summary) => summary.entityType === 'place')
           .map((summary) => summary.entityId),
       ),
     );
 
-    if (!restaurantIds.length) {
+    if (!placeIds.length) {
       return;
     }
-    const enrichmentContext =
-      await this.resolveRestaurantEnrichmentDispatchContext(
-        sourceMetadata?.subreddit ?? null,
-      );
+    const enrichmentContext = await this.resolvePlaceEnrichmentDispatchContext(
+      sourceMetadata?.subreddit ?? null,
+    );
 
     // Audit item 6: enrichment rides BullMQ (like cuisine/secondary passes)
     // instead of blocking ingest on Google's API. Job id = restaurantId, so
@@ -3478,8 +3507,8 @@ export class UnifiedProcessingService implements OnModuleInit {
     // stops the spend once definitive failures hit the threshold. So an
     // ungrounded restaurant re-attempts whenever the community talks about
     // it again, and a hopeless one quietly stops costing money.
-    for (const entityId of restaurantIds) {
-      await this.restaurantEnrichmentQueue.queueEnrichment(entityId, {
+    for (const entityId of placeIds) {
+      await this.placeEnrichmentQueue.queueEnrichment(entityId, {
         sourceLocale: enrichmentContext.sourceLocale ?? null,
         countryCode: enrichmentContext.countryCode ?? null,
         locationBias: enrichmentContext.locationBias ?? null,
@@ -3491,9 +3520,9 @@ export class UnifiedProcessingService implements OnModuleInit {
   // (scripts/reground-ghosts.ts) derives each ghost's locale+bias through
   // THIS builder rather than a script-local copy — one derivation, one
   // radius law, one bias shape.
-  async resolveRestaurantEnrichmentDispatchContext(
+  async resolvePlaceEnrichmentDispatchContext(
     subreddit?: string | null,
-  ): Promise<RestaurantEnrichmentDispatchContext> {
+  ): Promise<PlaceEnrichmentDispatchContext> {
     // §13 enrichment bias from PLACE geometry (markets extermination leg 3):
     // the community's SOURCE anchors at a catalog place; its centroid is the
     // bias center and its bbox derives the radius. No source/anchor ⇒ no bias.

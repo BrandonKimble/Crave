@@ -50,13 +50,13 @@ async function main(): Promise<void> {
     for (const q of QUERIES) {
       const denseHits = await dense.searchByEmbedding(
         q,
-        [EntityType.food],
+        [EntityType.item],
         K,
         {},
       );
       const lexHits = await expand.expandEntitiesByText({
         terms: [q],
-        entityTypes: [EntityType.food],
+        entityTypes: [EntityType.item],
         limit: K,
       });
 

@@ -18,7 +18,7 @@ import { judgedVocabularyDouble } from '../../shared/testing/judged-vocabulary-d
 //   rides along when the submit carried the autocomplete selection).
 
 const USER_ID = '11111111-1111-1111-1111-111111111111';
-const RESTAURANT_ID = '44444444-4444-4444-4444-444444444444';
+const PLACE_ID = '44444444-4444-4444-4444-444444444444';
 const SECOND_RESTAURANT_ID = '77777777-7777-7777-7777-777777777777';
 
 const BOUNDS = {
@@ -42,7 +42,7 @@ async function flush(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-function buildLeanRestaurant(locationCount: number) {
+function buildLeanPlace(locationCount: number) {
   const locations = Array.from({ length: locationCount }, (_, index) => ({
     locationId: `aaaaaaa${index}-0000-0000-0000-000000000000`,
     latitude: 30.2 + index * 0.01,
@@ -51,18 +51,18 @@ function buildLeanRestaurant(locationCount: number) {
     isPrimary: index === 0,
   }));
   return {
-    restaurant: {
-      restaurantId: RESTAURANT_ID,
-      restaurantName: "Torchy's Tacos",
-      restaurantAliases: [],
+    place: {
+      placeId: PLACE_ID,
+      placeName: "Torchy's Tacos",
+      placeAliases: [],
       rank: 1,
       scoreSubjectType: 'restaurant' as const,
-      scoreSubjectId: RESTAURANT_ID,
+      scoreSubjectId: PLACE_ID,
       craveScore: 8.7,
       locations,
       displayLocation: locations[0] ?? null,
       locationCount: 12,
-      topFood: [],
+      topItem: [],
       totalDishCount: 4,
     },
     inViewLocationCount: locationCount,
@@ -86,7 +86,7 @@ function createServiceHarness(options: { inViewLocationCount?: number } = {}) {
   );
   const executeSeeLocations = jest
     .fn()
-    .mockResolvedValue(buildLeanRestaurant(options.inViewLocationCount ?? 3));
+    .mockResolvedValue(buildLeanPlace(options.inViewLocationCount ?? 3));
   const executeDual = jest.fn();
   const service = new SearchService(
     createLogger() as never,
@@ -127,10 +127,10 @@ function buildSeeLocationsRequest(
   return {
     seeLocations: true,
     entities: {
-      restaurants: [
+      places: [
         {
           normalizedName: "torchy's tacos",
-          entityIds: [RESTAURANT_ID],
+          entityIds: [PLACE_ID],
           originalText: "Torchy's Tacos",
         },
       ],
@@ -140,7 +140,7 @@ function buildSeeLocationsRequest(
     userId: USER_ID,
     submissionSource: 'autocomplete',
     submissionContext: {
-      selectedEntityId: RESTAURANT_ID,
+      selectedEntityId: PLACE_ID,
       selectedEntityType: 'restaurant',
       matchType: 'entity',
     },
@@ -158,51 +158,49 @@ describe('see-locations service routing (lean variant on the ONE search wire)', 
     expect(executeDual).not.toHaveBeenCalled();
     expect(executeSeeLocations).toHaveBeenCalledTimes(1);
     expect(executeSeeLocations).toHaveBeenCalledWith({
-      restaurantId: RESTAURANT_ID,
+      placeId: PLACE_ID,
       bounds: BOUNDS,
       userLocation: null,
     });
-    expect(response.restaurants).toHaveLength(1);
-    expect(response.restaurants[0].restaurantId).toBe(RESTAURANT_ID);
-    expect(response.restaurants[0].locations).toHaveLength(3);
+    expect(response.places).toHaveLength(1);
+    expect(response.places[0].placeId).toBe(PLACE_ID);
+    expect(response.places[0].locations).toHaveLength(3);
     expect(response.dishes).toEqual([]);
     expect(response.plan.diagnostics.notes).toContain('see_locations');
-    expect(response.metadata.totalRestaurantResults).toBe(1);
+    expect(response.metadata.totalPlaceResults).toBe(1);
     expect(response.metadata.boundsApplied).toBe(true);
     expect(response.metadata.analysisMetadata).toEqual({
-      seeLocations: { restaurantId: RESTAURANT_ID, inViewLocationCount: 3 },
+      seeLocations: { placeId: PLACE_ID, inViewLocationCount: 3 },
     });
   });
 
   it('zero in-view locations = empty world (membership law), not a zero-location row', async () => {
     const { service, executeSeeLocations } = createServiceHarness();
     executeSeeLocations.mockResolvedValue({
-      restaurant: buildLeanRestaurant(0).restaurant,
+      place: buildLeanPlace(0).place,
       inViewLocationCount: 0,
     });
 
     const response = await service.runQuery(buildSeeLocationsRequest());
 
-    expect(response.restaurants).toEqual([]);
-    expect(response.metadata.totalRestaurantResults).toBe(0);
+    expect(response.places).toEqual([]);
+    expect(response.metadata.totalPlaceResults).toBe(0);
   });
 
   it('rejects anything but exactly one restaurant entity id', async () => {
     const { service } = createServiceHarness();
 
     await expect(
-      service.runQuery(
-        buildSeeLocationsRequest({ entities: { restaurants: [] } }),
-      ),
+      service.runQuery(buildSeeLocationsRequest({ entities: { places: [] } })),
     ).rejects.toBeInstanceOf(BadRequestException);
     await expect(
       service.runQuery(
         buildSeeLocationsRequest({
           entities: {
-            restaurants: [
+            places: [
               {
                 normalizedName: 'two',
-                entityIds: [RESTAURANT_ID, SECOND_RESTAURANT_ID],
+                entityIds: [PLACE_ID, SECOND_RESTAURANT_ID],
               },
             ],
           },
@@ -222,13 +220,13 @@ describe('see-locations service routing (lean variant on the ONE search wire)', 
     );
     const searchSignal = rows.find((data) => data.kind === 'search');
     expect(searchSignal).toBeDefined();
-    expect(searchSignal?.subjectId).toBe(RESTAURANT_ID);
+    expect(searchSignal?.subjectId).toBe(PLACE_ID);
     expect(searchSignal?.meta).toMatchObject({
       mode: 'see_locations',
-      restaurantId: RESTAURANT_ID,
+      placeId: PLACE_ID,
       inViewLocationCount: 3,
       resultCount: 1,
-      restaurantCount: 1,
+      placeCount: 1,
       cached: false,
     });
     // The autocomplete selection echo rides along (writer invariant: it
@@ -260,15 +258,15 @@ describe('see-locations executor membership (in-view locations of THAT restauran
   }
 
   const ROW = {
-    entity_id: RESTAURANT_ID,
+    entity_id: PLACE_ID,
     name: "Torchy's Tacos",
     aliases: [],
     price_level: 2,
     price_level_updated_at: null,
-    restaurant_crave_score: '8.7',
-    restaurant_crave_score_exact: '0.91234',
-    restaurant_rising: null,
-    restaurant_score_info: { evidenceCopy: 'Based on community evidence.' },
+    place_crave_score: '8.7',
+    place_crave_score_exact: '0.91234',
+    place_rising: null,
+    place_score_info: { evidenceCopy: 'Based on community evidence.' },
     location_count: 12,
     dish_count: 4,
     locations_json: [
@@ -293,7 +291,7 @@ describe('see-locations executor membership (in-view locations of THAT restauran
     const { executor, queryRaw } = createExecutorHarness([ROW]);
 
     const result = await executor.executeSeeLocations({
-      restaurantId: RESTAURANT_ID,
+      placeId: PLACE_ID,
       bounds: BOUNDS,
       userLocation: null,
     });
@@ -310,7 +308,7 @@ describe('see-locations executor membership (in-view locations of THAT restauran
     expect(sqlText).toContain('rl.latitude BETWEEN');
     expect(sqlText).toContain('rl.longitude BETWEEN');
     const values = sqlArg.values ?? [];
-    expect(values).toContain(RESTAURANT_ID);
+    expect(values).toContain(PLACE_ID);
     // The four bbox operands are bound as a CONTIGUOUS, ORDERED run matching
     // the two BETWEEN pairs: [SW.lat, NE.lat] then [SW.lng, NE.lng]. Plain
     // `arrayContaining` pins presence but not position — swapping the latitude
@@ -332,24 +330,24 @@ describe('see-locations executor membership (in-view locations of THAT restauran
     // Assembly: the response row's locations ARE the in-view SQL rows —
     // nothing is refetched, recapped, or padded.
     expect(result.inViewLocationCount).toBe(2);
-    expect(result.restaurant?.locations?.map((l) => l.locationId)).toEqual([
+    expect(result.place?.locations?.map((l) => l.locationId)).toEqual([
       'aaaaaaa1-0000-0000-0000-000000000000',
       'aaaaaaa2-0000-0000-0000-000000000000',
     ]);
     // Display facts derive from the nearest-to-center row ([0]).
-    expect(result.restaurant?.restaurantLocationId).toBe(
+    expect(result.place?.placeLocationId).toBe(
       'aaaaaaa1-0000-0000-0000-000000000000',
     );
-    expect(result.restaurant?.latitude).toBe(30.2);
+    expect(result.place?.latitude).toBe(30.2);
     // The TRUE global count survives alongside the in-view membership.
-    expect(result.restaurant?.locationCount).toBe(12);
+    expect(result.place?.locationCount).toBe(12);
   });
 
   it('an antimeridian viewport (west > east) uses the wrap-aware OR predicate', async () => {
     const { executor, queryRaw } = createExecutorHarness([ROW]);
 
     await executor.executeSeeLocations({
-      restaurantId: RESTAURANT_ID,
+      placeId: PLACE_ID,
       bounds: {
         northEast: { lat: 30.4, lng: -170 },
         southWest: { lat: 30.1, lng: 170 },
@@ -367,12 +365,12 @@ describe('see-locations executor membership (in-view locations of THAT restauran
     const { executor } = createExecutorHarness([]);
 
     const result = await executor.executeSeeLocations({
-      restaurantId: RESTAURANT_ID,
+      placeId: PLACE_ID,
       bounds: BOUNDS,
       userLocation: null,
     });
 
-    expect(result.restaurant).toBeNull();
+    expect(result.place).toBeNull();
     expect(result.inViewLocationCount).toBe(0);
   });
 });

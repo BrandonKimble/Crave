@@ -35,12 +35,12 @@ describe('label sweep run ledger — proven against a live database', () => {
     } as never,
   );
 
-  const mintFood = async (name: string): Promise<string> => {
+  const mintItem = async (name: string): Promise<string> => {
     const id = randomUUID();
-    const identity = identityInsertData(name, 'food' as never);
+    const identity = identityInsertData(name, 'item' as never);
     await prisma.$executeRawUnsafe(
       `INSERT INTO core_entities (entity_id, name, type, status, identity_key, identity_key_sorted)
-       VALUES ($1::uuid, $2, 'food'::entity_type, 'active'::entity_status, $3, $4)`,
+       VALUES ($1::uuid, $2, 'item'::entity_type, 'active'::entity_status, $3, $4)`,
       id,
       name,
       identity.identityKey,
@@ -100,7 +100,7 @@ describe('label sweep run ledger — proven against a live database', () => {
 
   it('an abstained-on concept is asked ONCE, not offered forever', async () => {
     const name = `zzq sweep ledger ${randomUUID().slice(0, 8)}`;
-    const id = await mintFood(name);
+    const id = await mintItem(name);
     expect(await isDue('es', id)).toBe(true);
 
     const result = await sweep.sweep('es', {
@@ -133,7 +133,7 @@ describe('label sweep run ledger — proven against a live database', () => {
    */
   it('an UNANSWERED concept gets no ledger row and stays due', async () => {
     const name = `zzq sweep unans ${randomUUID().slice(0, 8)}`;
-    const id = await mintFood(name);
+    const id = await mintItem(name);
     expect(await isDue('es', id)).toBe(true);
 
     const result = await sweep.sweep('es', {
@@ -170,7 +170,7 @@ describe('label sweep run ledger — proven against a live database', () => {
    */
   it('English keeps its OWN ledger, and es cannot answer for it', async () => {
     const name = `zzq sweep en ${randomUUID().slice(0, 8)}`;
-    const id = await mintFood(name);
+    const id = await mintItem(name);
     expect(await isDue('en', id)).toBe(true);
 
     await sweep.sweep('en', { generator: abstaining, entityNames: [name] });
@@ -195,14 +195,14 @@ describe('label sweep run ledger — proven against a live database', () => {
     // countDue for en used to be unaskable (the sweep filtered English out of
     // its own locale list). It must now answer, and answer about en.
     const name = `zzq sweep en due ${randomUUID().slice(0, 8)}`;
-    const id = await mintFood(name);
+    const id = await mintItem(name);
     expect(await sweep.countDue('en')).toBeGreaterThan(0);
     expect(await isDue('en', id)).toBe(true);
   });
 
   it('a DRY RUN records nothing — an ask nobody made must not close a concept', async () => {
     const name = `zzq sweep dry ${randomUUID().slice(0, 8)}`;
-    const id = await mintFood(name);
+    const id = await mintItem(name);
     await sweep.sweep('es', {
       entityNames: [name],
       generator: {

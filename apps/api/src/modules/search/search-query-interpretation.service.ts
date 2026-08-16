@@ -88,7 +88,7 @@ import type {
   EntitySpanGroup,
   SpanEntity,
 } from '../entity-text-search/entity-text-search.service';
-import { foodNameVariants } from '../content-processing/entity-resolver/food-lemma';
+import { itemNameVariants } from '../content-processing/entity-resolver/food-lemma';
 import {
   damerauLevenshtein,
   editBudgetForToken,
@@ -168,11 +168,11 @@ const LINKER_TIE_EPSILON = 0.001;
 // collision (the ham/rum class); those must not nominate a link.
 
 const GAZETTEER_UNDERSTAND_TYPES: EntityType[] = [
-  'food',
+  'item',
   'ingredient',
-  'food_attribute',
-  'restaurant_attribute',
-  'restaurant',
+  'item_attribute',
+  'place_attribute',
+  'place',
 ] as EntityType[];
 const HYBRID_LINK_SHORTLIST_K = 5;
 const HYBRID_LINK_CONCURRENCY = 8;
@@ -515,7 +515,7 @@ export class SearchQueryInterpretationService {
             tempId: `food:${uuid()}`,
             normalizedName: attempt.text.toLowerCase(),
             originalText: attempt.text,
-            entityType: 'food',
+            entityType: 'item',
             aliases: [attempt.text],
             engineId: null,
           },
@@ -576,7 +576,7 @@ export class SearchQueryInterpretationService {
             tempId: `food:${uuid()}`,
             normalizedName: denseText.toLowerCase(),
             originalText: denseText,
-            entityType: 'food',
+            entityType: 'item',
             aliases: [denseText],
             engineId: null,
           },
@@ -853,16 +853,16 @@ export class SearchQueryInterpretationService {
     return {
       structuredRequest,
       analysis: {
-        restaurants: [],
-        foods: [],
-        foodAttributes: [],
-        restaurantAttributes: [],
+        places: [],
+        items: [],
+        itemAttributes: [],
+        placeAttributes: [],
       },
       // Unknown residue IS the unresolved report (red team R4-④): the
       // expansion trigger and coverage messaging read this — an empty
       // array silently disabled the widening lane for typo/unknown terms.
       unresolved: unresolvedResidues.length
-        ? [{ type: 'food' as EntityType, terms: unresolvedResidues }]
+        ? [{ type: 'item' as EntityType, terms: unresolvedResidues }]
         : [],
       phaseTimings,
       queryAnalysis: {
@@ -954,7 +954,7 @@ export class SearchQueryInterpretationService {
     if (!term) return unmatched;
 
     const surfaceForms = Array.from(
-      new Set([term, ...foodNameVariants(term).slice(0, 4)]),
+      new Set([term, ...itemNameVariants(term).slice(0, 4)]),
     );
     const candidateLists = await Promise.all(
       surfaceForms.map((form) =>
@@ -1038,7 +1038,7 @@ export class SearchQueryInterpretationService {
           // 0 results, found in the round-5 regression sweep). The
           // re-sweep may relax this; exact restaurant links (tacodeli)
           // are untouched.
-          (c.type !== 'restaurant' || input.entityType === 'restaurant'),
+          (c.type !== 'place' || input.entityType === 'place'),
       )
       .sort((a, b) => (b.sparseSimilarity ?? 0) - (a.sparseSimilarity ?? 0));
     const top = eligible[0];
@@ -1145,7 +1145,7 @@ export class SearchQueryInterpretationService {
     // (what the span could name), never guessed from the words.
     const attributeNear = dense.find(
       (c) =>
-        (c.type === 'food_attribute' || c.type === 'restaurant_attribute') &&
+        (c.type === 'item_attribute' || c.type === 'place_attribute') &&
         (top.denseCosine ?? 0) - (c.denseCosine ?? 0) <= 0.05,
     );
     const admitted = denseAdmits({
@@ -1206,11 +1206,11 @@ export class SearchQueryInterpretationService {
   }
 
   private static readonly CROSS_TYPE_PLACEMENT_ORDER: EntityType[] = [
-    'food_attribute',
-    'food',
-    'restaurant_attribute',
+    'item_attribute',
+    'item',
+    'place_attribute',
     'ingredient',
-    'restaurant',
+    'place',
   ] as EntityType[];
 
   /** Placement order for DECOMPOSED parts only: a fragment of a dish name
@@ -1218,11 +1218,11 @@ export class SearchQueryInterpretationService {
    *  as a rival dish. Food is the fallback when no modifier reading
    *  exists (`taco` in "tacos vegetarianos"). */
   private static readonly DECOMPOSED_PLACEMENT_ORDER: EntityType[] = [
-    'food_attribute',
-    'restaurant_attribute',
+    'item_attribute',
+    'place_attribute',
     'ingredient',
-    'food',
-    'restaurant',
+    'item',
+    'place',
   ] as EntityType[];
 
   /** Run `fn` over `items` with at most `concurrency` in flight, preserving order. */
@@ -1247,10 +1247,10 @@ export class SearchQueryInterpretationService {
   private groupResolvedEntities(
     results: EntityResolutionResult[],
   ): QueryEntityGroupDto {
-    const restaurantEntities: QueryEntityDto[] = [];
-    const foodEntities: QueryEntityDto[] = [];
-    const foodAttributeEntities: QueryEntityDto[] = [];
-    const restaurantAttributeEntities: QueryEntityDto[] = [];
+    const placeEntities: QueryEntityDto[] = [];
+    const itemEntities: QueryEntityDto[] = [];
+    const itemAttributeEntities: QueryEntityDto[] = [];
+    const placeAttributeEntities: QueryEntityDto[] = [];
     const ingredientEntities: QueryEntityDto[] = [];
 
     const pushEntity = (
@@ -1292,17 +1292,17 @@ export class SearchQueryInterpretationService {
       }
 
       switch (result.originalInput.entityType) {
-        case 'restaurant':
-          pushEntity(restaurantEntities, result);
+        case 'place':
+          pushEntity(placeEntities, result);
           break;
-        case 'food':
-          pushEntity(foodEntities, result);
+        case 'item':
+          pushEntity(itemEntities, result);
           break;
-        case 'food_attribute':
-          pushEntity(foodAttributeEntities, result);
+        case 'item_attribute':
+          pushEntity(itemAttributeEntities, result);
           break;
-        case 'restaurant_attribute':
-          pushEntity(restaurantAttributeEntities, result);
+        case 'place_attribute':
+          pushEntity(placeAttributeEntities, result);
           break;
         case 'ingredient':
           pushEntity(ingredientEntities, result);
@@ -1313,13 +1313,13 @@ export class SearchQueryInterpretationService {
     }
 
     return {
-      restaurants: restaurantEntities.length ? restaurantEntities : undefined,
-      food: foodEntities.length ? foodEntities : undefined,
-      foodAttributes: foodAttributeEntities.length
-        ? foodAttributeEntities
+      places: placeEntities.length ? placeEntities : undefined,
+      items: itemEntities.length ? itemEntities : undefined,
+      itemAttributes: itemAttributeEntities.length
+        ? itemAttributeEntities
         : undefined,
-      restaurantAttributes: restaurantAttributeEntities.length
-        ? restaurantAttributeEntities
+      placeAttributes: placeAttributeEntities.length
+        ? placeAttributeEntities
         : undefined,
       ingredients: ingredientEntities.length ? ingredientEntities : undefined,
     };
@@ -1397,10 +1397,10 @@ export class SearchQueryInterpretationService {
     entities: QueryEntityGroupDto,
   ): SearchQueryRequestDto {
     const resolvedEntities = this.applySelectedAutocompleteEntity(request, {
-      restaurants: entities.restaurants,
-      food: entities.food,
-      foodAttributes: entities.foodAttributes,
-      restaurantAttributes: entities.restaurantAttributes,
+      places: entities.places,
+      items: entities.items,
+      itemAttributes: entities.itemAttributes,
+      placeAttributes: entities.placeAttributes,
       ingredients: entities.ingredients,
     });
 
@@ -1431,21 +1431,21 @@ export class SearchQueryInterpretationService {
     };
 
     switch (selectedEntityType) {
-      case EntityType.restaurant:
+      case EntityType.place:
         return {
-          restaurants: [selectedEntry],
+          places: [selectedEntry],
         };
-      case EntityType.food:
+      case EntityType.item:
         return {
-          food: [selectedEntry],
+          items: [selectedEntry],
         };
-      case EntityType.food_attribute:
+      case EntityType.item_attribute:
         return {
-          foodAttributes: [selectedEntry],
+          itemAttributes: [selectedEntry],
         };
-      case EntityType.restaurant_attribute:
+      case EntityType.place_attribute:
         return {
-          restaurantAttributes: [selectedEntry],
+          placeAttributes: [selectedEntry],
         };
       case EntityType.ingredient:
         // Ingredient rows joined autocomplete 2026-07-25 (owner ruling): the

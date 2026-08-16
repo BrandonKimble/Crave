@@ -49,7 +49,7 @@ export type SubmitSearchOptions = {
    *  producers no longer hand-build stringly context records. */
   selectedEntity?: {
     entityId: string;
-    entityType: 'food' | 'food_attribute' | 'restaurant_attribute' | 'ingredient';
+    entityType: 'item' | 'item_attribute' | 'place_attribute' | 'ingredient';
   };
   submission?: {
     source: NaturalSearchRequest['submissionSource'];
@@ -90,7 +90,7 @@ export const resolveSubmissionDefaultTab = (
       ? (submissionContext as Record<string, unknown>)
       : null;
   const selectedEntityType = contextRecord?.selectedEntityType;
-  if (selectedEntityType === 'restaurant' || selectedEntityType === 'restaurant_attribute') {
+  if (selectedEntityType === 'restaurant' || selectedEntityType === 'place_attribute') {
     return 'restaurants';
   }
   if (selectedEntityType === 'food') {

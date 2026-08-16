@@ -33,30 +33,30 @@ describe('UserListMapper.mapRestaurantResults batching (F1910)', () => {
     // connection. A row-mismapping bug (e.g. assigning ALL connections to
     // the first item, or not filtering by restaurantId) would surface as
     // rest-1 getting rest-2's dish (or both dishes) in its topFood array.
-    const connectionsByRestaurant: Record<string, any[]> = {
+    const connectionsByPlace: Record<string, any[]> = {
       'rest-1': [
         {
           connectionId: 'conn-1',
-          restaurantId: 'rest-1',
-          foodId: 'food-1',
+          placeId: 'rest-1',
+          itemId: 'food-1',
           totalUpvotes: 5,
-          food: { entityId: 'food-1', name: 'Rest1 Dish' },
+          item: { entityId: 'food-1', name: 'Rest1 Dish' },
         },
       ],
       'rest-2': [
         {
           connectionId: 'conn-2',
-          restaurantId: 'rest-2',
-          foodId: 'food-2',
+          placeId: 'rest-2',
+          itemId: 'food-2',
           totalUpvotes: 9,
-          food: { entityId: 'food-2', name: 'Rest2 Dish' },
+          item: { entityId: 'food-2', name: 'Rest2 Dish' },
         },
       ],
     };
 
     const connectionFindMany = jest.fn(async ({ where }: any) => {
-      const ids: string[] = where.restaurantId.in;
-      return ids.flatMap((id) => connectionsByRestaurant[id] ?? []);
+      const ids: string[] = where.placeId.in;
+      return ids.flatMap((id) => connectionsByPlace[id] ?? []);
     });
 
     const scoresBySubject: Record<string, number> = {
@@ -91,7 +91,7 @@ describe('UserListMapper.mapRestaurantResults batching (F1910)', () => {
       {
         itemId: 'item-1',
         note: null,
-        restaurant: {
+        place: {
           entityId: 'rest-1',
           name: 'Restaurant One',
           aliases: [],
@@ -105,7 +105,7 @@ describe('UserListMapper.mapRestaurantResults batching (F1910)', () => {
       {
         itemId: 'item-2',
         note: null,
-        restaurant: {
+        place: {
           entityId: 'rest-2',
           name: 'Restaurant Two',
           aliases: [],
@@ -121,25 +121,25 @@ describe('UserListMapper.mapRestaurantResults batching (F1910)', () => {
 
   it('issues exactly ONE connection.findMany for a multi-item list (not one per item)', async () => {
     const { mapper, connectionFindMany } = buildHarness();
-    await mapper.mapRestaurantResults(buildItems());
+    await mapper.mapPlaceResults(buildItems());
     expect(connectionFindMany).toHaveBeenCalledTimes(1);
   });
 
   it('attributes each restaurant its OWN topFood connections, not a mismapped/merged set', async () => {
     const { mapper } = buildHarness();
-    const out = await mapper.mapRestaurantResults(buildItems());
+    const out = await mapper.mapPlaceResults(buildItems());
 
-    const rest1 = out.find((r) => r.restaurantId === 'rest-1');
-    const rest2 = out.find((r) => r.restaurantId === 'rest-2');
+    const rest1 = out.find((r) => r.placeId === 'rest-1');
+    const rest2 = out.find((r) => r.placeId === 'rest-2');
     expect(rest1).toBeDefined();
     expect(rest2).toBeDefined();
 
-    expect(rest1!.topFood).toHaveLength(1);
-    expect(rest1!.topFood[0].connectionId).toBe('conn-1');
-    expect(rest1!.topFood[0].foodName).toBe('Rest1 Dish');
+    expect(rest1!.topItem).toHaveLength(1);
+    expect(rest1!.topItem[0].connectionId).toBe('conn-1');
+    expect(rest1!.topItem[0].itemName).toBe('Rest1 Dish');
 
-    expect(rest2!.topFood).toHaveLength(1);
-    expect(rest2!.topFood[0].connectionId).toBe('conn-2');
-    expect(rest2!.topFood[0].foodName).toBe('Rest2 Dish');
+    expect(rest2!.topItem).toHaveLength(1);
+    expect(rest2!.topItem[0].connectionId).toBe('conn-2');
+    expect(rest2!.topItem[0].itemName).toBe('Rest2 Dish');
   });
 });

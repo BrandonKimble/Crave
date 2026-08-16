@@ -121,7 +121,7 @@ const summarizeAutocompleteMatches = (matches: AutocompleteMatch[]): Record<stri
       const source = match.querySuggestionSource ?? 'unknown';
       byQuerySuggestionSource[source] = (byQuerySuggestionSource[source] ?? 0) + 1;
     }
-    if (match.entityType === 'food_attribute' || match.entityType === 'restaurant_attribute') {
+    if (match.entityType === 'item_attribute' || match.entityType === 'place_attribute') {
       attributeCount += 1;
     }
   });
@@ -362,7 +362,7 @@ export const useSearchRequests = () => {
           responseDataReadyFrom: response.metadata?.dataReadyFrom ?? 'backend',
           responsePage: response.metadata?.page ?? null,
           responseDishCount: response.dishes?.length ?? 0,
-          responseRestaurantCount: response.restaurants?.length ?? 0,
+          responseRestaurantCount: response.places?.length ?? 0,
           responseEngineCoverageShare: response.metadata?.engineCoverageShare ?? null,
           responseEngineCount: response.metadata?.engineCoverage?.length ?? 0,
         });

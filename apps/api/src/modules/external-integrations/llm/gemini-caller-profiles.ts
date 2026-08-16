@@ -216,7 +216,7 @@ export const GEMINI_CALLER_PROFILES: Record<string, GeminiCallerProfile> = {
   // cards (raw mention excerpts) and few claims per call (8); FLASH for the
   // same judgment-quality reason as the claim judge — the cases that matter
   // are Supper-vs-Stars, which a cheap tier reads as identical.
-  'aliases.restaurant_name_judge': {
+  'aliases.place_name_judge': {
     model: FLASH,
     context: 'query',
     maxOutputTokens: MODEL_MAX_OUTPUT,

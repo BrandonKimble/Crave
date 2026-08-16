@@ -104,8 +104,8 @@ export const LifecycleHarnessBridge: React.FC = () => {
             kind === 'list'
               ? ('list' as EntityRef['entityType'])
               : kind === 'restaurant'
-                ? ('restaurant' as EntityRef['entityType'])
-                : ((payload.entityType ?? 'food') as EntityRef['entityType']),
+                ? ('place' as EntityRef['entityType'])
+                : ((payload.entityType ?? 'item') as EntityRef['entityType']),
           label: String(payload.label ?? ''),
           ...(kind === 'list'
             ? {

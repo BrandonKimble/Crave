@@ -134,8 +134,8 @@ type SearchSubmitOwner = {
   ) => Promise<void>;
   worldResolverIsResolving: () => boolean;
   runRestaurantEntitySearch: (params: {
-    restaurantId: string;
-    restaurantName: string;
+    placeId: string;
+    placeName: string;
     submissionSource: NaturalSearchRequest['submissionSource'];
     typedPrefix?: string;
     /** SEE-LOCATIONS mode: the world = this restaurant's in-viewport
@@ -160,7 +160,7 @@ type SearchSubmitOwner = {
   loadMoreResults: (searchMode: SearchMode) => void;
   launchEntitySearchResults: (params: {
     entityId: string;
-    entityType: 'food' | 'food_attribute' | 'restaurant_attribute' | 'ingredient';
+    entityType: 'item' | 'item_attribute' | 'place_attribute' | 'ingredient';
     submittedLabel: string;
   }) => Promise<void>;
   /** Wave-4 §3: the list-world half of the listWorld composite (favorites-as-search). */
@@ -299,9 +299,7 @@ const useSearchSubmitOwner = ({
     // world's tab side; finite-coordinate rows only.
     if (identity.kind === 'list') {
       const response = value.committedResponse;
-      const members = (
-        tuple.tab === 'dishes' ? (response.dishes ?? []) : (response.restaurants ?? [])
-      )
+      const members = (tuple.tab === 'dishes' ? (response.dishes ?? []) : (response.places ?? []))
         .map((row: { latitude?: number | null; longitude?: number | null }) => ({
           latitude: row.latitude,
           longitude: row.longitude,
@@ -314,8 +312,7 @@ const useSearchSubmitOwner = ({
             Number.isFinite(m.longitude)
         );
       if (__DEV__) {
-        const rows =
-          tuple.tab === 'dishes' ? (response.dishes ?? []) : (response.restaurants ?? []);
+        const rows = tuple.tab === 'dishes' ? (response.dishes ?? []) : (response.places ?? []);
         // eslint-disable-next-line no-console
         // Routine trace behind the flag (S11); the violation bark stays loud.
         emitFitAllTrace(
@@ -471,7 +468,7 @@ const useSearchSubmitOwner = ({
   const launchEntitySearchResults = React.useCallback(
     async (params: {
       entityId: string;
-      entityType: 'food' | 'food_attribute' | 'restaurant_attribute' | 'ingredient';
+      entityType: 'item' | 'item_attribute' | 'place_attribute' | 'ingredient';
       submittedLabel: string;
     }): Promise<void> => {
       await submitSearch(

@@ -51,10 +51,10 @@ export const useProfileDirectPresentationRuntime = ({
 
   return React.useMemo(
     () => ({
-      openPreparedProfilePresentation: (restaurantId, targetCamera) => {
+      openPreparedProfilePresentation: (placeId, targetCamera) => {
         commitCamera(targetCamera ?? null);
         applySearchRestaurantRouteCommand(
-          { type: 'show_search_restaurant_route', restaurantId },
+          { type: 'show_search_restaurant_route', placeId },
           routeOverlayRouteCommandRuntime
         );
         setProfileTransitionStatus('open');

@@ -2,21 +2,21 @@ import { Injectable } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { PrismaService } from '../../prisma/prisma.service';
-import { RestaurantSecondaryLocationExpansionJobData } from './restaurant-secondary-location-expansion.types';
+import { PlaceSecondaryLocationExpansionJobData } from './restaurant-secondary-location-expansion.types';
 import { currentCampaignId } from '../external-integrations/shared/work-context';
 
 const QUEUE_NAME = 'restaurant-secondary-location-expansion';
 const JOB_NAME = 'expand-restaurant-secondary-locations';
 
 @Injectable()
-export class RestaurantSecondaryLocationExpansionQueueService {
+export class PlaceSecondaryLocationExpansionQueueService {
   /** P2.2: metro-probe cooldown — a brand with no local store is
    *  re-checked at most once per this window. */
   static readonly METRO_PROBE_COOLDOWN_DAYS = 30;
 
   constructor(
     @InjectQueue(QUEUE_NAME)
-    private readonly queue: Queue<RestaurantSecondaryLocationExpansionJobData>,
+    private readonly queue: Queue<PlaceSecondaryLocationExpansionJobData>,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -24,18 +24,18 @@ export class RestaurantSecondaryLocationExpansionQueueService {
    *  this adopted brand has no location — probe Places with the metro's
    *  bias, once per cooldown. Enqueue is free; the worker spends. */
   async queueMetroProbe(
-    restaurantId: string,
+    placeId: string,
     communityHandle: string,
   ): Promise<string | null> {
-    const id = restaurantId?.trim();
+    const id = placeId?.trim();
     const handle = communityHandle?.trim().toLowerCase();
     if (!id || !handle) {
       return null;
     }
     const fresh = await this.prisma.metroLocationProbe.findUnique({
       where: {
-        restaurantId_communityHandle: {
-          restaurantId: id,
+        placeId_communityHandle: {
+          placeId: id,
           communityHandle: handle,
         },
       },
@@ -44,7 +44,7 @@ export class RestaurantSecondaryLocationExpansionQueueService {
     if (
       fresh &&
       Date.now() - fresh.probedAt.getTime() <
-        RestaurantSecondaryLocationExpansionQueueService.METRO_PROBE_COOLDOWN_DAYS *
+        PlaceSecondaryLocationExpansionQueueService.METRO_PROBE_COOLDOWN_DAYS *
           24 *
           3600 *
           1000
@@ -53,8 +53,8 @@ export class RestaurantSecondaryLocationExpansionQueueService {
     }
     // the probe expands from the entity's primary grounded place — an
     // entirely ungrounded entity has nothing to expand from (backfill owns it)
-    const primary = await this.prisma.restaurantLocation.findFirst({
-      where: { restaurantId: id, googlePlaceId: { not: null } },
+    const primary = await this.prisma.placeLocation.findFirst({
+      where: { placeId: id, googlePlaceId: { not: null } },
       orderBy: { isPrimary: 'desc' },
       select: { googlePlaceId: true },
     });
@@ -64,8 +64,8 @@ export class RestaurantSecondaryLocationExpansionQueueService {
     const job = await this.queue.add(
       JOB_NAME,
       {
-        restaurantId: id,
-        placeId: primary.googlePlaceId,
+        placeId: id,
+        googlePlaceId: primary.googlePlaceId,
         requestedAt: new Date().toISOString(),
         source: 'metro-probe',
         campaignId: currentCampaignId(),
@@ -83,25 +83,25 @@ export class RestaurantSecondaryLocationExpansionQueueService {
   }
 
   async queueExpansion(
-    restaurantId: string,
     placeId: string,
+    googlePlaceId: string,
     options: { source?: string } = {},
   ): Promise<string | null> {
-    const normalizedRestaurantId = restaurantId?.trim();
     const normalizedPlaceId = placeId?.trim();
-    if (!normalizedRestaurantId || !normalizedPlaceId) {
+    const normalizedGooglePlaceId = googlePlaceId?.trim();
+    if (!normalizedPlaceId || !normalizedGooglePlaceId) {
       return null;
     }
 
-    const jobId = this.buildJobId(normalizedRestaurantId, normalizedPlaceId);
+    const jobId = this.buildJobId(normalizedPlaceId, normalizedGooglePlaceId);
     // F356: no try/catch — see the cuisine queue for the full account. Bull's
     // `add` returns the existing job for a duplicate jobId; it never throws
     // 'already exists', so the guard that used to sit here could not fire.
     const job = await this.queue.add(
       JOB_NAME,
       {
-        restaurantId: normalizedRestaurantId,
         placeId: normalizedPlaceId,
+        googlePlaceId: normalizedGooglePlaceId,
         requestedAt: new Date().toISOString(),
         source: options.source,
         // F352-attribution (owner-ruled 2026-08-03). Ambient, never asked for
@@ -132,7 +132,7 @@ export class RestaurantSecondaryLocationExpansionQueueService {
     return String(job.id ?? jobId);
   }
 
-  private buildJobId(restaurantId: string, placeId: string): string {
-    return `${QUEUE_NAME}:${restaurantId}:${placeId}`;
+  private buildJobId(placeId: string, googlePlaceId: string): string {
+    return `${QUEUE_NAME}:${placeId}:${googlePlaceId}`;
   }
 }

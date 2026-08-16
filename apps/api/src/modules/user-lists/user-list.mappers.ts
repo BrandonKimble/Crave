@@ -6,13 +6,13 @@ import {
   type UserListItem,
   type PublicEntityScore,
   Prisma,
-  type RestaurantLocation,
+  type PlaceLocation,
 } from '@prisma/client';
 import type {
-  FoodResult,
-  RestaurantFoodSnippet,
-  RestaurantLocationResult,
-  RestaurantResult,
+  ItemResult,
+  PlaceItemSnippet,
+  PlaceLocationResult,
+  PlaceResult,
 } from '@crave-search/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
@@ -68,7 +68,7 @@ export type UserListSummary = {
    *  Present on the owner home read. */
   tileImages?: Array<{
     slot: 0 | 1 | 2 | 3;
-    restaurantId: string;
+    placeId: string;
     photoId: string;
     thumbUrl: string;
   }>;
@@ -80,18 +80,18 @@ export type FavoritePublicScore = Pick<
 >;
 
 export type UserListScoreMaps = {
-  restaurantScores: Map<string, FavoritePublicScore>;
+  placeScores: Map<string, FavoritePublicScore>;
   connectionScores: Map<string, FavoritePublicScore>;
 };
 
 export type UserListItemDetail = Prisma.UserListItemGetPayload<{
   include: {
     location: true;
-    restaurant: { include: { primaryLocation: true } };
+    place: { include: { primaryLocation: true } };
     connection: {
       include: {
-        food: true;
-        restaurant: { include: { primaryLocation: true } };
+        item: true;
+        place: { include: { primaryLocation: true } };
       };
     };
   };
@@ -105,7 +105,7 @@ export type UserListWithDetailItems = UserList & {
 
 export type UserListScoreSubjectSource = {
   items: Array<{
-    restaurantId?: string | null;
+    placeId?: string | null;
     connectionId?: string | null;
   }>;
 };
@@ -118,18 +118,18 @@ export type UserListSummarySource = UserList & {
   _count: { items: number };
   items: Array<{
     itemId: string;
-    restaurantId?: string | null;
+    placeId?: string | null;
     connectionId?: string | null;
-    restaurant?: {
+    place?: {
       name: string;
       city?: string | null;
     } | null;
     connection?: {
       connectionId: string;
-      food?: {
+      item?: {
         name: string;
       } | null;
-      restaurant?: {
+      place?: {
         name: string;
       } | null;
     } | null;
@@ -181,18 +181,18 @@ export class UserListMapper {
       .map((item) => {
         if (
           list.listType === UserListType.restaurant &&
-          item.restaurantId &&
-          item.restaurant
+          item.placeId &&
+          item.place
         ) {
-          const score = scores.restaurantScores.get(item.restaurantId);
+          const score = scores.placeScores.get(item.placeId);
           if (!score) {
-            missingScoreSubjects.push(`restaurant:${item.restaurantId}`);
+            missingScoreSubjects.push(`restaurant:${item.placeId}`);
             return null;
           }
           return {
             itemId: item.itemId,
-            label: item.restaurant.name,
-            subLabel: item.restaurant.city,
+            label: item.place.name,
+            subLabel: item.place.city,
             craveScore: Number(score.displayScore),
           };
         }
@@ -208,8 +208,8 @@ export class UserListMapper {
           }
           return {
             itemId: item.itemId,
-            label: item.connection.food?.name ?? 'Dish',
-            subLabel: item.connection.restaurant?.name ?? null,
+            label: item.connection.item?.name ?? 'Dish',
+            subLabel: item.connection.place?.name ?? null,
             craveScore: Number(score.displayScore),
           };
         }
@@ -249,27 +249,25 @@ export class UserListMapper {
   async loadPreviewScoreMaps(
     lists: UserListScoreSubjectSource[],
   ): Promise<UserListScoreMaps> {
-    const restaurantIds = new Set<string>();
+    const placeIds = new Set<string>();
     const connectionIds = new Set<string>();
     lists.forEach((list) => {
       list.items.forEach((item) => {
-        if (item.restaurantId) {
-          restaurantIds.add(item.restaurantId);
+        if (item.placeId) {
+          placeIds.add(item.placeId);
         }
         if (item.connectionId) {
           connectionIds.add(item.connectionId);
         }
       });
     });
-    const [restaurantScores, connectionScores] = await Promise.all([
-      this.loadPublicScores(CraveScoreSubjectType.restaurant, [
-        ...restaurantIds,
-      ]),
+    const [placeScores, connectionScores] = await Promise.all([
+      this.loadPublicScores(CraveScoreSubjectType.restaurant, [...placeIds]),
       this.loadPublicScores(CraveScoreSubjectType.connection, [
         ...connectionIds,
       ]),
     ]);
-    return { restaurantScores, connectionScores };
+    return { placeScores, connectionScores };
   }
 
   async loadPublicScores(
@@ -325,68 +323,66 @@ export class UserListMapper {
     return score?.rising == null ? null : Number(score.rising);
   }
 
-  async mapRestaurantResults(
-    items: UserListItemDetail[],
-  ): Promise<RestaurantResult[]> {
-    const results: RestaurantResult[] = [];
-    const restaurantIds = items
-      .map((item) => item.restaurant?.entityId)
+  async mapPlaceResults(items: UserListItemDetail[]): Promise<PlaceResult[]> {
+    const results: PlaceResult[] = [];
+    const placeIds = items
+      .map((item) => item.place?.entityId)
       .filter((id): id is string => typeof id === 'string');
-    const restaurantScores = await this.loadPublicScores(
+    const placeScores = await this.loadPublicScores(
       CraveScoreSubjectType.restaurant,
-      restaurantIds,
+      placeIds,
     );
-    // Batched (F1910): one connection.findMany over the UNION of restaurantIds
+    // Batched (F1910): one connection.findMany over the UNION of placeIds
     // instead of one per item, mirroring mapFoodResults' shape. Scoping is
     // preserved exactly — each item's topFoods below is still filtered to
     // `restaurantId === restaurant.entityId`, identical to what the per-item
     // `where: { restaurantId: restaurant.entityId }` query returned; only the
     // round trip is collapsed, not the per-item grouping.
-    const allTopFoods =
-      restaurantIds.length > 0
+    const allTopItems =
+      placeIds.length > 0
         ? await this.prisma.connection.findMany({
-            where: { restaurantId: { in: restaurantIds } },
+            where: { placeId: { in: placeIds } },
             include: {
-              food: { select: { entityId: true, name: true } },
+              item: { select: { entityId: true, name: true } },
             },
           })
         : [];
-    const topFoodsByRestaurant = new Map<string, typeof allTopFoods>();
-    for (const food of allTopFoods) {
-      const list = topFoodsByRestaurant.get(food.restaurantId);
+    const topItemsByPlace = new Map<string, typeof allTopItems>();
+    for (const item of allTopItems) {
+      const list = topItemsByPlace.get(item.placeId);
       if (list) {
-        list.push(food);
+        list.push(item);
       } else {
-        topFoodsByRestaurant.set(food.restaurantId, [food]);
+        topItemsByPlace.set(item.placeId, [item]);
       }
     }
-    const topFoodScores = await this.loadPublicScores(
+    const topItemScores = await this.loadPublicScores(
       CraveScoreSubjectType.connection,
-      allTopFoods.map((food) => food.connectionId),
+      allTopItems.map((item) => item.connectionId),
     );
     for (const item of items) {
-      const restaurant = item.restaurant;
-      if (!restaurant) {
+      const place = item.place;
+      if (!place) {
         continue;
       }
-      const topFoods = topFoodsByRestaurant.get(restaurant.entityId) ?? [];
+      const topItems = topItemsByPlace.get(place.entityId) ?? [];
       // A connection with no PUBLIC score cannot be a "top food" — it is filtered,
       // never fatal (2026-07-13: one unscored connection 500'd every list containing
       // its restaurant). The SAVED item's own score (below) stays a loud invariant.
-      const topFoodSnippets: RestaurantFoodSnippet[] = topFoods
-        .filter((food) => topFoodScores.has(food.connectionId))
-        .map((food) => ({
-          connectionId: food.connectionId,
-          foodId: food.foodId,
-          foodName: food.food?.name ?? 'Dish',
+      const topItemSnippets: PlaceItemSnippet[] = topItems
+        .filter((item) => topItemScores.has(item.connectionId))
+        .map((item) => ({
+          connectionId: item.connectionId,
+          itemId: item.itemId,
+          itemName: item.item?.name ?? 'Dish',
           scoreSubjectType: 'connection' as const,
-          scoreSubjectId: food.connectionId,
+          scoreSubjectId: item.connectionId,
           // Non-null: the .has() filter above guarantees a score exists.
           craveScore: this.toPublicScoreValue(
-            topFoodScores.get(food.connectionId),
+            topItemScores.get(item.connectionId),
           ) as number,
-          rising: this.toPublicScoreDelta(topFoodScores.get(food.connectionId)),
-          totalUpvotes: food.totalUpvotes ?? 0,
+          rising: this.toPublicScoreDelta(topItemScores.get(item.connectionId)),
+          totalUpvotes: item.totalUpvotes ?? 0,
         }))
         .sort((left, right) => {
           const scoreDiff = right.craveScore - left.craveScore;
@@ -396,50 +392,49 @@ export class UserListMapper {
           return right.totalUpvotes - left.totalUpvotes;
         })
         .slice(0, 3)
-        .map((food) => ({
-          connectionId: food.connectionId,
-          foodId: food.foodId,
-          foodName: food.foodName,
-          scoreSubjectType: food.scoreSubjectType,
-          scoreSubjectId: food.scoreSubjectId,
-          craveScore: food.craveScore,
-          rising: food.rising,
+        .map((item) => ({
+          connectionId: item.connectionId,
+          itemId: item.itemId,
+          itemName: item.itemName,
+          scoreSubjectType: item.scoreSubjectType,
+          scoreSubjectId: item.scoreSubjectId,
+          craveScore: item.craveScore,
+          rising: item.rising,
         }));
 
-      const primaryLocation = restaurant.primaryLocation;
+      const primaryLocation = place.primaryLocation;
       const locationResult = primaryLocation
         ? this.mapLocation(primaryLocation)
         : null;
-      const restaurantScore = restaurantScores.get(restaurant.entityId);
+      const placeScore = placeScores.get(place.entityId);
 
       results.push({
-        restaurantId: restaurant.entityId,
-        restaurantName: restaurant.name,
+        placeId: place.entityId,
+        placeName: place.name,
         scoreSubjectType: 'restaurant',
-        scoreSubjectId: restaurant.entityId,
+        scoreSubjectId: place.entityId,
         // F604: null (not thrown) when unscored — RestaurantResult.craveScore
         // is `number | null` by design; an unscored SAVED restaurant still
         // renders in the list, it just shows no score, same as the preview path.
-        craveScore: this.toPublicScoreValue(restaurantScore),
-        craveScoreExact: this.toPublicScoreExact(restaurantScore),
-        rising: this.toPublicScoreDelta(restaurantScore),
+        craveScore: this.toPublicScoreValue(placeScore),
+        craveScoreExact: this.toPublicScoreExact(placeScore),
+        rising: this.toPublicScoreDelta(placeScore),
         mentionCount: undefined,
-        totalUpvotes: restaurant.generalPraiseUpvotes ?? undefined,
+        totalUpvotes: place.generalPraiseUpvotes ?? undefined,
         latitude: primaryLocation?.latitude
           ? Number(primaryLocation.latitude)
           : null,
         longitude: primaryLocation?.longitude
           ? Number(primaryLocation.longitude)
           : null,
-        address: primaryLocation?.address ?? restaurant.address ?? null,
-        restaurantLocationId: primaryLocation?.locationId ?? null,
-        priceLevel: restaurant.priceLevel ?? null,
+        address: primaryLocation?.address ?? place.address ?? null,
+        placeLocationId: primaryLocation?.locationId ?? null,
+        priceLevel: place.priceLevel ?? null,
         priceSymbol: null,
         priceText: null,
-        priceLevelUpdatedAt:
-          restaurant.priceLevelUpdatedAt?.toISOString() ?? null,
-        topFood: topFoodSnippets,
-        totalDishCount: topFoodSnippets.length,
+        priceLevelUpdatedAt: place.priceLevelUpdatedAt?.toISOString() ?? null,
+        topItem: topItemSnippets,
+        totalDishCount: topItemSnippets.length,
         operatingStatus: null,
         distanceMiles: null,
         displayLocation: locationResult,
@@ -455,18 +450,18 @@ export class UserListMapper {
     return results;
   }
 
-  async mapFoodResults(items: UserListItemDetail[]): Promise<FoodResult[]> {
-    const results: FoodResult[] = [];
+  async mapItemResults(items: UserListItemDetail[]): Promise<ItemResult[]> {
+    const results: ItemResult[] = [];
     const connectionScores = await this.loadPublicScores(
       CraveScoreSubjectType.connection,
       items
         .map((item) => item.connection?.connectionId)
         .filter((id): id is string => typeof id === 'string'),
     );
-    const restaurantScores = await this.loadPublicScores(
+    const placeScores = await this.loadPublicScores(
       CraveScoreSubjectType.restaurant,
       items
-        .map((item) => item.connection?.restaurantId)
+        .map((item) => item.connection?.placeId)
         .filter((id): id is string => typeof id === 'string'),
     );
     // F604: FoodResult.craveScore / .restaurantCraveScore are non-nullable
@@ -477,29 +472,29 @@ export class UserListMapper {
     const missingScoreSubjects: string[] = [];
     items.forEach((item) => {
       const connection = item.connection;
-      if (!connection || !connection.food || !connection.restaurant) {
+      if (!connection || !connection.item || !connection.place) {
         return;
       }
-      const primaryLocation = connection.restaurant.primaryLocation;
+      const primaryLocation = connection.place.primaryLocation;
       const connectionScore = connectionScores.get(connection.connectionId);
-      const restaurantScore = restaurantScores.get(connection.restaurantId);
+      const placeScore = placeScores.get(connection.placeId);
       const craveScore = this.toPublicScoreValue(connectionScore);
-      const restaurantCraveScore = this.toPublicScoreValue(restaurantScore);
+      const placeCraveScore = this.toPublicScoreValue(placeScore);
       if (craveScore === null) {
         missingScoreSubjects.push(`connection:${connection.connectionId}`);
         return;
       }
-      if (restaurantCraveScore === null) {
-        missingScoreSubjects.push(`restaurant:${connection.restaurantId}`);
+      if (placeCraveScore === null) {
+        missingScoreSubjects.push(`restaurant:${connection.placeId}`);
         return;
       }
       results.push({
         connectionId: connection.connectionId,
-        foodId: connection.foodId,
-        foodName: connection.food.name,
-        restaurantId: connection.restaurantId,
-        restaurantName: connection.restaurant.name,
-        restaurantLocationId: primaryLocation?.locationId ?? undefined,
+        itemId: connection.itemId,
+        itemName: connection.item.name,
+        placeId: connection.placeId,
+        placeName: connection.place.name,
+        placeLocationId: primaryLocation?.locationId ?? undefined,
         scoreSubjectType: 'connection',
         scoreSubjectId: connection.connectionId,
         craveScore,
@@ -508,12 +503,12 @@ export class UserListMapper {
         mentionCount: connection.mentionCount ?? 0,
         totalUpvotes: connection.totalUpvotes ?? 0,
         lastMentionedAt: connection.lastMentionedAt?.toISOString() ?? null,
-        foodAttributes: connection.foodAttributes ?? [],
-        restaurantPriceLevel: connection.restaurant.priceLevel ?? null,
-        restaurantPriceSymbol: null,
-        restaurantDistanceMiles: null,
-        restaurantOperatingStatus: null,
-        restaurantCraveScore,
+        itemAttributes: connection.itemAttributes ?? [],
+        placePriceLevel: connection.place.priceLevel ?? null,
+        placePriceSymbol: null,
+        placeDistanceMiles: null,
+        placeOperatingStatus: null,
+        placeCraveScore,
         // Detail-path parity with the results path (spec B.1.5).
         note: item.note ?? null,
         userListItemId: item.itemId,
@@ -529,7 +524,7 @@ export class UserListMapper {
     return results;
   }
 
-  private mapLocation(location: RestaurantLocation): RestaurantLocationResult {
+  private mapLocation(location: PlaceLocation): PlaceLocationResult {
     const hours =
       location.hours &&
       typeof location.hours === 'object' &&

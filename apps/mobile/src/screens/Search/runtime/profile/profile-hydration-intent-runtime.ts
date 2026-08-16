@@ -21,7 +21,7 @@ export type ProfileHydrationIntentRuntime = {
       nextRestaurantId?: string | null;
     }
   ) => void;
-  beginRestaurantProfileHydrationIntent: (restaurantId: string) => number;
+  beginRestaurantProfileHydrationIntent: (placeId: string) => number;
   isRestaurantProfileRequestCurrent: (requestSeq: number) => boolean;
 };
 
@@ -65,7 +65,7 @@ export const useProfileHydrationIntentRuntime = ({
       }
       emitRuntimeMechanismEvent('profile_intent_cancelled', {
         reason,
-        restaurantId: activeIntent.restaurantId,
+        placeId: activeIntent.placeId,
         requestSeq: activeIntent.requestSeq,
         activeRequestSeq:
           context?.nextRequestSeq ??
@@ -78,17 +78,17 @@ export const useProfileHydrationIntentRuntime = ({
   );
 
   const beginRestaurantProfileHydrationIntent = React.useCallback(
-    (restaurantId: string) => {
+    (placeId: string) => {
       const requestSeq = incrementRestaurantProfileRequestSeqOnRecord(
         profileControllerStateRef.current
       );
       cancelActiveHydrationIntent('superseded_profile_hydration_intent', {
         nextRequestSeq: requestSeq,
-        nextRestaurantId: restaurantId,
+        nextRestaurantId: placeId,
       });
       setActiveHydrationIntentOnRecord(profileControllerStateRef.current, {
         requestSeq,
-        restaurantId,
+        placeId,
       });
       return requestSeq;
     },

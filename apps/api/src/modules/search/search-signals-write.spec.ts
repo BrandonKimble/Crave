@@ -10,7 +10,7 @@ import { judgedVocabularyDouble } from '../../shared/testing/judged-vocabulary-d
 // ORIGINAL search act from the ledger itself.
 
 const USER_ID = '11111111-1111-1111-1111-111111111111';
-const FOOD_ID = '33333333-3333-3333-3333-333333333333';
+const ITEM_ID = '33333333-3333-3333-3333-333333333333';
 const ACTOR_ID = '22222222-2222-2222-2222-222222222222';
 const SEARCH_REQUEST_ID = '55555555-5555-5555-5555-555555555555';
 const CACHE_REVEAL_REQUEST_ID = '66666666-6666-6666-6666-666666666666';
@@ -47,7 +47,7 @@ function buildOriginalSignalRow(
     meta: {
       searchRequestId: SEARCH_REQUEST_ID,
       resultCount: 12,
-      restaurantCount: 3,
+      placeCount: 3,
       cached: false,
     },
     ...overrides,
@@ -154,7 +154,7 @@ function createHarness(
 
 function buildRequest() {
   return {
-    entities: { food: [], restaurants: [] },
+    entities: { item: [], places: [] },
     bounds: {
       northEast: { lat: 30.4, lng: -97.6 },
       southWest: { lat: 30.1, lng: -97.9 },
@@ -163,7 +163,7 @@ function buildRequest() {
     userId: USER_ID,
     submissionSource: 'autocomplete',
     submissionContext: {
-      selectedEntityId: FOOD_ID,
+      selectedEntityId: ITEM_ID,
       selectedEntityType: 'food',
     },
   } as never;
@@ -172,8 +172,8 @@ function buildRequest() {
 const CONTEXT = {
   searchRequestId: SEARCH_REQUEST_ID,
   totalResults: 12,
-  totalFoodResults: 9,
-  totalRestaurantResults: 3,
+  totalItemResults: 9,
+  totalPlaceResults: 3,
   queryExecutionTimeMs: 42,
   resultCoverageStatus: 'full' as const,
 };
@@ -207,7 +207,7 @@ describe('search submit single-write (§3 signals are the ONE record)', () => {
       .find((data) => data.kind === 'search');
     expect(searchSignal).toBeDefined();
     expect(searchSignal?.subjectType).toBe('entity');
-    expect(searchSignal?.subjectId).toBe(FOOD_ID);
+    expect(searchSignal?.subjectId).toBe(ITEM_ID);
     // §22 item 6: the search act carries BOTH subject halves — the resolved
     // entity AND the query term (recent-search readers consume the term).
     expect(searchSignal?.subjectText).toBe('birria tacos');
@@ -220,9 +220,9 @@ describe('search submit single-write (§3 signals are the ONE record)', () => {
     expect(searchSignal?.meta).toEqual({
       searchRequestId: SEARCH_REQUEST_ID,
       resultCount: 12,
-      restaurantCount: 3,
+      placeCount: 3,
       cached: false,
-      resolvedEntityId: FOOD_ID,
+      resolvedEntityId: ITEM_ID,
     });
 
     const selectionSignal = signalsPrisma.signal.create.mock.calls
@@ -286,14 +286,14 @@ describe('cache reveal (§3: the ledger clones its OWN original act)', () => {
       cacheRevealRequestId: CACHE_REVEAL_REQUEST_ID,
       originalBackendSearchRequestId: SEARCH_REQUEST_ID,
       resultCount: 12,
-      restaurantCount: 3,
+      placeCount: 3,
       cached: true,
     });
   });
 
   it('an entity-resolved reveal keeps the entity subject', async () => {
     const { service, signalsPrisma } = createHarness({
-      originalRows: [buildOriginalSignalRow({ subject_id: FOOD_ID })],
+      originalRows: [buildOriginalSignalRow({ subject_id: ITEM_ID })],
     });
 
     const result = await service.recordCacheAttribution(revealDto(), USER_ID);
@@ -303,11 +303,11 @@ describe('cache reveal (§3: the ledger clones its OWN original act)', () => {
     expect(signalsPrisma.signal.create).toHaveBeenCalledTimes(1);
     const data = signalsPrisma.signal.create.mock.calls[0][0].data;
     expect(data.subjectType).toBe('entity');
-    expect(data.subjectId).toBe(FOOD_ID);
+    expect(data.subjectId).toBe(ITEM_ID);
     expect(data.meta).toMatchObject({
       cacheRevealRequestId: CACHE_REVEAL_REQUEST_ID,
       cached: true,
-      resolvedEntityId: FOOD_ID,
+      resolvedEntityId: ITEM_ID,
     });
   });
 

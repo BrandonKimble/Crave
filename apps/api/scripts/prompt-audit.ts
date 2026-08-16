@@ -215,21 +215,21 @@ async function main(): Promise<void> {
         NON_CATEGORY_TERMS.has(norm(String(e.entity_name))),
       ),
       categoryEvents.length,
-      (r) => `${String(r.entity_name)} @ ${String(r.restaurant_name)}`,
+      (r) => `${String(r.entity_name)} @ ${String(r.place_name)}`,
     );
 
     // CLASS 2 — dish nouns leaking into the attribute namespace.
     const attributeEvents = events.filter((e) =>
       String(e.entity_type).endsWith('_attribute'),
     );
-    const foodNames = new Set(
+    const itemNames = new Set(
       events
-        .filter((e) => String(e.entity_type) === 'food')
+        .filter((e) => String(e.entity_type) === 'item')
         .map((e) => norm(String(e.entity_name))),
     );
     report(
       'CLASS 2 dish noun emitted as an attribute',
-      attributeEvents.filter((e) => foodNames.has(norm(String(e.entity_name)))),
+      attributeEvents.filter((e) => itemNames.has(norm(String(e.entity_name)))),
       attributeEvents.length,
       (r) => `${String(r.entity_name)} [${String(r.entity_type)}]`,
     );
@@ -237,15 +237,15 @@ async function main(): Promise<void> {
     // CLASS 3 — over-extraction / hallucination: the food's name does not
     // appear in the document that supposedly said it. Token-level (not exact
     // substring) so plural/spelling variants do not read as false hits.
-    const foodEvents = events.filter((e) => String(e.entity_type) === 'food');
+    const itemEvents = events.filter((e) => String(e.entity_type) === 'item');
     // DIRECT claims only. Category events are INFERRED parents ("stew" over a
     // named dish) and are not expected to appear verbatim — grading them as
     // hallucinations read 36.5% on the baseline and was measuring the
     // detector, not the prompt.
-    const directFoodEvents = foodEvents.filter((e) =>
+    const directItemEvents = itemEvents.filter((e) =>
       ['menu_item_food', 'food_mention'].includes(String(e.evidence_type)),
     );
-    const ungrounded = directFoodEvents.filter((e) => {
+    const ungrounded = directItemEvents.filter((e) => {
       const text = norm(
         [e.title, e.body, e.parent_title, e.parent_body]
           .map((part) => (typeof part === 'string' ? part : ''))
@@ -262,18 +262,18 @@ async function main(): Promise<void> {
     report(
       'CLASS 3 food name absent from its own source document',
       ungrounded,
-      directFoodEvents.length,
-      (r) => `"${String(r.entity_name)}" @ ${String(r.restaurant_name)}`,
+      directItemEvents.length,
+      (r) => `"${String(r.entity_name)}" @ ${String(r.place_name)}`,
     );
 
     // CLASS 4 — fan-out: one document attaching the SAME food to many
     // restaurants (the carbonara-udon pattern: an ask template pattern-
     // matched onto a comment that had its own dish text).
     const fanout = new Map<string, Set<string>>();
-    for (const event of foodEvents) {
+    for (const event of itemEvents) {
       const key = `${String(event.source_document_id)}::${norm(String(event.entity_name))}`;
       const set = fanout.get(key) ?? new Set<string>();
-      set.add(String(event.restaurant_id));
+      set.add(String(event.place_id));
       fanout.set(key, set);
     }
     const fannedOut = [...fanout.entries()].filter(([, set]) => set.size >= 4);
@@ -286,20 +286,20 @@ async function main(): Promise<void> {
 
     // CLASS 5 — menu-item labeling: the ratio the audit tracks. Not a
     // pass/fail on its own; a collapse in either direction is the signal.
-    const menuItems = foodEvents.filter((e) => e.is_menu_item === true).length;
+    const menuItems = itemEvents.filter((e) => e.is_menu_item === true).length;
     out(
-      `\n-- CLASS 5 menu-item labeling: ${menuItems}/${foodEvents.length} food events flagged is_menu_item (${(
-        (menuItems / Math.max(1, foodEvents.length)) *
+      `\n-- CLASS 5 menu-item labeling: ${menuItems}/${itemEvents.length} food events flagged is_menu_item (${(
+        (menuItems / Math.max(1, itemEvents.length)) *
         100
       ).toFixed(1)}%)`,
     );
 
     // CLASS 6 — restaurant-name quality: a "restaurant" that is really a
     // generic noun is a resolution poison pill (it becomes a magnet entity).
-    const restaurantNames = new Map<string, number>();
+    const placeNames = new Map<string, number>();
     for (const event of events) {
-      const name = String(event.restaurant_name);
-      restaurantNames.set(name, (restaurantNames.get(name) ?? 0) + 1);
+      const name = String(event.place_name);
+      placeNames.set(name, (placeNames.get(name) ?? 0) + 1);
     }
     // A short one-word name is usually a REAL restaurant (Canje, Siti, Poeta
     // all tripped the first version). The actual poison pill is a name made
@@ -330,12 +330,12 @@ async function main(): Promise<void> {
       'home',
       'work',
     ]);
-    const suspicious = [...restaurantNames.keys()].filter((name) => {
+    const suspicious = [...placeNames.keys()].filter((name) => {
       const words = norm(name).split(' ').filter(Boolean);
       return words.length > 0 && words.every((w) => GENERIC_NAME_WORDS.has(w));
     });
     out(
-      `\n-- CLASS 6 suspicious restaurant names (single short token): ${suspicious.length}/${restaurantNames.size}`,
+      `\n-- CLASS 6 suspicious restaurant names (single short token): ${suspicious.length}/${placeNames.size}`,
     );
     for (const name of suspicious.slice(0, 10)) out(`   "${name}"`);
 

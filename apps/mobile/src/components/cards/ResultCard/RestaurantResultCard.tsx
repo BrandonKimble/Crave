@@ -95,7 +95,7 @@ type RestaurantResultCardProps = {
     source?: 'results_sheet' | 'auto_open_single_candidate'
   ) => void;
   openScoreInfo: (payload: ScoreInfoPayload) => void;
-  primaryFoodTerm: string | null;
+  primaryItemTerm: string | null;
   /** Slot (listDetail/read-only variants): the saver's note, under the gallery row (§8.1). */
   note?: string | null;
   /** Slot: own-list surfaces pass the photo-funnel opener → gallery grows the plus lead tile. */
@@ -112,17 +112,15 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   pillEditMode = false,
   openRestaurantProfile,
   openScoreInfo,
-  primaryFoodTerm: _primaryFoodTerm,
+  primaryItemTerm: _primaryFoodTerm,
   note = null,
   onAddPhoto,
 }) => {
   // Live saved-anywhere state (batched /lists/memberships read + optimistic
   // mutation marks) — the plus/saved pill design's single source of truth.
-  const isSavedAnywhere = useSavedMembership('restaurant', restaurant.restaurantId);
+  const isSavedAnywhere = useSavedMembership('restaurant', restaurant.placeId);
   const preparedDescriptor =
-    maybePreparedDescriptor?.restaurantId === restaurant.restaurantId
-      ? maybePreparedDescriptor
-      : null;
+    maybePreparedDescriptor?.placeId === restaurant.placeId ? maybePreparedDescriptor : null;
   const primaryFoodHighlight = React.useMemo(
     () =>
       preparedDescriptor?.primaryFoodHighlight ??
@@ -140,7 +138,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     preparedDescriptor?.distanceLabel ?? formatDistanceMiles(restaurant.distanceMiles);
   const showDistanceInScore =
     preparedDescriptor?.showDistanceInScore ?? (!hasStatus && distanceLabel !== null);
-  const topFoodItems = restaurant.topFood ?? [];
+  const topFoodItems = restaurant.topItem ?? [];
   const totalDishCount =
     preparedDescriptor?.totalDishCount ??
     Math.max(restaurant.totalDishCount ?? topFoodItems.length, topFoodItems.length);
@@ -169,11 +167,11 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
       .filter((tag) => typeof tag.name === 'string' && tag.name.trim().length > 0)
       .slice(0, MAX_MATCHED_TAGS)
       .map((tag) => ({
-        key: `${restaurant.restaurantId}-${tag.entityId}`,
+        key: `${restaurant.placeId}-${tag.entityId}`,
         label: formatRestaurantCardMatchedTagLabel(tag),
       }))
       .filter((tag) => tag.label.length > 0);
-  }, [preparedDescriptor, restaurant.matchedTags, restaurant.restaurantId]);
+  }, [preparedDescriptor, restaurant.matchedTags, restaurant.placeId]);
   const dishCountLabel =
     preparedDescriptor?.dishCountLabel ??
     (totalDishCount === 1 ? '1 dish' : `${totalDishCount} dishes`);
@@ -208,12 +206,12 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   });
 
   const renderHighlightedFoodName = React.useCallback(
-    (connectionId: string, foodName: string): React.ReactNode => {
+    (connectionId: string, itemName: string): React.ReactNode => {
       const segments =
         preparedDescriptor?.topFoodNameSegmentsByConnectionId.get(connectionId) ??
-        buildRestaurantCardHighlightedTextSegments(foodName, primaryFoodHighlight);
+        buildRestaurantCardHighlightedTextSegments(itemName, primaryFoodHighlight);
       if (segments.length === 1 && !segments[0]?.isMatch) {
-        return segments[0]?.text ?? foodName;
+        return segments[0]?.text ?? itemName;
       }
       return (
         <>
@@ -288,7 +286,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
           style={styles.topFoodNameInline}
         >
           {' '}
-          {renderHighlightedFoodName(food.connectionId, food.foodName)}
+          {renderHighlightedFoodName(food.connectionId, food.itemName)}
         </Text>
       );
       if (idx < visibleTopFoodsForRender.length - 1 || shouldIncludeMore) {
@@ -330,15 +328,15 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   const handleShare = React.useCallback(() => {
     showShareModal({
       kind: 'restaurant',
-      id: restaurant.restaurantId,
-      title: restaurant.restaurantName,
+      id: restaurant.placeId,
+      title: restaurant.placeName,
     });
-  }, [restaurant.restaurantId, restaurant.restaurantName]);
+  }, [restaurant.placeId, restaurant.placeName]);
 
   const handleRestaurantInfoPress = React.useCallback(() => {
     openScoreInfo({
       type: 'restaurant',
-      title: restaurant.restaurantName,
+      title: restaurant.placeName,
       score: craveScoreValue,
       rising: restaurant.rising ?? null,
       votes: restaurant.scoreInfo?.voteCount ?? null,
@@ -347,7 +345,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   }, [
     craveScoreValue,
     openScoreInfo,
-    restaurant.restaurantName,
+    restaurant.placeName,
     restaurant.rising,
     restaurant.scoreInfo,
   ]);
@@ -358,7 +356,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
 
   return (
     <View
-      key={restaurant.restaurantId}
+      key={restaurant.placeId}
       style={[styles.resultItem, index === 0 && styles.firstResultItem]}
     >
       <Pressable
@@ -367,9 +365,9 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
         // Rig lever (CLAUDE.md maestro gotchas): element-id taps are the ONLY reliable
         // way to drive a Pressable on the gesture-handoff sheet — coordinate/text taps
         // get eaten by the pan gesture.
-        testID={`result-card-press-${restaurant.restaurantId}`}
+        testID={`result-card-press-${restaurant.placeId}`}
         accessibilityRole="button"
-        accessibilityLabel={`View ${restaurant.restaurantName}`}
+        accessibilityLabel={`View ${restaurant.placeName}`}
       >
         <View style={styles.resultHeader}>
           <View style={styles.resultTitleContainer}>
@@ -385,7 +383,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                 style={[styles.textSlate900, styles.cardTitleText]}
                 numberOfLines={2}
               >
-                {restaurant.restaurantName}
+                {restaurant.placeName}
               </Text>
             </View>
             <View
@@ -499,7 +497,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                                 style={styles.topFoodNameInline}
                               >
                                 {' '}
-                                {renderHighlightedFoodName(food.connectionId, food.foodName)}
+                                {renderHighlightedFoodName(food.connectionId, food.itemName)}
                               </Text>
                               {TOP_FOOD_INLINE_GAP}
                             </Text>
@@ -556,7 +554,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
           profile. */}
       <View style={[styles.cardPhotoStripSection, resultCardSlotStyles.galleryBleed]}>
         <CardPhotoStrip
-          restaurantId={restaurant.restaurantId}
+          placeId={restaurant.placeId}
           height={RESULT_CARD_GALLERY_HEIGHT}
           tileAspect={RESULT_CARD_GALLERY_TILE_ASPECT}
           contentInset={RESULT_CARD_GUTTER}
@@ -568,7 +566,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
         <Text
           variant="caption"
           style={resultCardSlotStyles.note}
-          testID={`result-card-note-${restaurant.restaurantId}`}
+          testID={`result-card-note-${restaurant.placeId}`}
         >
           {note}
         </Text>
@@ -582,7 +580,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
         onShare={handleShare}
         phoneNumber={resolveRestaurantPhoneNumber(restaurant)}
         onDishes={handleRestaurantPress}
-        testID={`result-card-pills-${restaurant.restaurantId}`}
+        testID={`result-card-pills-${restaurant.placeId}`}
       />
     </View>
   );

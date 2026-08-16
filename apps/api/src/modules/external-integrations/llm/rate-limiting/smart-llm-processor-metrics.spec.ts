@@ -73,7 +73,7 @@ describe('SmartLLMProcessor performance metrics (F115: RED-able, not decorative)
     const processContent = jest
       .fn()
       .mockRejectedValueOnce(new LLMRateLimitError(1, { kind: 'rpm' }))
-      .mockResolvedValue({ restaurants: [] });
+      .mockResolvedValue({ places: [] });
 
     await processor.processContent(input, llmOk(processContent), 'worker-test');
 

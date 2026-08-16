@@ -8,38 +8,38 @@ import type { SearchConstraints } from './search-constraints';
 export function compileQueryPlanFromConstraints(
   constraints: SearchConstraints,
 ): QueryPlan {
-  const restaurantFilters: FilterClause[] = [];
+  const placeFilters: FilterClause[] = [];
   const connectionFilters: FilterClause[] = [];
   const now = new Date();
 
-  if (constraints.ids.restaurantIds.length > 0) {
-    restaurantFilters.push({
-      scope: 'restaurant',
+  if (constraints.ids.placeIds.length > 0) {
+    placeFilters.push({
+      scope: 'place',
       description: 'Match explicit restaurant entities',
-      entityType: EntityScope.RESTAURANT,
-      entityIds: constraints.ids.restaurantIds,
+      entityType: EntityScope.PLACE,
+      entityIds: constraints.ids.placeIds,
     });
   }
 
-  if (constraints.ids.restaurantAttributeIds.length > 0) {
-    restaurantFilters.push({
-      scope: 'restaurant',
+  if (constraints.ids.placeAttributeIds.length > 0) {
+    placeFilters.push({
+      scope: 'place',
       description: 'Filter by restaurant attributes',
-      entityType: EntityScope.RESTAURANT_ATTRIBUTE,
-      entityIds: constraints.ids.restaurantAttributeIds,
+      entityType: EntityScope.PLACE_ATTRIBUTE,
+      entityIds: constraints.ids.placeAttributeIds,
     });
   }
 
   if (constraints.filters.bounds) {
     const bounds = constraints.filters.bounds;
-    restaurantFilters.push({
-      scope: 'restaurant',
+    placeFilters.push({
+      scope: 'place',
       description: `Restrict to map bounds (${bounds.southWest.lat.toFixed(
         4,
       )}, ${bounds.southWest.lng.toFixed(4)}) ↔ (${bounds.northEast.lat.toFixed(
         4,
       )}, ${bounds.northEast.lng.toFixed(4)})`,
-      entityType: EntityScope.RESTAURANT,
+      entityType: EntityScope.PLACE,
       entityIds: [],
       payload: { bounds },
     });
@@ -50,43 +50,43 @@ export function compileQueryPlanFromConstraints(
     constraints.filters.viewportPolygon.length >= 3
   ) {
     const viewportPolygon = constraints.filters.viewportPolygon;
-    restaurantFilters.push({
-      scope: 'restaurant',
+    placeFilters.push({
+      scope: 'place',
       description: `Restrict to screen-accurate viewport polygon (${viewportPolygon.length} pts)`,
-      entityType: EntityScope.RESTAURANT,
+      entityType: EntityScope.PLACE,
       entityIds: [],
       payload: { viewportPolygon },
     });
   }
 
   if (constraints.filters.openNow) {
-    restaurantFilters.push({
-      scope: 'restaurant',
+    placeFilters.push({
+      scope: 'place',
       description: `Filter restaurants open at ${now.toISOString()}`,
-      entityType: EntityScope.RESTAURANT,
+      entityType: EntityScope.PLACE,
       entityIds: [],
       payload: { openNow: { requestedAt: now.toISOString() } },
     });
   }
 
   if (constraints.filters.priceLevels.length > 0) {
-    restaurantFilters.push({
-      scope: 'restaurant',
+    placeFilters.push({
+      scope: 'place',
       description: `Restrict to price levels (${constraints.filters.priceLevels.join(
         ', ',
       )})`,
-      entityType: EntityScope.RESTAURANT,
+      entityType: EntityScope.PLACE,
       entityIds: [],
       payload: { priceLevels: constraints.filters.priceLevels },
     });
   }
 
-  if (constraints.ids.foodIds.length > 0) {
+  if (constraints.ids.itemIds.length > 0) {
     connectionFilters.push({
       scope: 'connection',
       description: 'Match food entities',
-      entityType: EntityScope.FOOD,
-      entityIds: constraints.ids.foodIds,
+      entityType: EntityScope.ITEM,
+      entityIds: constraints.ids.itemIds,
     });
   }
 
@@ -99,17 +99,17 @@ export function compileQueryPlanFromConstraints(
     });
   }
 
-  if (constraints.inputPresence.foodAttributes > 0) {
-    const attributeIds = constraints.ids.foodAttributeIds;
+  if (constraints.inputPresence.itemAttributes > 0) {
+    const attributeIds = constraints.ids.itemAttributeIds;
     const shouldInclude =
       attributeIds.length > 0 &&
-      (constraints.ids.foodIds.length > 0 ||
-        constraints.inputPresence.food === 0);
+      (constraints.ids.itemIds.length > 0 ||
+        constraints.inputPresence.items === 0);
     if (shouldInclude) {
       connectionFilters.push({
         scope: 'connection',
         description: 'Filter by food attributes',
-        entityType: EntityScope.FOOD_ATTRIBUTE,
+        entityType: EntityScope.ITEM_ATTRIBUTE,
         entityIds: attributeIds,
       });
     }
@@ -119,7 +119,7 @@ export function compileQueryPlanFromConstraints(
     connectionFilters.push({
       scope: 'connection',
       description: `Require at least ${constraints.filters.minimumVotes} total votes`,
-      entityType: EntityScope.FOOD,
+      entityType: EntityScope.ITEM,
       entityIds: [],
       payload: { minimumVotes: constraints.filters.minimumVotes },
     });
@@ -127,16 +127,16 @@ export function compileQueryPlanFromConstraints(
 
   const plan: QueryPlan = {
     format: constraints.format,
-    restaurantFilters,
+    placeFilters,
     connectionFilters,
     ranking: constraints.filters.rising
       ? {
-          foodOrder: 'rising DESC',
-          restaurantOrder: 'rising DESC',
+          itemOrder: 'rising DESC',
+          placeOrder: 'rising DESC',
         }
       : {
-          foodOrder: 'crave_score DESC',
-          restaurantOrder: 'crave_score DESC',
+          itemOrder: 'crave_score DESC',
+          placeOrder: 'crave_score DESC',
         },
     diagnostics: {
       missingEntities: getMissingScopes(constraints.inputPresence),
@@ -151,17 +151,17 @@ function getMissingScopes(
   presence: SearchConstraints['inputPresence'],
 ): EntityScope[] {
   const missing: EntityScope[] = [];
-  if (!presence.restaurants) {
-    missing.push(EntityScope.RESTAURANT);
+  if (!presence.places) {
+    missing.push(EntityScope.PLACE);
   }
-  if (!presence.food) {
-    missing.push(EntityScope.FOOD);
+  if (!presence.items) {
+    missing.push(EntityScope.ITEM);
   }
-  if (!presence.foodAttributes) {
-    missing.push(EntityScope.FOOD_ATTRIBUTE);
+  if (!presence.itemAttributes) {
+    missing.push(EntityScope.ITEM_ATTRIBUTE);
   }
-  if (!presence.restaurantAttributes) {
-    missing.push(EntityScope.RESTAURANT_ATTRIBUTE);
+  if (!presence.placeAttributes) {
+    missing.push(EntityScope.PLACE_ATTRIBUTE);
   }
   return missing;
 }
@@ -170,8 +170,8 @@ function buildDiagnosticNotes(constraints: SearchConstraints): string[] {
   const notes: string[] = [];
 
   if (
-    constraints.inputPresence.food === 0 &&
-    constraints.inputPresence.foodAttributes === 0
+    constraints.inputPresence.items === 0 &&
+    constraints.inputPresence.itemAttributes === 0
   ) {
     notes.push(
       'No food entities provided; restaurant results will rank by public Crave Score.',

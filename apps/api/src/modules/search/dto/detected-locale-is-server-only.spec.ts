@@ -40,14 +40,14 @@ describe('detectedLocale is server-derived (A0 R2)', () => {
     // nothing downstream could tell it from an analyzer answer.
     const result = await throughThePipe({
       entities: {
-        food: [{ normalizedName: 'chicken sandwich', entityIds: ['e1'] }],
+        items: [{ normalizedName: 'chicken sandwich', entityIds: ['e1'] }],
       },
       detectedLocale: 'vi',
     });
     // Ignored, not rejected: sending it is not an error, it is simply not
     // the caller's fact to state.
     expect(result.detectedLocale).toBeUndefined();
-    expect(result.entities.food?.[0]?.normalizedName).toBe('chicken sandwich');
+    expect(result.entities.items?.[0]?.normalizedName).toBe('chicken sandwich');
   });
 
   it('garbage values are ignored the same way — no 500, no free text', async () => {
@@ -60,7 +60,7 @@ describe('detectedLocale is server-derived (A0 R2)', () => {
       '',
     ]) {
       const result = await throughThePipe({
-        entities: { food: [{ normalizedName: 'tacos', entityIds: ['e1'] }] },
+        entities: { items: [{ normalizedName: 'tacos', entityIds: ['e1'] }] },
         detectedLocale: garbage,
       });
       expect(result.detectedLocale).toBeUndefined();
@@ -72,7 +72,7 @@ describe('detectedLocale is server-derived (A0 R2)', () => {
     // rejects them, so a near-miss spelling cannot sneak past either.
     await expect(
       throughThePipe({
-        entities: { food: [{ normalizedName: 'pho', entityIds: ['e1'] }] },
+        entities: { items: [{ normalizedName: 'pho', entityIds: ['e1'] }] },
         detected_locale: 'vi',
       }),
     ).rejects.toBeTruthy();

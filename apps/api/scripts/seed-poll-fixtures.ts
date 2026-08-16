@@ -56,7 +56,7 @@ const SEED_POLLS: SeedPoll[] = [
     topicType: PollTopicType.best_dish,
     origin: PollOrigin.seeded, // app-created → sparkles badge
     question: 'Best fried chicken in NYC right now?',
-    target: { name: 'fried chicken', type: EntityType.food },
+    target: { name: 'fried chicken', type: EntityType.item },
     comments: [
       'The Eighty Six has the best fried chicken, hands down.',
       'Honestly the fried chicken at Cathédrale Restaurant is unreal too.',
@@ -128,7 +128,7 @@ async function main(): Promise<void> {
       // Resolve the axis target so dish-axis polls have the fixed side they need
       // to form (restaurant, dish) Connections in the leaderboard.
       let targetDishId: string | null = null;
-      let targetRestaurantId: string | null = null;
+      let targetPlaceId: string | null = null;
       if (seed.target) {
         const spans = await gazetteer.scanForKnownEntities(
           seed.target.name,
@@ -143,8 +143,8 @@ async function main(): Promise<void> {
             `could not resolve poll target "${seed.target.name}"`,
           );
         }
-        if (seed.target.type === EntityType.food) targetDishId = entityId;
-        else targetRestaurantId = entityId;
+        if (seed.target.type === EntityType.item) targetDishId = entityId;
+        else targetPlaceId = entityId;
       }
 
       const topic = await prisma.pollTopic.create({
@@ -152,7 +152,7 @@ async function main(): Promise<void> {
           topicType: seed.topicType,
           title: seed.question,
           targetDishId,
-          targetRestaurantId,
+          targetPlaceId,
           metadata: { seedFixture: true },
         },
         select: { topicId: true },
@@ -177,7 +177,7 @@ async function main(): Promise<void> {
         const userId = userIds[i % userIds.length];
         const spans = await gazetteer.scanForKnownEntities(
           body,
-          [EntityType.restaurant, EntityType.food],
+          [EntityType.place, EntityType.item],
           { engineId: null },
         );
         await prisma.pollComment.create({

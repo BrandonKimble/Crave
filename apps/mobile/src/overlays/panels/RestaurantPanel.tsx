@@ -148,22 +148,22 @@ export const useRestaurantPanelSpec = ({
   // below, which already worked for exactly this reason).
   const [expandedLocations, setExpandedLocations] = React.useState<Record<string, boolean>>({});
   const expandedLocationsRestaurantIdRef = React.useRef<string | null>(null);
-  // Collapsed-tail expander state (render-time keyed by restaurantId — the useEffect reset
+  // Collapsed-tail expander state (render-time keyed by placeId — the useEffect reset
   // pattern is dead code in these spec hooks, CLAUDE.md).
   const [locationsTailState, setLocationsTailState] = React.useState<{
-    restaurantId: string;
+    placeId: string;
     expanded: boolean;
-  }>({ restaurantId: '', expanded: false });
+  }>({ placeId: '', expanded: false });
 
   const restaurant = data?.restaurant ?? null;
   const dishes = data?.dishes ?? [];
   const queryLabel = data?.queryLabel ?? '';
   const isLoading = data?.isLoading ?? false;
-  const restaurantName = restaurant?.restaurantName ?? '';
-  const restaurantId = restaurant?.restaurantId ?? '';
+  const placeName = restaurant?.placeName ?? '';
+  const placeId = restaurant?.placeId ?? '';
 
-  if (expandedLocationsRestaurantIdRef.current !== restaurantId) {
-    expandedLocationsRestaurantIdRef.current = restaurantId;
+  if (expandedLocationsRestaurantIdRef.current !== placeId) {
+    expandedLocationsRestaurantIdRef.current = placeId;
     if (Object.keys(expandedLocations).length > 0) {
       setExpandedLocations({});
     }
@@ -173,18 +173,18 @@ export const useRestaurantPanelSpec = ({
   // Reset on restaurant change is RENDER-TIME derived state (the useEffect
   // pattern is dead code in these spec hooks — CLAUDE.md).
   const [viewState, setViewState] = React.useState<{
-    restaurantId: string;
+    placeId: string;
     view: RestaurantProfileViewKey;
-  }>({ restaurantId: '', view: 'overview' });
-  if (viewState.restaurantId !== restaurantId) {
-    setViewState({ restaurantId, view: 'overview' });
+  }>({ placeId: '', view: 'overview' });
+  if (viewState.placeId !== placeId) {
+    setViewState({ placeId, view: 'overview' });
   }
-  const activeView = viewState.restaurantId === restaurantId ? viewState.view : 'overview';
+  const activeView = viewState.placeId === placeId ? viewState.view : 'overview';
   const setActiveView = React.useCallback(
     (view: RestaurantProfileViewKey) => {
-      setViewState({ restaurantId, view });
+      setViewState({ placeId, view });
     },
-    [restaurantId]
+    [placeId]
   );
 
   const emptyAreaMinHeight = Math.max(0, SCREEN_HEIGHT - snapPoints.middle - headerHeight);
@@ -234,7 +234,7 @@ export const useRestaurantPanelSpec = ({
           : [];
     const seen = new Set<string>();
     return source.filter((location, index) => {
-      const locationId = location.locationId ?? `${restaurant.restaurantId}-${index}`;
+      const locationId = location.locationId ?? `${restaurant.placeId}-${index}`;
       if (seen.has(locationId)) {
         return false;
       }
@@ -281,15 +281,14 @@ export const useRestaurantPanelSpec = ({
     });
   }, [focusCoordinate, locationCandidates]);
 
-  const showAllLocations =
-    locationsTailState.restaurantId === restaurantId && locationsTailState.expanded;
+  const showAllLocations = locationsTailState.placeId === placeId && locationsTailState.expanded;
   const visibleLocations = showAllLocations
     ? sortedLocations
     : sortedLocations.slice(0, NEARBY_LOCATION_ROW_COUNT);
   const collapsedLocationCount = sortedLocations.length - visibleLocations.length;
   const expandLocationsTail = React.useCallback(() => {
-    setLocationsTailState({ restaurantId, expanded: true });
-  }, [restaurantId]);
+    setLocationsTailState({ placeId, expanded: true });
+  }, [placeId]);
 
   const normalizeWebsiteUrl = React.useCallback((value?: string | null): string | null => {
     if (typeof value !== 'string') {
@@ -382,18 +381,18 @@ export const useRestaurantPanelSpec = ({
       void Linking.openURL(sharedWebsiteUrl);
       return;
     }
-    const query = `${restaurantName} ${queryLabel} ${WEBSITE_FALLBACK_SEARCH}`.trim();
+    const query = `${placeName} ${queryLabel} ${WEBSITE_FALLBACK_SEARCH}`.trim();
     void Linking.openURL(`https://www.google.com/search?q=${encodeURIComponent(query)}`);
-  }, [queryLabel, restaurantName, sharedWebsiteUrl]);
+  }, [queryLabel, placeName, sharedWebsiteUrl]);
 
   const handleCallPress = React.useCallback(() => {
     if (primaryPhone) {
       void Linking.openURL(`tel:${primaryPhone}`);
       return;
     }
-    const query = `${restaurantName} ${PHONE_FALLBACK_SEARCH}`.trim();
+    const query = `${placeName} ${PHONE_FALLBACK_SEARCH}`.trim();
     void Linking.openURL(`https://www.google.com/search?q=${encodeURIComponent(query)}`);
-  }, [primaryPhone, restaurantName]);
+  }, [primaryPhone, placeName]);
 
   // Red-team W2 (§7.2 action chips): Directions opens Apple Maps at the
   // primary location — coords when we have them, else the address, else a
@@ -420,9 +419,9 @@ export const useRestaurantPanelSpec = ({
       );
       return;
     }
-    const query = `${restaurantName} ${queryLabel}`.trim();
+    const query = `${placeName} ${queryLabel}`.trim();
     void Linking.openURL(`http://maps.apple.com/?q=${encodeURIComponent(query)}`);
-  }, [primaryDirectionsTarget, queryLabel, restaurantName]);
+  }, [primaryDirectionsTarget, queryLabel, placeName]);
 
   // The server caps the locations ARRAY (~30 nearest) but the COUNT stays global —
   // prefer locationCount for the label when present.
@@ -433,7 +432,7 @@ export const useRestaurantPanelSpec = ({
   const dishByConnectionId = React.useMemo(() => {
     const map = new Map<string, { name: string; rank: number }>();
     dishes.forEach((dish, index) => {
-      map.set(dish.connectionId, { name: dish.foodName, rank: index + 1 });
+      map.set(dish.connectionId, { name: dish.itemName, rank: index + 1 });
     });
     return map;
   }, [dishes]);
@@ -454,7 +453,7 @@ export const useRestaurantPanelSpec = ({
       <View>
         {viewSwitcher}
         {/* §8.4 Overview element 1: the viewer's saved note(s) for this place. */}
-        <RestaurantSavedNote restaurantId={restaurant.restaurantId} />
+        <RestaurantSavedNote placeId={restaurant.placeId} />
         <View style={styles.metricsRow}>
           <View style={styles.metricCard}>
             <Text style={styles.metricLabel}>{t('restaurant.metrics.craveRating')}</Text>
@@ -506,8 +505,8 @@ export const useRestaurantPanelSpec = ({
             style={styles.actionPill}
             onPress={() =>
               openPostPhotosFunnel({
-                restaurantId: restaurant.restaurantId,
-                restaurantName: restaurant.restaurantName,
+                placeId: restaurant.placeId,
+                placeName: restaurant.placeName,
               })
             }
             accessibilityRole="button"
@@ -525,7 +524,7 @@ export const useRestaurantPanelSpec = ({
               <Text style={styles.sectionSubtitle}>{locationsLabel}</Text>
             </View>
             {visibleLocations.map((location, index) => {
-              const locationId = location.locationId ?? `${restaurant.restaurantId}-${index}`;
+              const locationId = location.locationId ?? `${restaurant.placeId}-${index}`;
               const isExpanded = Boolean(expandedLocations[locationId]);
               const statusLabel = formatOperatingStatus(location.operatingStatus);
               const hoursRows = formatHoursRows(location.hours ?? null);
@@ -631,7 +630,7 @@ export const useRestaurantPanelSpec = ({
             both linking into the Discussions view. Real component — its
             queries/effects fire (unlike this spec hook's). */}
         <RestaurantOverviewMentions
-          restaurantId={restaurant.restaurantId}
+          placeId={restaurant.placeId}
           onSeeAllDiscussions={() => setActiveView('discussions')}
         />
         <View style={styles.sectionHeader}>
@@ -659,8 +658,8 @@ export const useRestaurantPanelSpec = ({
     resolveLocationLabel,
     restaurant?.craveScore,
     restaurant?.displayLocation?.structuredHours,
-    restaurant?.restaurantId,
-    restaurant?.restaurantName,
+    restaurant?.placeId,
+    restaurant?.placeName,
     scoreEvidence,
     setActiveView,
     sharedWebsiteUrl,
@@ -697,8 +696,8 @@ export const useRestaurantPanelSpec = ({
       <View>
         {viewSwitcher}
         <RestaurantPhotosView
-          restaurantId={restaurant.restaurantId}
-          restaurantName={restaurant.restaurantName}
+          placeId={restaurant.placeId}
+          placeName={restaurant.placeName}
           dishByConnectionId={dishByConnectionId}
         />
       </View>
@@ -712,7 +711,7 @@ export const useRestaurantPanelSpec = ({
     return (
       <View>
         {viewSwitcher}
-        <RestaurantMentionsView restaurantId={restaurant.restaurantId} />
+        <RestaurantMentionsView placeId={restaurant.placeId} />
       </View>
     );
   }, [isLoading, restaurant, viewSwitcher]);
@@ -786,7 +785,7 @@ export const useRestaurantPanelSpec = ({
             <Text style={styles.dishRankText}>{index + 1}</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.dishName}>{item.foodName}</Text>
+            <Text style={styles.dishName}>{item.itemName}</Text>
             <Text style={styles.dishMeta}>
               {t('restaurant.dishes.ratingLabel')}
               <CraveScoreText score={item.craveScore} style={styles.dishMetaScoreValue} />
@@ -806,11 +805,7 @@ export const useRestaurantPanelSpec = ({
         {/* §7.1: every dish row carries its (dish-linked) photo strip as the
             card's last element. Display context — placeholder when empty. */}
         <View style={styles.dishPhotoStripSection}>
-          <CardPhotoStrip
-            restaurantId={item.restaurantId}
-            connectionId={item.connectionId}
-            height={72}
-          />
+          <CardPhotoStrip placeId={item.placeId} connectionId={item.connectionId} height={72} />
         </View>
       </View>
     ),
@@ -899,7 +894,7 @@ export const useRestaurantPanelSpec = ({
   return {
     overlayKey: 'restaurant',
     semanticOverlayKey: 'restaurant',
-    sceneIdentityKey: restaurantId ? `restaurant:${restaurantId}` : 'restaurant',
+    sceneIdentityKey: placeId ? `restaurant:${placeId}` : 'restaurant',
     surfaceKind: 'list',
     snapPoints,
     animateOnMount: false,
@@ -937,13 +932,13 @@ export const useRestaurantPanelSpec = ({
 
 const RestaurantPersistentHeaderTitle = React.memo(() => {
   const headerState = useRestaurantHeaderLiveState();
-  const restaurantName = headerState?.data?.restaurant?.restaurantName ?? '';
-  if (!restaurantName) {
+  const placeName = headerState?.data?.restaurant?.placeName ?? '';
+  if (!placeName) {
     // Title not yet resolved (e.g. a deep-link open with no seeded name) — skeletonize
     // ONLY the title; the grab handle + close button stay live for cancel.
     return <CutoutSkeletonShape width={150} height={18} />;
   }
-  return <ChromeTitleText>{toSingleLineText(restaurantName)}</ChromeTitleText>;
+  return <ChromeTitleText>{toSingleLineText(placeName)}</ChromeTitleText>;
 });
 RestaurantPersistentHeaderTitle.displayName = 'RestaurantPersistentHeaderTitle';
 
@@ -958,8 +953,8 @@ const RestaurantPersistentHeaderExtras = React.memo(
     const headerState = useRestaurantHeaderLiveState();
     const data = headerState?.data ?? null;
     const restaurant = data?.restaurant ?? null;
-    const restaurantName = restaurant?.restaurantName ?? '';
-    const restaurantId = restaurant?.restaurantId ?? '';
+    const placeName = restaurant?.placeName ?? '';
+    const placeId = restaurant?.placeId ?? '';
     const extrasOpacityStyle = useAnimatedStyle(
       () => ({ opacity: transitionProgress.value }),
       [transitionProgress]
@@ -969,7 +964,7 @@ const RestaurantPersistentHeaderExtras = React.memo(
     // its displayLocation (the tapped/selected location the hydration stamps) —
     // the heart save carries that location so ListDetail pins exactly it.
     const focusedLocationId =
-      restaurant?.displayLocation?.locationId ?? restaurant?.restaurantLocationId ?? null;
+      restaurant?.displayLocation?.locationId ?? restaurant?.placeLocationId ?? null;
     // Favorites-as-kind rewire: the heart is now the ONE-TAP heart verb
     // against the kind='favorites' list (POST/DELETE /favorites/lists/
     // favorites/items). BEFORE it opened the save-list sheet via
@@ -977,25 +972,25 @@ const RestaurantPersistentHeaderExtras = React.memo(
     // anywhere by itself); the sheet remains reachable from the card Save
     // pills and still offers Favorites as its pinned first option.
     const { isFavorite, toggle: toggleHeart } = useFavoriteHeart({
-      entityId: restaurantId || null,
+      entityId: placeId || null,
       locationId: focusedLocationId,
       entityKind: 'restaurant',
     });
     const handleToggleFavorite = React.useCallback(() => {
-      if (!restaurantId) {
+      if (!placeId) {
         return;
       }
       void toggleHeart();
-    }, [restaurantId, toggleHeart]);
+    }, [placeId, toggleHeart]);
 
     // W3 universal share modal replaces the ad-hoc OS share sheet (the sheet is
     // still reachable inside the modal as the "Share via…" row).
     const handleShare = React.useCallback(() => {
-      if (!restaurantId) {
+      if (!placeId) {
         return;
       }
-      showShareModal({ kind: 'restaurant', id: restaurantId, title: restaurantName });
-    }, [restaurantId, restaurantName]);
+      showShareModal({ kind: 'restaurant', id: placeId, title: placeName });
+    }, [placeId, placeName]);
 
     return (
       <Animated.View style={[styles.headerActions, extrasOpacityStyle]}>

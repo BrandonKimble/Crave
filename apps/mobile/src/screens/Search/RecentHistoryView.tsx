@@ -35,8 +35,8 @@ type HistorySection<T> = {
 };
 
 type RecentlyViewedHistoryItem =
-  | { type: 'restaurant'; item: RecentlyViewedRestaurant }
-  | { type: 'food'; item: RecentlyViewedFood };
+  | { type: 'place'; item: RecentlyViewedRestaurant }
+  | { type: 'item'; item: RecentlyViewedFood };
 
 type RecentHistoryViewProps = {
   mode: HistoryMode;
@@ -177,8 +177,8 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
 
   const recentlyViewedItems = React.useMemo(() => {
     const items: RecentlyViewedHistoryItem[] = [
-      ...recentlyViewedFoods.map((item) => ({ type: 'food' as const, item })),
-      ...dedupedRecentlyViewed.map((item) => ({ type: 'restaurant' as const, item })),
+      ...recentlyViewedFoods.map((item) => ({ type: 'item' as const, item })),
+      ...dedupedRecentlyViewed.map((item) => ({ type: 'place' as const, item })),
     ];
 
     items.sort((left, right) => {
@@ -289,9 +289,7 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
 
   const renderRecentRow = (item: RecentSearch, index: number) => {
     const statusLine =
-      item.selectedEntityType === 'restaurant'
-        ? renderStatusLine(item.statusPreview ?? null)
-        : null;
+      item.selectedEntityType === 'place' ? renderStatusLine(item.statusPreview ?? null) : null;
     const hasMetaLine = Boolean(statusLine);
     return (
       <TouchableOpacity
@@ -318,14 +316,14 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
   };
 
   const renderRecentlyViewedRow = (entry: RecentlyViewedHistoryItem, index: number) => {
-    if (entry.type === 'food') {
+    if (entry.type === 'item') {
       const item = entry.item;
       const statusLine = renderMetaDetailLine(
         item.statusPreview?.operatingStatus ?? null,
         null,
         null,
         'left',
-        item.restaurantName,
+        item.placeName,
         false,
         false,
         styles.metaLineText
@@ -337,7 +335,7 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
           onPress={() => handleSelectRecentlyViewedFood(item)}
           activeOpacity={ROW_ACTIVE_OPACITY}
           accessibilityRole="button"
-          accessibilityLabel={`View ${item.foodName} at ${item.restaurantName}`}
+          accessibilityLabel={`View ${item.itemName} at ${item.placeName}`}
           style={styles.recentRow}
         >
           <View style={styles.recentIcon}>
@@ -346,7 +344,7 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
           <View style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}>
             <View style={styles.recentRowTextGroup}>
               <Text style={styles.recentText} numberOfLines={1}>
-                {item.foodName}
+                {item.itemName}
               </Text>
               {hasMetaLine ? <View style={styles.metaLine}>{statusLine}</View> : null}
             </View>
@@ -364,11 +362,11 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
     const hasMetaLine = Boolean(statusLine);
     return (
       <TouchableOpacity
-        key={item.restaurantId}
+        key={item.placeId}
         onPress={() => handleSelectRecentlyViewed(item)}
         activeOpacity={ROW_ACTIVE_OPACITY}
         accessibilityRole="button"
-        accessibilityLabel={`View ${item.restaurantName}`}
+        accessibilityLabel={`View ${item.placeName}`}
         style={styles.recentRow}
       >
         <View style={styles.recentIcon}>
@@ -377,7 +375,7 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
         <View style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}>
           <View style={styles.recentRowTextGroup}>
             <Text style={styles.recentText} numberOfLines={1}>
-              {item.restaurantName}
+              {item.placeName}
             </Text>
             {hasMetaLine ? <View style={styles.metaLine}>{statusLine}</View> : null}
           </View>

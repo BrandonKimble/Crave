@@ -103,4 +103,13 @@ export interface EntityResolutionConfig {
    * never pay the per-entity LLM latency.
    */
   useLlmMatcher?: boolean;
+  /**
+   * REHEARSAL GENERATION (plans/shadow-sandbox.md): the extraction run this
+   * resolution serves is a non-activated rehearsal. Identity tiers then see
+   * rehearsal rows born under THIS run (self-visibility — the replay's own
+   * mints resolve) while every other caller — live runs included — sees no
+   * rehearsal rows at all. Entity-match verdicts record under
+   * `rehearsal:<runId>` and only steady + own-run verdicts are remembered.
+   */
+  rehearsalRunId?: string | null;
 }

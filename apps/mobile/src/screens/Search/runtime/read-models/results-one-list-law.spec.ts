@@ -17,10 +17,10 @@ import { createResultsSurfaceReadModelPolicySnapshot } from '../shared/results-s
 // partition-and-truncate step) into the built list and they go RED — the built rows
 // stop being the server's rows, in the server's order, with exactMatch intact.
 
-type Row = { restaurantId: string; exactMatch?: boolean; craveScore: number };
+type Row = { placeId: string; exactMatch?: boolean; craveScore: number };
 
-const restaurantRow = (restaurantId: string, exactMatch: boolean, craveScore: number): Row => ({
-  restaurantId,
+const restaurantRow = (placeId: string, exactMatch: boolean, craveScore: number): Row => ({
+  placeId,
   exactMatch,
   craveScore,
 });
@@ -41,8 +41,8 @@ const SERVER_RANKED_RESTAURANTS: Row[] = [
 ];
 
 const SERVER_RANKED_DISHES = [
-  { foodId: 'd1', exactMatch: true, craveScore: 98 },
-  { foodId: 'd2', exactMatch: false, craveScore: 61 },
+  { itemId: 'd1', exactMatch: true, craveScore: 98 },
+  { itemId: 'd2', exactMatch: false, craveScore: 61 },
 ];
 
 const isRowShaped = (item: ResultsListItem): boolean =>
@@ -57,7 +57,7 @@ describe('the one-list law: the built list is the server list', () => {
     });
 
     expect(rows).toHaveLength(SERVER_RANKED_RESTAURANTS.length);
-    expect(rows.map((row) => (row as Row).restaurantId)).toEqual([
+    expect(rows.map((row) => (row as Row).placeId)).toEqual([
       'r1',
       'r2',
       'r3',
@@ -101,7 +101,7 @@ describe('the one-list law: the built list is the server list', () => {
     expect(rowsByTab.restaurants.map((row) => (row as Row).craveScore)).toEqual([
       99, 95, 91, 88, 84, 80, 77, 74, 70,
     ]);
-    expect(rowsByTab.dishes.map((row) => (row as { foodId: string }).foodId)).toEqual(['d1', 'd2']);
+    expect(rowsByTab.dishes.map((row) => (row as { itemId: string }).itemId)).toEqual(['d1', 'd2']);
   });
 
   it('gives the policy snapshot ONE row list per tab — rows ARE the safe rows', () => {

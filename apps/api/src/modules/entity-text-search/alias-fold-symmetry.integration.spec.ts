@@ -74,7 +74,7 @@ beforeAll(async () => {
       entityId: ENTITY_ID,
       // Unrelated name/aliases: the entity_surface arm is the only path.
       name: `${TEST_TAG}-unrelated-name`,
-      type: 'food_attribute',
+      type: 'item_attribute',
     },
   });
   await prisma.entitySurface.create({
@@ -101,7 +101,7 @@ describe('scanForKnownEntityGroups: an accented es alias is reachable by its fol
   it('grounds the entity when the query carries the accent (query side always folds)', async () => {
     const groups = await service.scanForKnownEntityGroups(
       ALIAS_FORM,
-      ['food_attribute'],
+      ['item_attribute'],
       { requestLocale: 'es' },
     );
     const ids = groups.flatMap((g) => g.entities.map((e) => e.entityId));
@@ -112,7 +112,7 @@ describe('scanForKnownEntityGroups: an accented es alias is reachable by its fol
     // 'zzqcafe especial' folds to itself and must reach the accented alias.
     const groups = await service.scanForKnownEntityGroups(
       FOLDED,
-      ['food_attribute'],
+      ['item_attribute'],
       { requestLocale: 'es' },
     );
     const ids = groups.flatMap((g) => g.entities.map((e) => e.entityId));
@@ -122,7 +122,7 @@ describe('scanForKnownEntityGroups: an accented es alias is reachable by its fol
   it('does NOT ground it when no request locale is given (arm is locale-chained, chain is [und])', async () => {
     const groups = await service.scanForKnownEntityGroups(
       ALIAS_FORM,
-      ['food_attribute'],
+      ['item_attribute'],
       {},
     );
     const ids = groups.flatMap((g) => g.entities.map((e) => e.entityId));

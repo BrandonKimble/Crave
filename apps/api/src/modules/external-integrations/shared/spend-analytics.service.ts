@@ -634,8 +634,8 @@ export class SpendAnalyticsService {
     // with NULL attribution are EXCLUDED from both numerators — a stale
     // honest rate beats a fresh contaminated one; the guard below keeps the
     // previous published row standing until attributed sample accrues.
-    const newRestaurants = await this.prisma.entity.count({
-      where: { type: 'restaurant', createdAt: createdWindow },
+    const newPlaces = await this.prisma.entity.count({
+      where: { type: 'place', createdAt: createdWindow },
     });
     const placesRows = await this.prisma.apiUsageEvent.findMany({
       where: { service: 'google_places', createdAt: createdWindow },
@@ -673,12 +673,12 @@ export class SpendAnalyticsService {
         }
       }
     }
-    if (newRestaurants >= MIN_SAMPLE_UNITS && newGroundingSpend > 0) {
+    if (newPlaces >= MIN_SAMPLE_UNITS && newGroundingSpend > 0) {
       out.push({
         workClass: 'google_places.enrichment',
         unit: 'restaurant',
-        microUsdPerUnit: newGroundingSpend / newRestaurants,
-        sampleUnits: newRestaurants,
+        microUsdPerUnit: newGroundingSpend / newPlaces,
+        sampleUnits: newPlaces,
         windowStart,
         windowEnd,
       });
@@ -700,7 +700,7 @@ export class SpendAnalyticsService {
         workClass: 'pipeline.entities_per_kilodoc',
         unit: 'ratio',
         // NOT currency: restaurants created per 1,000 documents collected.
-        microUsdPerUnit: (newRestaurants / docsCollected) * 1000,
+        microUsdPerUnit: (newPlaces / docsCollected) * 1000,
         sampleUnits: docsCollected,
         windowStart,
         windowEnd,

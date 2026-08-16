@@ -13,8 +13,8 @@ type ItemRow = {
   itemId: string;
   position: number;
   createdAt: Date;
-  restaurantId: string | null;
-  connection: { restaurantId: string } | null;
+  placeId: string | null;
+  connection: { placeId: string } | null;
 };
 
 const at = (minutes: number): Date => new Date(2026, 0, 1, 0, minutes);
@@ -37,13 +37,13 @@ function makeService(params: {
   const photoRead = {
     stripPhotos: ({ userId }: { userId?: string }) =>
       Promise.resolve({
-        byRestaurant: new Map(
+        byPlace: new Map(
           [...params.topPhotos]
             .filter(([, photo]) => !userId || photo.userId === userId)
-            .map(([restaurantId, photo]) => [restaurantId, [photo]]),
+            .map(([placeId, photo]) => [placeId, [photo]]),
         ),
         byConnection: new Map(),
-        countsByRestaurant: new Map(),
+        countsByPlace: new Map(),
         countsByConnection: new Map(),
       }),
   };
@@ -70,17 +70,15 @@ const ref = (
 const item = (
   listId: string,
   n: number,
-  restaurantId: string | null,
-  connectionRestaurantId?: string,
+  placeId: string | null,
+  connectionPlaceId?: string,
 ): ItemRow => ({
   listId,
   itemId: `item-${listId}-${n}`,
   position: n,
   createdAt: at(n),
-  restaurantId,
-  connection: connectionRestaurantId
-    ? { restaurantId: connectionRestaurantId }
-    : null,
+  placeId,
+  connection: connectionPlaceId ? { placeId: connectionPlaceId } : null,
 });
 
 const photo = (id: string) => ({
@@ -109,11 +107,7 @@ describe('UserListTileGalleryService', () => {
       ]),
     });
     const tiles = (await service.loadTileImages([ref('l1')], null)).get('l1')!;
-    expect(tiles.map((t) => t.restaurantId)).toEqual([
-      'r-high',
-      'r-mid',
-      'r-low',
-    ]);
+    expect(tiles.map((t) => t.placeId)).toEqual(['r-high', 'r-mid', 'r-low']);
     expect(tiles.map((t) => t.slot)).toEqual([0, 1, 2]);
     expect(tiles[0].thumbUrl).toBe('thumb-high');
   });
@@ -137,7 +131,7 @@ describe('UserListTileGalleryService', () => {
       ]),
     });
     const tiles = (await service.loadTileImages([ref('l1')], null)).get('l1')!;
-    expect(tiles.map((t) => t.restaurantId)).toEqual(['r-low', 'r-high']);
+    expect(tiles.map((t) => t.placeId)).toEqual(['r-low', 'r-high']);
   });
 
   it('resolves dish items through their connection, collapses duplicate restaurants, caps at 4', async () => {
@@ -162,12 +156,7 @@ describe('UserListTileGalleryService', () => {
     });
     const tiles = (await service.loadTileImages([ref('l1')], null)).get('l1')!;
     expect(tiles).toHaveLength(4);
-    expect(tiles.map((t) => t.restaurantId)).toEqual([
-      'r-a',
-      'r-b',
-      'r-c',
-      'r-d',
-    ]);
+    expect(tiles.map((t) => t.placeId)).toEqual(['r-a', 'r-b', 'r-c', 'r-d']);
   });
 
   it('a photo-less restaurant yields its slot to the next ranked one', async () => {
@@ -183,7 +172,7 @@ describe('UserListTileGalleryService', () => {
     expect(tiles).toEqual([
       {
         slot: 0,
-        restaurantId: 'r-b',
+        placeId: 'r-b',
         photoId: 'photo-b',
         thumbUrl: 'thumb-b',
       },
@@ -232,12 +221,12 @@ describe('UserListTileGalleryService', () => {
       expect(tiles).toEqual([
         expect.objectContaining({
           slot: 0,
-          restaurantId: 'r-a',
+          placeId: 'r-a',
           photoId: 'photo-own-a',
         }),
         expect.objectContaining({
           slot: 2,
-          restaurantId: 'r-c',
+          placeId: 'r-c',
           photoId: 'photo-own-c',
         }),
       ]);
@@ -253,7 +242,7 @@ describe('UserListTileGalleryService', () => {
         await service.loadTileImages([ref('l1', false, 'owner-1')], null)
       ).get('l1')!;
       expect(tiles).toEqual([
-        expect.objectContaining({ slot: 0, restaurantId: 'r-b' }),
+        expect.objectContaining({ slot: 0, placeId: 'r-b' }),
       ]);
     });
 

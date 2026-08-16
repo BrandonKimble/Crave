@@ -5,8 +5,8 @@ import {
   acquireIdentityMergeLocks,
   activeWinnerRedirectMap,
   finalizeMergeCompletion,
-  rekeyRestaurantEventsToCanonical,
-  rekeyRestaurantEntityEventsToCanonical,
+  rekeyPlaceEventsToCanonical,
+  rekeyPlaceEntityEventsToCanonical,
   activeCommunitiesArraySql,
   activeSupportExistsSql,
   dominantCommunitySql,
@@ -24,7 +24,7 @@ import { LoggerService } from '../../shared';
 import { ProjectionRebuildService } from '../content-processing/reddit-collector/projection-rebuild.service';
 import { EntityAnchorRehomeService } from '../content-processing/entity-resolver/entity-anchor-rehome.service';
 
-type RestaurantEntity = Entity;
+type PlaceEntity = Entity;
 
 /**
  * PREFIX-LANE PER-RUN CHURN CEILING.
@@ -45,7 +45,7 @@ type RestaurantEntity = Entity;
 const PREFIX_LANE_PER_RUN_CEILING = 200;
 
 @Injectable()
-export class RestaurantEntityMergeService {
+export class PlaceEntityMergeService {
   private readonly logger: LoggerService;
 
   constructor(
@@ -81,14 +81,14 @@ export class RestaurantEntityMergeService {
    * @param params.prepare caller's pre-merge work, atomic with the merge;
    *  whatever EntityUpdateInput fields it returns overlay canonicalUpdate.
    */
-  async mergeDuplicateRestaurant(params: {
-    canonical: RestaurantEntity;
-    duplicate: RestaurantEntity;
+  async mergeDuplicatePlace(params: {
+    canonical: PlaceEntity;
+    duplicate: PlaceEntity;
     canonicalUpdate: Prisma.EntityUpdateInput;
     prepare?: (
       tx: Prisma.TransactionClient,
     ) => Promise<Prisma.EntityUpdateInput | void>;
-  }): Promise<RestaurantEntity> {
+  }): Promise<PlaceEntity> {
     const { canonical, duplicate, canonicalUpdate } = params;
     if (canonical.entityId === duplicate.entityId) {
       throw new Error(
@@ -103,7 +103,7 @@ export class RestaurantEntityMergeService {
 
     const runMerge = async (
       tx: Prisma.TransactionClient,
-    ): Promise<RestaurantEntity> => {
+    ): Promise<PlaceEntity> => {
       const prepared = params.prepare ? await params.prepare(tx) : undefined;
       const effectiveCanonicalUpdate: Prisma.EntityUpdateInput = {
         ...canonicalUpdate,
@@ -112,8 +112,8 @@ export class RestaurantEntityMergeService {
       // Same identity locks the creation path takes (H3 — round-12
       // audit: the plan asserted this, the code didn't do it).
       await acquireIdentityMergeLocks(tx, 'restaurant', [
-        entityLockKey(canonical.name, EntityType.restaurant),
-        entityLockKey(duplicate.name, EntityType.restaurant),
+        entityLockKey(canonical.name, EntityType.place),
+        entityLockKey(duplicate.name, EntityType.place),
       ]);
 
       // THE CANONICAL IS RE-RESOLVED UNDER THE LOCK (2026-08-12 red team).
@@ -180,9 +180,9 @@ export class RestaurantEntityMergeService {
         );
       }
 
-      await this.mergeRestaurantEvents(tx, canonicalId, duplicateId);
-      await this.mergeRestaurantEntityEvents(tx, canonicalId, duplicateId);
-      await this.rehomeRestaurantEntityReferences(tx, canonicalId, duplicateId);
+      await this.mergePlaceEvents(tx, canonicalId, duplicateId);
+      await this.mergePlaceEntityEvents(tx, canonicalId, duplicateId);
+      await this.rehomePlaceEntityReferences(tx, canonicalId, duplicateId);
       await this.mergeConnections(tx, canonicalId, duplicateId);
       await this.mergeLocations(tx, canonicalId, duplicateId);
 
@@ -215,30 +215,28 @@ export class RestaurantEntityMergeService {
     // over core_restaurant_items rows the merge just re-keyed, so it must
     // run after the commit above — and because the service owns both the
     // transaction and this call, no caller can forget it.
-    await this.projectionRebuildService.rebuildForRestaurants([
-      result.entityId,
-    ]);
+    await this.projectionRebuildService.rebuildForPlaces([result.entityId]);
 
     return result;
   }
 
-  private async mergeRestaurantEvents(
+  private async mergePlaceEvents(
     tx: Prisma.TransactionClient,
     canonicalId: string,
     duplicateId: string,
   ): Promise<void> {
-    await rekeyRestaurantEventsToCanonical(tx, canonicalId, duplicateId);
+    await rekeyPlaceEventsToCanonical(tx, canonicalId, duplicateId);
   }
 
-  private async mergeRestaurantEntityEvents(
+  private async mergePlaceEntityEvents(
     tx: Prisma.TransactionClient,
     canonicalId: string,
     duplicateId: string,
   ): Promise<void> {
-    await rekeyRestaurantEntityEventsToCanonical(tx, canonicalId, duplicateId);
+    await rekeyPlaceEntityEventsToCanonical(tx, canonicalId, duplicateId);
   }
 
-  private async rehomeRestaurantEntityReferences(
+  private async rehomePlaceEntityReferences(
     tx: Prisma.TransactionClient,
     canonicalId: string,
     duplicateId: string,
@@ -250,7 +248,7 @@ export class RestaurantEntityMergeService {
     // read (the redirect row is written by the merge flow itself).
     await this.anchorRehome.rehomeUserListItems(
       tx,
-      'restaurantId',
+      'placeId',
       canonicalId,
       duplicateId,
     );
@@ -265,16 +263,16 @@ export class RestaurantEntityMergeService {
     canonicalId: string,
     duplicateId: string,
   ): Promise<void> {
-    const duplicateLocations = await tx.restaurantLocation.findMany({
-      where: { restaurantId: duplicateId },
+    const duplicateLocations = await tx.placeLocation.findMany({
+      where: { placeId: duplicateId },
     });
 
     if (!duplicateLocations.length) {
       return;
     }
 
-    const canonicalLocations = await tx.restaurantLocation.findMany({
-      where: { restaurantId: canonicalId },
+    const canonicalLocations = await tx.placeLocation.findMany({
+      where: { placeId: canonicalId },
     });
     const canonicalByPlaceId = new Map(
       canonicalLocations
@@ -288,7 +286,7 @@ export class RestaurantEntityMergeService {
         canonicalByPlaceId.has(location.googlePlaceId)
       ) {
         // Drop duplicate location row; prefer canonical's
-        await tx.restaurantLocation.delete({
+        await tx.placeLocation.delete({
           where: { locationId: location.locationId },
         });
         continue;
@@ -307,10 +305,10 @@ export class RestaurantEntityMergeService {
       // false extras. "The primary location" is a single-valued property of
       // the RESTAURANT and it already has a single-valued home
       // (core_entities.primary_location_id), so election happens ONCE, below.
-      await tx.restaurantLocation.update({
+      await tx.placeLocation.update({
         where: { locationId: location.locationId },
         data: {
-          restaurantId: canonicalId,
+          placeId: canonicalId,
           isPrimary: false,
           updatedAt: new Date(),
         },
@@ -318,17 +316,17 @@ export class RestaurantEntityMergeService {
     }
 
     // ELECT EXACTLY ONE PRIMARY — the FK's row, and no other.
-    let primary = await tx.restaurantLocation.findFirst({
-      where: { restaurantId: canonicalId, isPrimary: true },
+    let primary = await tx.placeLocation.findFirst({
+      where: { placeId: canonicalId, isPrimary: true },
     });
 
     if (!primary) {
-      const firstLocation = await tx.restaurantLocation.findFirst({
-        where: { restaurantId: canonicalId },
+      const firstLocation = await tx.placeLocation.findFirst({
+        where: { placeId: canonicalId },
         orderBy: { updatedAt: 'desc' },
       });
       if (firstLocation) {
-        await tx.restaurantLocation.update({
+        await tx.placeLocation.update({
           where: { locationId: firstLocation.locationId },
           data: { isPrimary: true },
         });
@@ -343,9 +341,9 @@ export class RestaurantEntityMergeService {
       // forever. This is the single-valuedness the FK has by construction,
       // asserted on the boolean that lacks it — the column has only a
       // non-unique index, so nothing else can.
-      await tx.restaurantLocation.updateMany({
+      await tx.placeLocation.updateMany({
         where: {
-          restaurantId: canonicalId,
+          placeId: canonicalId,
           isPrimary: true,
           locationId: { not: primary.locationId },
         },
@@ -369,7 +367,7 @@ export class RestaurantEntityMergeService {
     duplicateId: string,
   ): Promise<void> {
     const connections = await tx.connection.findMany({
-      where: { restaurantId: duplicateId },
+      where: { placeId: duplicateId },
     });
 
     if (!connections.length) {
@@ -379,12 +377,12 @@ export class RestaurantEntityMergeService {
     for (const connection of connections) {
       const conflicting = await tx.connection.findFirst({
         where: {
-          restaurantId: canonicalId,
-          foodId: connection.foodId,
+          placeId: canonicalId,
+          itemId: connection.itemId,
         },
         select: {
           connectionId: true,
-          foodId: true,
+          itemId: true,
         },
       });
 
@@ -400,7 +398,7 @@ export class RestaurantEntityMergeService {
       } else {
         await tx.connection.update({
           where: { connectionId: connection.connectionId },
-          data: { restaurantId: canonicalId },
+          data: { placeId: canonicalId },
         });
       }
     }
@@ -470,7 +468,7 @@ export class RestaurantEntityMergeService {
       -- Two zero-evidence shadow restaurants passed the community gate
       -- (both empty), tied on entity_id, and merged SILENTLY. Same
       -- predicate, same import, same law.
-      WHERE type = 'restaurant' AND status = 'active'
+      WHERE type = 'place' AND status = 'active'
         AND ${Prisma.raw(activeSupportExistsSql('e.entity_id'))}
         -- EMPTY FOLD IS NOT AN IDENTITY (round-10 aging sim, executed:
         -- every non-Latin name folds to '' and the sweep merged a Chinese
@@ -500,10 +498,10 @@ export class RestaurantEntityMergeService {
              ARRAY[a.entity_id, b.entity_id] AS entity_ids
       FROM core_entities a
       JOIN core_entities b
-        ON b.type = 'restaurant' AND b.status = 'active'
+        ON b.type = 'place' AND b.status = 'active'
        AND a.entity_id < b.entity_id
        AND lower(b.canonical_domain) = lower(a.canonical_domain)
-      WHERE a.type = 'restaurant' AND a.status = 'active'
+      WHERE a.type = 'place' AND a.status = 'active'
         AND a.canonical_domain IS NOT NULL
         -- Aggregator doctrine has ONE home (business-identity-rules.ts);
         -- this literal and the JS hierarchy below render from the same
@@ -524,7 +522,7 @@ export class RestaurantEntityMergeService {
                        WHERE l.restaurant_id = e2.entity_id
                          AND l.google_place_id IS NOT NULL) AS grounded
         FROM core_entities e2
-        WHERE type = 'restaurant' AND status = 'active'
+        WHERE type = 'place' AND status = 'active'
           AND identity_key IS NOT NULL AND identity_key <> ''
           AND ${Prisma.raw(activeSupportExistsSql('e2.entity_id'))}
       )
@@ -652,7 +650,7 @@ export class RestaurantEntityMergeService {
         const duplicate = await this.prisma.entity.findUniqueOrThrow({
           where: { entityId: duplicateId },
         });
-        await this.mergeDuplicateRestaurant({
+        await this.mergeDuplicatePlace({
           canonical,
           duplicate,
           canonicalUpdate: {},

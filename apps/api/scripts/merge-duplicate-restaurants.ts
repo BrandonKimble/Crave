@@ -13,7 +13,7 @@ process.env.PROCESS_ROLE ||= 'api';
 
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
-import { RestaurantEntityMergeService } from '../src/modules/restaurant-enrichment/restaurant-entity-merge.service';
+import { PlaceEntityMergeService } from '../src/modules/restaurant-enrichment/restaurant-entity-merge.service';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 /**
@@ -35,7 +35,7 @@ async function main(): Promise<void> {
 
   try {
     const result = await app
-      .get(RestaurantEntityMergeService)
+      .get(PlaceEntityMergeService)
       .sweepSameNameDuplicates({ apply });
     for (const d of result.decisions) {
       out(

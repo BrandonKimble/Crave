@@ -49,15 +49,15 @@ export const executeProfileOpenPresentationPlan = ({
   if (plan.updatedLastCameraState !== undefined) {
     ports.setLastCameraState(plan.updatedLastCameraState);
   }
-  ports.setMapHighlightedRestaurantId(restaurant.restaurantId);
+  ports.setMapHighlightedRestaurantId(restaurant.placeId);
   ports.seedRestaurantProfile(restaurant, queryLabel, {
     selectedLocationId: plan.selectedLocationId,
   });
-  ports.openPreparedProfilePresentation(restaurant.restaurantId, plan.targetCamera);
-  ports.hydrateRestaurantProfileById(restaurant.restaurantId);
+  ports.openPreparedProfilePresentation(restaurant.placeId, plan.targetCamera);
+  ports.hydrateRestaurantProfileById(restaurant.placeId);
   if (plan.shouldTrackRestaurantView) {
-    ports.deferRecentlyViewedTrack(restaurant.restaurantId, restaurant.restaurantName);
-    void ports.recordRestaurantView(restaurant.restaurantId, source);
+    ports.deferRecentlyViewedTrack(restaurant.placeId, restaurant.placeName);
+    void ports.recordRestaurantView(restaurant.placeId, source);
   }
 };
 
@@ -99,7 +99,7 @@ export const executeProfileOpenAction = ({
       pressedTargetDistanceMeters <= SELECTED_PIN_CAMERA_TARGET_TOLERANCE_METERS;
     logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
       event: 'profile_pin_selection_camera_contract',
-      restaurantId: restaurant.restaurantId,
+      placeId: restaurant.placeId,
       source,
       hasPressedCoordinate: pressedCoordinate != null,
       pressedLng: pressedCoordinate?.lng ?? null,

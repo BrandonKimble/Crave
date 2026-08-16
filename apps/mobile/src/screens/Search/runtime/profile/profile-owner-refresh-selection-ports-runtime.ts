@@ -4,7 +4,7 @@ import type { ProfileRefreshSelectionOwnedPorts } from './profile-action-runtime
 import type { ProfileRuntimeStateOwner } from './profile-runtime-state-contract';
 
 type UseProfileOwnerRefreshSelectionPortsRuntimeArgs = {
-  setMapHighlightedRestaurantId: (restaurantId: string | null) => void;
+  setMapHighlightedRestaurantId: (placeId: string | null) => void;
   hydrationRuntime: Pick<ProfileRuntimeStateOwner['hydrationRuntime'], 'seedRestaurantProfile'>;
   hydrateRestaurantProfileById: ProfileRuntimeStateOwner['hydrationRuntime']['hydrateRestaurantProfileById'];
 };

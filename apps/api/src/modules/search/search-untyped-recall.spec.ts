@@ -70,12 +70,12 @@ function input(name: string, entityType: string): EntityResolutionInput {
 describe('step-2 untyped recall + single-bucket placement', () => {
   it('lemma variant probe grounds "empanadas" via "empanada" as EXACT (no alias luck)', async () => {
     const svc = makeService((term, types) => {
-      if (term === 'empanada' && types.includes('food')) {
+      if (term === 'empanada' && types.includes('item')) {
         return [
           {
             entityId: EMPANADA_FOOD,
             name: 'empanada',
-            type: 'food',
+            type: 'item',
             sparseEvidence: 'exact',
             sparseSimilarity: 1,
           },
@@ -91,7 +91,7 @@ describe('step-2 untyped recall + single-bucket placement', () => {
           Array<{ entityId: string | null; resolutionTier: string }>
         >;
       }
-    ).linkViaHybridRecall([input('empanadas', 'food')]);
+    ).linkViaHybridRecall([input('empanadas', 'item')]);
     expect(results[0].entityId).toBe(EMPANADA_FOOD);
     expect(results[0].resolutionTier).toBe('exact');
   });
@@ -99,12 +99,12 @@ describe('step-2 untyped recall + single-bucket placement', () => {
   it('never-look fix: a food-typed term that only exists as an attribute re-buckets there', async () => {
     const svc = makeService((term, types) => {
       // Nothing in the food/ingredient vocabularies; exact in food_attribute.
-      if (term === 'breakfast' && types.includes('food_attribute')) {
+      if (term === 'breakfast' && types.includes('item_attribute')) {
         return [
           {
             entityId: BREAKFAST_ATTR,
             name: 'breakfast',
-            type: 'food_attribute',
+            type: 'item_attribute',
             sparseEvidence: 'exact',
             sparseSimilarity: 1,
           },
@@ -121,10 +121,10 @@ describe('step-2 untyped recall + single-bucket placement', () => {
           }>
         >;
       }
-    ).linkViaHybridRecall([input('breakfast', 'food')]);
+    ).linkViaHybridRecall([input('breakfast', 'item')]);
     expect(results[0].entityId).toBe(BREAKFAST_ATTR);
     // Single-bucket placement: grouping keys off originalInput.entityType.
-    expect(results[0].originalInput.entityType).toBe('food_attribute');
+    expect(results[0].originalInput.entityType).toBe('item_attribute');
   });
 
   it('dietary flag WINS placement over the deterministic type order', async () => {
@@ -132,19 +132,19 @@ describe('step-2 untyped recall + single-bucket placement', () => {
       (term, types) => {
         if (term !== 'vegan') return [];
         const out: Candidate[] = [];
-        if (types.includes('food'))
+        if (types.includes('item'))
           out.push({
             entityId: BREAKFAST_FOOD,
             name: 'vegan',
-            type: 'food',
+            type: 'item',
             sparseEvidence: 'exact',
             sparseSimilarity: 1,
           });
-        if (types.includes('restaurant_attribute'))
+        if (types.includes('place_attribute'))
           out.push({
             entityId: VEGAN_ATTR,
             name: 'vegan',
-            type: 'restaurant_attribute',
+            type: 'place_attribute',
             sparseEvidence: 'exact',
             sparseSimilarity: 1,
           });
@@ -164,19 +164,19 @@ describe('step-2 untyped recall + single-bucket placement', () => {
           }>
         >;
       }
-    ).linkViaHybridRecall([input('vegan', 'restaurant')]);
+    ).linkViaHybridRecall([input('vegan', 'place')]);
     expect(results[0].entityId).toBe(VEGAN_ATTR);
-    expect(results[0].originalInput.entityType).toBe('restaurant_attribute');
+    expect(results[0].originalInput.entityType).toBe('place_attribute');
   });
 
   it('unified retrieval: one all-types call per surface form; exact wins', async () => {
     const retrieve = jest.fn((term: string, types: string[]) => {
-      if (term === 'taco' && types.includes('food')) {
+      if (term === 'taco' && types.includes('item')) {
         return [
           {
             entityId: EMPANADA_FOOD,
             name: 'taco',
-            type: 'food',
+            type: 'item',
             sparseEvidence: 'exact',
             sparseSimilarity: 1,
           },
@@ -191,14 +191,14 @@ describe('step-2 untyped recall + single-bucket placement', () => {
           i: EntityResolutionInput[],
         ) => Promise<Array<{ entityId: string | null }>>;
       }
-    ).linkViaHybridRecall([input('taco', 'food')]);
+    ).linkViaHybridRecall([input('taco', 'item')]);
     expect(results[0].entityId).toBe(EMPANADA_FOOD);
     // ONE retrieval per surface form (taco + lemma variant tacos), each
     // over ALL types — the lane chain's per-lane round trips are gone.
     expect(retrieve).toHaveBeenCalledTimes(2);
     for (const call of retrieve.mock.calls) {
       expect(call[1]).toEqual(
-        expect.arrayContaining(['food', 'restaurant_attribute', 'restaurant']),
+        expect.arrayContaining(['item', 'place_attribute', 'place']),
       );
     }
   });

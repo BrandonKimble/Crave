@@ -21,14 +21,14 @@ export interface ActivationPlan {
   promptVersion: number;
   communities: string[];
   plan: Array<{ runId: string; documentIds: string[] }>;
-  restaurantIds: string[];
+  placeIds: string[];
 }
 
 export async function resolveActivationPlan(params: {
   planPath: string;
   promptVersion: number;
   communities: string[];
-  compute: () => Promise<Pick<ActivationPlan, 'plan' | 'restaurantIds'>>;
+  compute: () => Promise<Pick<ActivationPlan, 'plan' | 'placeIds'>>;
 }): Promise<{ plan: ActivationPlan; resumed: boolean }> {
   if (existsSync(params.planPath)) {
     const saved = JSON.parse(

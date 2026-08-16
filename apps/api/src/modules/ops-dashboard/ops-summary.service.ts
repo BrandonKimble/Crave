@@ -925,7 +925,7 @@ export class OpsSummaryService {
         }),
       ),
       this.countSection('pipeline.entities24h', () =>
-        this.prisma.restaurantEntityEvent.count({
+        this.prisma.placeEntityEvent.count({
           where: { createdAt: { gte: since } },
         }),
       ),

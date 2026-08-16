@@ -14,8 +14,8 @@ import { VIEWER_STATE_CACHE_POLICY } from '../services/query-cache-policy';
  */
 
 export type HeartTarget = {
-  /** Restaurant hearts send restaurantId; dish hearts send connectionId. */
-  restaurantId?: string;
+  /** Restaurant hearts send placeId; dish hearts send connectionId. */
+  placeId?: string;
   connectionId?: string;
   /** In-context saved location — rides the ADD only. */
   locationId?: string | null;
@@ -33,11 +33,11 @@ export const runHeartToggle = async ({
   isFavorite: boolean;
   target: HeartTarget;
 }): Promise<'added' | 'removed'> => {
-  const selector = target.restaurantId
-    ? { restaurantId: target.restaurantId }
+  const selector = target.placeId
+    ? { placeId: target.placeId }
     : { connectionId: target.connectionId };
-  const kind = target.restaurantId ? ('restaurant' as const) : ('connection' as const);
-  const targetId = target.restaurantId ?? target.connectionId;
+  const kind = target.placeId ? ('restaurant' as const) : ('connection' as const);
+  const targetId = target.placeId ?? target.connectionId;
   if (isFavorite) {
     await userListsService.removeFavoriteItem(selector);
     // "Still saved in some OTHER list?" can't be known locally — re-ask.
@@ -92,7 +92,7 @@ export const useFavoriteHeart = ({
         isFavorite,
         target:
           entityKind === 'restaurant'
-            ? { restaurantId: entityId, locationId }
+            ? { placeId: entityId, locationId }
             : { connectionId: entityId, locationId },
       });
       await queryClient.invalidateQueries({ queryKey: ['entityMemberships', entityId] });

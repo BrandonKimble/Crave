@@ -147,12 +147,12 @@ const captureWire = async (mode: 'single' | 'batch'): Promise<Wire> => {
       // the fixture, not in the prompt: an under-fed fixture makes this spec
       // accuse the very parity it should be confirming.
       term: 'al pastor taco',
-      kind: 'food',
+      kind: 'item',
       candidates: [{ id: 1, name: 'taco', aliases: ['tacos'] }],
     } as never);
   } else {
     await service.matchEntitiesBatch({
-      kind: 'food',
+      kind: 'item',
       items: [
         {
           term: 'al pastor taco',

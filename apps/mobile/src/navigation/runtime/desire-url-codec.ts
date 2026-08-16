@@ -34,7 +34,7 @@ export type ParsedDesireLink =
   | { kind: 'polls'; pollId?: string | null }
   | { kind: 'none' };
 
-const ENTITY_DESIRE_TYPES = ['food', 'food_attribute', 'restaurant_attribute'] as const;
+const ENTITY_DESIRE_TYPES = ['item', 'item_attribute', 'place_attribute'] as const;
 type EntityDesireType = (typeof ENTITY_DESIRE_TYPES)[number];
 const isEntityDesireType = (value: string): value is EntityDesireType =>
   (ENTITY_DESIRE_TYPES as readonly string[]).includes(value);
@@ -80,8 +80,8 @@ export const parseDesireLink = (url: string): ParsedDesireLink => {
             kind: 'entityAction',
             action: {
               kind: 'restaurantWorld',
-              restaurantId: safeDecode(a),
-              restaurantName: params.get('name') ?? '',
+              placeId: safeDecode(a),
+              placeName: params.get('name') ?? '',
             },
           }
         : { kind: 'none' };
@@ -160,10 +160,8 @@ export const serializeDesireLinkToPath = (
       const action = link.action;
       switch (action.kind) {
         case 'restaurantWorld': {
-          const name = action.restaurantName
-            ? `?name=${encodeURIComponent(action.restaurantName)}`
-            : '';
-          return `/r/${encodeSegment(action.restaurantId)}${name}`;
+          const name = action.placeName ? `?name=${encodeURIComponent(action.placeName)}` : '';
+          return `/r/${encodeSegment(action.placeId)}${name}`;
         }
         case 'entityDesire': {
           const label = action.label ? `?label=${encodeURIComponent(action.label)}` : '';

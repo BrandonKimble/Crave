@@ -337,7 +337,7 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
     const hasNoRenderableResults =
       mountedResultsSnapshot.results != null &&
       mountedResultsSnapshot.results.dishes.length === 0 &&
-      mountedResultsSnapshot.results.restaurants.length === 0 &&
+      mountedResultsSnapshot.results.places.length === 0 &&
       mountedResultsKey != null &&
       currentResultsSnapshotKey === mountedResultsKey;
     const searchSurfaceRuntimeSnapshot = getSearchSurfaceRuntime().getSnapshot();

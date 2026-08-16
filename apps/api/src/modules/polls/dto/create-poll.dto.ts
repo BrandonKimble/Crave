@@ -73,15 +73,15 @@ export class CreatePollDto {
 
   @IsOptional()
   @IsUUID()
-  targetRestaurantId?: string;
+  targetPlaceId?: string;
 
   @IsOptional()
   @IsUUID()
-  targetFoodAttributeId?: string;
+  targetItemAttributeId?: string;
 
   @IsOptional()
   @IsUUID()
-  targetRestaurantAttributeId?: string;
+  targetPlaceAttributeId?: string;
 
   @IsOptional()
   @IsString()
@@ -91,15 +91,15 @@ export class CreatePollDto {
   @IsOptional()
   @IsString()
   @MaxLength(140)
-  targetRestaurantName?: string;
+  targetPlaceName?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(140)
-  targetFoodAttributeName?: string;
+  targetItemAttributeName?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(140)
-  targetRestaurantAttributeName?: string;
+  targetPlaceAttributeName?: string;
 }

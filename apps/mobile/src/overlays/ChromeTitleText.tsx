@@ -8,7 +8,7 @@ import { colors as themeColors } from '../constants/theme';
 // inside a persistent-header Title slot: single-line by construction, title tokens,
 // the ink token. The WIDTH BOUND that makes the ellipsis physical lives on the host's
 // title SLOT (OverlaySheetHeaderChrome headerTitleSlot — flex:1/minWidth:0), never
-// here and never per panel — the old per-panel sheetTitle/headerTitle/restaurantName/
+// here and never per panel — the old per-panel sheetTitle/headerTitle/placeName/
 // submittedQueryLabel forks (some with hand-rolled flex bounds, some silently
 // unbounded) died with this pair.
 

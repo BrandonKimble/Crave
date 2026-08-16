@@ -19,8 +19,8 @@ import type { SegmentValue } from '../constants/search';
 // reconciler derives them from the tuple delta. searchThisArea survives as the one
 // honest trigger fact (it selects the settled-camera bounds adopt + the writer cause).
 type RunRestaurantEntitySearchParams = {
-  restaurantId: string;
-  restaurantName: string;
+  placeId: string;
+  placeName: string;
   submissionSource: NaturalSearchRequest['submissionSource'];
   typedPrefix?: string;
   /** SEE-LOCATIONS mode: the world = this restaurant's in-viewport locations
@@ -50,7 +50,7 @@ export const useSearchStructuredSubmitOwner = ({
 }: UseSearchStructuredSubmitOwnerArgs) => {
   const runRestaurantEntitySearch = React.useCallback(
     async (params: RunRestaurantEntitySearchParams) => {
-      const trimmedName = params.restaurantName.trim();
+      const trimmedName = params.placeName.trim();
       if (!trimmedName) {
         return;
       }
@@ -76,8 +76,8 @@ export const useSearchStructuredSubmitOwner = ({
         {
           queryIdentity: {
             kind: 'entity',
-            entityType: 'restaurant',
-            entityId: params.restaurantId,
+            entityType: 'place',
+            entityId: params.placeId,
             displayName: trimmedName,
             ...(params.seeLocations ? { seeLocations: true } : null),
           },

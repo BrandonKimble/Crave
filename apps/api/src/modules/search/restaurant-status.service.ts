@@ -8,11 +8,11 @@ import {
   evaluateOperatingStatus,
   normalizeUserLocation,
 } from './utils/restaurant-status';
-import type { RestaurantStatusPreviewDto } from './dto/restaurant-status-preview.dto';
-import type { RestaurantStatusPreviewRequestDto } from './dto/restaurant-status-preview.dto';
+import type { PlaceStatusPreviewDto } from './dto/restaurant-status-preview.dto';
+import type { PlaceStatusPreviewRequestDto } from './dto/restaurant-status-preview.dto';
 
 @Injectable()
-export class RestaurantStatusService {
+export class PlaceStatusService {
   private readonly logger: LoggerService;
 
   constructor(
@@ -23,10 +23,10 @@ export class RestaurantStatusService {
   }
 
   async getStatusPreviews(
-    dto: RestaurantStatusPreviewRequestDto,
-  ): Promise<RestaurantStatusPreviewDto[]> {
+    dto: PlaceStatusPreviewRequestDto,
+  ): Promise<PlaceStatusPreviewDto[]> {
     const uniqueIds = Array.from(
-      new Set((dto.restaurantIds || []).map((id) => id.trim()).filter(Boolean)),
+      new Set((dto.placeIds || []).map((id) => id.trim()).filter(Boolean)),
     ).slice(0, 50);
 
     if (uniqueIds.length === 0) {
@@ -56,15 +56,15 @@ export class RestaurantStatusService {
     );
     const resolvedIds = Array.from(new Set(resolvedByRequested.values()));
 
-    const restaurants = await this.prisma.entity.findMany({
+    const places = await this.prisma.entity.findMany({
       where: {
         entityId: { in: resolvedIds },
-        type: EntityType.restaurant,
+        type: EntityType.place,
         status: { not: EntityStatus.archived },
       },
       select: {
         entityId: true,
-        restaurantMetadata: true,
+        placeMetadata: true,
         _count: {
           select: {
             locations: true,
@@ -82,15 +82,15 @@ export class RestaurantStatusService {
       },
     });
 
-    const previewMap = new Map<string, RestaurantStatusPreviewDto>();
+    const previewMap = new Map<string, PlaceStatusPreviewDto>();
 
-    restaurants.forEach((restaurant) => {
-      const location = restaurant.primaryLocation;
+    places.forEach((place) => {
+      const location = place.primaryLocation;
       const operatingMetadata = buildOperatingMetadata({
         hoursValue: location?.hours ?? null,
         utcOffsetMinutesValue: location?.utcOffsetMinutes ?? null,
         timeZoneValue: location?.timeZone ?? null,
-        restaurantMetadataValue: restaurant.restaurantMetadata ?? null,
+        placeMetadataValue: place.placeMetadata ?? null,
       });
       const operatingStatus = operatingMetadata
         ? evaluateOperatingStatus(operatingMetadata, referenceDate)
@@ -102,12 +102,12 @@ export class RestaurantStatusService {
           ? computeDistanceMiles(userLocation, latitude, longitude)
           : null;
       const locationCount =
-        typeof restaurant._count?.locations === 'number'
-          ? restaurant._count.locations
+        typeof place._count?.locations === 'number'
+          ? place._count.locations
           : null;
 
-      previewMap.set(restaurant.entityId, {
-        restaurantId: restaurant.entityId,
+      previewMap.set(place.entityId, {
+        placeId: place.entityId,
         operatingStatus,
         distanceMiles,
         locationCount,
@@ -123,9 +123,9 @@ export class RestaurantStatusService {
         // Answer under the id the caller asked about (its stale, redirected
         // id) so the client can match the response to its request, while the
         // status/distance derive from the resolved survivor.
-        return { ...preview, restaurantId: id };
+        return { ...preview, placeId: id };
       })
-      .filter((value): value is RestaurantStatusPreviewDto => Boolean(value));
+      .filter((value): value is PlaceStatusPreviewDto => Boolean(value));
   }
 }
 

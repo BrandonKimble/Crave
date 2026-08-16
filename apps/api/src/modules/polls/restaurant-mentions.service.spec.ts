@@ -1,4 +1,4 @@
-import { RestaurantMentionsService } from './restaurant-mentions.service';
+import { PlaceMentionsService } from './restaurant-mentions.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { UserBlockService } from '../identity/user-block.service';
 
@@ -16,7 +16,7 @@ import type { UserBlockService } from '../identity/user-block.service';
  * - tag filter = any-match over span entityIds.
  */
 
-const RESTAURANT_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+const PLACE_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const TAG_ID = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
 const VIEWER_ID = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
 
@@ -33,7 +33,7 @@ const comment = (over: Partial<Record<string, unknown>>) => ({
   parentCommentId: null,
   body: 'great birria here',
   score: 5,
-  entitySpans: [{ entityId: RESTAURANT_ID }],
+  entitySpans: [{ entityId: PLACE_ID }],
   loggedAt: new Date('2026-07-01T00:00:00Z'),
   user: user('u1'),
   poll: { pollId: 'poll-1', question: 'Best tacos in Austin?' },
@@ -47,7 +47,7 @@ function makeService(params: {
   blockedPeers?: string[];
 }) {
   const prisma = {
-    restaurantEntitySignal: {
+    placeEntitySignal: {
       findMany: jest.fn().mockResolvedValue(params.signals ?? []),
     },
     pollComment: {
@@ -62,7 +62,7 @@ function makeService(params: {
       .mockResolvedValue(new Set(params.blockedPeers ?? [])),
   };
   return {
-    service: new RestaurantMentionsService(
+    service: new PlaceMentionsService(
       prisma,
       blocksMock as unknown as UserBlockService,
     ),
@@ -76,7 +76,7 @@ describe('RestaurantMentionsService', () => {
     const { service } = makeService({
       comments: [comment({})],
     });
-    const result = await service.getRestaurantMentions(RESTAURANT_ID);
+    const result = await service.getPlaceMentions(PLACE_ID);
     expect(result.cards).toHaveLength(1);
     expect(result.cards[0]).toMatchObject({
       commentId: 'c1',
@@ -104,7 +104,7 @@ describe('RestaurantMentionsService', () => {
         { commentId: 'root', parentCommentId: null },
       ],
     });
-    const result = await service.getRestaurantMentions(RESTAURANT_ID);
+    const result = await service.getPlaceMentions(PLACE_ID);
     expect(result.cards).toHaveLength(1);
     expect(result.cards[0].commentId).toBe('root');
     expect(result.cards[0].replies).toHaveLength(1);
@@ -122,7 +122,7 @@ describe('RestaurantMentionsService', () => {
         { commentId: 'root', parentCommentId: null },
       ],
     });
-    await service.getRestaurantMentions(RESTAURANT_ID);
+    await service.getPlaceMentions(PLACE_ID);
     // Exactly ONE pollComment.findMany (the matched-candidate scan) — the old
     // shape issued a second findMany loading EVERY comment of matched polls.
     expect((prisma.pollComment.findMany as jest.Mock).mock.calls).toHaveLength(
@@ -137,7 +137,7 @@ describe('RestaurantMentionsService', () => {
     const { service, prisma } = makeService({
       comments: [comment({ commentId: 'root-only' })],
     });
-    await service.getRestaurantMentions(RESTAURANT_ID);
+    await service.getPlaceMentions(PLACE_ID);
     expect((prisma.$queryRaw as unknown as jest.Mock).mock.calls).toHaveLength(
       0,
     );
@@ -161,7 +161,7 @@ describe('RestaurantMentionsService', () => {
       ],
       blockedPeers: ['enemy'],
     });
-    const result = await service.getRestaurantMentions(RESTAURANT_ID, {
+    const result = await service.getPlaceMentions(PLACE_ID, {
       viewerUserId: VIEWER_ID,
     });
     expect(blocks.blockedPeerIds).toHaveBeenCalledWith(VIEWER_ID);
@@ -173,7 +173,7 @@ describe('RestaurantMentionsService', () => {
     const { service, blocks } = makeService({
       comments: [comment({ commentId: 'root', user: user('enemy') })],
     });
-    const result = await service.getRestaurantMentions(RESTAURANT_ID);
+    const result = await service.getPlaceMentions(PLACE_ID);
     expect(blocks.blockedPeerIds).not.toHaveBeenCalled();
     expect(result.cards).toHaveLength(1);
   });
@@ -191,7 +191,7 @@ describe('RestaurantMentionsService', () => {
         { commentId: 'root', parentCommentId: null },
       ],
     });
-    const result = await service.getRestaurantMentions(RESTAURANT_ID);
+    const result = await service.getPlaceMentions(PLACE_ID);
     expect(result.totalCount).toBe(1);
     expect(result.cards[0].replies).toHaveLength(2);
   });
@@ -201,7 +201,7 @@ describe('RestaurantMentionsService', () => {
       comment({ commentId: `root-${i}` }),
     );
     const { service } = makeService({ comments: roots });
-    const result = await service.getRestaurantMentions(RESTAURANT_ID);
+    const result = await service.getPlaceMentions(PLACE_ID);
     expect(result.cards).toHaveLength(200);
     expect(result.totalCount).toBe(250);
   });
@@ -213,13 +213,13 @@ describe('RestaurantMentionsService', () => {
         {
           entityId: TAG_ID,
           mentionCount: 7,
-          entity: { name: 'birria', type: 'food' },
+          entity: { name: 'birria', type: 'item' },
         },
       ],
     });
-    const result = await service.getRestaurantMentions(RESTAURANT_ID);
+    const result = await service.getPlaceMentions(PLACE_ID);
     expect(result.tags).toEqual([
-      { entityId: TAG_ID, name: 'birria', type: 'food', mentionCount: 7 },
+      { entityId: TAG_ID, name: 'birria', type: 'item', mentionCount: 7 },
     ]);
   });
 
@@ -228,12 +228,12 @@ describe('RestaurantMentionsService', () => {
       comments: [
         comment({
           commentId: 'with-tag',
-          entitySpans: [{ entityId: RESTAURANT_ID }, { entityId: TAG_ID }],
+          entitySpans: [{ entityId: PLACE_ID }, { entityId: TAG_ID }],
         }),
         comment({ commentId: 'without-tag' }),
       ],
     });
-    const result = await service.getRestaurantMentions(RESTAURANT_ID, {
+    const result = await service.getPlaceMentions(PLACE_ID, {
       tagEntityIds: [TAG_ID],
     });
     expect(result.cards.map((c) => c.commentId)).toEqual(['with-tag']);

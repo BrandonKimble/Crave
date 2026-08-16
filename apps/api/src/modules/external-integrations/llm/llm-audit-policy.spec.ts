@@ -7,7 +7,7 @@ import {
   ENTITY_MATCH_BATCH_RESPONSE_JSON_SCHEMA,
   ENTITY_MATCH_RESPONSE_JSON_SCHEMA,
   POLL_SUBJECT_RESPONSE_JSON_SCHEMA,
-  RESTAURANT_PLACE_CHOOSER_RESPONSE_JSON_SCHEMA,
+  PLACE_CHOOSER_RESPONSE_JSON_SCHEMA,
 } from './prompts/llm-response-schemas';
 
 type SchemaNode = {
@@ -100,7 +100,7 @@ describe('the judge lanes the policy claims to cover', () => {
     ['entity match (single)', ENTITY_MATCH_RESPONSE_JSON_SCHEMA],
     ['attribute placement', ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA],
     ['poll subject', POLL_SUBJECT_RESPONSE_JSON_SCHEMA],
-    ['place chooser', RESTAURANT_PLACE_CHOOSER_RESPONSE_JSON_SCHEMA],
+    ['place chooser', PLACE_CHOOSER_RESPONSE_JSON_SCHEMA],
   ];
 
   it.each(lanes)('%s asks for a reason, and REQUIRES it', (_name, schema) => {
@@ -125,7 +125,7 @@ describe('the judge lanes the policy claims to cover', () => {
       'ENTITY_MATCH_BATCH_RESPONSE_JSON_SCHEMA',
       'ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA',
       'POLL_SUBJECT_RESPONSE_JSON_SCHEMA',
-      'RESTAURANT_PLACE_CHOOSER_RESPONSE_JSON_SCHEMA',
+      'PLACE_CHOOSER_RESPONSE_JSON_SCHEMA',
     ]) {
       expect(service).toMatch(
         new RegExp(`applyAuditReasonPolicy\\(\\s*${constant}`),

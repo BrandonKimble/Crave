@@ -36,17 +36,17 @@ export class PlaceTypeCensusService {
   /** Distinct stored types (with counts) that the map classifies as neither
    *  kind nor noise. Empty array = the invariant holds. */
   async findUnclassifiedTypes(): Promise<
-    Array<{ type: string; restaurants: number }>
+    Array<{ type: string; places: number }>
   > {
     const rows = await this.prisma.$queryRaw<
-      Array<{ type: string; restaurants: number }>
+      Array<{ type: string; places: number }>
     >`
       SELECT t.value AS type, count(DISTINCT e.entity_id)::int AS restaurants
         FROM core_entities e
         CROSS JOIN LATERAL jsonb_array_elements_text(
           e.restaurant_metadata->'googlePlaces'->'types'
         ) t
-       WHERE e.type = 'restaurant'
+       WHERE e.type = 'place'
          AND jsonb_typeof(e.restaurant_metadata->'googlePlaces'->'types') = 'array'
        GROUP BY t.value
     `;
@@ -60,7 +60,7 @@ export class PlaceTypeCensusService {
       this.logger.info('Place-type census clean: every stored type classified');
       return;
     }
-    for (const { type, restaurants } of unknown) {
+    for (const { type, places } of unknown) {
       this.opsAlerts.emit({
         severity: 'warn',
         emailOnWarn: true,
@@ -68,7 +68,7 @@ export class PlaceTypeCensusService {
         dedupeKey: `place-type-census:${type}`,
         title: `Unclassified Google place type: ${type}`,
         body:
-          `Google is sending place type "${type}" (on ${restaurants} grounded ` +
+          `Google is sending place type "${type}" (on ${places} grounded ` +
           `restaurant(s)) and google-place-type-attributes.ts classifies it as ` +
           `neither kind nor noise. Google likely shipped a taxonomy change — ` +
           `re-audit per R11 and add it to the attribute map or the ignore set.`,

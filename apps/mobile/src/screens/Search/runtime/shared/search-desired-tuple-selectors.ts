@@ -38,7 +38,7 @@ export const deriveSearchModeFromIdentity = (
     : identity.kind === 'shortcut'
       ? 'shortcut'
       : identity.kind === 'entity'
-        ? identity.entityType === 'restaurant'
+        ? identity.entityType === 'place'
           ? 'shortcut'
           : 'natural'
         : null;

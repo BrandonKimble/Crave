@@ -85,7 +85,7 @@ beforeAll(async () => {
     data: {
       entityId: EXACT_ENTITY_ID,
       name: `${TEST_TAG}-exact`,
-      type: 'food',
+      type: 'item',
     },
   });
   await prisma.entitySurface.create({
@@ -102,7 +102,7 @@ beforeAll(async () => {
   for (const [index, entityId] of prefixEntityIds.entries()) {
     const surface = `${TERM}extension${index}`;
     await prisma.entity.create({
-      data: { entityId, name: `${TEST_TAG}-prefix-${index}`, type: 'food' },
+      data: { entityId, name: `${TEST_TAG}-prefix-${index}`, type: 'item' },
     });
     await prisma.entitySurface.create({
       data: {
@@ -129,7 +129,7 @@ describe('searchLocalizedSurfaces: the exact match survives the LIMIT (F3801)', 
   it('returns the exact match FIRST even though its entity_id sorts after every prefix match', async () => {
     const matches = await service.searchLocalizedSurfaces(
       TERM,
-      ['food'],
+      ['item'],
       LIMIT,
       'es',
     );
@@ -165,7 +165,7 @@ describe('searchLocalizedSurfaces: the exact match survives the LIMIT (F3801)', 
     // to land in.
     const matches = await service.searchLocalizedSurfaces(
       TERM,
-      ['food'],
+      ['item'],
       LIMIT,
       'es',
     );
@@ -190,13 +190,13 @@ describe('searchLocalizedSurfaces: the exact match survives the LIMIT (F3801)', 
   it('is deterministic across repeated executions (unique entity_id tiebreak, F1902)', async () => {
     const first = await service.searchLocalizedSurfaces(
       TERM,
-      ['food'],
+      ['item'],
       LIMIT,
       'es',
     );
     const second = await service.searchLocalizedSurfaces(
       TERM,
-      ['food'],
+      ['item'],
       LIMIT,
       'es',
     );
@@ -218,7 +218,7 @@ describe('searchLocalizedSurfaces: the exact match survives the LIMIT (F3801)', 
     try {
       const matches = await service.searchLocalizedSurfaces(
         TERM,
-        ['food'],
+        ['item'],
         LIMIT,
         'es',
       );
@@ -246,7 +246,7 @@ describe('searchLocalizedSurfaces: the exact match survives the LIMIT (F3801)', 
     const foreignId = crypto.randomUUID();
     const foreignTerm = `${TERM}foreign`;
     await prisma.entity.create({
-      data: { entityId: foreignId, name: `${TEST_TAG}-foreign`, type: 'food' },
+      data: { entityId: foreignId, name: `${TEST_TAG}-foreign`, type: 'item' },
     });
     await prisma.entitySurface.create({
       data: {
@@ -263,7 +263,7 @@ describe('searchLocalizedSurfaces: the exact match survives the LIMIT (F3801)', 
       // Typed EXACTLY: admitted, from a chain that does not contain 'zh'.
       const exact = await service.searchLocalizedSurfaces(
         foreignTerm,
-        ['food'],
+        ['item'],
         LIMIT,
         'es',
       );
@@ -278,7 +278,7 @@ describe('searchLocalizedSurfaces: the exact match survives the LIMIT (F3801)', 
       // lose, so it is asserted in the same test as the half it qualifies.
       const prefix = await service.searchLocalizedSurfaces(
         `${foreignTerm.slice(0, foreignTerm.length - 2)}`,
-        ['food'],
+        ['item'],
         LIMIT,
         'es',
       );
@@ -288,7 +288,7 @@ describe('searchLocalizedSurfaces: the exact match survives the LIMIT (F3801)', 
       // is the chain doing its job rather than the row being unreachable.
       const prefixForReader = await service.searchLocalizedSurfaces(
         `${foreignTerm.slice(0, foreignTerm.length - 2)}`,
-        ['food'],
+        ['item'],
         LIMIT,
         'zh',
       );

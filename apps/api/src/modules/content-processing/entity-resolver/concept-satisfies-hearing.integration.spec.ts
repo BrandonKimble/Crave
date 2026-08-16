@@ -132,7 +132,7 @@ async function satisfiesEdge(): Promise<{ relation: string } | null> {
 async function residual(): Promise<string[]> {
   const rows = await (service as unknown as Internals).residualFor(
     { entity_id: ANCHOR_ID, name: ANCHOR_NAME },
-    'food',
+    'item',
     emptySummary(),
   );
   return rows.map((row) => row.entityId);
@@ -168,7 +168,7 @@ beforeAll(async () => {
     data: {
       entityId: ANCHOR_ID,
       name: ANCHOR_NAME,
-      type: 'food',
+      type: 'item',
       status: 'active',
       identityKey: canonicalFold(ANCHOR_NAME),
     },
@@ -177,7 +177,7 @@ beforeAll(async () => {
     data: {
       entityId: CANDIDATE_ID,
       name: CANDIDATE_NAME,
-      type: 'food',
+      type: 'item',
       status: 'active',
       identityKey: canonicalFold(CANDIDATE_NAME),
     },

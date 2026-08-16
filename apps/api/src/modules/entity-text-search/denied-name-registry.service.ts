@@ -2,10 +2,10 @@ import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { canonicalFold } from '../content-processing/entity-resolver/entity-identity';
-import { RESTAURANT_NAME_RULE_VERSION } from '../content-processing/entity-resolver/restaurant-name-rule';
+import { PLACE_NAME_RULE_VERSION } from '../content-processing/entity-resolver/restaurant-name-rule';
 import {
-  RESTAURANT_NAME_LANE,
-  restaurantNameLane,
+  PLACE_NAME_LANE,
+  placeNameLane,
 } from '../content-processing/entity-resolver/restaurant-name-lane';
 
 /**
@@ -110,9 +110,9 @@ export class DeniedNameRegistryService
         Array<{ decided_at: Date | null; count: bigint }>
       >`SELECT max(decided_at) AS decided_at, count(*) AS count
           FROM claim_verdicts
-         WHERE lane = ${RESTAURANT_NAME_LANE} AND outcome = 'notAName'
-           AND rule_version = ${RESTAURANT_NAME_RULE_VERSION}
-           AND fold_version = ${restaurantNameLane.keyFoldVersion}`;
+         WHERE lane = ${PLACE_NAME_LANE} AND outcome = 'notAName'
+           AND rule_version = ${PLACE_NAME_RULE_VERSION}
+           AND fold_version = ${placeNameLane.keyFoldVersion}`;
       const decidedAt = rows[0]?.decided_at?.toISOString() ?? null;
       const count = Number(rows[0]?.count ?? 0);
       if (
@@ -155,9 +155,9 @@ export class DeniedNameRegistryService
   private async load(): Promise<void> {
     const rows = await this.prisma.$queryRaw<Array<{ claim_key: string }>>`
       SELECT claim_key FROM claim_verdicts
-       WHERE lane = ${RESTAURANT_NAME_LANE} AND outcome = 'notAName'
-         AND rule_version = ${RESTAURANT_NAME_RULE_VERSION}
-         AND fold_version = ${restaurantNameLane.keyFoldVersion}`;
+       WHERE lane = ${PLACE_NAME_LANE} AND outcome = 'notAName'
+         AND rule_version = ${PLACE_NAME_RULE_VERSION}
+         AND fold_version = ${placeNameLane.keyFoldVersion}`;
     const pairs: DeniedNamePair[] = [];
     const pairSet = new Set<string>();
     for (const row of rows) {

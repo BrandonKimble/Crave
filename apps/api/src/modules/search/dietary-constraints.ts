@@ -8,8 +8,8 @@ import { LoggerService } from '../../shared';
  *  the wall then carries only the arms that exist. */
 export type DietaryWall = {
   name: string;
-  foodAttributeId?: string;
-  restaurantAttributeId?: string;
+  itemAttributeId?: string;
+  placeAttributeId?: string;
 };
 
 /**
@@ -31,7 +31,7 @@ export class DietaryConstraintRegistry {
   private cache: {
     pairs: ReadonlyMap<
       string,
-      { foodAttributeId?: string; restaurantAttributeId?: string }
+      { itemAttributeId?: string; placeAttributeId?: string }
     >;
     expiresAt: number;
   } | null = null;
@@ -66,10 +66,7 @@ export class DietaryConstraintRegistry {
    *  dish-side attribute; the RESTAURANT projection passes on venue-side
    *  attribute OR any dish carrying the dish-side attribute. */
   async getDietaryPairs(): Promise<
-    ReadonlyMap<
-      string,
-      { foodAttributeId?: string; restaurantAttributeId?: string }
-    >
+    ReadonlyMap<string, { itemAttributeId?: string; placeAttributeId?: string }>
   > {
     return this.load();
   }
@@ -78,8 +75,8 @@ export class DietaryConstraintRegistry {
     const pairs = await this.load();
     const ids = new Set<string>();
     for (const pair of pairs.values()) {
-      if (pair.foodAttributeId) ids.add(pair.foodAttributeId);
-      if (pair.restaurantAttributeId) ids.add(pair.restaurantAttributeId);
+      if (pair.itemAttributeId) ids.add(pair.itemAttributeId);
+      if (pair.placeAttributeId) ids.add(pair.placeAttributeId);
     }
     return ids;
   }
@@ -101,8 +98,8 @@ export class DietaryConstraintRegistry {
    */
   async resolveDietaryWalls(input: {
     dietary?: readonly string[] | null;
-    foodAttributeIds?: readonly string[];
-    restaurantAttributeIds?: readonly string[];
+    itemAttributeIds?: readonly string[];
+    placeAttributeIds?: readonly string[];
   }): Promise<DietaryWall[]> {
     const pairs = await this.load();
     const names = new Set<string>(
@@ -111,15 +108,14 @@ export class DietaryConstraintRegistry {
         .filter((name) => pairs.has(name)),
     );
     const grounded = new Set<string>([
-      ...(input.foodAttributeIds ?? []),
-      ...(input.restaurantAttributeIds ?? []),
+      ...(input.itemAttributeIds ?? []),
+      ...(input.placeAttributeIds ?? []),
     ]);
     if (grounded.size) {
       for (const [name, pair] of pairs) {
         if (
-          (pair.foodAttributeId && grounded.has(pair.foodAttributeId)) ||
-          (pair.restaurantAttributeId &&
-            grounded.has(pair.restaurantAttributeId))
+          (pair.itemAttributeId && grounded.has(pair.itemAttributeId)) ||
+          (pair.placeAttributeId && grounded.has(pair.placeAttributeId))
         ) {
           names.add(name);
         }
@@ -134,7 +130,7 @@ export class DietaryConstraintRegistry {
     // silent lie to the user who toggled it. Refuse loudly instead; the
     // standardized failure surface handles it like any other outage.
     for (const wall of walls) {
-      if (!wall.foodAttributeId && !wall.restaurantAttributeId) {
+      if (!wall.itemAttributeId && !wall.placeAttributeId) {
         throw new ServiceUnavailableException({
           code: 'dietary_wall_degenerate',
           message: `dietary wall '${wall.name}' has no attribute arms — refusing to serve unwalled results`,
@@ -157,7 +153,7 @@ export class DietaryConstraintRegistry {
    * that alias was the ONLY difference between the two byte-equivalent copies
    * this replaces.
    */
-  static restaurantWallConditions(
+  static placeWallConditions(
     walls: readonly DietaryWall[],
     entitySurface: string,
   ): Prisma.Sql[] {
@@ -165,14 +161,14 @@ export class DietaryConstraintRegistry {
     const conditions: Prisma.Sql[] = [];
     for (const wall of walls) {
       const arms: Prisma.Sql[] = [];
-      if (wall.restaurantAttributeId) {
+      if (wall.placeAttributeId) {
         arms.push(
-          Prisma.sql`${alias}.restaurant_attributes @> ARRAY[${wall.restaurantAttributeId}]::uuid[]`,
+          Prisma.sql`${alias}.restaurant_attributes @> ARRAY[${wall.placeAttributeId}]::uuid[]`,
         );
       }
-      if (wall.foodAttributeId) {
+      if (wall.itemAttributeId) {
         arms.push(
-          Prisma.sql`EXISTS (SELECT 1 FROM core_restaurant_items dc WHERE dc.restaurant_id = ${alias}.entity_id AND dc.food_attributes @> ARRAY[${wall.foodAttributeId}]::uuid[])`,
+          Prisma.sql`EXISTS (SELECT 1 FROM core_restaurant_items dc WHERE dc.restaurant_id = ${alias}.entity_id AND dc.food_attributes @> ARRAY[${wall.itemAttributeId}]::uuid[])`,
         );
       }
       if (arms.length) {
@@ -193,10 +189,10 @@ export class DietaryConstraintRegistry {
   ): Prisma.Sql[] {
     const alias = Prisma.raw(connectionAlias);
     return walls
-      .filter((wall) => wall.foodAttributeId)
+      .filter((wall) => wall.itemAttributeId)
       .map(
         (wall) =>
-          Prisma.sql`${alias}.food_attributes @> ARRAY[${wall.foodAttributeId}]::uuid[]`,
+          Prisma.sql`${alias}.food_attributes @> ARRAY[${wall.itemAttributeId}]::uuid[]`,
       );
   }
 
@@ -206,10 +202,7 @@ export class DietaryConstraintRegistry {
    *  so the docblock's "bounds staleness without a per-search query" was
    *  false on the pairs path, which is the one every dietary search takes. */
   private async load(): Promise<
-    ReadonlyMap<
-      string,
-      { foodAttributeId?: string; restaurantAttributeId?: string }
-    >
+    ReadonlyMap<string, { itemAttributeId?: string; placeAttributeId?: string }>
   > {
     const now = Date.now();
     if (this.cache && this.cache.expiresAt > now) {
@@ -222,14 +215,14 @@ export class DietaryConstraintRegistry {
       });
       const pairs = new Map<
         string,
-        { foodAttributeId?: string; restaurantAttributeId?: string }
+        { itemAttributeId?: string; placeAttributeId?: string }
       >();
       for (const row of rows) {
         const key = row.name.toLowerCase();
         const pair = pairs.get(key) ?? {};
-        if (row.type === 'food_attribute') pair.foodAttributeId = row.entityId;
-        if (row.type === 'restaurant_attribute')
-          pair.restaurantAttributeId = row.entityId;
+        if (row.type === 'item_attribute') pair.itemAttributeId = row.entityId;
+        if (row.type === 'place_attribute')
+          pair.placeAttributeId = row.entityId;
         pairs.set(key, pair);
       }
       this.cache = {

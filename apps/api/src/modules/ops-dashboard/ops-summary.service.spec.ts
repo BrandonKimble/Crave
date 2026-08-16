@@ -103,7 +103,7 @@ function buildPrisma(overrides: PrismaOverrides = {}) {
       ),
     },
     sourceDocument: { count: jest.fn(() => Promise.resolve(3)) },
-    restaurantEntityEvent: { count: jest.fn(() => Promise.resolve(7)) },
+    placeEntityEvent: { count: jest.fn(() => Promise.resolve(7)) },
     extractionRun: {
       count: jest.fn((args: { where: { status?: string } }) =>
         Promise.resolve(args.where.status === 'failed' ? 1 : 4),

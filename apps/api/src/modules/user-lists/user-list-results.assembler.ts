@@ -55,7 +55,7 @@ export class ListResultsAssembler {
     source: ListResultsSource,
     dto: UserListResultsDto,
   ): Promise<SearchResponse> {
-    const isRestaurantAxis = source.listType === UserListType.restaurant;
+    const isPlaceAxis = source.listType === UserListType.restaurant;
 
     const sort: UserListSort = dto.sort ?? source.defaultSort;
     if (sort === 'custom' && !source.allowCustomSort) {
@@ -65,7 +65,7 @@ export class ListResultsAssembler {
     }
 
     const axisIdOf = (item: UserListItemDetail): string | null =>
-      isRestaurantAxis ? item.restaurantId : item.connectionId;
+      isPlaceAxis ? item.placeId : item.connectionId;
 
     // Items arrive position-asc per list; explicit sorts re-derive the order.
     // 'best' keeps the executor's crave-score ordering (id order irrelevant).
@@ -94,20 +94,20 @@ export class ListResultsAssembler {
       }
     }
 
-    const restaurantIds = isRestaurantAxis ? orderedAxisIds : [];
-    const connectionIds = isRestaurantAxis ? [] : orderedAxisIds;
+    const placeIds = isPlaceAxis ? orderedAxisIds : [];
+    const connectionIds = isPlaceAxis ? [] : orderedAxisIds;
 
     // For a DISH list the map PINS + restaurant cards come from response.restaurants,
     // and each favorited dish lives at its restaurant's location. Scope the restaurant
     // axis to the DISTINCT restaurants of the favorited connections so it does not flood
     // with the global universe. The connections were loaded with connection.restaurant,
     // so connection.restaurantId is available here.
-    const dishListRestaurantIds = isRestaurantAxis
+    const dishListPlaceIds = isPlaceAxis
       ? []
       : Array.from(
           new Set(
             source.items
-              .map((item) => item.connection?.restaurantId)
+              .map((item) => item.connection?.placeId)
               .filter((id): id is string => Boolean(id)),
           ),
         );
@@ -121,18 +121,18 @@ export class ListResultsAssembler {
     const cityPlaceId = dto.cityPlaceId?.trim() || null;
     let sliceAllow: Set<string> | null = null;
     if (cityPlaceId) {
-      const candidateRestaurantIds = Array.from(
-        new Set([...restaurantIds, ...dishListRestaurantIds]),
+      const candidatePlaceIds = Array.from(
+        new Set([...placeIds, ...dishListPlaceIds]),
       );
-      if (candidateRestaurantIds.length) {
+      if (candidatePlaceIds.length) {
         const rows = await this.prisma.$queryRaw<
-          Array<{ restaurantId: string }>
+          Array<{ placeId: string }>
         >(Prisma.sql`
-          SELECT DISTINCT rl.restaurant_id AS "restaurantId"
+          SELECT DISTINCT rl.restaurant_id AS "placeId"
           FROM core_restaurant_locations rl
           JOIN place_geometries pg
             ON pg.place_id = ${cityPlaceId}::uuid
-          WHERE rl.restaurant_id = ANY(${candidateRestaurantIds}::uuid[])
+          WHERE rl.restaurant_id = ANY(${candidatePlaceIds}::uuid[])
             AND rl.latitude IS NOT NULL
             AND rl.longitude IS NOT NULL
             AND ST_Covers(
@@ -146,37 +146,35 @@ export class ListResultsAssembler {
               )
             )
         `);
-        sliceAllow = new Set(rows.map((row) => row.restaurantId));
+        sliceAllow = new Set(rows.map((row) => row.placeId));
       } else {
         sliceAllow = new Set();
       }
     }
-    const restaurantIdByConnectionId = new Map<string, string>();
+    const placeIdByConnectionId = new Map<string, string>();
     for (const item of source.items) {
       const connectionId = item.connection?.connectionId;
-      const restaurantIdForItem = item.connection?.restaurantId;
-      if (connectionId && restaurantIdForItem) {
-        restaurantIdByConnectionId.set(connectionId, restaurantIdForItem);
+      const placeIdForItem = item.connection?.placeId;
+      if (connectionId && placeIdForItem) {
+        placeIdByConnectionId.set(connectionId, placeIdForItem);
       }
     }
-    const slicedRestaurantIds = sliceAllow
-      ? restaurantIds.filter((id) => sliceAllow.has(id))
-      : restaurantIds;
-    const slicedDishListRestaurantIds = sliceAllow
-      ? dishListRestaurantIds.filter((id) => sliceAllow.has(id))
-      : dishListRestaurantIds;
+    const slicedPlaceIds = sliceAllow
+      ? placeIds.filter((id) => sliceAllow.has(id))
+      : placeIds;
+    const slicedDishListPlaceIds = sliceAllow
+      ? dishListPlaceIds.filter((id) => sliceAllow.has(id))
+      : dishListPlaceIds;
     const slicedConnectionIds = sliceAllow
       ? connectionIds.filter((id) => {
-          const restaurantIdForConnection = restaurantIdByConnectionId.get(id);
-          return restaurantIdForConnection
-            ? sliceAllow.has(restaurantIdForConnection)
+          const placeIdForConnection = placeIdByConnectionId.get(id);
+          return placeIdForConnection
+            ? sliceAllow.has(placeIdForConnection)
             : false;
         })
       : connectionIds;
 
-    const requestedIds = isRestaurantAxis
-      ? slicedRestaurantIds
-      : slicedConnectionIds;
+    const requestedIds = isPlaceAxis ? slicedPlaceIds : slicedConnectionIds;
 
     // The saver's note projects onto the axis rows (spec B.1.5) — first-wins
     // across the virtual union.
@@ -211,7 +209,7 @@ export class ListResultsAssembler {
     // must return an EMPTY result set, never the whole DB — short-circuit before executeDual.
     if (
       requestedIds.length === 0 ||
-      (!isRestaurantAxis && slicedDishListRestaurantIds.length === 0)
+      (!isPlaceAxis && slicedDishListPlaceIds.length === 0)
     ) {
       return this.buildEmptyListResponse(source, requestedIds.length);
     }
@@ -254,26 +252,26 @@ export class ListResultsAssembler {
       ? { priceLevels: dto.priceLevels }
       : undefined;
 
-    const restaurantFilters: FilterClause[] = isRestaurantAxis
+    const placeFilters: FilterClause[] = isPlaceAxis
       ? [
           {
-            scope: 'restaurant',
+            scope: 'place',
             description: 'Match favorited restaurant entities',
-            entityType: 'restaurant',
-            entityIds: explicitOrder ? pageAxisIds : slicedRestaurantIds,
+            entityType: 'place',
+            entityIds: explicitOrder ? pageAxisIds : slicedPlaceIds,
             payload: priceFilterPayload,
           },
         ]
       : [
           {
-            scope: 'restaurant',
+            scope: 'place',
             description: "Match favorited connections' restaurants",
-            entityType: 'restaurant',
-            entityIds: slicedDishListRestaurantIds,
+            entityType: 'place',
+            entityIds: slicedDishListPlaceIds,
             payload: priceFilterPayload,
           },
         ];
-    const connectionFilters: FilterClause[] = isRestaurantAxis
+    const connectionFilters: FilterClause[] = isPlaceAxis
       ? []
       : [
           {
@@ -286,11 +284,11 @@ export class ListResultsAssembler {
 
     const plan: QueryPlan = {
       format: 'dual_list',
-      restaurantFilters,
+      placeFilters,
       connectionFilters,
       ranking: {
-        foodOrder: 'crave_score DESC',
-        restaurantOrder: 'crave_score DESC',
+        itemOrder: 'crave_score DESC',
+        placeOrder: 'crave_score DESC',
       },
       diagnostics: {
         missingEntities: [],
@@ -329,7 +327,7 @@ export class ListResultsAssembler {
     });
     const directives = dietaryWalls.length ? { dietaryWalls } : undefined;
 
-    const exec = isRestaurantAxis
+    const exec = isPlaceAxis
       ? await this.searchQueryExecutor.executeSingle({
           axis: 'restaurant',
           plan,
@@ -345,9 +343,9 @@ export class ListResultsAssembler {
         });
 
     const requestedForRun = explicitOrder ? pageAxisIds : requestedIds;
-    const returnedIds = isRestaurantAxis
-      ? exec.restaurants
-          .map((r) => r.restaurantId)
+    const returnedIds = isPlaceAxis
+      ? exec.places
+          .map((r) => r.placeId)
           .filter((id): id is string => typeof id === 'string')
       : exec.dishes
           .map((d) => d.connectionId)
@@ -372,7 +370,7 @@ export class ListResultsAssembler {
     // exec.dishes is already [] and exec.totalDishCount is 0 for that path; the
     // explicit zeroes below keep the response shape unambiguous regardless.
     // Note projection (spec B.1.5): the saver's note rides each axis row.
-    const dishes = isRestaurantAxis
+    const dishes = isPlaceAxis
       ? []
       : orderExplicitly(exec.dishes, (d) => d.connectionId).map((dish) => ({
           ...this.projectSavedLocationOntoDishRow(
@@ -382,34 +380,30 @@ export class ListResultsAssembler {
           note: noteByAxisId.get(dish.connectionId) ?? null,
           userListItemId: itemIdByAxisId.get(dish.connectionId) ?? null,
         }));
-    const restaurants = isRestaurantAxis
-      ? orderExplicitly(exec.restaurants, (r) => r.restaurantId).map(
-          (restaurant) => ({
-            ...this.projectSavedLocationOntoRestaurantRow(
-              restaurant,
-              savedLocationByAxisId.get(restaurant.restaurantId),
-            ),
-            note: noteByAxisId.get(restaurant.restaurantId) ?? null,
-            userListItemId: itemIdByAxisId.get(restaurant.restaurantId) ?? null,
-          }),
-        )
-      : exec.restaurants;
+    const places = isPlaceAxis
+      ? orderExplicitly(exec.places, (r) => r.placeId).map((place) => ({
+          ...this.projectSavedLocationOntoPlaceRow(
+            place,
+            savedLocationByAxisId.get(place.placeId),
+          ),
+          note: noteByAxisId.get(place.placeId) ?? null,
+          userListItemId: itemIdByAxisId.get(place.placeId) ?? null,
+        }))
+      : exec.places;
 
-    const totalFoodResults = isRestaurantAxis
+    const totalItemResults = isPlaceAxis
       ? 0
       : explicitOrder
         ? requestedIds.length
         : exec.totalDishCount;
-    const totalRestaurantResults =
-      isRestaurantAxis && explicitOrder
-        ? requestedIds.length
-        : exec.totalRestaurantCount;
+    const totalPlaceResults =
+      isPlaceAxis && explicitOrder ? requestedIds.length : exec.totalPlaceCount;
 
     const searchRequestId = `favorites:${source.labelId}:${source.updatedAtMs}`;
 
     const metadata: SearchResponseMetadata = {
-      totalFoodResults,
-      totalRestaurantResults,
+      totalItemResults,
+      totalPlaceResults,
       queryExecutionTimeMs: 0,
       searchRequestId,
       boundsApplied: false,
@@ -435,7 +429,7 @@ export class ListResultsAssembler {
       format: plan.format,
       plan,
       dishes,
-      restaurants,
+      places,
       sqlPreview: null,
       metadata,
     };
@@ -473,13 +467,13 @@ export class ListResultsAssembler {
    *  googlePlaceId: the mobile pin resolver (resolveRestaurantMapLocations →
    *  isValidMapLocation) rejects placeId-less locations, so projecting one
    *  would ERASE the row's pin instead of moving it. */
-  private projectSavedLocationOntoRestaurantRow<
+  private projectSavedLocationOntoPlaceRow<
     T extends {
-      restaurantId: string;
+      placeId: string;
       latitude?: number | null;
       longitude?: number | null;
       address?: string | null;
-      restaurantLocationId?: string | null;
+      placeLocationId?: string | null;
       displayLocation?: unknown;
       locations?: unknown[];
       locationCount?: number | null;
@@ -515,7 +509,7 @@ export class ListResultsAssembler {
       latitude: coordinate.lat,
       longitude: coordinate.lng,
       address: saved.address ?? row.address ?? null,
-      restaurantLocationId: saved.locationId,
+      placeLocationId: saved.locationId,
       displayLocation: savedDisplayLocation,
       locations: [savedDisplayLocation],
       locationCount: 1,
@@ -529,9 +523,9 @@ export class ListResultsAssembler {
   private projectSavedLocationOntoDishRow<
     T extends {
       connectionId: string;
-      restaurantLocationId?: string | null;
-      restaurantLatitude?: number | null;
-      restaurantLongitude?: number | null;
+      placeLocationId?: string | null;
+      placeLatitude?: number | null;
+      placeLongitude?: number | null;
     },
   >(
     row: T,
@@ -549,9 +543,9 @@ export class ListResultsAssembler {
     }
     return {
       ...row,
-      restaurantLocationId: saved.locationId,
-      restaurantLatitude: coordinate.lat,
-      restaurantLongitude: coordinate.lng,
+      placeLocationId: saved.locationId,
+      placeLatitude: coordinate.lat,
+      placeLongitude: coordinate.lng,
     };
   }
 
@@ -563,11 +557,11 @@ export class ListResultsAssembler {
       format: 'dual_list',
       plan: {
         format: 'dual_list',
-        restaurantFilters: [],
+        placeFilters: [],
         connectionFilters: [],
         ranking: {
-          foodOrder: 'crave_score DESC',
-          restaurantOrder: 'crave_score DESC',
+          itemOrder: 'crave_score DESC',
+          placeOrder: 'crave_score DESC',
         },
         diagnostics: {
           missingEntities: [],
@@ -575,11 +569,11 @@ export class ListResultsAssembler {
         },
       },
       dishes: [],
-      restaurants: [],
+      places: [],
       sqlPreview: null,
       metadata: {
-        totalFoodResults: 0,
-        totalRestaurantResults: 0,
+        totalItemResults: 0,
+        totalPlaceResults: 0,
         queryExecutionTimeMs: 0,
         searchRequestId: `favorites:${source.labelId}:${source.updatedAtMs}`,
         boundsApplied: false,

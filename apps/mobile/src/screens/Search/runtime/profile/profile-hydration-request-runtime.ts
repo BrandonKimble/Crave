@@ -14,8 +14,8 @@ import {
 } from './profile-mutable-state-record';
 
 export type ProfileHydrationRequestRuntime = {
-  getCachedRestaurantProfile: (restaurantId: string) => HydratedRestaurantProfile | undefined;
-  loadRestaurantProfileData: (restaurantId: string) => Promise<HydratedRestaurantProfile>;
+  getCachedRestaurantProfile: (placeId: string) => HydratedRestaurantProfile | undefined;
+  loadRestaurantProfileData: (placeId: string) => Promise<HydratedRestaurantProfile>;
 };
 
 type UseProfileHydrationRequestRuntimeArgs = {
@@ -26,43 +26,43 @@ export const useProfileHydrationRequestRuntime = ({
   profileControllerStateRef,
 }: UseProfileHydrationRequestRuntimeArgs): ProfileHydrationRequestRuntime => {
   const getCachedRestaurantProfile = React.useCallback(
-    (restaurantId: string) =>
-      getRestaurantProfileCacheEntryFromRecord(profileControllerStateRef.current, restaurantId),
+    (placeId: string) =>
+      getRestaurantProfileCacheEntryFromRecord(profileControllerStateRef.current, placeId),
     [profileControllerStateRef]
   );
 
   const loadRestaurantProfileData = React.useCallback(
-    (restaurantId: string): Promise<HydratedRestaurantProfile> => {
+    (placeId: string): Promise<HydratedRestaurantProfile> => {
       const cached = getRestaurantProfileCacheEntryFromRecord(
         profileControllerStateRef.current,
-        restaurantId
+        placeId
       );
       if (cached) {
         return Promise.resolve(cached);
       }
       const inFlight = getRestaurantProfileRequestByIdFromRecord(
         profileControllerStateRef.current,
-        restaurantId
+        placeId
       );
       if (inFlight) {
         return inFlight;
       }
       const request = searchService
-        .restaurantProfile(restaurantId)
+        .restaurantProfile(placeId)
         .then((profile) => {
           const payload = profile as RestaurantProfile | null;
-          const restaurant = payload?.restaurant;
-          if (!restaurant || restaurant.restaurantId !== restaurantId) {
-            throw new Error('restaurant profile payload mismatch');
+          const place = payload?.place;
+          if (!place || place.placeId !== placeId) {
+            throw new Error('place profile payload mismatch');
           }
           const dishes = Array.isArray(payload?.dishes) ? payload.dishes : [];
           const normalized: HydratedRestaurantProfile = {
-            restaurant,
+            restaurant: place,
             dishes,
           };
           setRestaurantProfileCacheEntryOnRecord(
             profileControllerStateRef.current,
-            restaurantId,
+            placeId,
             normalized
           );
           return normalized;
@@ -70,21 +70,14 @@ export const useProfileHydrationRequestRuntime = ({
         .catch((err) => {
           logger.warn('Restaurant profile fetch failed', {
             message: err instanceof Error ? err.message : 'unknown error',
-            restaurantId,
+            placeId,
           });
           throw err;
         })
         .finally(() => {
-          deleteRestaurantProfileRequestByIdOnRecord(
-            profileControllerStateRef.current,
-            restaurantId
-          );
+          deleteRestaurantProfileRequestByIdOnRecord(profileControllerStateRef.current, placeId);
         });
-      setRestaurantProfileRequestByIdOnRecord(
-        profileControllerStateRef.current,
-        restaurantId,
-        request
-      );
+      setRestaurantProfileRequestByIdOnRecord(profileControllerStateRef.current, placeId, request);
       return request;
     },
     [profileControllerStateRef]

@@ -56,19 +56,19 @@ type Feature = { properties: Record<string, unknown> };
 let scoreRunId: string;
 const seeded: string[] = [];
 
-async function seedRestaurant(opts: {
+async function seedPlace(opts: {
   label: string;
   status: 'active' | 'archived';
   offset: number;
 }): Promise<string> {
   const name = `${TEST_TAG}-${opts.label}`;
   const entity = await prisma.entity.create({
-    data: { name, type: 'restaurant', status: opts.status },
+    data: { name, type: 'place', status: opts.status },
   });
   seeded.push(entity.entityId);
-  await prisma.restaurantLocation.create({
+  await prisma.placeLocation.create({
     data: {
-      restaurantId: entity.entityId,
+      placeId: entity.entityId,
       googlePlaceId: `${TEST_TAG}-place-${opts.label}`,
       address: '1 Test Way',
       longitude: LNG + opts.offset,
@@ -77,12 +77,12 @@ async function seedRestaurant(opts: {
   });
   // Eligibility floor: a catalogued dish. The food entity is shared-safe (its
   // own row, tagged and cleaned up with the rest).
-  const food = await prisma.entity.create({
-    data: { name: `${TEST_TAG}-food-${opts.label}`, type: 'food' },
+  const item = await prisma.entity.create({
+    data: { name: `${TEST_TAG}-food-${opts.label}`, type: 'item' },
   });
-  seeded.push(food.entityId);
+  seeded.push(item.entityId);
   await prisma.connection.create({
-    data: { restaurantId: entity.entityId, foodId: food.entityId },
+    data: { placeId: entity.entityId, itemId: item.entityId },
   });
   // A public score row — the coverage query INNER JOINs it, and its presence on
   // an archived entity is precisely the state that makes the leak observable.
@@ -124,10 +124,10 @@ afterAll(async () => {
     where: { scoreVersion: TEST_TAG },
   });
   await prisma.connection.deleteMany({
-    where: { restaurantId: { in: seeded } },
+    where: { placeId: { in: seeded } },
   });
-  await prisma.restaurantLocation.deleteMany({
-    where: { restaurantId: { in: seeded } },
+  await prisma.placeLocation.deleteMany({
+    where: { placeId: { in: seeded } },
   });
   await prisma.entity.deleteMany({ where: { entityId: { in: seeded } } });
   await prisma.craveScoreRun.deleteMany({ where: { scoreRunId } });
@@ -136,12 +136,12 @@ afterAll(async () => {
 
 describe('shortcut coverage: archived restaurants are never painted (F510)', () => {
   it('paints the active restaurant and DROPS its archived twin', async () => {
-    const activeId = await seedRestaurant({
+    const activeId = await seedPlace({
       label: 'active',
       status: 'active',
       offset: 0,
     });
-    const archivedId = await seedRestaurant({
+    const archivedId = await seedPlace({
       label: 'archived',
       status: 'archived',
       offset: 0.01,
@@ -151,7 +151,7 @@ describe('shortcut coverage: archived restaurants are never painted (F510)', () 
       bounds: BOUNDS,
     } as never)) as { features: Feature[] };
 
-    const paintedIds = geojson.features.map((f) => f.properties.restaurantId);
+    const paintedIds = geojson.features.map((f) => f.properties.placeId);
     // Both twins are in view, scored and dish-bearing — the ONLY difference is
     // status, so this pair isolates the predicate.
     expect(paintedIds).toContain(activeId);

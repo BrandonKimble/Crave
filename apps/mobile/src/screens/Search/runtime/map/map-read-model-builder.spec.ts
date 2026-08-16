@@ -40,8 +40,8 @@ const BOUNDS = {
 
 const multiLocationRestaurant = (): RestaurantResult =>
   ({
-    restaurantId: 'rest-A',
-    restaurantName: 'Gelateria Test',
+    placeId: 'rest-A',
+    placeName: 'Gelateria Test',
     craveScore: 9.5,
     rank: 1,
     displayLocation: {

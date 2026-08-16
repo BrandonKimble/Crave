@@ -153,16 +153,16 @@ export class PollsService {
     question: string;
     topic?: {
       targetDishId: string | null;
-      targetRestaurantId: string | null;
-      targetFoodAttributeId: string | null;
-      targetRestaurantAttributeId: string | null;
+      targetPlaceId: string | null;
+      targetItemAttributeId: string | null;
+      targetPlaceAttributeId: string | null;
     } | null;
   }): { entityId: string } | { term: string } | null {
     const targets = [
       poll.topic?.targetDishId,
-      poll.topic?.targetRestaurantId,
-      poll.topic?.targetFoodAttributeId,
-      poll.topic?.targetRestaurantAttributeId,
+      poll.topic?.targetPlaceId,
+      poll.topic?.targetItemAttributeId,
+      poll.topic?.targetPlaceAttributeId,
     ].filter((value): value is string => Boolean(value));
     if (targets.length === 1) {
       return { entityId: targets[0] };
@@ -503,9 +503,9 @@ export class PollsService {
         topicType: string;
         titleSource?: string;
         targetDishId: string | null;
-        targetRestaurantId: string | null;
-        targetFoodAttributeId: string | null;
-        targetRestaurantAttributeId: string | null;
+        targetPlaceId: string | null;
+        targetItemAttributeId: string | null;
+        targetPlaceAttributeId: string | null;
         metadata?: unknown;
       } | null;
     },
@@ -520,16 +520,16 @@ export class PollsService {
     const conceptIds = templated.flatMap((poll) =>
       [
         poll.topic?.targetDishId,
-        poll.topic?.targetFoodAttributeId,
-        poll.topic?.targetRestaurantAttributeId,
+        poll.topic?.targetItemAttributeId,
+        poll.topic?.targetPlaceAttributeId,
       ].filter((id): id is string => Boolean(id)),
     );
-    const restaurantIds = templated.flatMap((poll) =>
-      poll.topic?.targetRestaurantId ? [poll.topic.targetRestaurantId] : [],
+    const placeIds = templated.flatMap((poll) =>
+      poll.topic?.targetPlaceId ? [poll.topic.targetPlaceId] : [],
     );
     const [entities, labels] = await Promise.all([
       this.prisma.entity.findMany({
-        where: { entityId: { in: [...conceptIds, ...restaurantIds] } },
+        where: { entityId: { in: [...conceptIds, ...placeIds] } },
         select: { entityId: true, name: true },
       }),
       this.entityDisplay.loadLabels(conceptIds, locale),
@@ -542,12 +542,12 @@ export class PollsService {
       }
       const conceptId =
         topic.targetDishId ??
-        topic.targetFoodAttributeId ??
-        topic.targetRestaurantAttributeId ??
+        topic.targetItemAttributeId ??
+        topic.targetPlaceAttributeId ??
         null;
       const concept = conceptId ? byId.get(conceptId) : undefined;
-      const restaurant = topic.targetRestaurantId
-        ? byId.get(topic.targetRestaurantId)
+      const place = topic.targetPlaceId
+        ? byId.get(topic.targetPlaceId)
         : undefined;
       const source = (topic.metadata as { source?: string } | null)?.source;
       const rendered = renderPollTitle(
@@ -560,8 +560,8 @@ export class PollsService {
           conceptLabel: concept
             ? this.entityDisplay.displayLabel(concept, locale, labels)
             : null,
-          restaurantName: restaurant?.name ?? null,
-          placeName: poll.placeName ?? null,
+          placeName: place?.name ?? null,
+          locationName: poll.placeName ?? null,
         },
       );
       return rendered ? { ...poll, question: rendered } : poll;
@@ -583,9 +583,9 @@ export class PollsService {
           select: {
             topicType: true,
             targetDishId: true,
-            targetRestaurantId: true,
-            targetFoodAttributeId: true,
-            targetRestaurantAttributeId: true,
+            targetPlaceId: true,
+            targetItemAttributeId: true,
+            targetPlaceAttributeId: true,
             title: true,
             titleSource: true,
             titleLocale: true,
@@ -877,9 +877,9 @@ export class PollsService {
     }
 
     let targetDishId: string | null = null;
-    let targetRestaurantId: string | null = null;
-    let targetFoodAttributeId: string | null = null;
-    let targetRestaurantAttributeId: string | null = null;
+    let targetPlaceId: string | null = null;
+    let targetItemAttributeId: string | null = null;
+    let targetPlaceAttributeId: string | null = null;
     // MODERATE THE USER-SUPPLIED ENTITY NAME BEFORE RESOLVING IT.
     //
     // Resolution is where we spend: it can call Google Places and it CREATES
@@ -891,11 +891,9 @@ export class PollsService {
     // and skip this.
     const suppliedName = [
       dto.targetDishId ? null : dto.targetDishName,
-      dto.targetRestaurantId ? null : dto.targetRestaurantName,
-      dto.targetFoodAttributeId ? null : dto.targetFoodAttributeName,
-      dto.targetRestaurantAttributeId
-        ? null
-        : dto.targetRestaurantAttributeName,
+      dto.targetPlaceId ? null : dto.targetPlaceName,
+      dto.targetItemAttributeId ? null : dto.targetItemAttributeName,
+      dto.targetPlaceAttributeId ? null : dto.targetPlaceAttributeName,
     ]
       .find((value) => typeof value === 'string' && value.trim().length > 0)
       ?.trim();
@@ -918,7 +916,7 @@ export class PollsService {
 
     switch (topicType) {
       case PollTopicType.best_dish: {
-        const dish = await this.pollEntitySeedService.resolveFood({
+        const dish = await this.pollEntitySeedService.resolveItem({
           entityId: dto.targetDishId ?? null,
           name: dto.targetDishName ?? null,
         });
@@ -927,32 +925,32 @@ export class PollsService {
         break;
       }
       case PollTopicType.what_to_order: {
-        const restaurant = await this.pollEntitySeedService.resolveRestaurant({
-          entityId: dto.targetRestaurantId ?? null,
-          name: dto.targetRestaurantName ?? null,
+        const place = await this.pollEntitySeedService.resolvePlace({
+          entityId: dto.targetPlaceId ?? null,
+          name: dto.targetPlaceName ?? null,
           place: placeContext,
         });
-        targetRestaurantId = restaurant.entityId;
-        question = this.buildPollQuestion(topicType, restaurant.name);
+        targetPlaceId = place.entityId;
+        question = this.buildPollQuestion(topicType, place.name);
         break;
       }
       case PollTopicType.best_dish_attribute: {
         const attribute = await this.pollEntitySeedService.resolveAttribute({
-          entityId: dto.targetFoodAttributeId ?? null,
-          name: dto.targetFoodAttributeName ?? null,
-          entityType: EntityType.food_attribute,
+          entityId: dto.targetItemAttributeId ?? null,
+          name: dto.targetItemAttributeName ?? null,
+          entityType: EntityType.item_attribute,
         });
-        targetFoodAttributeId = attribute.entityId;
+        targetItemAttributeId = attribute.entityId;
         question = this.buildPollQuestion(topicType, attribute.name);
         break;
       }
       case PollTopicType.best_restaurant_attribute: {
         const attribute = await this.pollEntitySeedService.resolveAttribute({
-          entityId: dto.targetRestaurantAttributeId ?? null,
-          name: dto.targetRestaurantAttributeName ?? null,
-          entityType: EntityType.restaurant_attribute,
+          entityId: dto.targetPlaceAttributeId ?? null,
+          name: dto.targetPlaceAttributeName ?? null,
+          entityType: EntityType.place_attribute,
         });
-        targetRestaurantAttributeId = attribute.entityId;
+        targetPlaceAttributeId = attribute.entityId;
         question = this.buildPollQuestion(topicType, attribute.name);
         break;
       }
@@ -996,15 +994,15 @@ export class PollsService {
           topicType,
           createdByUserId: userId,
           targetDishId,
-          targetRestaurantId,
-          targetFoodAttributeId,
-          targetRestaurantAttributeId,
+          targetPlaceId,
+          targetItemAttributeId,
+          targetPlaceAttributeId,
           categoryEntityIds: [
             targetDishId,
-            targetFoodAttributeId,
-            targetRestaurantAttributeId,
+            targetItemAttributeId,
+            targetPlaceAttributeId,
           ].filter((value): value is string => Boolean(value)),
-          seedEntityIds: [targetDishId, targetRestaurantId].filter(
+          seedEntityIds: [targetDishId, targetPlaceId].filter(
             (value): value is string => Boolean(value),
           ),
           metadata: {
@@ -1037,9 +1035,9 @@ export class PollsService {
             select: {
               topicType: true,
               targetDishId: true,
-              targetRestaurantId: true,
-              targetFoodAttributeId: true,
-              targetRestaurantAttributeId: true,
+              targetPlaceId: true,
+              targetItemAttributeId: true,
+              targetPlaceAttributeId: true,
               title: true,
               description: true,
               metadata: true,
@@ -1048,7 +1046,7 @@ export class PollsService {
         },
       });
 
-      const entitiesToUpdate = [targetDishId, targetRestaurantId].filter(
+      const entitiesToUpdate = [targetDishId, targetPlaceId].filter(
         (value): value is string => Boolean(value),
       );
       if (entitiesToUpdate.length) {
@@ -1155,9 +1153,9 @@ export class PollsService {
         topicType: mapped.topicType,
         description: question,
         targetDishName: mapped.targetDishName,
-        targetRestaurantName: mapped.targetRestaurantName,
-        targetFoodAttributeName: mapped.targetFoodAttributeName,
-        targetRestaurantAttributeName: mapped.targetRestaurantAttributeName,
+        targetPlaceName: mapped.targetPlaceName,
+        targetItemAttributeName: mapped.targetItemAttributeName,
+        targetPlaceAttributeName: mapped.targetPlaceAttributeName,
       },
       userId,
       place,
@@ -1173,15 +1171,15 @@ export class PollsService {
   private mapAxisToStructured(axis: LLMPollAxis): {
     topicType: PollTopicType;
     targetDishName?: string;
-    targetRestaurantName?: string;
-    targetFoodAttributeName?: string;
-    targetRestaurantAttributeName?: string;
+    targetPlaceName?: string;
+    targetItemAttributeName?: string;
+    targetPlaceAttributeName?: string;
   } | null {
     if (axis.targetType === 'dish') {
       if (axis.anchor) {
         return {
           topicType: PollTopicType.what_to_order,
-          targetRestaurantName: axis.anchor,
+          targetPlaceName: axis.anchor,
         };
       }
       if (axis.constraint?.kind === 'category') {
@@ -1193,19 +1191,19 @@ export class PollsService {
       if (axis.constraint?.kind === 'dish_attribute') {
         return {
           topicType: PollTopicType.best_dish_attribute,
-          targetFoodAttributeName: axis.constraint.value,
+          targetItemAttributeName: axis.constraint.value,
         };
       }
       return null;
     }
     // restaurant — cuisine + restaurant_attribute both rank places by an attribute.
     if (
-      axis.constraint?.kind === 'restaurant_attribute' ||
+      axis.constraint?.kind === 'place_attribute' ||
       axis.constraint?.kind === 'cuisine'
     ) {
       return {
         topicType: PollTopicType.best_restaurant_attribute,
-        targetRestaurantAttributeName: axis.constraint.value,
+        targetPlaceAttributeName: axis.constraint.value,
       };
     }
     return null;
@@ -1243,9 +1241,9 @@ export class PollsService {
           select: {
             topicType: true,
             targetDishId: true,
-            targetRestaurantId: true,
-            targetFoodAttributeId: true,
-            targetRestaurantAttributeId: true,
+            targetPlaceId: true,
+            targetItemAttributeId: true,
+            targetPlaceAttributeId: true,
             title: true,
             description: true,
             metadata: true,
@@ -1278,9 +1276,9 @@ export class PollsService {
           select: {
             topicType: true,
             targetDishId: true,
-            targetRestaurantId: true,
-            targetFoodAttributeId: true,
-            targetRestaurantAttributeId: true,
+            targetPlaceId: true,
+            targetItemAttributeId: true,
+            targetPlaceAttributeId: true,
             title: true,
             // titleSource is the D1/N10 marker localizePollQuestions filters
             // on. Omitting it made every poll look like USER prose here, so
@@ -1336,10 +1334,10 @@ export class PollsService {
     const spans = await this.entityTextSearch.scanForKnownEntities(
       body,
       [
-        EntityType.restaurant,
-        EntityType.food,
-        EntityType.food_attribute,
-        EntityType.restaurant_attribute,
+        EntityType.place,
+        EntityType.item,
+        EntityType.item_attribute,
+        EntityType.place_attribute,
       ],
       { engineId },
     );
@@ -1406,9 +1404,9 @@ export class PollsService {
         topic: {
           select: {
             targetDishId: true,
-            targetRestaurantId: true,
-            targetFoodAttributeId: true,
-            targetRestaurantAttributeId: true,
+            targetPlaceId: true,
+            targetItemAttributeId: true,
+            targetPlaceAttributeId: true,
           },
         },
       },
@@ -1733,23 +1731,23 @@ export class PollsService {
    */
   private resolveConnectionPairs(
     topicType: PollTopicType | undefined,
-    targets: { targetRestaurantId: string | null; targetDishId: string | null },
-    spanRestaurantIds: string[],
-    spanFoodIds: string[],
-  ): Array<{ restaurantId: string; foodId: string }> {
-    const pairs: Array<{ restaurantId: string; foodId: string }> = [];
+    targets: { targetPlaceId: string | null; targetDishId: string | null },
+    spanPlaceIds: string[],
+    spanItemIds: string[],
+  ): Array<{ placeId: string; itemId: string }> {
+    const pairs: Array<{ placeId: string; itemId: string }> = [];
     if (topicType === PollTopicType.what_to_order) {
       // Fixed restaurant (the poll's spot), variable dish from the comment.
-      if (!targets.targetRestaurantId) return pairs;
-      for (const foodId of spanFoodIds) {
-        pairs.push({ restaurantId: targets.targetRestaurantId, foodId });
+      if (!targets.targetPlaceId) return pairs;
+      for (const itemId of spanItemIds) {
+        pairs.push({ placeId: targets.targetPlaceId, itemId });
       }
     } else if (topicType === PollTopicType.best_dish) {
       // Fixed dish (the poll's axis), variable restaurant from the comment;
       // specific dishes named in the comment roll up to the axis dish.
       if (!targets.targetDishId) return pairs;
-      for (const restaurantId of spanRestaurantIds) {
-        pairs.push({ restaurantId, foodId: targets.targetDishId });
+      for (const placeId of spanPlaceIds) {
+        pairs.push({ placeId, itemId: targets.targetDishId });
       }
     } else if (topicType === PollTopicType.best_dish_attribute) {
       // Both sides come from the comment — pair each restaurant with each dish.
@@ -1757,9 +1755,9 @@ export class PollsService {
       // category target. The live Connection has no attribute data yet (those are
       // populated only at close-time graduation), and off-axis pairs naturally
       // rank low, so relevance self-corrects. Product-owner-approved deferral.
-      for (const restaurantId of spanRestaurantIds) {
-        for (const foodId of spanFoodIds) {
-          pairs.push({ restaurantId, foodId });
+      for (const placeId of spanPlaceIds) {
+        for (const itemId of spanItemIds) {
+          pairs.push({ placeId, itemId });
         }
       }
     }
@@ -1776,7 +1774,7 @@ export class PollsService {
         topic: {
           select: {
             topicType: true,
-            targetRestaurantId: true,
+            targetPlaceId: true,
             targetDishId: true,
             // Creator's organic seed (Option A): scanned in place, no DB column.
             description: true,
@@ -1853,10 +1851,10 @@ export class PollsService {
         ? await this.entityTextSearch.scanForKnownEntities(
             description,
             [
-              EntityType.restaurant,
-              EntityType.food,
-              EntityType.food_attribute,
-              EntityType.restaurant_attribute,
+              EntityType.place,
+              EntityType.item,
+              EntityType.item_attribute,
+              EntityType.place_attribute,
             ],
             { engineId: await this.engineIdForPlace(poll.placeId) },
           )
@@ -1869,7 +1867,7 @@ export class PollsService {
       // real Connections are minted only at close-time graduation by the verified
       // collection pipeline.
       const targets = {
-        targetRestaurantId: poll.topic?.targetRestaurantId ?? null,
+        targetPlaceId: poll.topic?.targetPlaceId ?? null,
         targetDishId: poll.topic?.targetDishId ?? null,
       };
       for (const comment of comments) {
@@ -1877,8 +1875,8 @@ export class PollsService {
         const pairs = this.resolveConnectionPairs(
           topicType,
           targets,
-          entityIdsOfType(spans, EntityType.restaurant),
-          entityIdsOfType(spans, EntityType.food),
+          entityIdsOfType(spans, EntityType.place),
+          entityIdsOfType(spans, EntityType.item),
         );
         if (!pairs.length) continue;
         const endorsingUsers = [
@@ -1887,8 +1885,8 @@ export class PollsService {
         ];
         for (const pair of pairs) {
           const subjectId = this.encodeConnectionSubjectId(
-            pair.restaurantId,
-            pair.foodId,
+            pair.placeId,
+            pair.itemId,
           );
           let set = endorsers.get(subjectId);
           if (!set) {
@@ -1904,13 +1902,13 @@ export class PollsService {
         const pairs = this.resolveConnectionPairs(
           topicType,
           targets,
-          entityIdsOfType(descSpans, EntityType.restaurant),
-          entityIdsOfType(descSpans, EntityType.food),
+          entityIdsOfType(descSpans, EntityType.place),
+          entityIdsOfType(descSpans, EntityType.item),
         );
         for (const pair of pairs) {
           const subjectId = this.encodeConnectionSubjectId(
-            pair.restaurantId,
-            pair.foodId,
+            pair.placeId,
+            pair.itemId,
           );
           let set = endorsers.get(subjectId);
           if (!set) {
@@ -1923,10 +1921,7 @@ export class PollsService {
     } else {
       // Restaurant-axis (best_restaurant_attribute): bare restaurant entity subjects.
       for (const comment of comments) {
-        const subjectIds = entityIdsOfType(
-          spansOf(comment),
-          EntityType.restaurant,
-        );
+        const subjectIds = entityIdsOfType(spansOf(comment), EntityType.place);
         if (!subjectIds.length) continue;
         const endorsingUsers = [
           comment.userId,
@@ -1944,7 +1939,7 @@ export class PollsService {
       // Fold the creator's description seed in — mirrors the comment logic exactly,
       // keyed by createdByUserId (guarded above: only runs when both exist).
       if (descSpans.length && createdByUserId) {
-        const subjectIds = entityIdsOfType(descSpans, EntityType.restaurant);
+        const subjectIds = entityIdsOfType(descSpans, EntityType.place);
         for (const subjectId of subjectIds) {
           let set = endorsers.get(subjectId);
           if (!set) {
@@ -2046,8 +2041,8 @@ export class PollsService {
       if (useConnections) {
         const parts = this.decodeConnectionSubjectId(subjectId);
         if (parts) {
-          entityIds.add(parts.restaurantId);
-          entityIds.add(parts.foodId);
+          entityIds.add(parts.placeId);
+          entityIds.add(parts.itemId);
         }
       } else {
         entityIds.add(subjectId);
@@ -2072,8 +2067,8 @@ export class PollsService {
         const parts = this.decodeConnectionSubjectId(subjectId);
         if (parts) {
           key = this.encodeConnectionSubjectId(
-            resolve(parts.restaurantId),
-            resolve(parts.foodId),
+            resolve(parts.placeId),
+            resolve(parts.itemId),
           );
         }
       } else {
@@ -2092,19 +2087,16 @@ export class PollsService {
   // Dish-axis leaderboard subjects are poll-local (restaurant, dish) composites,
   // NOT shared Connection rows — so the live leaderboard never writes unverified
   // pairs into core_restaurant_items. UUIDs contain no "::", so the split is safe.
-  private encodeConnectionSubjectId(
-    restaurantId: string,
-    foodId: string,
-  ): string {
-    return `${restaurantId}::${foodId}`;
+  private encodeConnectionSubjectId(placeId: string, itemId: string): string {
+    return `${placeId}::${itemId}`;
   }
 
   private decodeConnectionSubjectId(
     subjectId: string,
-  ): { restaurantId: string; foodId: string } | null {
+  ): { placeId: string; itemId: string } | null {
     const parts = subjectId.split('::');
     if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
-    return { restaurantId: parts[0], foodId: parts[1] };
+    return { placeId: parts[0], itemId: parts[1] };
   }
 
   /**
@@ -2115,11 +2107,11 @@ export class PollsService {
   private async resolveConnectionSubjectNames(
     subjectIds: string[],
   ): Promise<
-    Map<string, { restaurantName: string | null; foodName: string | null }>
+    Map<string, { placeName: string | null; itemName: string | null }>
   > {
     const result = new Map<
       string,
-      { restaurantName: string | null; foodName: string | null }
+      { placeName: string | null; itemName: string | null }
     >();
     const decoded = subjectIds
       .map((subjectId) => ({
@@ -2131,14 +2123,14 @@ export class PollsService {
           d,
         ): d is {
           subjectId: string;
-          parts: { restaurantId: string; foodId: string };
+          parts: { placeId: string; itemId: string };
         } => d.parts != null,
       );
     if (!decoded.length) return result;
     const entityIds = new Set<string>();
     for (const d of decoded) {
-      entityIds.add(d.parts.restaurantId);
-      entityIds.add(d.parts.foodId);
+      entityIds.add(d.parts.placeId);
+      entityIds.add(d.parts.itemId);
     }
     const names = new Map<string, string | null>();
     const entities = await this.prisma.entity.findMany({
@@ -2148,8 +2140,8 @@ export class PollsService {
     for (const e of entities) names.set(e.entityId, e.name);
     for (const d of decoded) {
       result.set(d.subjectId, {
-        restaurantName: names.get(d.parts.restaurantId) ?? null,
-        foodName: names.get(d.parts.foodId) ?? null,
+        placeName: names.get(d.parts.placeId) ?? null,
+        itemName: names.get(d.parts.itemId) ?? null,
       });
     }
     return result;
@@ -2162,19 +2154,19 @@ export class PollsService {
    */
   private formatConnectionDisplayName(
     topicType: PollTopicType | undefined,
-    restaurantName: string | null,
-    foodName: string | null,
+    placeName: string | null,
+    itemName: string | null,
   ): string | null {
     if (topicType === PollTopicType.what_to_order) {
-      return foodName ?? restaurantName;
+      return itemName ?? placeName;
     }
     if (topicType === PollTopicType.best_dish) {
-      return restaurantName ?? foodName;
+      return placeName ?? itemName;
     }
-    if (foodName && restaurantName) {
-      return `${foodName} at ${restaurantName}`;
+    if (itemName && placeName) {
+      return `${itemName} at ${placeName}`;
     }
-    return foodName ?? restaurantName;
+    return itemName ?? placeName;
   }
 
   /** Resolve display name/type for leaderboard subjects (entity OR connection). */
@@ -2214,8 +2206,8 @@ export class PollsService {
         display.set(subjectId, {
           name: this.formatConnectionDisplayName(
             topicType,
-            names.restaurantName,
-            names.foodName,
+            names.placeName,
+            names.itemName,
           ),
           type: 'connection',
         });
@@ -2284,9 +2276,9 @@ export class PollsService {
         topic: {
           select: {
             targetDishId: true,
-            targetRestaurantId: true,
-            targetFoodAttributeId: true,
-            targetRestaurantAttributeId: true,
+            targetPlaceId: true,
+            targetItemAttributeId: true,
+            targetPlaceAttributeId: true,
           },
         },
       },
@@ -2460,9 +2452,9 @@ export class PollsService {
             select: {
               topicType: true,
               targetDishId: true,
-              targetRestaurantId: true,
-              targetFoodAttributeId: true,
-              targetRestaurantAttributeId: true,
+              targetPlaceId: true,
+              targetItemAttributeId: true,
+              targetPlaceAttributeId: true,
               title: true,
               description: true,
               metadata: true,
@@ -2517,9 +2509,9 @@ export class PollsService {
                 select: {
                   topicType: true,
                   targetDishId: true,
-                  targetRestaurantId: true,
-                  targetFoodAttributeId: true,
-                  targetRestaurantAttributeId: true,
+                  targetPlaceId: true,
+                  targetItemAttributeId: true,
+                  targetPlaceAttributeId: true,
                   title: true,
                   description: true,
                   metadata: true,
@@ -2672,8 +2664,8 @@ export class PollsService {
         const names = connectionNameById.get(row.subjectId);
         return this.formatConnectionDisplayName(
           topicTypeByPoll.get(row.pollId),
-          names?.restaurantName ?? null,
-          names?.foodName ?? null,
+          names?.placeName ?? null,
+          names?.itemName ?? null,
         );
       }
       return candidateNameById.get(row.subjectId) ?? null;

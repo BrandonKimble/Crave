@@ -34,21 +34,21 @@ import type {
  */
 export interface TeaserRow {
   dishName: string;
-  restaurantName: string;
+  placeName: string;
   score: number;
 }
 
-export interface TeaserRestaurantRow {
-  restaurantName: string;
+export interface TeaserPlaceRow {
+  placeName: string;
   score: number;
 }
 
-export interface TeaserRestaurantSet {
+export interface TeaserPlaceSet {
   /** 'context' frames the set as an occasion list ("date-night"); 'cuisine' as
    *  a cuisine shortlist ("Mexican"). */
   kind: 'context' | 'cuisine';
   frame: string;
-  rows: TeaserRestaurantRow[];
+  rows: TeaserPlaceRow[];
 }
 
 export interface TeaserPreviewPayload {
@@ -57,7 +57,7 @@ export interface TeaserPreviewPayload {
   city: string;
   top: TeaserRow;
   runners: TeaserRow[];
-  restaurants: TeaserRestaurantSet | null;
+  places: TeaserPlaceSet | null;
 }
 
 /**
@@ -200,24 +200,19 @@ export class TeaserService {
       return null;
     }
 
-    const restaurants = await this.restaurantSet(
-      city,
-      cities,
-      contextIds,
-      cuisineIds,
-    );
-    return { ...base, restaurants };
+    const places = await this.placeSet(city, cities, contextIds, cuisineIds);
+    return { ...base, places };
   }
 
   /** The second set: restaurants framed by the user's declared occasion, with a
    *  specificity ladder — context∧cuisine (the dream: "Fonda San Miguel for date
    *  night") → context alone → cuisine alone — first rung with ≥3 rows wins. */
-  private async restaurantSet(
+  private async placeSet(
     city: string,
     cities: string[],
     contextIds: string[],
     cuisineIds: string[],
-  ): Promise<TeaserRestaurantSet | null> {
+  ): Promise<TeaserPlaceSet | null> {
     const context = CONTEXT_ATTR_NAMES.find((entry) =>
       contextIds.includes(entry.contextId),
     );
@@ -226,9 +221,9 @@ export class TeaserService {
       .find(Boolean);
     const key = `${city}:rs:${context?.contextId ?? '-'}:${cuisine?.attrName ?? '-'}`;
 
-    const setPayload = await this.cachedRestaurantSet(key, async () => {
+    const setPayload = await this.cachedPlaceSet(key, async () => {
       if (context && cuisine) {
-        const rows = await this.topRestaurantsByAttrs(cities, [
+        const rows = await this.topPlacesByAttrs(cities, [
           context.attrName,
           cuisine.attrName,
         ]);
@@ -237,17 +232,13 @@ export class TeaserService {
         }
       }
       if (context) {
-        const rows = await this.topRestaurantsByAttrs(cities, [
-          context.attrName,
-        ]);
+        const rows = await this.topPlacesByAttrs(cities, [context.attrName]);
         if (rows.length >= MIN_RESULTS) {
           return { kind: 'context' as const, frame: context.frame, rows };
         }
       }
       if (cuisine) {
-        const rows = await this.topRestaurantsByAttrs(cities, [
-          cuisine.attrName,
-        ]);
+        const rows = await this.topPlacesByAttrs(cities, [cuisine.attrName]);
         if (rows.length >= MIN_RESULTS) {
           return { kind: 'cuisine' as const, frame: cuisine.label, rows };
         }
@@ -257,44 +248,44 @@ export class TeaserService {
     return setPayload;
   }
 
-  private readonly restaurantSetCache = new Map<
+  private readonly placeSetCache = new Map<
     string,
-    { at: number; payload: TeaserRestaurantSet | null }
+    { at: number; payload: TeaserPlaceSet | null }
   >();
 
-  private async cachedRestaurantSet(
+  private async cachedPlaceSet(
     key: string,
-    build: () => Promise<TeaserRestaurantSet | null>,
-  ): Promise<TeaserRestaurantSet | null> {
-    const hit = this.restaurantSetCache.get(key);
+    build: () => Promise<TeaserPlaceSet | null>,
+  ): Promise<TeaserPlaceSet | null> {
+    const hit = this.placeSetCache.get(key);
     if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
       return hit.payload;
     }
     const payload = await build();
-    this.restaurantSetCache.set(key, { at: Date.now(), payload });
+    this.placeSetCache.set(key, { at: Date.now(), payload });
     return payload;
   }
 
   /** Top restaurants carrying ALL named active attributes, in the city, by
    *  restaurant score percentile. */
-  private async topRestaurantsByAttrs(
+  private async topPlacesByAttrs(
     cities: string[],
     attrNames: string[],
-  ): Promise<TeaserRestaurantRow[]> {
+  ): Promise<TeaserPlaceRow[]> {
     const rows = await this.prisma.$queryRaw<
-      Array<{ restaurant_name: string; score: number }>
+      Array<{ place_name: string; score: number }>
     >(Prisma.sql`
       WITH attrs AS (
         SELECT array_agg(entity_id) AS ids, count(*) AS found
         FROM core_entities
-        WHERE type = 'restaurant_attribute' AND status = 'active'
+        WHERE type = 'place_attribute' AND status = 'active'
           AND lower(name) = ANY(${attrNames.map((n) => n.toLowerCase())})
       )
       SELECT r.name AS restaurant_name, s.display_score::float AS score
       FROM core_entities r
       JOIN core_public_entity_scores s
         ON s.subject_type = 'restaurant' AND s.subject_id = r.entity_id
-      WHERE r.type = 'restaurant' AND r.status = 'active'
+      WHERE r.type = 'place' AND r.status = 'active'
         AND (SELECT found FROM attrs) = ${attrNames.length}
         AND r.restaurant_attributes @> (SELECT ids FROM attrs)
         AND EXISTS (
@@ -305,7 +296,7 @@ export class TeaserService {
       LIMIT 3
     `);
     return rows.map((row) => ({
-      restaurantName: row.restaurant_name,
+      placeName: row.place_name,
       score: Math.min(row.score, TEASER_SCORE_CEILING),
     }));
   }
@@ -332,12 +323,12 @@ export class TeaserService {
     if (!dish) {
       return null;
     }
-    const foodIds = await this.resolveFoodIds(dish.terms);
-    if (foodIds.length === 0) {
+    const itemIds = await this.resolveItemIds(dish.terms);
+    if (itemIds.length === 0) {
       return null;
     }
 
-    const rows = await this.topConnections(cities, foodIds);
+    const rows = await this.topConnections(cities, itemIds);
     if (rows.length < MIN_RESULTS) {
       return null;
     }
@@ -347,7 +338,7 @@ export class TeaserService {
       city,
       top: rows[0],
       runners: rows.slice(1, 3),
-      restaurants: null,
+      places: null,
     };
   }
 
@@ -366,13 +357,13 @@ export class TeaserService {
       city,
       top: rows[0],
       runners: rows.slice(1, 3),
-      restaurants: null,
+      places: null,
     };
   }
 
   /** Exact name/alias match on active food entities, expanded one category hop
    *  (derived_food_category_edges), mirroring search's expansion law. */
-  private async resolveFoodIds(terms: string[]): Promise<string[]> {
+  private async resolveItemIds(terms: string[]): Promise<string[]> {
     // The surface arm compares CANONICAL FOLDS on both sides (form_folded is
     // app-written by the one fold implementation); the name arm keeps its
     // existing lower() semantics so this change is the surface read and
@@ -385,7 +376,7 @@ export class TeaserService {
     >(Prisma.sql`
       SELECT e.entity_id
       FROM core_entities e
-      WHERE e.type = 'food'
+      WHERE e.type = 'item'
         AND e.status = 'active'
         AND (
           lower(e.name) = ANY(${terms})
@@ -402,21 +393,21 @@ export class TeaserService {
       return [];
     }
     const members = await this.prisma.$queryRaw<
-      Array<{ food_id: string }>
+      Array<{ item_id: string }>
     >(Prisma.sql`
-      SELECT DISTINCT food_id
+      SELECT DISTINCT food_id AS item_id
       FROM derived_food_category_edges
       WHERE category_id = ANY(${baseIds}::uuid[])
     `);
-    return Array.from(new Set([...baseIds, ...members.map((m) => m.food_id)]));
+    return Array.from(new Set([...baseIds, ...members.map((m) => m.item_id)]));
   }
 
   private connectionFilter(
     cities: string[],
-    foodIds: string[] | null,
+    itemIds: string[] | null,
   ): Prisma.Sql {
-    const foodClause = foodIds
-      ? Prisma.sql`AND ci.food_id = ANY(${foodIds}::uuid[])`
+    const itemClause = itemIds
+      ? Prisma.sql`AND ci.food_id = ANY(${itemIds}::uuid[])`
       : Prisma.empty;
     return Prisma.sql`
       FROM core_restaurant_items ci
@@ -427,7 +418,7 @@ export class TeaserService {
       WHERE ci.mention_count >= ${MIN_MENTIONS}
         -- Rollup rows are parents of real dishes, never dishes themselves.
         AND NOT ci.is_category_item
-        ${foodClause}
+        ${itemClause}
         AND EXISTS (
           SELECT 1 FROM core_restaurant_locations l
           WHERE l.restaurant_id = ci.restaurant_id AND l.city = ANY(${cities})
@@ -437,25 +428,25 @@ export class TeaserService {
 
   private async topConnections(
     cities: string[],
-    foodIds: string[] | null,
+    itemIds: string[] | null,
   ): Promise<TeaserRow[]> {
     const rows = await this.prisma.$queryRaw<
       Array<{
         dish_name: string;
-        restaurant_name: string;
+        place_name: string;
         score: number;
       }>
     >(Prisma.sql`
       SELECT f.name AS dish_name,
              r.name AS restaurant_name,
              s.display_score::float AS score
-      ${this.connectionFilter(cities, foodIds)}
+      ${this.connectionFilter(cities, itemIds)}
       ORDER BY s.percentile_rank DESC
       LIMIT 3
     `);
     return rows.map((row) => ({
       dishName: row.dish_name,
-      restaurantName: row.restaurant_name,
+      placeName: row.place_name,
       score: Math.min(row.score, TEASER_SCORE_CEILING),
     }));
   }

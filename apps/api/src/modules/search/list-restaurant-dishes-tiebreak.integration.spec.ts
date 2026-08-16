@@ -92,14 +92,14 @@ beforeAll(async () => {
   });
   scoreRunId = run.scoreRunId;
 
-  const restaurant = await prisma.entity.create({
-    data: { name: `${TEST_TAG}-restaurant`, type: 'restaurant' },
+  const place = await prisma.entity.create({
+    data: { name: `${TEST_TAG}-restaurant`, type: 'place' },
   });
-  seeded.push(restaurant.entityId);
+  seeded.push(place.entityId);
   await prisma.publicEntityScore.create({
     data: {
       subjectType: 'restaurant',
-      subjectId: restaurant.entityId,
+      subjectId: place.entityId,
       scoreRunId,
       endorsementRaw: 1,
       percentileRank: 0.5,
@@ -113,15 +113,15 @@ beforeAll(async () => {
     [HIGH_ID, 'high-inserted-first'],
     [LOW_ID, 'low-inserted-second'],
   ] as const) {
-    const food = await prisma.entity.create({
-      data: { name: `${TEST_TAG}-food-${label}`, type: 'food' },
+    const item = await prisma.entity.create({
+      data: { name: `${TEST_TAG}-food-${label}`, type: 'item' },
     });
-    seeded.push(food.entityId);
+    seeded.push(item.entityId);
     await prisma.connection.create({
       data: {
         connectionId,
-        restaurantId: restaurant.entityId,
-        foodId: food.entityId,
+        placeId: place.entityId,
+        itemId: item.entityId,
         // Tied on every key the ORDER BY reads before the tiebreak.
         mentionCount: 3,
         totalUpvotes: 3,
@@ -159,7 +159,7 @@ afterAll(async () => {
 
 describe('listRestaurantDishes: fully-tied dishes get a deterministic final order (F1902)', () => {
   it('orders the tied pair by connection_id ASC, independent of insertion order, across repeated runs', async () => {
-    const restaurantId = seeded[0];
+    const placeId = seeded[0];
 
     // Run several times: a physical-row-order defect is a Postgres planning
     // decision, not guaranteed to flip on every single execution, so a
@@ -167,7 +167,7 @@ describe('listRestaurantDishes: fully-tied dishes get a deterministic final orde
     // way. Every run must agree with the specified order for this to count
     // as proof of determinism.
     for (let i = 0; i < 5; i++) {
-      const dishes = await service.listRestaurantDishes(restaurantId);
+      const dishes = await service.listPlaceDishes(placeId);
       const ids = dishes.map((d) => d.connectionId);
       expect(ids).toEqual([LOW_ID, HIGH_ID]);
     }

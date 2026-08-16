@@ -30,7 +30,7 @@ type TypedReturnRestaurantPromotionArgs = {
  *  - it is UNIQUE: exactly one entity across all suggestions exact-matches the
  *    query (if two entities exact-match, do NOT promote — ambiguous),
  *  - `evidenceTier === 'exact'`,
- *  - `entityType === 'restaurant'`.
+ *  - `entityType === 'place'`.
  *
  * The uniqueness check counts exact-name matches across ALL entity suggestions
  * (any entityType), so a query that exact-matches both a restaurant and, say, a

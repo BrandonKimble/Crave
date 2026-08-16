@@ -42,12 +42,12 @@ describe('label sweep appeal tally — proven against a live database', () => {
   const made: string[] = [];
   const startedAt = new Date();
 
-  const mintFood = async (name: string): Promise<string> => {
+  const mintItem = async (name: string): Promise<string> => {
     const id = randomUUID();
-    const identity = identityInsertData(name, 'food' as never);
+    const identity = identityInsertData(name, 'item' as never);
     await prisma.$executeRawUnsafe(
       `INSERT INTO core_entities (entity_id, name, type, status, identity_key, identity_key_sorted)
-       VALUES ($1::uuid, $2, 'food'::entity_type, 'active'::entity_status, $3, $4)`,
+       VALUES ($1::uuid, $2, 'item'::entity_type, 'active'::entity_status, $3, $4)`,
       id,
       name,
       identity.identityKey,
@@ -102,7 +102,7 @@ describe('label sweep appeal tally — proven against a live database', () => {
   });
 
   it('a contested-then-won claim is counted ONCE, by the write — and a dead-target claim is not counted at all', async () => {
-    const winner = await mintFood(
+    const winner = await mintItem(
       `zzappeal winner ${randomUUID().slice(0, 8)}`,
     );
     const word = `zzappeal word ${randomUUID().slice(0, 8)}`;
@@ -155,10 +155,10 @@ describe('label sweep appeal tally — proven against a live database', () => {
     );
     // A generator that offers one label carrying a surface that the guard
     // blocks, so `contested` is non-empty and the adjudicator is consulted.
-    const entityId = await mintFood(
+    const entityId = await mintItem(
       `zzappeal sweepee ${randomUUID().slice(0, 8)}`,
     );
-    const incumbent = await mintFood(
+    const incumbent = await mintItem(
       `zzappeal incumbent ${randomUUID().slice(0, 8)}`,
     );
     const contestedWord = `zzappeal contested ${randomUUID().slice(0, 8)}`;

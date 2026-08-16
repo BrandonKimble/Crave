@@ -25,7 +25,7 @@ import {
  * the logging assertion goes RED while both behavior assertions stay green.
  */
 
-const FOOD_ID = 'aaaaaaaa-0000-0000-0000-0000000f3104';
+const ITEM_ID = 'aaaaaaaa-0000-0000-0000-0000000f3104';
 
 const BOUNDS = {
   northEast: { lat: 30.4, lng: -97.6 },
@@ -49,7 +49,7 @@ function makeService(coverage: { resolveViewportCoverage: jest.Mock }) {
           text: 'pizza',
           start: 0,
           end: 5,
-          entities: [{ entityId: FOOD_ID, name: 'pizza', type: 'food' }],
+          entities: [{ entityId: ITEM_ID, name: 'pizza', type: 'item' }],
         },
       ]),
     ),

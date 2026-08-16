@@ -77,7 +77,7 @@ export interface HomeFeedResponse {
 export interface CuratedListDetailItem {
   rank: number;
   entityId: string;
-  restaurantId: string | null;
+  placeId: string | null;
   /** Dish items: the Connection id, a BUILD FACT stored on the curated row
    *  (FK-cascaded, so it can never dangle). Restaurant items: null. Client
    *  hearts/saves on curated dish rows always speak the real connection
@@ -362,7 +362,7 @@ export class HomeFeedService {
           select: {
             rank: true,
             entityId: true,
-            restaurantId: true,
+            placeId: true,
             connectionId: true,
           },
         },
@@ -378,18 +378,16 @@ export class HomeFeedService {
     // (rendered as its survivor, one hop).
     const liveSubjects = await this.saveableEntities.resolveActiveByIds(
       list.items.map((item) => item.entityId),
-      list.listType === 'dish' ? EntityType.food : EntityType.restaurant,
+      list.listType === 'dish' ? EntityType.item : EntityType.place,
     );
     const liveHosts = await this.saveableEntities.resolveActiveByIds(
-      list.items.flatMap((item) =>
-        item.restaurantId ? [item.restaurantId] : [],
-      ),
-      EntityType.restaurant,
+      list.items.flatMap((item) => (item.placeId ? [item.placeId] : [])),
+      EntityType.place,
     );
     const servable = list.items.filter((item) => {
       if (!liveSubjects.has(item.entityId)) return false;
       // A dish whose HOST restaurant is gone is not servable either.
-      return !item.restaurantId || liveHosts.has(item.restaurantId);
+      return !item.placeId || liveHosts.has(item.placeId);
     });
 
     // Dish scores key on the STORED connection id (a build fact); restaurant
@@ -415,9 +413,7 @@ export class HomeFeedService {
 
     const items: CuratedListDetailItem[] = servable.map((item) => {
       const subject = liveSubjects.get(item.entityId) as ResolvedEntity;
-      const host = item.restaurantId
-        ? (liveHosts.get(item.restaurantId) ?? null)
-        : null;
+      const host = item.placeId ? (liveHosts.get(item.placeId) ?? null) : null;
       if (list.listType === 'dish') {
         const score = item.connectionId
           ? scores.get(item.connectionId)
@@ -425,7 +421,7 @@ export class HomeFeedService {
         return {
           rank: item.rank,
           entityId: subject.entityId,
-          restaurantId: host?.entityId ?? null,
+          placeId: host?.entityId ?? null,
           connectionId: item.connectionId,
           label: subject.name,
           subLabel: host?.name ?? null,
@@ -440,7 +436,7 @@ export class HomeFeedService {
       return {
         rank: item.rank,
         entityId: subject.entityId,
-        restaurantId: null,
+        placeId: null,
         connectionId: null,
         label: subject.name,
         subLabel: subject.city,
@@ -529,13 +525,13 @@ export class HomeFeedService {
     const listType =
       list.listType === 'dish' ? UserListType.dish : UserListType.restaurant;
     const targets = list.items.flatMap(
-      (item): Array<{ restaurantId?: string; connectionId?: string }> => {
+      (item): Array<{ placeId?: string; connectionId?: string }> => {
         if (listType === UserListType.dish) {
           // Stored build fact; null only if a legacy row predates the
           // connection_id column — such a row cannot express a user-list item.
           return item.connectionId ? [{ connectionId: item.connectionId }] : [];
         }
-        return [{ restaurantId: item.entityId }];
+        return [{ placeId: item.entityId }];
       },
     );
 
@@ -738,10 +734,10 @@ export class HomeFeedService {
     if (!headerPlace || headerPlace.placeId === resolvedCityId) {
       return null;
     }
-    const restaurantLists = globalLists.filter(
+    const placeLists = globalLists.filter(
       (list) => list.listType === 'restaurant',
     );
-    if (!restaurantLists.length) {
+    if (!placeLists.length) {
       return null;
     }
     const rows = await this.prisma.$queryRaw<
@@ -758,7 +754,7 @@ export class HomeFeedService {
         ON e.entity_id = COALESCE(r.to_entity_id, i.entity_id)
        AND e.status = 'active'
       JOIN place_geometries hpg ON hpg.place_id = ${headerPlace.placeId}::uuid
-      WHERE i.list_id = ANY(${restaurantLists.map((list) => list.listId)}::uuid[])
+      WHERE i.list_id = ANY(${placeLists.map((list) => list.listId)}::uuid[])
         AND e.latitude IS NOT NULL
         AND e.longitude IS NOT NULL
         AND ST_Covers(
@@ -777,7 +773,7 @@ export class HomeFeedService {
       }
     }
     const shelfLists: HomeShelfList[] = [];
-    for (const list of restaurantLists) {
+    for (const list of placeLists) {
       const names = byList.get(list.listId) ?? [];
       if (names.length < MIN_VIABLE_LIST_ITEMS) {
         continue;

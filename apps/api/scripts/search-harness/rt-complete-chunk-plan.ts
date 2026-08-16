@@ -195,7 +195,7 @@ async function main() {
         entitiesCreated: 0,
         connectionsCreated: 0,
         affectedConnectionIds: [],
-        affectedRestaurantIds: [],
+        affectedPlaceIds: [],
       };
     };
     try {

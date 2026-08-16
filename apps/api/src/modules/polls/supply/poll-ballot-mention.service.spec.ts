@@ -12,7 +12,7 @@ const USER_1 = '11111111-1111-1111-1111-111111111111';
 const USER_2 = '22222222-2222-2222-2222-222222222222';
 const REST_A = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const REST_B = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
-const FOOD_1 = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+const ITEM_1 = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
 const RUN_ID = '44444444-4444-4444-4444-444444444444';
 const DOC_ID = '55555555-5555-5555-5555-555555555555';
 const INPUT_ID = '66666666-6666-6666-6666-666666666666';
@@ -36,8 +36,8 @@ function createHarness(options: {
     documentId: string;
     activeExtractionRunId: string | null;
   } | null;
-  /** Distinct restaurantIds already minted under the existing active run. */
-  existingEventRestaurantIds?: string[];
+  /** Distinct placeIds already minted under the existing active run. */
+  existingEventPlaceIds?: string[];
   redirects?: { fromEntityId: string; toEntityId: string }[];
 }) {
   const tx = {
@@ -71,8 +71,8 @@ function createHarness(options: {
     // writeRestaurantEvents / writeRestaurantEntityEvents): createMany with
     // skipDuplicates, preceded by one $queryRaw redirect-map read. The mock
     // world holds no archived losers, so the map read resolves empty.
-    restaurantEvent: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
-    restaurantEntityEvent: {
+    placeEvent: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    placeEntityEvent: {
       createMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     $queryRaw: jest.fn().mockResolvedValue([]),
@@ -115,7 +115,7 @@ function createHarness(options: {
     sourceDocument: {
       findUnique: jest.fn().mockResolvedValue(options.existingDocument ?? null),
     },
-    restaurantEvent: {
+    placeEvent: {
       // F4916: the idempotency lookup KEYS ON THE ACTIVE RUN. Serve the
       // already-minted rows ONLY when the query asks for the existing
       // document's active run (RUN_ID) — mirroring the entityRedirect double
@@ -125,16 +125,14 @@ function createHarness(options: {
         Promise.resolve(
           args.where.extractionRunId ===
             (options.existingDocument?.activeExtractionRunId ?? RUN_ID)
-            ? (options.existingEventRestaurantIds ?? []).map(
-                (restaurantId) => ({
-                  restaurantId,
-                }),
-              )
+            ? (options.existingEventPlaceIds ?? []).map((placeId) => ({
+                placeId,
+              }))
             : [],
         ),
       ),
     },
-    restaurantEntityEvent: {
+    placeEntityEvent: {
       findMany: jest.fn().mockResolvedValue([]),
     },
     $transaction: jest.fn(
@@ -145,9 +143,9 @@ function createHarness(options: {
     ensureForPlace: jest.fn().mockResolvedValue({ sourceId: SOURCE_ID }),
   };
   const projectionRebuild = {
-    rebuildForRestaurants: jest
+    rebuildForPlaces: jest
       .fn()
-      .mockResolvedValue({ connectionIds: [], restaurantIds: [] }),
+      .mockResolvedValue({ connectionIds: [], placeIds: [] }),
   };
   const service = new PollBallotMentionService(
     prisma as never,
@@ -206,9 +204,9 @@ describe('PollBallotMentionService — K6 vote→mention at graduation', () => {
     });
     await service.mintForPoll(POLL_ID);
 
-    expect(tx.restaurantEvent.createMany).toHaveBeenCalledTimes(2);
-    const minted = mintedData(tx.restaurantEvent.createMany);
-    expect(minted.map((m) => m.restaurantId).sort()).toEqual([REST_A, REST_B]);
+    expect(tx.placeEvent.createMany).toHaveBeenCalledTimes(2);
+    const minted = mintedData(tx.placeEvent.createMany);
+    expect(minted.map((m) => m.placeId).sort()).toEqual([REST_A, REST_B]);
     // ONE per voter, keyed by voter — and no upvote term, ever.
     expect(new Set(minted.map((m) => m.mentionKey)).size).toBe(2);
     expect(minted.every((m) => m.sourceUpvotes === 0)).toBe(true);
@@ -219,7 +217,7 @@ describe('PollBallotMentionService — K6 vote→mention at graduation', () => {
         data: { activeExtractionRunId: RUN_ID },
       }),
     );
-    expect(projectionRebuild.rebuildForRestaurants).toHaveBeenCalledWith(
+    expect(projectionRebuild.rebuildForPlaces).toHaveBeenCalledWith(
       expect.arrayContaining([REST_A, REST_B]),
     );
   });
@@ -229,7 +227,7 @@ describe('PollBallotMentionService — K6 vote→mention at graduation', () => {
       endorsements: [
         endorsement(
           USER_1,
-          `${REST_A}::${FOOD_1}`,
+          `${REST_A}::${ITEM_1}`,
           PollLeaderboardSubjectType.connection,
           '2026-07-15T00:00:00Z',
         ),
@@ -237,11 +235,11 @@ describe('PollBallotMentionService — K6 vote→mention at graduation', () => {
     });
     await service.mintForPoll(POLL_ID);
 
-    expect(tx.restaurantEvent.createMany).not.toHaveBeenCalled();
-    expect(tx.restaurantEntityEvent.createMany).toHaveBeenCalledTimes(1);
-    const [data] = mintedData(tx.restaurantEntityEvent.createMany);
-    expect(data.restaurantId).toBe(REST_A);
-    expect(data.entityId).toBe(FOOD_1);
+    expect(tx.placeEvent.createMany).not.toHaveBeenCalled();
+    expect(tx.placeEntityEvent.createMany).toHaveBeenCalledTimes(1);
+    const [data] = mintedData(tx.placeEntityEvent.createMany);
+    expect(data.placeId).toBe(REST_A);
+    expect(data.entityId).toBe(ITEM_1);
     expect(data.evidenceType).toBe('menu_item_food');
     expect(data.isMenuItem).toBe(true);
     expect(data.sourceUpvotes).toBe(0);
@@ -260,8 +258,8 @@ describe('PollBallotMentionService — K6 vote→mention at graduation', () => {
       redirects: [{ fromEntityId: REST_A, toEntityId: REST_B }],
     });
     await service.mintForPoll(POLL_ID);
-    const [data] = mintedData(tx.restaurantEvent.createMany);
-    expect(data.restaurantId).toBe(REST_B);
+    const [data] = mintedData(tx.placeEvent.createMany);
+    expect(data.placeId).toBe(REST_B);
   });
 
   it('is idempotent: a document whose active run already carries events never re-mints — but STILL rebuilds the projection (red-team 4b: crash between mint-commit and rebuild must self-heal)', async () => {
@@ -275,16 +273,14 @@ describe('PollBallotMentionService — K6 vote→mention at graduation', () => {
         ),
       ],
       existingDocument: { documentId: DOC_ID, activeExtractionRunId: RUN_ID },
-      existingEventRestaurantIds: [REST_A],
+      existingEventPlaceIds: [REST_A],
     });
     await service.mintForPoll(POLL_ID);
     expect(prisma.$transaction).not.toHaveBeenCalled();
-    expect(tx.restaurantEvent.createMany).not.toHaveBeenCalled();
+    expect(tx.placeEvent.createMany).not.toHaveBeenCalled();
     // The early-return path runs the (idempotent) rebuild too — evidence can
     // never stay committed-but-invisible.
-    expect(projectionRebuild.rebuildForRestaurants).toHaveBeenCalledWith([
-      REST_A,
-    ]);
+    expect(projectionRebuild.rebuildForPlaces).toHaveBeenCalledWith([REST_A]);
   });
 
   it('skips legacy market-keyed polls (no placeId — no poll_surface room yet)', async () => {

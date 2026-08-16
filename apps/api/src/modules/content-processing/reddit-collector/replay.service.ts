@@ -33,7 +33,7 @@ type ReplaySummary = {
   collectionRunId?: string;
   documentCount: number;
   chunkCount: number;
-  restaurantCount: number;
+  placeCount: number;
   connectionCount: number;
   activated: boolean;
 };
@@ -158,6 +158,7 @@ export class ReplayService implements OnModuleInit {
         parentJobId: params.sourceExtractionRunId,
         collectionRunScopeKey: `replay:extraction:${params.sourceExtractionRunId}`,
         activateDocumentsBeforeProcessing: params.activate === true,
+        rehearsal: params.activate !== true,
         promptVersion: params.promptVersion,
         skipSourceLedgerDedupe: true,
         runMetadata: {
@@ -172,7 +173,7 @@ export class ReplayService implements OnModuleInit {
       extractionRunId: replayResult.extractionRunId,
       documentCount: sourceDocuments.length,
       chunkCount: inputChunks.length,
-      restaurantCount: replayResult.dbResult.affectedRestaurantIds.length,
+      placeCount: replayResult.dbResult.affectedPlaceIds.length,
       connectionCount: replayResult.dbResult.affectedConnectionIds.length,
       activated: params.activate === true,
     });
@@ -183,7 +184,7 @@ export class ReplayService implements OnModuleInit {
       collectionRunId: undefined,
       documentCount: sourceDocuments.length,
       chunkCount: inputChunks.length,
-      restaurantCount: replayResult.dbResult.affectedRestaurantIds.length,
+      placeCount: replayResult.dbResult.affectedPlaceIds.length,
       connectionCount: replayResult.dbResult.affectedConnectionIds.length,
       activated: params.activate === true,
     };
@@ -230,7 +231,7 @@ export class ReplayService implements OnModuleInit {
       end: params.end.toISOString(),
       documentCount: sourceDocuments.length,
       chunkCount: replayResult.chunkStats.chunkCount,
-      restaurantCount: replayResult.dbResult.affectedRestaurantIds.length,
+      placeCount: replayResult.dbResult.affectedPlaceIds.length,
       connectionCount: replayResult.dbResult.affectedConnectionIds.length,
       activated: params.activate === true,
     });
@@ -240,7 +241,7 @@ export class ReplayService implements OnModuleInit {
       collectionRunId: undefined,
       documentCount: sourceDocuments.length,
       chunkCount: replayResult.chunkStats.chunkCount,
-      restaurantCount: replayResult.dbResult.affectedRestaurantIds.length,
+      placeCount: replayResult.dbResult.affectedPlaceIds.length,
       connectionCount: replayResult.dbResult.affectedConnectionIds.length,
       activated: params.activate === true,
     };
@@ -315,7 +316,7 @@ export class ReplayService implements OnModuleInit {
     const targetCollectionRunScopeKey = `replay:collection:${params.sourceCollectionRunId}:${Date.now()}`;
     let documentCount = 0;
     let chunkCount = 0;
-    let restaurantCount = 0;
+    let placeCount = 0;
     let connectionCount = 0;
 
     for (const sourceRun of sourceCollectionRun.extractionRuns) {
@@ -364,6 +365,7 @@ export class ReplayService implements OnModuleInit {
           parentJobId: sourceRun.extractionRunId,
           collectionRunScopeKey: targetCollectionRunScopeKey,
           activateDocumentsBeforeProcessing: params.activate === true,
+          rehearsal: params.activate !== true,
           skipSourceLedgerDedupe: true,
           runMetadata: {
             replaySource: 'collection_run',
@@ -374,7 +376,7 @@ export class ReplayService implements OnModuleInit {
 
       documentCount += sourceDocuments.length;
       chunkCount += inputChunks.length;
-      restaurantCount += replayResult.dbResult.affectedRestaurantIds.length;
+      placeCount += replayResult.dbResult.affectedPlaceIds.length;
       connectionCount += replayResult.dbResult.affectedConnectionIds.length;
     }
 
@@ -399,7 +401,7 @@ export class ReplayService implements OnModuleInit {
       collectionRunId: targetCollectionRun.collectionRunId,
       documentCount,
       chunkCount,
-      restaurantCount,
+      placeCount,
       connectionCount,
       extractionRunCount: targetCollectionRun.extractionRuns.length,
       activated: params.activate === true,

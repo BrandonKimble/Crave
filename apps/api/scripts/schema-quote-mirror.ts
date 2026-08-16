@@ -46,9 +46,7 @@ const PROMPT_DIR = join(
 const PAIRS: Record<string, readonly string[] | null> = {
   SEARCH_QUERY_RESPONSE_JSON_SCHEMA: ['residue-prompt.md'],
   CUISINE_EXTRACTION_RESPONSE_JSON_SCHEMA: ['cuisine-prompt.md'],
-  RESTAURANT_PLACE_CHOOSER_RESPONSE_JSON_SCHEMA: [
-    'restaurant-place-chooser.prompt.ts',
-  ],
+  PLACE_CHOOSER_RESPONSE_JSON_SCHEMA: ['restaurant-place-chooser.prompt.ts'],
   MODERATION_RESPONSE_JSON_SCHEMA: ['moderation-prompt.md'],
   ATTRIBUTE_NAME_RESPONSE_JSON_SCHEMA: ['attribute-name-prompt.md'],
   ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA: ['attribute-placement-prompt.md'],
@@ -85,25 +83,25 @@ const KNOWN_DRIFT: ReadonlyArray<{
   dies: string;
 }> = [
   {
-    path: 'COLLECTION_RESPONSE_JSON_SCHEMA.properties.mentions.items.properties.food',
+    path: 'COLLECTION_RESPONSE_JSON_SCHEMA.properties.mentions.items.properties.item',
     file: 'collection-prompt.md',
     needle: 'THE ORDER TEST',
     dies: 'v15 activation replaces the v1 live prompt, which predates the named-test doctrine',
   },
   {
-    path: 'COLLECTION_RESPONSE_JSON_SCHEMA.properties.mentions.items.properties.food_attributes',
+    path: 'COLLECTION_RESPONSE_JSON_SCHEMA.properties.mentions.items.properties.item_attributes',
     file: 'collection-prompt.md',
     needle: 'THE STANDALONE TEST',
     dies: 'v15 activation replaces the v1 live prompt, which predates the named-test doctrine',
   },
   {
-    path: 'COLLECTION_RESPONSE_JSON_SCHEMA.properties.mentions.items.properties.food',
+    path: 'COLLECTION_RESPONSE_JSON_SCHEMA.properties.mentions.items.properties.item',
     file: 'collection-prompt.md',
     needle: 'anything orderable — drinks included',
     dies: 'v15 activation replaces the v1 live prompt, which predates the inclusive-scope clauses (owner/⭐05 consensus 2026-08-15)',
   },
   {
-    path: 'COLLECTION_RESPONSE_JSON_SCHEMA.properties.mentions.items.properties.restaurant',
+    path: 'COLLECTION_RESPONSE_JSON_SCHEMA.properties.mentions.items.properties.place',
     file: 'collection-prompt.md',
     needle: 'Read the mode of consumption, never the kind of business',
     dies: 'v15 activation replaces the v1 live prompt, which predates the PLACE TEST mode-of-consumption law',

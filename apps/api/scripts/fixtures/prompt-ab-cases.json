@@ -33,8 +33,8 @@
       }
     ],
     "expect": {
-      "restaurants": ["pho phong luu", "tan my"],
-      "foods": ["pho"]
+      "places": ["pho phong luu", "tan my"],
+      "items": ["pho"]
     }
   },
   {
@@ -50,8 +50,8 @@
       }
     ],
     "expect": {
-      "restaurants": ["radio bakery", "danny and coops"],
-      "foods": ["cheesesteak"]
+      "places": ["radio bakery", "danny and coops"],
+      "items": ["cheesesteak"]
     }
   },
   {
@@ -93,8 +93,8 @@
       }
     ],
     "expect": {
-      "restaurants": ["jds"],
-      "foods": ["taco"]
+      "places": ["jds"],
+      "items": ["taco"]
     }
   },
   {
@@ -115,7 +115,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["baldinucci"],
+      "places": ["baldinucci"],
       "notAttributes": ["light", "lighter", "high quality", "very high quality"]
     }
   },
@@ -137,7 +137,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["apt 115"],
+      "places": ["apt 115"],
       "notFoods": ["tasting menu"],
       "somePraise": true
     }
@@ -239,8 +239,8 @@
       }
     ],
     "expect": {
-      "restaurants": ["veracruz"],
-      "foods": ["breakfast taco"],
+      "places": ["veracruz"],
+      "items": ["breakfast taco"],
       "notFoods": ["dinner"],
       "notAttributes": ["best"]
     }
@@ -263,9 +263,9 @@
       }
     ],
     "expect": {
-      "restaurants": ["shahi foods"],
+      "places": ["shahi foods"],
       "notRestaurants": ["bihari kabab"],
-      "foods": ["bihari kabab"]
+      "items": ["bihari kabab"]
     }
   },
   {
@@ -286,7 +286,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["otoko"],
+      "places": ["otoko"],
       "notFoods": ["japanese"],
       "attributes": ["japanese"],
       "somePraise": true
@@ -331,8 +331,8 @@
       }
     ],
     "expect": {
-      "restaurants": ["nixta"],
-      "foods": ["taco"],
+      "places": ["nixta"],
+      "items": ["taco"],
       "attributes": ["patio", "crispy"],
       "somePraise": true,
       "notAttributes": ["gem", "gorgeous"]
@@ -356,7 +356,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["rebel cheese"],
+      "places": ["rebel cheese"],
       "attributes": ["vegan", "gluten free"]
     }
   },
@@ -378,8 +378,8 @@
       }
     ],
     "expect": {
-      "restaurants": ["otoko"],
-      "foods": ["omakase"]
+      "places": ["otoko"],
+      "items": ["omakase"]
     }
   },
   {
@@ -400,7 +400,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["lichas", "jacobys"],
+      "places": ["lichas", "jacobys"],
       "notFoods": ["dinner", "dinners"]
     }
   },
@@ -422,8 +422,8 @@
       }
     ],
     "expect": {
-      "restaurants": ["desano", "homeslice"],
-      "foods": ["pizza"],
+      "places": ["desano", "homeslice"],
+      "items": ["pizza"],
       "notAttributes": ["pizza"]
     }
   },
@@ -445,7 +445,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["ravi kabab"],
+      "places": ["ravi kabab"],
       "notFoods": ["indian"],
       "notAttributes": ["indian"]
     }
@@ -473,7 +473,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["nixta"],
+      "places": ["nixta"],
       "somePraise": true
     }
   },
@@ -495,8 +495,8 @@
       }
     ],
     "expect": {
-      "restaurants": ["adrienne"],
-      "foods": ["pizza"],
+      "places": ["adrienne"],
+      "items": ["pizza"],
       "somePraise": true
     }
   },
@@ -518,7 +518,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["violet crown"],
+      "places": ["violet crown"],
       "somePraise": true
     }
   },
@@ -545,7 +545,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["bar snack", "paradise lost"]
+      "places": ["bar snack", "paradise lost"]
     }
   },
   {
@@ -561,7 +561,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["slick willie"],
+      "places": ["slick willie"],
       "somePraise": true
     }
   },
@@ -578,8 +578,8 @@
       }
     ],
     "expect": {
-      "restaurants": ["e noodle"],
-      "foods": ["soup dumpling"]
+      "places": ["e noodle"],
+      "items": ["soup dumpling"]
     }
   },
   {
@@ -669,7 +669,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["gabriel kreuther"],
+      "places": ["gabriel kreuther"],
       "notFoods": ["3/4 course menu", "course menu", "menu"]
     }
   },
@@ -691,8 +691,8 @@
       }
     ],
     "expect": {
-      "restaurants": ["yakiniku futago"],
-      "foods": ["wagyu"],
+      "places": ["yakiniku futago"],
+      "items": ["wagyu"],
       "notFoods": ["wagyu tasting menu", "tasting menu"]
     }
   },
@@ -709,7 +709,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["main noodle"],
+      "places": ["main noodle"],
       "notFoods": ["lunch special", "lunch specials", "special"],
       "somePraise": true
     }
@@ -727,7 +727,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["tacos el rey"],
+      "places": ["tacos el rey"],
       "notFoods": ["lunch special", "taco"]
     }
   },
@@ -744,8 +744,8 @@
       }
     ],
     "expect": {
-      "restaurants": ["nakazawa"],
-      "foods": ["salmon omakase"]
+      "places": ["nakazawa"],
+      "items": ["salmon omakase"]
     }
   },
   {
@@ -770,8 +770,8 @@
       }
     ],
     "expect": {
-      "restaurants": ["kilwins"],
-      "foods": ["fudge"],
+      "places": ["kilwins"],
+      "items": ["fudge"],
       "notRestaurants": ["central market"],
       "notFoods": ["baking chocolate"]
     }
@@ -789,7 +789,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["quán ngon"],
+      "places": ["quán ngon"],
       "notFoods": ["thực đơn trưa", "thực đơn", "menu"],
       "somePraise": true
     }
@@ -807,7 +807,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["casa lola"],
+      "places": ["casa lola"],
       "notFoods": ["menú del día", "menú", "menu del dia"],
       "somePraise": true
     }
@@ -830,8 +830,8 @@
       }
     ],
     "expect": {
-      "restaurants": ["phở lệ"],
-      "foods": ["phở"],
+      "places": ["phở lệ"],
+      "items": ["phở"],
       "somePraise": true
     }
   },
@@ -853,8 +853,8 @@
       }
     ],
     "expect": {
-      "restaurants": ["el califa"],
-      "foods": ["taco"],
+      "places": ["el califa"],
+      "items": ["taco"],
       "somePraise": true
     }
   },
@@ -892,9 +892,9 @@
       }
     ],
     "expect": {
-      "restaurants": ["radio bakery"],
+      "places": ["radio bakery"],
       "notRestaurants": ["le bernardin"],
-      "foods": ["focaccia"]
+      "items": ["focaccia"]
     }
   },
   {
@@ -910,7 +910,7 @@
       }
     ],
     "expect": {
-      "foods": ["brussels sprouts"],
+      "items": ["brussels sprouts"],
       "notFoods": ["porchetta ribs", "rib"]
     }
   },
@@ -943,7 +943,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["la gran uruguaya", "la nueva bakery", "chivito"]
+      "places": ["la gran uruguaya", "la nueva bakery", "chivito"]
     }
   },
   {
@@ -964,8 +964,8 @@
       }
     ],
     "expect": {
-      "restaurants": ["threadgills", "shady grove", "huts", "mothers"],
-      "foods": ["chicken fried steak", "burger"]
+      "places": ["threadgills", "shady grove", "huts", "mothers"],
+      "items": ["chicken fried steak", "burger"]
     }
   },
   {
@@ -1007,7 +1007,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["philomenas", "traze", "lupo rosso"]
+      "places": ["philomenas", "traze", "lupo rosso"]
     }
   },
   {
@@ -1028,7 +1028,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["sho", "yoshino"],
+      "places": ["sho", "yoshino"],
       "notRestaurants": ["sushi sho"]
     }
   },
@@ -1062,7 +1062,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["minetta", "1618"],
+      "places": ["minetta", "1618"],
       "notRestaurants": ["minetta tavern", "1618 asian fusion"]
     }
   },
@@ -1084,8 +1084,8 @@
       }
     ],
     "expect": {
-      "restaurants": ["mr wonton", "sal tangs"],
-      "foods": ["cold sesame noodles"],
+      "places": ["mr wonton", "sal tangs"],
+      "items": ["cold sesame noodles"],
       "noMenuItemTrue": true
     }
   },
@@ -1107,8 +1107,8 @@
       }
     ],
     "expect": {
-      "restaurants": ["i fratelli"],
-      "foods": ["thin crust pizza"],
+      "places": ["i fratelli"],
+      "items": ["thin crust pizza"],
       "somePraise": true,
       "praiseOnlyRestaurantOnly": true
     }
@@ -1131,8 +1131,8 @@
       }
     ],
     "expect": {
-      "restaurants": ["el perrito"],
-      "foods": ["el p taco"],
+      "places": ["el perrito"],
+      "items": ["el p taco"],
       "somePraise": true,
       "praiseOnlyRestaurantOnly": true
     }
@@ -1178,7 +1178,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["casa columbia"],
+      "places": ["casa columbia"],
       "notFoods": ["thirsty goat", "beer"],
       "somePraise": true
     }
@@ -1213,7 +1213,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["clinton st baking", "ikumi"],
+      "places": ["clinton st baking", "ikumi"],
       "notFoods": ["dinner", "rice"]
     }
   },
@@ -1230,7 +1230,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["suerte", "cuantos tacos", "better half"]
+      "places": ["suerte", "cuantos tacos", "better half"]
     }
   },
   {
@@ -1251,8 +1251,8 @@
       }
     ],
     "expect": {
-      "restaurants": ["chivito"],
-      "foods": ["chivito"]
+      "places": ["chivito"],
+      "items": ["chivito"]
     }
   },
   {
@@ -1273,8 +1273,8 @@
       }
     ],
     "expect": {
-      "restaurants": ["cuantos tacos"],
-      "foods": ["suadero taco"]
+      "places": ["cuantos tacos"],
+      "items": ["suadero taco"]
     }
   },
   {
@@ -1309,13 +1309,13 @@
       "perSource": [
         {
           "source": "SRC007",
-          "restaurants": ["ilili"],
+          "places": ["ilili"],
           "somePraise": true,
           "notAttributes": ["mediterranean", "lebanese", "mezze"]
         },
         {
           "source": "SRC005",
-          "restaurants": ["ilili"],
+          "places": ["ilili"],
           "attributes": ["mediterranean"]
         }
       ]
@@ -1343,7 +1343,7 @@
       "perSource": [
         {
           "source": "SRC237",
-          "restaurants": ["chavelas"],
+          "places": ["chavelas"],
           "somePraise": true,
           "notAttributes": ["mexican"]
         }
@@ -1369,7 +1369,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["momoya", "la dong", "shuka"],
+      "places": ["momoya", "la dong", "shuka"],
       "somePraise": true,
       "notAttributes": ["japanese", "sushi", "middle eastern", "mediterranean"]
     }
@@ -1406,8 +1406,8 @@
       "perSource": [
         {
           "source": "SRC003",
-          "restaurants": ["milk bar"],
-          "foods": ["funfetti cake"],
+          "places": ["milk bar"],
+          "items": ["funfetti cake"],
           "notAttributes": ["moist"]
         }
       ]
@@ -1426,8 +1426,8 @@
       }
     ],
     "expect": {
-      "restaurants": ["szechuan mountain house"],
-      "foods": ["mapo tofu"],
+      "places": ["szechuan mountain house"],
+      "items": ["mapo tofu"],
       "notFoods": ["chinese", "italian"],
       "attributes": ["chinese"]
     }
@@ -1464,7 +1464,7 @@
       "perSource": [
         {
           "source": "SRC011",
-          "restaurants": ["milky way shakes"]
+          "places": ["milky way shakes"]
         },
         {
           "source": "SRC010",
@@ -1500,7 +1500,7 @@
       "perSource": [
         {
           "source": "SRC030",
-          "restaurants": ["intero"],
+          "places": ["intero"],
           "somePraise": true
         }
       ]
@@ -1533,8 +1533,8 @@
       "perSource": [
         {
           "source": "SRC104",
-          "restaurants": ["acme"],
-          "foods": ["lox"],
+          "places": ["acme"],
+          "items": ["lox"],
           "notRestaurants": ["russ"]
         }
       ]
@@ -1562,8 +1562,8 @@
       "perSource": [
         {
           "source": "SRC085",
-          "restaurants": ["radio bakery"],
-          "foods": ["sandwich"]
+          "places": ["radio bakery"],
+          "items": ["sandwich"]
         }
       ]
     }
@@ -1584,7 +1584,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["Williamsburg Pizza"],
+      "places": ["Williamsburg Pizza"],
       "notRestaurants": ["Best"]
     }
   },
@@ -1623,7 +1623,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["Bakers of Tomorrow"]
+      "places": ["Bakers of Tomorrow"]
     }
   },
   {
@@ -1642,7 +1642,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["Liberty Halal Cart"]
+      "places": ["Liberty Halal Cart"]
     }
   },
   {
@@ -1663,7 +1663,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["mother culture"],
+      "places": ["mother culture"],
       "notRestaurants": ["local pastures"],
       "somePraise": true
     }
@@ -1680,7 +1680,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["au cheval"],
+      "places": ["au cheval"],
       "notRestaurants": ["monkey bar"]
     }
   },
@@ -1702,7 +1702,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["uchi"],
+      "places": ["uchi"],
       "notRestaurants": ["soto"],
       "notAttributes": ["expensive"],
       "somePraise": true
@@ -1729,7 +1729,7 @@
       "perSource": [
         {
           "source": "t1_oxom0h8",
-          "restaurants": ["levain", "utopia", "lindustrie", "los tacos"],
+          "places": ["levain", "utopia", "lindustrie", "los tacos"],
           "notRestaurants": ["blank street"]
         },
         {
@@ -1757,11 +1757,7 @@
       }
     ],
     "expect": {
-      "restaurants": [
-        "vinnies",
-        "williamsburg pizza",
-        "tompkins square bagels"
-      ],
+      "places": ["vinnies", "williamsburg pizza", "tompkins square bagels"],
       "notRestaurants": ["best", "apollo bagels"]
     }
   },
@@ -1778,7 +1774,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["uchi", "uchiko", "dai due"],
+      "places": ["uchi", "uchiko", "dai due"],
       "somePraise": true
     }
   },
@@ -1795,8 +1791,8 @@
       }
     ],
     "expect": {
-      "restaurants": ["salt and time"],
-      "foods": ["burger"],
+      "places": ["salt and time"],
+      "items": ["burger"],
       "somePraise": true
     }
   },
@@ -1818,7 +1814,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["crit dog"],
+      "places": ["crit dog"],
       "somePraise": true
     }
   },
@@ -1848,7 +1844,7 @@
       "perSource": [
         {
           "source": "SRC003",
-          "restaurants": ["asters"],
+          "places": ["asters"],
           "somePraise": true,
           "praiseOnlyRestaurantOnly": true,
           "notFoods": ["buffet", "lunch buffet"]
@@ -1877,7 +1873,7 @@
       "perSource": [
         {
           "source": "SRC002",
-          "restaurants": ["interstellar"],
+          "places": ["interstellar"],
           "somePraise": true
         }
       ]
@@ -1960,8 +1956,8 @@
       }
     ],
     "expect": {
-      "restaurants": ["cuantas hamburguesas"],
-      "foods": ["burger"],
+      "places": ["cuantas hamburguesas"],
+      "items": ["burger"],
       "notFoods": ["fries", "fry"],
       "notAttributes": ["mexican", "flavorful"]
     }
@@ -2005,7 +2001,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["nubelez"],
+      "places": ["nubelez"],
       "somePraise": true,
       "notFoods": ["beer", "spritz", "drink"]
     }
@@ -2039,8 +2035,8 @@
       }
     ],
     "expect": {
-      "restaurants": ["carnitas ramirez"],
-      "foods": ["carnudo"],
+      "places": ["carnitas ramirez"],
+      "items": ["carnudo"],
       "somePraise": true
     }
   },
@@ -2104,9 +2100,9 @@
       }
     ],
     "expect": {
-      "restaurants": ["russ and daughters", "dominic ansel"],
+      "places": ["russ and daughters", "dominic ansel"],
       "notRestaurants": ["dominique ansel"],
-      "foods": ["lox"],
+      "items": ["lox"],
       "notFoods": ["bagel"]
     }
   },
@@ -2128,9 +2124,9 @@
       }
     ],
     "expect": {
-      "restaurants": ["café crème"],
+      "places": ["café crème"],
       "notRestaurants": ["cafe creme"],
-      "foods": ["breakfast croissant"],
+      "items": ["breakfast croissant"],
       "somePraise": true,
       "praiseOnlyRestaurantOnly": true
     }
@@ -2148,8 +2144,8 @@
       }
     ],
     "expect": {
-      "restaurants": ["habanero cafe"],
-      "foods": ["fajitas"],
+      "places": ["habanero cafe"],
+      "items": ["fajitas"],
       "notFoods": ["enchilada"]
     }
   },
@@ -2171,7 +2167,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["the corner", "blue willow", "tang pavillion"]
+      "places": ["the corner", "blue willow", "tang pavillion"]
     }
   },
   {
@@ -2192,7 +2188,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["a side"],
+      "places": ["a side"],
       "notRestaurants": ["sondheim"]
     }
   },
@@ -2224,7 +2220,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["the place"]
+      "places": ["the place"]
     }
   },
   {
@@ -2250,7 +2246,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["don peppe"],
+      "places": ["don peppe"],
       "notRestaurants": ["place"]
     }
   },
@@ -2272,8 +2268,8 @@
       }
     ],
     "expect": {
-      "restaurants": ["tacos el bronco"],
-      "foods": ["taco"],
+      "places": ["tacos el bronco"],
+      "items": ["taco"],
       "notFoods": ["good taco"],
       "notAttributes": ["good"]
     }
@@ -2296,7 +2292,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["carmines"],
+      "places": ["carmines"],
       "notFoods": ["italian food", "red sauce italian food", "food"],
       "attributes": ["italian"]
     }
@@ -2319,7 +2315,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["jacobs pickles"],
+      "places": ["jacobs pickles"],
       "attributes": ["comfort food"],
       "notFoods": ["comfort food"],
       "somePraise": true
@@ -2347,11 +2343,11 @@
       }
     ],
     "expect": {
-      "restaurants": ["clarks", "pterrys"],
+      "places": ["clarks", "pterrys"],
       "perSource": [
         {
           "source": "SRC002",
-          "foods": ["shoestring fry"],
+          "items": ["shoestring fry"],
           "attributes": ["crispy"]
         },
         {

@@ -104,7 +104,7 @@ export class DishKnowledgeSynthesisService {
 
     const dishes = await this.prisma.entity.findMany({
       where: {
-        type: EntityType.food,
+        type: EntityType.item,
         status: EntityStatus.active,
         knowledgeSynthesizedAt: null,
       },

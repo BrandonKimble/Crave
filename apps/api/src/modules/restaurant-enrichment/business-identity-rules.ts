@@ -134,7 +134,7 @@ function accentBrandName(value: string | null | undefined): string | null {
  *  rule. One
  *  accentless side asserts nothing (de-diacritized typing), so "bun dau"
  *  still agrees with "Bún Đậu". */
-export function restaurantNamesAgree(
+export function placeNamesAgree(
   a: string | null | undefined,
   b: string | null | undefined,
 ): boolean {
@@ -172,7 +172,7 @@ export function brandClusterPurity(names: Array<string | null | undefined>): {
   }, null);
   const pure =
     brandRoot !== null &&
-    names.every((name) => restaurantNamesAgree(brandRoot, name));
+    names.every((name) => placeNamesAgree(brandRoot, name));
   return { pure, brandRoot };
 }
 

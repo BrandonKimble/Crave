@@ -576,7 +576,7 @@ export class PollWeeklyRitualService {
         placeId: true,
         topicType: true,
         targetDishId: true,
-        targetRestaurantId: true,
+        targetPlaceId: true,
         createdAt: true,
         metadata: true,
       },
@@ -595,7 +595,7 @@ export class PollWeeklyRitualService {
         }
         continue;
       }
-      const target = topic.targetDishId ?? topic.targetRestaurantId;
+      const target = topic.targetDishId ?? topic.targetPlaceId;
       if (!target) continue;
       const key = `${topic.placeId}:${target}`;
       const prev = bySubject.get(key);
@@ -751,7 +751,7 @@ export class PollWeeklyRitualService {
       title: string;
       description: string;
       targetDishId: string | null;
-      targetRestaurantId: string | null;
+      targetPlaceId: string | null;
       categoryEntityIds: string[];
       seedEntityIds: string[];
       axis: Prisma.InputJsonValue;
@@ -766,11 +766,11 @@ export class PollWeeklyRitualService {
         title: `Best restaurants in ${params.placeName}`,
         description: `Help rank the best spots in ${params.placeName}.`,
         targetDishId: null,
-        targetRestaurantId: null,
+        targetPlaceId: null,
         categoryEntityIds: [],
         seedEntityIds: [],
         axis: {
-          targetType: 'restaurant',
+          targetType: 'place',
           constraint: null,
           anchor: null,
           marketHint: params.placeName,
@@ -786,7 +786,7 @@ export class PollWeeklyRitualService {
       let rank = 0;
       for (const entry of selection) {
         rank += 1;
-        const isDish = entry.subject.entityType === 'food';
+        const isDish = entry.subject.entityType === 'item';
         planned.push({
           topicId: randomUUID(),
           pollId: randomUUID(),
@@ -800,7 +800,7 @@ export class PollWeeklyRitualService {
             ? `Which spot has the best ${entry.subject.entityName}?`
             : `Help everyone decide what to order at ${entry.subject.entityName}.`,
           targetDishId: isDish ? entry.subject.subjectId : null,
-          targetRestaurantId: isDish ? null : entry.subject.subjectId,
+          targetPlaceId: isDish ? null : entry.subject.subjectId,
           categoryEntityIds: isDish ? [entry.subject.subjectId] : [],
           seedEntityIds: [entry.subject.subjectId],
           axis: isDish
@@ -865,7 +865,7 @@ export class PollWeeklyRitualService {
               placeId,
               topicType: plan.topicType,
               targetDishId: plan.targetDishId,
-              targetRestaurantId: plan.targetRestaurantId,
+              targetPlaceId: plan.targetPlaceId,
               categoryEntityIds: plan.categoryEntityIds,
               seedEntityIds: plan.seedEntityIds,
               metadata: {

@@ -44,16 +44,16 @@ const prisma = new PrismaClient();
 
 /** The paid seam. Any call here is a poll creation that cost money. */
 const resolvePlaceForInput = jest.fn();
-const restaurantEnrichment = {
+const placeEnrichment = {
   resolvePlaceForInput,
-  buildRestaurantCreateInput: jest.fn(),
+  buildPlaceCreateInput: jest.fn(),
 } as never;
 
 const seed = new PollEntitySeedService(
   prisma as never,
   LOG,
   { validateScopeConstraints: () => ({ violations: [] }) } as never,
-  restaurantEnrichment,
+  placeEnrichment,
   { enqueue: jest.fn() } as never,
   // Real recall core: lexical only (denseMode 'none'), so the embedding
   // service must never be reached — a stub that throws proves it.
@@ -92,10 +92,10 @@ beforeAll(async () => {
   await prisma.$connect();
   await cleanup();
 
-  const identity = identityInsertData(NAME, EntityType.restaurant);
+  const identity = identityInsertData(NAME, EntityType.place);
   await prisma.$executeRaw`
     INSERT INTO core_entities (entity_id, name, type, identity_key, identity_key_sorted)
-    VALUES (${ENTITY}::uuid, ${NAME}, 'restaurant',
+    VALUES (${ENTITY}::uuid, ${NAME}, 'place',
             ${identity.identityKey}, ${identity.identityKeySorted})
   `;
   await prisma.$executeRaw`
@@ -115,7 +115,7 @@ afterAll(async () => {
 
 describe('poll restaurant seeding asks our own catalog before it pays', () => {
   it('resolves a restaurant we already own without calling the vendor', async () => {
-    const resolved = await seed.resolveRestaurant({
+    const resolved = await seed.resolvePlace({
       name: NAME,
       place: {
         center: CENTER,
@@ -135,7 +135,7 @@ describe('poll restaurant seeding asks our own catalog before it pays', () => {
     resolvePlaceForInput.mockResolvedValue(null);
 
     await expect(
-      seed.resolveRestaurant({
+      seed.resolvePlace({
         name: UNKNOWN_NAME,
         place: { center: CENTER },
       }),

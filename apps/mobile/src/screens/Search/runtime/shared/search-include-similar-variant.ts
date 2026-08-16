@@ -1,8 +1,8 @@
 import type { FoodResult, RestaurantResult, SearchResponse } from '../../../../types';
 
 // "Include similar" page-1 zero-network flip (owner's design, plans/search-flow-plan.md
-// context): page-1 responses carry the exact result set in `dishes`/`restaurants` plus the
-// prefetched dense-sibling sets in `similarDishes`/`similarRestaurants`. The FIRST flip on
+// context): page-1 responses carry the exact result set in `dishes`/`places` plus the
+// prefetched dense-sibling sets in `similarDishes`/`similarPlaces`. The FIRST flip on
 // page 1 therefore swaps between two locally-derivable variants of the SAME committed
 // response:
 //   ON  → union (exact ∪ similar), pure Crave-Score order, `similar*` arrays retained so
@@ -61,9 +61,9 @@ export const hasIncludeSimilarLocalData = (response: SearchResponse | null): boo
   }
   return (
     (response.similarDishes?.length ?? 0) > 0 ||
-    (response.similarRestaurants?.length ?? 0) > 0 ||
+    (response.similarPlaces?.length ?? 0) > 0 ||
     (response.dishes ?? []).some(isSimilarRow) ||
-    (response.restaurants ?? []).some(isSimilarRow)
+    (response.places ?? []).some(isSimilarRow)
   );
 };
 
@@ -79,8 +79,8 @@ export const buildIncludeSimilarVariantResponse = (
     return null;
   }
   const dishes = response.dishes ?? [];
-  const restaurants = response.restaurants ?? [];
-  const rowsContainSimilar = dishes.some(isSimilarRow) || restaurants.some(isSimilarRow);
+  const places = response.places ?? [];
+  const rowsContainSimilar = dishes.some(isSimilarRow) || places.some(isSimilarRow);
 
   if (includeSimilar) {
     if (rowsContainSimilar) {
@@ -89,29 +89,29 @@ export const buildIncludeSimilarVariantResponse = (
       return response;
     }
     const similarDishes = response.similarDishes ?? [];
-    const similarRestaurants = response.similarRestaurants ?? [];
+    const similarPlaces = response.similarPlaces ?? [];
     const unionDishes = mergeByCraveScoreDesc(
       dishes,
       similarDishes.map((row) => ({ ...row, exactMatch: false }) as FoodResult),
       (row) => row.connectionId
     );
     const unionRestaurants = mergeByCraveScoreDesc(
-      restaurants,
-      similarRestaurants.map((row) => ({ ...row, exactMatch: false }) as RestaurantResult),
-      (row) => row.restaurantId
+      places,
+      similarPlaces.map((row) => ({ ...row, exactMatch: false }) as RestaurantResult),
+      (row) => row.placeId
     );
     return {
       ...response,
       dishes: unionDishes,
-      restaurants: unionRestaurants,
+      places: unionRestaurants,
       metadata: {
         ...response.metadata,
-        totalFoodResults:
-          (response.metadata?.totalFoodResults ?? dishes.length) +
+        totalItemResults:
+          (response.metadata?.totalItemResults ?? dishes.length) +
           (unionDishes.length - dishes.length),
-        totalRestaurantResults:
-          (response.metadata?.totalRestaurantResults ?? restaurants.length) +
-          (unionRestaurants.length - restaurants.length),
+        totalPlaceResults:
+          (response.metadata?.totalPlaceResults ?? places.length) +
+          (unionRestaurants.length - places.length),
       },
     };
   }
@@ -121,27 +121,25 @@ export const buildIncludeSimilarVariantResponse = (
     return response;
   }
   const exactDishes = dishes.filter((row) => !isSimilarRow(row));
-  const exactRestaurants = restaurants.filter((row) => !isSimilarRow(row));
+  const exactRestaurants = places.filter((row) => !isSimilarRow(row));
   const droppedDishes = dishes.filter(isSimilarRow);
-  const droppedRestaurants = restaurants.filter(isSimilarRow);
+  const droppedRestaurants = places.filter(isSimilarRow);
   return {
     ...response,
     dishes: exactDishes,
-    restaurants: exactRestaurants,
+    places: exactRestaurants,
     // Keep both sets in the session: the dropped siblings go back into the similar
     // arrays so the next flip ON is also zero-network.
     similarDishes: response.similarDishes?.length ? response.similarDishes : droppedDishes,
-    similarRestaurants: response.similarRestaurants?.length
-      ? response.similarRestaurants
-      : droppedRestaurants,
+    similarPlaces: response.similarPlaces?.length ? response.similarPlaces : droppedRestaurants,
     metadata: {
       ...response.metadata,
-      totalFoodResults:
-        (response.metadata?.totalFoodResults ?? dishes.length) -
+      totalItemResults:
+        (response.metadata?.totalItemResults ?? dishes.length) -
         (dishes.length - exactDishes.length),
-      totalRestaurantResults:
-        (response.metadata?.totalRestaurantResults ?? restaurants.length) -
-        (restaurants.length - exactRestaurants.length),
+      totalPlaceResults:
+        (response.metadata?.totalPlaceResults ?? places.length) -
+        (places.length - exactRestaurants.length),
     },
   };
 };

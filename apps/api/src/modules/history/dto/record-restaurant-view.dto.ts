@@ -1,8 +1,8 @@
 import { IsIn, IsOptional, IsString, IsUUID } from 'class-validator';
 
-export class RecordRestaurantViewDto {
+export class RecordPlaceViewDto {
   @IsUUID()
-  restaurantId!: string;
+  placeId!: string;
 
   /** Optional viewed location — pins the §3 entity_view signal's geo to the
    *  exact location instead of the restaurant's primary one. */

@@ -3,25 +3,25 @@ export const SEARCH_QUERY_RESPONSE_JSON_SCHEMA = {
   description:
     'Collectible terms the residue fragment PLAINLY names. Invention is the expensive error; empty arrays are a first-class verdict',
   properties: {
-    restaurants: {
+    places: {
       type: 'array',
       items: { type: 'string' },
       description:
         'A restaurant name the fragment plainly names — never implied or guessed',
     },
-    foods: {
+    items: {
       type: 'array',
       items: { type: 'string' },
       description:
         'The dish the fragment names (THE ORDER TEST: "could you say this phrase to a server as the thing you want?"), plus each broader phrase that passes THE PREDICTION TEST, most specific first; never a wrapper (special, combo, menu) or a cuisine',
     },
-    foodAttributes: {
+    itemAttributes: {
       type: 'array',
       items: { type: 'string' },
       description:
         'Food properties passing THE STANDALONE TEST (dietary, flavor, preparation, cuisine-of-a-dish); praise words are never collectible',
     },
-    restaurantAttributes: {
+    placeAttributes: {
       type: 'array',
       items: { type: 'string' },
       description:
@@ -35,8 +35,8 @@ export const SEARCH_QUERY_RESPONSE_JSON_SCHEMA = {
     },
   },
   required: [
-    'restaurants',
-    'foods',
+    'places',
+    'items',
     'foodAttributes',
     'restaurantAttributes',
     'ingredients',
@@ -59,7 +59,7 @@ export const CUISINE_EXTRACTION_RESPONSE_JSON_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-export const RESTAURANT_PLACE_CHOOSER_RESPONSE_JSON_SCHEMA = {
+export const PLACE_CHOOSER_RESPONSE_JSON_SCHEMA = {
   type: 'object',
   properties: {
     decision: {
@@ -192,7 +192,7 @@ export const POLL_SUBJECT_RESPONSE_JSON_SCHEMA = {
           properties: {
             target_type: {
               type: 'string',
-              enum: ['dish', 'restaurant'],
+              enum: ['dish', 'place'],
               description: 'what the leaderboard ranks',
             },
             constraint: {
@@ -206,7 +206,7 @@ export const POLL_SUBJECT_RESPONSE_JSON_SCHEMA = {
                         'category',
                         'cuisine',
                         'dish_attribute',
-                        'restaurant_attribute',
+                        'place_attribute',
                       ],
                     },
                     value: { type: 'string' },
@@ -269,19 +269,19 @@ export const COLLECTION_RESPONSE_JSON_SCHEMA = {
             { type: 'string' },
             'Unique identifier for this mention',
           ),
-          restaurant: withDescription(
+          place: withDescription(
             { type: 'string' },
             'Canonical restaurant name — bars, cafés, trucks, and stalls all qualify: "Read the mode of consumption, never the kind of business"; lowercase, diacritics kept as written; never expanded, corrected, or completed from world knowledge of the venue, and never a bare generic word kept from a list slot ("Best", "Good") — such a slot emits the fuller observed form or nothing',
           ),
-          restaurant_attributes: withDescription(
+          place_attributes: withDescription(
             { ...NULLABLE_STRING_ARRAY_SCHEMA },
             'Restaurant-scoped attributes stated by THIS source (ambiance, features, service model, price) plus cuisine inferred from this source dish name; never from the ask, a parent comment, or world knowledge of the venue',
           ),
-          food: withDescription(
+          item: withDescription(
             { ...NULLABLE_STRING_SCHEMA },
             'The order-name (THE ORDER TEST: sayable to a server as the thing you want) — "anything orderable — drinks included"; complete compound term, singular, excluding attributes; null when this source names no orderable dish — never a delivery wrapper (special, combo, menu), a cuisine, or a food token from the venue name',
           ),
-          food_categories: withDescription(
+          item_categories: withDescription(
             { ...NULLABLE_STRING_ARRAY_SCHEMA },
             'Broader orderable dish classes the food rolls up into (what arrives, most specific first); NEVER a cuisine (chinese, italian), meal period, or delivery wrapper - cuisines belong in the attribute arrays',
           ),
@@ -289,7 +289,7 @@ export const COLLECTION_RESPONSE_JSON_SCHEMA = {
             { ...NULLABLE_STRING_ARRAY_SCHEMA },
             'Ingredient nouns THIS source names for this dish (with-clauses or dish-name components); singular lowercase; empty for most mentions; never from world knowledge',
           ),
-          food_attributes: withDescription(
+          item_attributes: withDescription(
             { ...NULLABLE_STRING_ARRAY_SCHEMA },
             'Dish properties THIS source states for THIS dish (dietary, preparation, texture, flavor), each passing the DESCRIBE-not-judge bar and THE STANDALONE TEST; never praise, never a comparison, never a property stated for a neighboring dish or venue — empty is the normal output',
           ),
@@ -306,16 +306,16 @@ export const COLLECTION_RESPONSE_JSON_SCHEMA = {
             'Chunk-local source identifier copied exactly from the input payload id field (for example SRC001)',
           ),
         },
-        required: ['temp_id', 'restaurant', 'general_praise', 'source_id'],
+        required: ['temp_id', 'place', 'general_praise', 'source_id'],
         propertyOrdering: [
           'temp_id',
-          'restaurant',
-          'restaurant_attributes',
-          'food',
-          'food_categories',
+          'place',
+          'place_attributes',
+          'item',
+          'item_categories',
           'ingredients',
           'is_menu_item',
-          'food_attributes',
+          'item_attributes',
           'general_praise',
           'source_id',
         ],

@@ -30,7 +30,7 @@ interface CliOptions {
 
 function parseArgs(argv: string[]): CliOptions {
   const options: CliOptions = {
-    type: 'restaurant_attribute',
+    type: 'place_attribute',
     scope: 'all',
     showSamples: 40,
     apply: false,
@@ -38,9 +38,9 @@ function parseArgs(argv: string[]): CliOptions {
 
   for (const arg of argv) {
     if (arg === '--food') {
-      options.type = 'food_attribute';
+      options.type = 'item_attribute';
     } else if (arg === '--restaurant') {
-      options.type = 'restaurant_attribute';
+      options.type = 'place_attribute';
     } else if (arg === '--pending') {
       options.scope = 'pending';
     } else if (arg === '--all') {

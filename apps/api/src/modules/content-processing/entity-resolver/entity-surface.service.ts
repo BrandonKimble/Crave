@@ -287,6 +287,15 @@ export interface AddSurfacesOptions {
    * mintWordClaimVerdict, so a bypass cannot be typed, only imported.
    */
   adjudicated?: WordClaimVerdict;
+  /**
+   * REHEARSAL GENERATION (plans/shadow-sandbox.md): the write happens under
+   * a non-activated extraction run. New rows are born status='rehearsal'
+   * carrying this run id; a conflict with an EXISTING row is a no-op — a
+   * rehearsal may never mutate a live row (role, status, rank, anything).
+   * Entity-touch side effects (embedding staleness, last_updated) are
+   * suppressed: an invisible surface must not trigger live re-embedding.
+   */
+  bornExtractionRunId?: string;
 }
 
 /**
@@ -498,6 +507,21 @@ export async function addSurfaces(
     }
   }
 
+  // REHEARSAL GENERATION: a non-activated run's surfaces take their own
+  // door — born 'rehearsal' with the run id, ON CONFLICT DO NOTHING so a
+  // live row is never mutated, no widening (nothing to widen: the row is
+  // invisible), no demotions, no entity-touch side effects. The activation
+  // flip is what makes these rows real (plans/shadow-sandbox.md).
+  if (options.bornExtractionRunId) {
+    await insertRehearsalSurfaceRows(
+      tx,
+      entityId,
+      rows,
+      options.bornExtractionRunId,
+    );
+    return { blocked: blockedForms };
+  }
+
   // TWO STATEMENTS, ONE LAW. `mayWiden` is not a mode: it is the answer to
   // "was this write's recall claim EARNED?", and a row can only be in one
   // group. An adjudicated write carries the verdict; an unadjudicated one
@@ -636,6 +660,36 @@ interface SurfaceRow {
  * role was 'recall', so a role='both' re-offer flipped deprecated back to
  * active and the memory was gone.)
  */
+/**
+ * The rehearsal door (plans/shadow-sandbox.md): rows born
+ * status='rehearsal' + born_extraction_run_id, ON CONFLICT DO NOTHING so an
+ * existing row — live or another run's rehearsal — is never touched. No
+ * widening/demotion semantics: an invisible row has no claims to arbitrate;
+ * the activation flip (and the hearing lane after it) settles those when the
+ * row becomes real.
+ */
+async function insertRehearsalSurfaceRows(
+  tx: Prisma.TransactionClient,
+  entityId: string,
+  rows: SurfaceRow[],
+  bornExtractionRunId: string,
+): Promise<void> {
+  if (rows.length === 0) return;
+  const values = Prisma.join(
+    rows.map(
+      (r) =>
+        Prisma.sql`(${entityId}::uuid, ${r.form}, ${canonicalFold(r.form)}, ${r.locale}, ${r.role}, ${r.source}, ${r.confidence}, 'rehearsal', ${r.description}, false, ${r.rank}, ${r.promptVersion}, ${r.claimJudgeVersion}, ${bornExtractionRunId}::uuid)`,
+    ),
+  );
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO entity_surface
+      (entity_id, form, form_folded, locale, role, source, confidence,
+       status, description, is_default, rank, prompt_version,
+       claim_judge_version, born_extraction_run_id)
+    VALUES ${values}
+    ON CONFLICT (entity_id, locale, form) DO NOTHING`);
+}
+
 async function insertSurfaceRows(
   tx: Prisma.TransactionClient,
   entityId: string,

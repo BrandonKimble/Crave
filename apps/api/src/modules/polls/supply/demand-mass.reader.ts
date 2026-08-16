@@ -107,7 +107,7 @@ export interface PlaceDemandMass {
 export interface SubjectDemandMass {
   placeId: string;
   subjectId: string;
-  entityType: 'food' | 'restaurant';
+  entityType: 'item' | 'place';
   entityName: string;
   /** Full-kernel demand mass (ranking input). */
   mass: number;
@@ -356,7 +356,7 @@ export class DemandMassReader {
       FROM per_subject ps
       JOIN core_entities e
         ON e.entity_id = ps.subject_id
-       AND e.type IN ('food', 'restaurant')
+       AND e.type IN ('item', 'place')
        -- ARCHIVED SUBJECTS ARE NOT RANKABLE (F542): the subject id is already
        -- redirect-resolved above, so a surviving row that is nonetheless
        -- archived (retired, or merged into an archived survivor) must not seed
@@ -368,7 +368,7 @@ export class DemandMassReader {
     return rows.map((row) => ({
       placeId: row.place_id,
       subjectId: row.subject_id,
-      entityType: row.entity_type as 'food' | 'restaurant',
+      entityType: row.entity_type as 'item' | 'place',
       entityName: row.entity_name,
       mass: Number(row.mass),
       currentMass: Number(row.current_mass),

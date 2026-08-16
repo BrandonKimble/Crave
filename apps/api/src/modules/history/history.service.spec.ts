@@ -25,10 +25,10 @@ function createLogger() {
 function createHarness() {
   const lastViewedAt = new Date('2026-07-18T12:00:00Z');
   const signalDemandRead = {
-    recentlyViewedRestaurants: jest.fn().mockResolvedValue([
+    recentlyViewedPlaces: jest.fn().mockResolvedValue([
       {
-        restaurantId: 'r-1',
-        restaurantName: 'Franklin Barbecue',
+        placeId: 'r-1',
+        placeName: 'Franklin Barbecue',
         city: 'Austin',
         region: 'TX',
         lastViewedAt,
@@ -36,28 +36,28 @@ function createHarness() {
         locationId: 'loc-1',
       },
     ]),
-    recentlyViewedFoods: jest.fn().mockResolvedValue([
+    recentlyViewedItems: jest.fn().mockResolvedValue([
       {
         connectionId: 'c-1',
-        foodId: 'f-1',
-        foodName: 'Brisket',
-        restaurantId: 'r-1',
-        restaurantName: 'Franklin Barbecue',
+        itemId: 'f-1',
+        itemName: 'Brisket',
+        placeId: 'r-1',
+        placeName: 'Franklin Barbecue',
         lastViewedAt,
         viewCount: 2,
         locationId: null,
       },
     ]),
   };
-  const restaurantStatusService = {
+  const placeStatusService = {
     getStatusPreviews: jest
       .fn()
-      .mockResolvedValue([{ restaurantId: 'r-1', isOpen: true }]),
+      .mockResolvedValue([{ placeId: 'r-1', isOpen: true }]),
   };
   const prisma = {
     // Earned address labels: the ONE prisma touch on the list paths — the
     // batch address lookup for the viewed locationIds.
-    restaurantLocation: {
+    placeLocation: {
       findMany: jest
         .fn()
         .mockResolvedValue([{ locationId: 'loc-1', address: '900 E 11th St' }]),
@@ -66,13 +66,13 @@ function createHarness() {
   const service = new HistoryService(
     prisma as never,
     createLogger() as never,
-    restaurantStatusService as never,
+    placeStatusService as never,
     {} as never, // signals writer (unused on list paths)
     signalDemandRead as never,
     {
-      resolveSaveableRestaurant: (id: string) =>
+      resolveSaveablePlace: (id: string) =>
         Promise.resolve({ entityId: id, name: 'R', city: null }),
-      resolveSaveableFood: (id: string) =>
+      resolveSaveableItem: (id: string) =>
         Promise.resolve({ entityId: id, name: 'F', city: null }),
       resolveActiveByIds: (ids: string[]) =>
         Promise.resolve(
@@ -86,7 +86,7 @@ function createHarness() {
     service,
     prisma,
     signalDemandRead,
-    restaurantStatusService,
+    placeStatusService,
     lastViewedAt,
   };
 }
@@ -94,58 +94,58 @@ function createHarness() {
 describe('HistoryService list paths — signals substrate, frozen contract', () => {
   it('recently-viewed restaurants: substrate rows -> the exact old response shape + locationId', async () => {
     const { service, signalDemandRead, lastViewedAt } = createHarness();
-    const rows = await service.listRecentlyViewedRestaurants(USER_ID, {
+    const rows = await service.listRecentlyViewedPlaces(USER_ID, {
       limit: 10,
       prefix: ' Fra ',
     } as never);
 
-    expect(signalDemandRead.recentlyViewedRestaurants).toHaveBeenCalledWith(
+    expect(signalDemandRead.recentlyViewedPlaces).toHaveBeenCalledWith(
       USER_ID,
       { prefix: 'Fra', limit: 10 },
     );
     expect(rows).toEqual([
       {
-        restaurantId: 'r-1',
-        restaurantName: 'Franklin Barbecue',
+        placeId: 'r-1',
+        placeName: 'Franklin Barbecue',
         city: 'Austin',
         region: 'TX',
         lastViewedAt,
         viewCount: 4,
         locationId: 'loc-1',
         locationAddress: '900 E 11th St',
-        statusPreview: { restaurantId: 'r-1', isOpen: true },
+        statusPreview: { placeId: 'r-1', isOpen: true },
       },
     ]);
   });
 
   it('recently-viewed foods: substrate rows -> the exact old response shape + locationId', async () => {
     const { service, lastViewedAt } = createHarness();
-    const rows = await service.listRecentlyViewedFoods(USER_ID, {
+    const rows = await service.listRecentlyViewedItems(USER_ID, {
       limit: 10,
     } as never);
 
     expect(rows).toEqual([
       {
         connectionId: 'c-1',
-        foodId: 'f-1',
-        foodName: 'Brisket',
-        restaurantId: 'r-1',
-        restaurantName: 'Franklin Barbecue',
+        itemId: 'f-1',
+        itemName: 'Brisket',
+        placeId: 'r-1',
+        placeName: 'Franklin Barbecue',
         lastViewedAt,
         viewCount: 2,
         locationId: null,
         locationAddress: null,
-        statusPreview: { restaurantId: 'r-1', isOpen: true },
+        statusPreview: { placeId: 'r-1', isOpen: true },
       },
     ]);
   });
 
   it('limit clamps to [1, 50] before reaching the substrate', async () => {
     const { service, signalDemandRead } = createHarness();
-    await service.listRecentlyViewedRestaurants(USER_ID, {
+    await service.listRecentlyViewedPlaces(USER_ID, {
       limit: 500,
     } as never);
-    expect(signalDemandRead.recentlyViewedRestaurants).toHaveBeenCalledWith(
+    expect(signalDemandRead.recentlyViewedPlaces).toHaveBeenCalledWith(
       USER_ID,
       { prefix: undefined, limit: 50 },
     );

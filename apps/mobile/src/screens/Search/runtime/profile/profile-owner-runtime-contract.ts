@@ -23,7 +23,7 @@ export type ProfileOwnerNativeExecutionArgs = Omit<
 
 export type ProfileRuntimeActions = {
   clearMapHighlightedRestaurantId: () => void;
-  hydrateRestaurantProfileById: (restaurantId: string) => void;
+  hydrateRestaurantProfileById: (placeId: string) => void;
   focusRestaurantProfileCamera: (
     restaurant: RestaurantResult,
     source: SearchProfileSource,
@@ -33,8 +33,8 @@ export type ProfileRuntimeActions = {
     }
   ) => void;
   openRestaurantProfilePreview: (
-    restaurantId: string,
-    restaurantName: string,
+    placeId: string,
+    placeName: string,
     options?: ProfilePreviewOpenOptions
   ) => void;
   openRestaurantProfile: (restaurant: RestaurantResult, options?: ProfileOpenOptions) => void;
@@ -60,7 +60,7 @@ export type ProfileSearchContext = {
   getCurrentViewportBounds: () => MapBounds | null;
   trimmedQuery: string;
   isProfileAutoOpenSuppressed: boolean;
-  getPendingRestaurantSelection: () => { restaurantId: string } | null;
+  getPendingRestaurantSelection: () => { placeId: string } | null;
   clearPendingRestaurantSelection: () => void;
 };
 
@@ -81,8 +81,8 @@ export type ProfileSelectionModel = {
 };
 
 export type ProfileAnalyticsModel = {
-  deferRecentlyViewedTrack: (restaurantId: string, restaurantName: string) => void;
-  recordRestaurantView: (restaurantId: string, source: SearchProfileSource) => Promise<void>;
+  deferRecentlyViewedTrack: (placeId: string, placeName: string) => void;
+  recordRestaurantView: (placeId: string, source: SearchProfileSource) => Promise<void>;
 };
 
 export type UseProfileOwnerArgs = {

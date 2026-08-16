@@ -361,7 +361,7 @@ export const GOOGLE_PLACE_TYPE_ATTRIBUTE_CANONICAL_NAMES = Array.from(
  * predicate is a field of an entry, not a reason for a second table, and the
  * merge took the UNION of both alias lists.
  */
-export interface RestaurantAttributeVocabEntry {
+export interface PlaceAttributeVocabEntry {
   canonicalName: string;
   aliases: string[];
   /**
@@ -379,7 +379,7 @@ export interface RestaurantAttributeVocabEntry {
 function cuisineEntry(
   canonicalName: string,
   extraAliases: string[] = [],
-): RestaurantAttributeVocabEntry {
+): PlaceAttributeVocabEntry {
   return {
     canonicalName,
     aliases: [
@@ -392,7 +392,7 @@ function cuisineEntry(
   };
 }
 
-export const RESTAURANT_ATTRIBUTE_VOCAB: RestaurantAttributeVocabEntry[] = [
+export const PLACE_ATTRIBUTE_VOCAB: PlaceAttributeVocabEntry[] = [
   {
     canonicalName: 'allows dogs',
     aliases: [
@@ -1146,13 +1146,9 @@ export const RESTAURANT_ATTRIBUTE_VOCAB: RestaurantAttributeVocabEntry[] = [
  * than listed a second time — the same derivation style that kept
  * ALIASES_BY_NAME and CANONICAL_NAMES from ever drifting.
  */
-export const GOOGLE_BOOLEAN_ATTRIBUTE_VOCAB: RestaurantAttributeVocabEntry[] =
-  RESTAURANT_ATTRIBUTE_VOCAB.filter((entry) => entry.isEnabled !== undefined);
+export const GOOGLE_BOOLEAN_ATTRIBUTE_VOCAB: PlaceAttributeVocabEntry[] =
+  PLACE_ATTRIBUTE_VOCAB.filter((entry) => entry.isEnabled !== undefined);
 
-export const RESTAURANT_ATTRIBUTE_ALIASES_BY_NAME: Map<string, string[]> =
-  new Map(
-    RESTAURANT_ATTRIBUTE_VOCAB.map((entry) => [
-      entry.canonicalName,
-      entry.aliases,
-    ]),
-  );
+export const PLACE_ATTRIBUTE_ALIASES_BY_NAME: Map<string, string[]> = new Map(
+  PLACE_ATTRIBUTE_VOCAB.map((entry) => [entry.canonicalName, entry.aliases]),
+);

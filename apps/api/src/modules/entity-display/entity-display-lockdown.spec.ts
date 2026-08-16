@@ -35,7 +35,7 @@ const SRC = join(__dirname, '..', '..');
  * front of a user, and a broad "mentions .name" scan would be noise nobody
  * maintains.
  */
-const EMISSION_SOURCE = String.raw`(?<![\w.])(?:name|label|subLabel|title|restaurantName|foodName|displayName)\s*:\s*[A-Za-z_$][\w$]*(?:\??\.[\w$]+)*\.name\b`;
+const EMISSION_SOURCE = String.raw`(?<![\w.])(?:name|label|subLabel|title|placeName|itemName|displayName)\s*:\s*[A-Za-z_$][\w$]*(?:\??\.[\w$]+)*\.name\b`;
 
 /** A FRESH regex per file: a shared /g regex carries `lastIndex` between
  *  `.test()` calls and silently skips files (it did, on the first run). */

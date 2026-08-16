@@ -44,20 +44,20 @@ export const useSearchForegroundRecentSubmitRuntime = ({
         return;
       }
       submitPreparationRuntime.prepareRecentIntentSubmit(trimmedValue);
-      const restaurantId =
-        entry.selectedEntityType === 'restaurant' ? (entry.selectedEntityId ?? null) : null;
-      if (restaurantId) {
-        pendingRestaurantSelectionRef.current = { restaurantId };
-        openRestaurantProfilePreview(restaurantId, trimmedValue);
+      const placeId =
+        entry.selectedEntityType === 'place' ? (entry.selectedEntityId ?? null) : null;
+      if (placeId) {
+        pendingRestaurantSelectionRef.current = { placeId };
+        openRestaurantProfilePreview(placeId, trimmedValue);
         deferRecentSearchUpsert({
           queryText: trimmedValue,
-          selectedEntityId: restaurantId,
-          selectedEntityType: 'restaurant',
+          selectedEntityId: placeId,
+          selectedEntityType: 'place',
           statusPreview: entry.statusPreview ?? null,
         });
         void runRestaurantEntitySearch({
-          restaurantId,
-          restaurantName: trimmedValue,
+          placeId,
+          placeName: trimmedValue,
           submissionSource: 'recent',
           typedPrefix: trimmedValue,
         });
@@ -78,22 +78,22 @@ export const useSearchForegroundRecentSubmitRuntime = ({
 
   const handleRecentlyViewedRestaurantPress = React.useCallback(
     (item: RecentlyViewedRestaurant) => {
-      const trimmedValue = item.restaurantName.trim();
+      const trimmedValue = item.placeName.trim();
       if (!trimmedValue) {
         return;
       }
       submitPreparationRuntime.prepareRecentIntentSubmit(trimmedValue);
-      pendingRestaurantSelectionRef.current = { restaurantId: item.restaurantId };
-      openRestaurantProfilePreview(item.restaurantId, trimmedValue);
+      pendingRestaurantSelectionRef.current = { placeId: item.placeId };
+      openRestaurantProfilePreview(item.placeId, trimmedValue);
       deferRecentSearchUpsert({
         queryText: trimmedValue,
-        selectedEntityId: item.restaurantId,
-        selectedEntityType: 'restaurant',
+        selectedEntityId: item.placeId,
+        selectedEntityType: 'place',
         statusPreview: item.statusPreview ?? null,
       });
       void runRestaurantEntitySearch({
-        restaurantId: item.restaurantId,
-        restaurantName: trimmedValue,
+        placeId: item.placeId,
+        placeName: trimmedValue,
         submissionSource: 'recent',
         typedPrefix: trimmedValue,
       });
@@ -111,28 +111,28 @@ export const useSearchForegroundRecentSubmitRuntime = ({
     (item: RecentlyViewedFood) => {
       // VIEWED-vs-SEARCHED split (owner-ratified 2026-07-24): a recently-
       // VIEWED dish reproduces the dish-card tap it came from — the dish's
-      // search world presents AND this restaurant's profile auto-opens
+      // search world presents AND this place's profile auto-opens
       // inside it (pendingRestaurantSelection, the same mechanism every
       // world-present selection uses). That contextual open IS today's
       // dish deep-link foundation; when profiles are finished, the
       // dish-anchor scroll rides this same path. Recently-SEARCHED dishes
       // (typed + tapped the autocomplete dish row) live in the recent-
       // searches section and re-run the plain dish search there.
-      const foodName = item.foodName.trim();
-      if (!foodName) {
+      const itemName = item.itemName.trim();
+      if (!itemName) {
         return;
       }
-      submitPreparationRuntime.prepareRecentIntentSubmit(foodName);
-      pendingRestaurantSelectionRef.current = { restaurantId: item.restaurantId };
+      submitPreparationRuntime.prepareRecentIntentSubmit(itemName);
+      pendingRestaurantSelectionRef.current = { placeId: item.placeId };
       void submitSearch(
         {
-          selectedEntity: { entityId: item.foodId, entityType: 'food' },
+          selectedEntity: { entityId: item.itemId, entityType: 'item' },
           submission: {
             source: 'recent',
-            context: { typedPrefix: foodName, matchType: 'entity' },
+            context: { typedPrefix: itemName, matchType: 'entity' },
           },
         },
-        foodName
+        itemName
       );
     },
     [pendingRestaurantSelectionRef, submitPreparationRuntime, submitSearch]

@@ -6,9 +6,9 @@ import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-pr
 // (the action ports/callers keep their spelling); a rename sweep can trail.
 export type ProfilePreparedPresentationRuntime = {
   openPreparedProfilePresentation: (
-    restaurantId: string,
+    placeId: string,
     targetCamera: CameraSnapshot | null | undefined
   ) => void;
-  closePreparedProfilePresentation: (restaurantId: string | null) => void;
+  closePreparedProfilePresentation: (placeId: string | null) => void;
   focusPreparedProfileCamera: (targetCamera: CameraSnapshot) => void;
 };

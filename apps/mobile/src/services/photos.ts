@@ -28,7 +28,7 @@ export interface PhotoUrls {
 export interface PhotoDto {
   photoId: string;
   userId: string;
-  restaurantId: string;
+  placeId: string;
   connectionId: string | null;
   status: PhotoStatus;
   caption: string | null;
@@ -52,7 +52,7 @@ export interface SignedUploadTicket {
 }
 
 export interface UploadTicketContext {
-  restaurantId: string;
+  placeId: string;
   connectionId?: string;
   caption?: string;
   /** The "Other…" free-text dish name (demand signal; never creates entities). */
@@ -76,7 +76,7 @@ export interface PhotoStripItemDto {
 }
 
 export interface RestaurantGalleryDto {
-  restaurantId: string;
+  placeId: string;
   totalCount: number;
   /** "All photos" — newest first, paged. */
   all: PhotoStripItemDto[];
@@ -85,20 +85,20 @@ export interface RestaurantGalleryDto {
 }
 
 export interface FoodLogGroupDto {
-  restaurantId: string;
-  restaurantName: string;
+  placeId: string;
+  placeName: string;
   photos: PhotoStripItemDto[];
 }
 
 /** One card's strip identity for the batch strip read: connectionId present
  *  = dish card (dish-linked photos only), absent = restaurant card. */
 export interface PhotoStripRef {
-  restaurantId: string;
+  placeId: string;
   connectionId?: string;
 }
 
 /** One card's strip in POST /photos/strips: `key` = connectionId when the
- *  ref carried one, else restaurantId. */
+ *  ref carried one, else placeId. */
 export interface CardStripDto {
   key: string;
   totalCount: number;
@@ -318,10 +318,8 @@ export const photosService = {
     return response.data.strips;
   },
 
-  async getRestaurantGallery(restaurantId: string): Promise<RestaurantGalleryDto> {
-    const response = await api.get<RestaurantGalleryDto>(
-      `/photos/restaurants/${restaurantId}/gallery`
-    );
+  async getRestaurantGallery(placeId: string): Promise<RestaurantGalleryDto> {
+    const response = await api.get<RestaurantGalleryDto>(`/photos/restaurants/${placeId}/gallery`);
     return response.data;
   },
 

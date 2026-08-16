@@ -14,7 +14,7 @@ process.env.PROCESS_ROLE ||= 'api';
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { AppModule } from '../src/app.module';
-import { FoodDedupeMergeService } from '../src/modules/content-processing/entity-resolver/food-dedupe-merge.service';
+import { ItemDedupeMergeService } from '../src/modules/content-processing/entity-resolver/food-dedupe-merge.service';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 /**
@@ -29,7 +29,7 @@ async function main(): Promise<void> {
   });
   stopCronsForScript(app);
   try {
-    const service = app.get(FoodDedupeMergeService);
+    const service = app.get(ItemDedupeMergeService);
     const summary = await service.run({
       dryRun: process.env.DEDUPE_DRY_RUN === '1',
       similarityFloor: Number(process.env.DEDUPE_SIMILARITY_FLOOR ?? 0.72),

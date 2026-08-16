@@ -5,26 +5,26 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { ExternalIntegrationsModule } from '../external-integrations/external-integrations.module';
 import { EntityResolverModule } from '../content-processing/entity-resolver/entity-resolver.module';
 import { PublicCraveScoreModule } from '../content-processing/public-crave-score';
-import { RestaurantLocationEnrichmentService } from './restaurant-location-enrichment.service';
-import { RestaurantJanitorService } from './restaurant-janitor.service';
-import { RestaurantEnrichmentQueueService } from './restaurant-enrichment-queue.service';
-import { RestaurantEnrichmentWorker } from './restaurant-enrichment.worker';
-import { RestaurantEntityMergeService } from './restaurant-entity-merge.service';
+import { PlaceLocationEnrichmentService } from './restaurant-location-enrichment.service';
+import { PlaceJanitorService } from './restaurant-janitor.service';
+import { PlaceEnrichmentQueueService } from './restaurant-enrichment-queue.service';
+import { PlaceEnrichmentWorker } from './restaurant-enrichment.worker';
+import { PlaceEntityMergeService } from './restaurant-entity-merge.service';
 import { NightlyConvergenceService } from './nightly-convergence.service';
 import { PlaceTypeCensusService } from './place-type-census.service';
-import { RestaurantCuisineExtractionService } from './restaurant-cuisine-extraction.service';
-import { RestaurantCuisineExtractionQueueService } from './restaurant-cuisine-extraction-queue.service';
-import { RestaurantCuisineExtractionWorker } from './restaurant-cuisine-extraction.worker';
-import { RestaurantSecondaryLocationExpansionQueueService } from './restaurant-secondary-location-expansion-queue.service';
-import { RestaurantSecondaryLocationExpansionWorker } from './restaurant-secondary-location-expansion.worker';
+import { PlaceCuisineExtractionService } from './restaurant-cuisine-extraction.service';
+import { PlaceCuisineExtractionQueueService } from './restaurant-cuisine-extraction-queue.service';
+import { PlaceCuisineExtractionWorker } from './restaurant-cuisine-extraction.worker';
+import { PlaceSecondaryLocationExpansionQueueService } from './restaurant-secondary-location-expansion-queue.service';
+import { PlaceSecondaryLocationExpansionWorker } from './restaurant-secondary-location-expansion.worker';
 import { isWorkerRuntime } from '../../shared/utils/process-role';
 import { RedditCollectorModule } from '../content-processing/reddit-collector/reddit-collector.module';
 
-const restaurantEnrichmentWorkerProviders = isWorkerRuntime()
+const placeEnrichmentWorkerProviders = isWorkerRuntime()
   ? [
-      RestaurantEnrichmentWorker,
-      RestaurantCuisineExtractionWorker,
-      RestaurantSecondaryLocationExpansionWorker,
+      PlaceEnrichmentWorker,
+      PlaceCuisineExtractionWorker,
+      PlaceSecondaryLocationExpansionWorker,
     ]
   : [];
 
@@ -47,22 +47,22 @@ const restaurantEnrichmentWorkerProviders = isWorkerRuntime()
     }),
   ],
   providers: [
-    RestaurantLocationEnrichmentService,
-    RestaurantJanitorService,
-    RestaurantEnrichmentQueueService,
-    RestaurantEntityMergeService,
+    PlaceLocationEnrichmentService,
+    PlaceJanitorService,
+    PlaceEnrichmentQueueService,
+    PlaceEntityMergeService,
     NightlyConvergenceService,
     PlaceTypeCensusService,
-    RestaurantCuisineExtractionService,
-    RestaurantCuisineExtractionQueueService,
-    RestaurantSecondaryLocationExpansionQueueService,
-    ...restaurantEnrichmentWorkerProviders,
+    PlaceCuisineExtractionService,
+    PlaceCuisineExtractionQueueService,
+    PlaceSecondaryLocationExpansionQueueService,
+    ...placeEnrichmentWorkerProviders,
   ],
   exports: [
-    RestaurantEnrichmentQueueService,
-    RestaurantLocationEnrichmentService,
-    RestaurantCuisineExtractionQueueService,
-    RestaurantSecondaryLocationExpansionQueueService,
+    PlaceEnrichmentQueueService,
+    PlaceLocationEnrichmentService,
+    PlaceCuisineExtractionQueueService,
+    PlaceSecondaryLocationExpansionQueueService,
   ],
 })
-export class RestaurantEnrichmentModule {}
+export class PlaceEnrichmentModule {}

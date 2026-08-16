@@ -14,7 +14,7 @@ process.env.PROCESS_ROLE ||= 'api';
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { AppModule } from '../src/app.module';
-import { RestaurantJanitorService } from '../src/modules/restaurant-enrichment/restaurant-janitor.service';
+import { PlaceJanitorService } from '../src/modules/restaurant-enrichment/restaurant-janitor.service';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 /**
@@ -29,7 +29,7 @@ async function main(): Promise<void> {
   });
   stopCronsForScript(app);
   try {
-    const janitor = app.get(RestaurantJanitorService);
+    const janitor = app.get(PlaceJanitorService);
     const summary = await janitor.run({
       dryRun: process.env.JANITOR_DRY_RUN === '1',
       movedRetryLimit: Number(process.env.JANITOR_RETRY_LIMIT ?? 25),

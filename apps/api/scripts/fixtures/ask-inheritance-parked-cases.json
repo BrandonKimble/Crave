@@ -25,7 +25,7 @@
       }
     ],
     "expect": {
-      "restaurants": ["comedor", "j carver", "bartletts"],
+      "places": ["comedor", "j carver", "bartletts"],
       "perSource": [
         {
           "source": "SRC002",

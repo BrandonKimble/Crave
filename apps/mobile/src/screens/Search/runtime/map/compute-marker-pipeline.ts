@@ -51,7 +51,7 @@ export const computeMarkerPipeline = (args: {
       Number.isFinite(restaurant.rank) &&
       restaurant.rank >= 1
     ) {
-      canonicalRestaurantRankById.set(restaurant.restaurantId, restaurant.rank);
+      canonicalRestaurantRankById.set(restaurant.placeId, restaurant.rank);
     }
   });
 
@@ -70,7 +70,7 @@ export const computeMarkerPipeline = (args: {
       typeof displayLocation.latitude === 'number' &&
       typeof displayLocation.longitude === 'number'
     ) {
-      restaurantsById.set(restaurant.restaurantId, restaurant);
+      restaurantsById.set(restaurant.placeId, restaurant);
     }
   });
 

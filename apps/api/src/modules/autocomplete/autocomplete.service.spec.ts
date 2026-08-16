@@ -94,7 +94,7 @@ interface HarnessOverrides {
   corpusRows?: Array<{
     attributeId: string;
     corpusConnectionCount: number;
-    totalRestaurantCount: number;
+    totalPlaceCount: number;
   }>;
   typedDemand?: Map<string, number>;
   selectionDemand?: Map<string, number>;
@@ -165,12 +165,12 @@ function createHarness(overrides: HarnessOverrides = {}) {
     getEntityPopularityScores: jest.fn().mockResolvedValue(new Map()),
     getUserEntityAffinity: jest.fn().mockResolvedValue(new Map()),
   };
-  const restaurantStatusService = {
+  const placeStatusService = {
     getStatusPreviews: jest.fn().mockResolvedValue([]),
   };
   const signalDemandRead = {
-    viewedRestaurantNameMatches: jest.fn().mockResolvedValue([]),
-    restaurantViewStats: jest.fn().mockResolvedValue([]),
+    viewedPlaceNameMatches: jest.fn().mockResolvedValue([]),
+    placeViewStats: jest.fn().mockResolvedValue([]),
     entityDemandScores: jest
       .fn()
       .mockImplementation(({ kinds }: { kinds: string[] }) => {
@@ -189,7 +189,7 @@ function createHarness(overrides: HarnessOverrides = {}) {
     prisma as never,
     searchQuerySuggestionService as never,
     searchPopularityService as never,
-    restaurantStatusService as never,
+    placeStatusService as never,
     signalDemandRead as never,
     // N10 display boundary: no label rows in these fixtures, so the display
     // function is an identity — which is exactly what English callers get.
@@ -219,14 +219,14 @@ describe('AutocompleteService — attribute lane RRF', () => {
         {
           entityId: 'attr-vegetarian',
           name: 'vegetarian',
-          type: EntityType.food_attribute,
+          type: EntityType.item_attribute,
           similarity: 0.9,
           evidence: 'prefix',
         },
         {
           entityId: 'attr-vegan',
           name: 'vegan',
-          type: EntityType.food_attribute,
+          type: EntityType.item_attribute,
           similarity: 0.9,
           evidence: 'prefix',
         },
@@ -237,14 +237,14 @@ describe('AutocompleteService — attribute lane RRF', () => {
         {
           attributeId: 'attr-vegan',
           corpusConnectionCount: 30,
-          totalRestaurantCount: 100,
+          totalPlaceCount: 100,
         },
       ],
     });
 
     const response = await service.autocompleteEntities({ query: 'veg' });
     const attributeIds = response.matches
-      .filter((match) => match.entityType === EntityType.food_attribute)
+      .filter((match) => match.entityType === EntityType.item_attribute)
       .map((match) => match.entityId);
 
     expect(attributeIds).toEqual(['attr-vegan', 'attr-vegetarian']);
@@ -254,7 +254,7 @@ describe('AutocompleteService — attribute lane RRF', () => {
     const fuzzyAttr = {
       entityId: 'attr-fuzzy',
       name: 'tacos al pastor style',
-      type: EntityType.food_attribute,
+      type: EntityType.item_attribute,
       similarity: 0.4,
       evidence: 'fuzzy',
     };
@@ -406,14 +406,14 @@ describe('AutocompleteService — cross-lane RRF fusion', () => {
         {
           entityId: 'food-exact',
           name: 'ramen',
-          type: EntityType.food,
+          type: EntityType.item,
           similarity: 1.0,
           evidence: 'exact',
         },
         {
           entityId: 'food-prefix',
           name: 'ramen burger',
-          type: EntityType.food,
+          type: EntityType.item,
           similarity: 0.9,
           evidence: 'prefix',
         },
@@ -443,7 +443,7 @@ describe('AutocompleteService — cross-lane RRF fusion', () => {
         {
           entityId: 'food-prefix',
           name: 'mariscos plate',
-          type: EntityType.food,
+          type: EntityType.item,
           similarity: 0.9,
           evidence: 'prefix',
         },
@@ -470,7 +470,7 @@ describe('AutocompleteService — cross-lane RRF fusion', () => {
     const entityResults = Array.from({ length: 12 }, (_, index) => ({
       entityId: `food-${index}`,
       name: `taco dish ${String.fromCharCode(97 + index)}`,
-      type: EntityType.food,
+      type: EntityType.item,
       similarity: 0.9,
       evidence: 'prefix',
     }));
@@ -488,7 +488,7 @@ describe('AutocompleteService — impression instrumentation', () => {
         {
           entityId: 'food-exact',
           name: 'ramen',
-          type: EntityType.food,
+          type: EntityType.item,
           similarity: 1.0,
           evidence: 'exact',
         },
@@ -526,7 +526,7 @@ describe('AutocompleteService — impression instrumentation', () => {
 
     const entityRow = meta.rows.find((row) => row.lane === 'entity');
     expect(entityRow).toMatchObject({
-      entityType: EntityType.food,
+      entityType: EntityType.item,
       entityRef: 'food-exact',
       evidenceTier: 'exact',
     });
@@ -600,7 +600,7 @@ describe('AutocompleteService — ingredient twin merge', () => {
 
   it('twin names: ONE row — the food seat adopts the ingredient identity (superset tap)', () => {
     const kept = mergeIngredientTwinMatches([
-      candidate('food', 'Burrata'),
+      candidate('item', 'Burrata'),
       candidate('ingredient', 'burrata'),
       candidate('ingredient', 'octopus'),
     ]);
@@ -618,12 +618,12 @@ describe('AutocompleteService — ingredient twin merge', () => {
     const kept = mergeIngredientTwinMatches([
       candidate('restaurant', 'Octo Sushi'),
       candidate('ingredient', 'octopus'),
-      candidate('food', 'grilled octopus'),
+      candidate('item', 'grilled octopus'),
     ]);
     expect(kept.map((c) => `${c.match.entityType}:${c.match.name}`)).toEqual([
       'restaurant:Octo Sushi',
       'ingredient:octopus',
-      'food:grilled octopus',
+      'item:grilled octopus',
     ]);
   });
 });

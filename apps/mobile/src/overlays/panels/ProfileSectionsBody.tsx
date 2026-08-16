@@ -555,9 +555,9 @@ export const ProfileSectionsBody = React.memo(
           }
           return withAdd(
             groups.map((group: FoodLogGroupDto) => (
-              <View key={group.restaurantId} style={styles.foodLogGroup}>
+              <View key={group.placeId} style={styles.foodLogGroup}>
                 <Text variant="body" weight="semibold" numberOfLines={1} style={styles.rowTitle}>
-                  {group.restaurantName || 'Restaurant'}
+                  {group.placeName || 'Restaurant'}
                 </Text>
                 <ScrollView
                   horizontal

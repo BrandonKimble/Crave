@@ -18,12 +18,12 @@ describe('satisfies expansion — proven against a live database', () => {
   const made: string[] = [];
   let service: SearchSiblingExpansionService;
 
-  const mintFood = async (name: string, archived = false): Promise<string> => {
+  const mintItem = async (name: string, archived = false): Promise<string> => {
     const id = randomUUID();
-    const identity = identityInsertData(name, 'food' as never);
+    const identity = identityInsertData(name, 'item' as never);
     await prisma.$executeRawUnsafe(
       `INSERT INTO core_entities (entity_id, name, type, status, identity_key, identity_key_sorted)
-       VALUES ($1::uuid, $2, 'food'::entity_type, $3::entity_status, $4, $5)`,
+       VALUES ($1::uuid, $2, 'item'::entity_type, $3::entity_status, $4, $5)`,
       id,
       name,
       archived ? 'archived' : 'active',
@@ -69,15 +69,15 @@ describe('satisfies expansion — proven against a live database', () => {
   });
 
   it('splits satisfies into tier 0 and cousin into tier 1, and drops rejects', async () => {
-    const anchor = await mintFood(`zzq anchor ${randomUUID().slice(0, 8)}`);
-    const sat = await mintFood(`zzq sat ${randomUUID().slice(0, 8)}`);
-    const cos = await mintFood(`zzq cos ${randomUUID().slice(0, 8)}`);
-    const rej = await mintFood(`zzq rej ${randomUUID().slice(0, 8)}`);
+    const anchor = await mintItem(`zzq anchor ${randomUUID().slice(0, 8)}`);
+    const sat = await mintItem(`zzq sat ${randomUUID().slice(0, 8)}`);
+    const cos = await mintItem(`zzq cos ${randomUUID().slice(0, 8)}`);
+    const rej = await mintItem(`zzq rej ${randomUUID().slice(0, 8)}`);
     await edge(anchor, sat, 'satisfies');
     await edge(anchor, cos, 'cousin');
     await edge(anchor, rej, 'reject');
 
-    const got = await service.getSatisfiesFoodIds([anchor]);
+    const got = await service.getSatisfiesItemIds([anchor]);
     expect(got.satisfies).toEqual([sat]);
     expect(got.cousin).toEqual([cos]);
     // a stored reject must never reach search
@@ -85,21 +85,21 @@ describe('satisfies expansion — proven against a live database', () => {
   });
 
   it('is DIRECTED — the reverse of an edge is not readable', async () => {
-    const a = await mintFood(`zzq dir a ${randomUUID().slice(0, 8)}`);
-    const b = await mintFood(`zzq dir b ${randomUUID().slice(0, 8)}`);
+    const a = await mintItem(`zzq dir a ${randomUUID().slice(0, 8)}`);
+    const b = await mintItem(`zzq dir b ${randomUUID().slice(0, 8)}`);
     await edge(a, b, 'satisfies');
 
-    expect((await service.getSatisfiesFoodIds([a])).satisfies).toEqual([b]);
+    expect((await service.getSatisfiesItemIds([a])).satisfies).toEqual([b]);
     // reading from the other end must find nothing
-    expect((await service.getSatisfiesFoodIds([b])).satisfies).toEqual([]);
+    expect((await service.getSatisfiesItemIds([b])).satisfies).toEqual([]);
   });
 
   it('follows a merged-away target through its redirect', async () => {
-    const anchor = await mintFood(
+    const anchor = await mintItem(
       `zzq redir anchor ${randomUUID().slice(0, 8)}`,
     );
-    const survivor = await mintFood(`zzq survivor ${randomUUID().slice(0, 8)}`);
-    const loser = await mintFood(`zzq loser ${randomUUID().slice(0, 8)}`, true);
+    const survivor = await mintItem(`zzq survivor ${randomUUID().slice(0, 8)}`);
+    const loser = await mintItem(`zzq loser ${randomUUID().slice(0, 8)}`, true);
     await edge(anchor, loser, 'satisfies');
     await prisma.$executeRawUnsafe(
       `INSERT INTO entity_redirects (from_entity_id, to_entity_id) VALUES ($1::uuid, $2::uuid)`,
@@ -107,19 +107,19 @@ describe('satisfies expansion — proven against a live database', () => {
       survivor,
     );
 
-    const got = await service.getSatisfiesFoodIds([anchor]);
+    const got = await service.getSatisfiesItemIds([anchor]);
     // the edge resolves to the survivor rather than vanishing
     expect(got.satisfies).toEqual([survivor]);
   });
 
   it('drops an archived target that has no redirect', async () => {
-    const anchor = await mintFood(
+    const anchor = await mintItem(
       `zzq arch anchor ${randomUUID().slice(0, 8)}`,
     );
-    const dead = await mintFood(`zzq dead ${randomUUID().slice(0, 8)}`, true);
+    const dead = await mintItem(`zzq dead ${randomUUID().slice(0, 8)}`, true);
     await edge(anchor, dead, 'satisfies');
 
-    const got = await service.getSatisfiesFoodIds([anchor]);
+    const got = await service.getSatisfiesItemIds([anchor]);
     expect(got.satisfies).toEqual([]);
   });
 });

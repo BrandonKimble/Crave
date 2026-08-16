@@ -94,20 +94,20 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
   const trackRecentlyViewedFood = useSearchHistoryStore((state) => state.trackRecentlyViewedFood);
   // F1019: dish items carry no priceRangeText, only the real server-computed
   // restaurantPriceSymbol — use it directly, never a client-invented level-derived range.
-  const dishPriceLabel = item.restaurantPriceSymbol ?? undefined;
-  const hasStatus = Boolean(item.restaurantOperatingStatus);
+  const dishPriceLabel = item.placePriceSymbol ?? undefined;
+  const hasStatus = Boolean(item.placeOperatingStatus);
   const dishMetaPrimaryLine = renderMetaDetailLine(
     null,
     dishPriceLabel,
-    hasStatus ? null : item.restaurantDistanceMiles,
+    hasStatus ? null : item.placeDistanceMiles,
     'left',
-    item.restaurantName,
+    item.placeName,
     true
   );
   const dishStatusLine = renderMetaDetailLine(
-    item.restaurantOperatingStatus,
+    item.placeOperatingStatus,
     null,
-    hasStatus ? item.restaurantDistanceMiles : null,
+    hasStatus ? item.placeDistanceMiles : null,
     'left',
     undefined,
     true,
@@ -125,8 +125,8 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
 
   // W3 universal share modal (dish share id = the food entityId).
   const handleShare = React.useCallback(() => {
-    showShareModal({ kind: 'dish', id: item.foodId, title: item.foodName });
-  }, [item.foodId, item.foodName]);
+    showShareModal({ kind: 'dish', id: item.itemId, title: item.itemName });
+  }, [item.itemId, item.itemName]);
 
   const handleDishPress = React.useCallback(() => {
     if (!restaurantForDish) {
@@ -136,21 +136,21 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
     void searchService
       .recordFoodView({
         connectionId: item.connectionId,
-        foodId: item.foodId,
+        itemId: item.itemId,
         source: 'results_sheet',
       })
       .catch(() => undefined);
 
     trackRecentlyViewedFood({
       connectionId: item.connectionId,
-      foodId: item.foodId,
-      foodName: item.foodName,
-      restaurantId: restaurantForDish.restaurantId,
-      restaurantName: restaurantForDish.restaurantName,
+      itemId: item.itemId,
+      itemName: item.itemName,
+      placeId: restaurantForDish.placeId,
+      placeName: restaurantForDish.placeName,
       statusPreview: {
-        restaurantId: restaurantForDish.restaurantId,
-        operatingStatus: item.restaurantOperatingStatus ?? null,
-        distanceMiles: item.restaurantDistanceMiles ?? null,
+        placeId: restaurantForDish.placeId,
+        operatingStatus: item.placeOperatingStatus ?? null,
+        distanceMiles: item.placeDistanceMiles ?? null,
         locationCount: null,
       },
     });
@@ -158,10 +158,10 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
     openRestaurantProfile(restaurantForDish, 'dish_card');
   }, [
     item.connectionId,
-    item.foodId,
-    item.foodName,
-    item.restaurantDistanceMiles,
-    item.restaurantOperatingStatus,
+    item.itemId,
+    item.itemName,
+    item.placeDistanceMiles,
+    item.placeOperatingStatus,
     openRestaurantProfile,
     restaurantForDish,
     trackRecentlyViewedFood,
@@ -170,13 +170,13 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
   const handleDishInfoPress = React.useCallback(() => {
     openScoreInfo({
       type: 'dish',
-      title: item.foodName,
+      title: item.itemName,
       score: craveScoreValue,
       rising: item.rising ?? null,
       votes: item.scoreInfo?.voteCount ?? null,
       polls: item.scoreInfo?.pollCount ?? null,
     });
-  }, [craveScoreValue, item.foodName, item.rising, item.scoreInfo, openScoreInfo]);
+  }, [craveScoreValue, item.itemName, item.rising, item.scoreInfo, openScoreInfo]);
 
   return (
     <View
@@ -187,7 +187,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
         style={styles.resultPressable}
         onPress={handleDishPress}
         accessibilityRole={restaurantForDish ? 'button' : undefined}
-        accessibilityLabel={restaurantForDish ? `View ${item.restaurantName}` : undefined}
+        accessibilityLabel={restaurantForDish ? `View ${item.placeName}` : undefined}
         disabled={!restaurantForDish}
       >
         <View style={styles.resultHeader}>
@@ -210,7 +210,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
                 style={[styles.textSlate900, styles.cardTitleText]}
                 numberOfLines={2}
               >
-                {item.foodName}
+                {item.itemName}
               </Text>
             </View>
             <View style={[styles.cardBodyStack, resultCardSlotStyles.metaFlush]}>
@@ -258,7 +258,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
           Pressable so photo taps never open the profile. */}
       <View style={[styles.cardPhotoStripSection, resultCardSlotStyles.galleryBleed]}>
         <CardPhotoStrip
-          restaurantId={item.restaurantId}
+          placeId={item.placeId}
           connectionId={item.connectionId}
           height={RESULT_CARD_GALLERY_HEIGHT}
           tileAspect={RESULT_CARD_GALLERY_TILE_ASPECT}

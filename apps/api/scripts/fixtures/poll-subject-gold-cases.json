@@ -23,7 +23,7 @@
     "text": "best Italian in the East Village",
     "expect": {
       "mode": "ranked",
-      "targetType": "restaurant",
+      "targetType": "place",
       "constraintKind": "cuisine",
       "constraintValue": "italian"
     }
@@ -34,8 +34,8 @@
     "text": "best patio",
     "expect": {
       "mode": "ranked",
-      "targetType": "restaurant",
-      "constraintKind": "restaurant_attribute",
+      "targetType": "place",
+      "constraintKind": "place_attribute",
       "constraintValue": "patio"
     }
   },
@@ -54,7 +54,7 @@
     "id": "favorite-taco-spot",
     "why": "ranked: 'favorite' also states a standard over named places",
     "text": "favorite taco spot",
-    "expect": { "mode": "ranked", "targetType": "restaurant" }
+    "expect": { "mode": "ranked", "targetType": "place" }
   },
   {
     "id": "food-memory",
@@ -102,7 +102,7 @@
     "id": "boundary-ranked-recommendation-phrasing",
     "why": "BOUNDARY, ranked side: recommendation phrasing, still names + standard",
     "text": "where should I take a date for dinner in Williamsburg?",
-    "expect": { "mode": "ranked", "targetType": "restaurant" }
+    "expect": { "mode": "ranked", "targetType": "place" }
   },
   {
     "id": "grocery-brand-not-nameable",

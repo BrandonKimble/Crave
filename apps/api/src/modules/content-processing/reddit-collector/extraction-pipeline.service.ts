@@ -133,6 +133,13 @@ interface ExtractionPipelineBaseParams {
    *  Batch mode only (shadow replays are batch by design); interactive
    *  callers must run the active prompt. */
   promptVersion?: number;
+  /** REHEARSAL GENERATION (plans/shadow-sandbox.md): banking mints
+   *  entities/surfaces as status='rehearsal' keyed to this run and the
+   *  side-effect doors (attribute adjudication, enrichment, metro probes,
+   *  projection rebuild, embedding-stale touches, live attribute merges)
+   *  do not fire — they fire once, at activation. Explicit by law: never
+   *  inferred from an empty activation list. */
+  rehearsal?: boolean;
 }
 
 export interface ExtractionPipelinePostsParams
@@ -785,7 +792,7 @@ export class ExtractionPipelineService implements OnModuleInit {
         entitiesCreated: 0,
         connectionsCreated: 0,
         affectedConnectionIds: [],
-        affectedRestaurantIds: [],
+        affectedPlaceIds: [],
       },
       llmProcessingTimeMs: 0,
       dbProcessingTimeMs: 0,
@@ -998,8 +1005,8 @@ export class ExtractionPipelineService implements OnModuleInit {
     };
 
     this.ensureSurfaceDefaults(llmOutput.mentions);
-    this.normalizeRestaurantNames(llmOutput.mentions, enrichment);
-    this.dropDuplicateRestaurantMentions(llmOutput.mentions, enrichment);
+    this.normalizePlaceNames(llmOutput.mentions, enrichment);
+    this.dropDuplicatePlaceMentions(llmOutput.mentions, enrichment);
 
     const rawMentionsSample = [...llmOutput.mentions];
     const llmProcessingTimeMs = args.llmProcessingTimeMs;
@@ -1046,6 +1053,7 @@ export class ExtractionPipelineService implements OnModuleInit {
       sourceDocumentIdBySourceKey: args.sourceDocumentIdBySourceKey,
       extractionInputIdByChunkId: args.extractionInputIdByChunkId,
       activateDocumentIds,
+      rehearsal: args.baseParams.rehearsal === true,
     };
 
     const dbResult = await this.unifiedProcessingService.processLLMOutput(
@@ -1261,7 +1269,7 @@ export class ExtractionPipelineService implements OnModuleInit {
         entitiesCreated: 0,
         connectionsCreated: 0,
         affectedConnectionIds: [],
-        affectedRestaurantIds: [],
+        affectedPlaceIds: [],
         createdEntityIds: [],
         createdEntitySummaries: [],
         reusedEntitySummaries: [],
@@ -1842,29 +1850,29 @@ export class ExtractionPipelineService implements OnModuleInit {
 
   private ensureSurfaceDefaults(mentions: EnrichedLLMMention[]): void {
     mentions.forEach((mention) => {
-      mention.restaurant_surface =
-        typeof mention.restaurant_surface === 'string' &&
-        mention.restaurant_surface.trim().length > 0
-          ? mention.restaurant_surface.trim()
-          : mention.restaurant?.trim() || null;
+      mention.place_surface =
+        typeof mention.place_surface === 'string' &&
+        mention.place_surface.trim().length > 0
+          ? mention.place_surface.trim()
+          : mention.place?.trim() || null;
 
-      if (typeof mention.food === 'string' && mention.food.trim().length > 0) {
-        mention.food_surface =
-          typeof mention.food_surface === 'string' &&
-          mention.food_surface.trim().length > 0
-            ? mention.food_surface.trim()
-            : mention.food.trim();
+      if (typeof mention.item === 'string' && mention.item.trim().length > 0) {
+        mention.item_surface =
+          typeof mention.item_surface === 'string' &&
+          mention.item_surface.trim().length > 0
+            ? mention.item_surface.trim()
+            : mention.item.trim();
       } else {
-        mention.food_surface = null;
+        mention.item_surface = null;
       }
 
-      if (Array.isArray(mention.food_categories)) {
-        mention.food_category_surfaces = mention.food_categories.map(
+      if (Array.isArray(mention.item_categories)) {
+        mention.item_category_surfaces = mention.item_categories.map(
           (category, index) => {
             const explicitSurface = Array.isArray(
-              mention.food_category_surfaces,
+              mention.item_category_surfaces,
             )
-              ? mention.food_category_surfaces[index]
+              ? mention.item_category_surfaces[index]
               : null;
             if (
               typeof explicitSurface === 'string' &&
@@ -1879,13 +1887,13 @@ export class ExtractionPipelineService implements OnModuleInit {
         );
       }
 
-      if (Array.isArray(mention.restaurant_attributes)) {
-        mention.restaurant_attribute_surfaces =
-          mention.restaurant_attributes.map((attribute, index) => {
+      if (Array.isArray(mention.place_attributes)) {
+        mention.place_attribute_surfaces = mention.place_attributes.map(
+          (attribute, index) => {
             const explicitSurface = Array.isArray(
-              mention.restaurant_attribute_surfaces,
+              mention.place_attribute_surfaces,
             )
-              ? mention.restaurant_attribute_surfaces[index]
+              ? mention.place_attribute_surfaces[index]
               : null;
             if (
               typeof explicitSurface === 'string' &&
@@ -1896,16 +1904,17 @@ export class ExtractionPipelineService implements OnModuleInit {
             return typeof attribute === 'string' && attribute.trim().length > 0
               ? attribute.trim()
               : null;
-          });
+          },
+        );
       }
 
-      if (Array.isArray(mention.food_attributes)) {
-        mention.food_attribute_surfaces = mention.food_attributes.map(
+      if (Array.isArray(mention.item_attributes)) {
+        mention.item_attribute_surfaces = mention.item_attributes.map(
           (attribute, index) => {
             const explicitSurface = Array.isArray(
-              mention.food_attribute_surfaces,
+              mention.item_attribute_surfaces,
             )
-              ? mention.food_attribute_surfaces[index]
+              ? mention.item_attribute_surfaces[index]
               : null;
             if (
               typeof explicitSurface === 'string' &&
@@ -1922,23 +1931,23 @@ export class ExtractionPipelineService implements OnModuleInit {
     });
   }
 
-  private normalizeRestaurantNames(
+  private normalizePlaceNames(
     mentions: EnrichedLLMMention[],
     enrichment: SourceEnrichmentMaps,
   ): void {
     mentions.forEach((mention) => {
       const sourceId = mention.source_id?.trim();
-      const restaurant = mention.restaurant?.trim();
-      if (!restaurant) {
+      const place = mention.place?.trim();
+      if (!place) {
         return;
       }
 
-      mention.restaurant = restaurant;
+      mention.place = place;
       if (
-        typeof mention.restaurant_surface !== 'string' ||
-        !mention.restaurant_surface.trim().length
+        typeof mention.place_surface !== 'string' ||
+        !mention.place_surface.trim().length
       ) {
-        mention.restaurant_surface = restaurant;
+        mention.place_surface = place;
       }
 
       if (!sourceId) {
@@ -1950,7 +1959,7 @@ export class ExtractionPipelineService implements OnModuleInit {
         return;
       }
 
-      const existingSurface = mention.restaurant_surface ?? restaurant;
+      const existingSurface = mention.place_surface ?? place;
       if (
         existingSurface &&
         content.toLowerCase().includes(existingSurface.toLowerCase())
@@ -1959,17 +1968,17 @@ export class ExtractionPipelineService implements OnModuleInit {
       }
 
       const regex = new RegExp(
-        `\\b${restaurant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
+        `\\b${place.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
         'iu',
       );
       const match = content.match(regex);
       if (match?.[0]) {
-        mention.restaurant_surface = match[0];
+        mention.place_surface = match[0];
       }
     });
   }
 
-  private dropDuplicateRestaurantMentions(
+  private dropDuplicatePlaceMentions(
     mentions: EnrichedLLMMention[],
     enrichment: SourceEnrichmentMaps,
   ): void {
@@ -1978,23 +1987,23 @@ export class ExtractionPipelineService implements OnModuleInit {
     for (let index = mentions.length - 1; index >= 0; index -= 1) {
       const mention = mentions[index];
       const sourceId = mention.source_id?.trim();
-      const restaurant = mention.restaurant?.trim().toLowerCase();
-      if (!sourceId || !restaurant) {
+      const place = mention.place?.trim().toLowerCase();
+      if (!sourceId || !place) {
         continue;
       }
 
-      const food = mention.food?.trim().toLowerCase() ?? '';
-      const restaurantAttributes = (mention.restaurant_attributes ?? [])
+      const item = mention.item?.trim().toLowerCase() ?? '';
+      const placeAttributes = (mention.place_attributes ?? [])
         .map((value) => value.trim().toLowerCase())
         .filter(Boolean)
         .sort()
         .join('|');
-      const foodAttributes = (mention.food_attributes ?? [])
+      const itemAttributes = (mention.item_attributes ?? [])
         .map((value) => value.trim().toLowerCase())
         .filter(Boolean)
         .sort()
         .join('|');
-      const categories = (mention.food_categories ?? [])
+      const categories = (mention.item_categories ?? [])
         .map((value) => value.trim().toLowerCase())
         .filter(Boolean)
         .sort()
@@ -2003,11 +2012,11 @@ export class ExtractionPipelineService implements OnModuleInit {
 
       const fingerprint = [
         sourceId,
-        restaurant,
-        food,
+        place,
+        item,
         categories,
-        restaurantAttributes,
-        foodAttributes,
+        placeAttributes,
+        itemAttributes,
         mention.general_praise ? 'praise' : 'neutral',
         content.trim().toLowerCase(),
       ].join('::');

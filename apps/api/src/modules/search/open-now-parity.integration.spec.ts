@@ -59,12 +59,12 @@ beforeAll(async () => {
     data: {
       entityId: SEED_ENTITY_ID,
       name: 'itest-open-now-parity-restaurant',
-      type: 'restaurant',
+      type: 'place',
     },
   });
-  const location = await prisma.restaurantLocation.create({
+  const location = await prisma.placeLocation.create({
     data: {
-      restaurantId: SEED_ENTITY_ID,
+      placeId: SEED_ENTITY_ID,
       hours: SEED_HOURS,
       timeZone: 'America/Chicago',
     },

@@ -88,8 +88,8 @@ export class NameContainmentEdgeBuilderService extends DerivedIndexJob {
         JOIN core_entities v
           ON v.entity_id <> b.entity_id
          AND (' ' || v.identity_key || ' ') LIKE ('%' || ' ' || b.identity_key || ' ' || '%')
-        WHERE b.type = 'food'::entity_type AND b.status = 'active'::entity_status
-          AND v.type = 'food'::entity_type AND v.status = 'active'::entity_status
+        WHERE b.type = 'item'::entity_type AND b.status = 'active'::entity_status
+          AND v.type = 'item'::entity_type AND v.status = 'active'::entity_status
           AND b.identity_key IS NOT NULL AND v.identity_key IS NOT NULL
       `);
         return inserted;
@@ -110,10 +110,10 @@ export class NameContainmentEdgeBuilderService extends DerivedIndexJob {
 
   protected async rebuild(): Promise<{ input: number; output: number }> {
     const { edges } = await this.rebuildAll();
-    const [foods] = await this.prisma.$queryRaw<{ n: number }[]>`
+    const [items] = await this.prisma.$queryRaw<{ n: number }[]>`
       SELECT count(*)::int AS n FROM core_entities
-      WHERE type = 'food'::entity_type AND status = 'active'::entity_status`;
-    return { input: foods?.n ?? 0, output: edges };
+      WHERE type = 'item'::entity_type AND status = 'active'::entity_status`;
+    return { input: items?.n ?? 0, output: edges };
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_4AM)

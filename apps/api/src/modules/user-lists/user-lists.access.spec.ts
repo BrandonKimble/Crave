@@ -124,9 +124,9 @@ function makeHarness(list: ListRow, collaboratorIds: string[] = []) {
   };
   const executor = {
     executeSingle: jest.fn().mockResolvedValue({
-      restaurants: [],
+      places: [],
       dishes: [],
-      totalRestaurantCount: 0,
+      totalPlaceCount: 0,
       totalDishCount: 0,
       metadata: {
         openNowApplied: false,
@@ -153,14 +153,14 @@ function makeHarness(list: ListRow, collaboratorIds: string[] = []) {
     {
       record: () => undefined,
       bboxFromPoint: () => null,
-      bboxFromRestaurantLocation: () => Promise.resolve(null),
+      bboxFromPlaceLocation: () => Promise.resolve(null),
     } as never,
     blocks as never,
     // D36: the one saveable-entity law (stubbed live here).
     {
-      resolveSaveableRestaurant: (id: string) =>
+      resolveSaveablePlace: (id: string) =>
         Promise.resolve({ entityId: id, name: 'R', city: null }),
-      resolveSaveableFood: (id: string) =>
+      resolveSaveableItem: (id: string) =>
         Promise.resolve({ entityId: id, name: 'F', city: null }),
       resolveActiveByIds: (ids: string[]) =>
         Promise.resolve(

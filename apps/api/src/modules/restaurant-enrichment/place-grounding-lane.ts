@@ -38,8 +38,8 @@ export const PLACE_GROUNDING_LANE = 'place_grounding';
  * groundability-failure verdict the lifecycle gate reads.
  */
 export type PlaceGroundingClaim =
-  | { kind: 'grounding'; restaurantId: string; placeId: string }
-  | { kind: 'rejection'; restaurantId: string; candidatePlaceIds: string[] };
+  | { kind: 'grounding'; placeEntityId: string; googlePlaceId: string }
+  | { kind: 'rejection'; placeEntityId: string; candidatePlaceIds: string[] };
 
 /** The stable digest of a candidate set — sorted so the same places in a
  *  different retrieval order are the same question. */
@@ -59,8 +59,8 @@ export class PlaceGroundingLaneAdapter extends BaseClaimLaneAdapter<PlaceGroundi
 
   canonicalClaimKey(claim: PlaceGroundingClaim): string {
     return claim.kind === 'grounding'
-      ? `${claim.restaurantId}|${claim.placeId}`
-      : `${claim.restaurantId}|set:${candidateSetDigest(claim.candidatePlaceIds)}`;
+      ? `${claim.placeEntityId}|${claim.googlePlaceId}`
+      : `${claim.placeEntityId}|set:${candidateSetDigest(claim.candidatePlaceIds)}`;
   }
 }
 

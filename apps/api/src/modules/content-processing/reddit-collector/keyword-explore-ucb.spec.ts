@@ -146,21 +146,18 @@ describe('D41 explore selection — measured-yield UCB', () => {
   it('an unobserved class WINS optimistically over a measured one', async () => {
     const { service: estimator } = buildEstimator();
     // 'food' has been measured, and measured MEDIOCRE (2 docs a search).
-    await observe(estimator, EntityType.food, [2, 2, 2, 2], now);
-    await estimator.primeClasses(ENGINE, [
-      EntityType.food,
-      EntityType.restaurant,
-    ]);
+    await observe(estimator, EntityType.item, [2, 2, 2, 2], now);
+    await estimator.primeClasses(ENGINE, [EntityType.item, EntityType.place]);
     const selection = buildSelection(estimator);
 
     const measured = score(
       selection,
-      exploreCandidate('tacos', EntityType.food),
+      exploreCandidate('tacos', EntityType.item),
       now,
     );
     const starved = score(
       selection,
-      exploreCandidate('el-primo', EntityType.restaurant),
+      exploreCandidate('el-primo', EntityType.place),
       now,
     );
 
@@ -171,22 +168,19 @@ describe('D41 explore selection — measured-yield UCB', () => {
 
   it('after observations, the higher-yielding class outranks the lower one', async () => {
     const { service: estimator } = buildEstimator();
-    await observe(estimator, EntityType.food, [40, 38, 42, 41], now);
-    await observe(estimator, EntityType.restaurant, [1, 0, 1, 0], now);
-    await estimator.primeClasses(ENGINE, [
-      EntityType.food,
-      EntityType.restaurant,
-    ]);
+    await observe(estimator, EntityType.item, [40, 38, 42, 41], now);
+    await observe(estimator, EntityType.place, [1, 0, 1, 0], now);
+    await estimator.primeClasses(ENGINE, [EntityType.item, EntityType.place]);
     const selection = buildSelection(estimator);
 
     const rich = score(
       selection,
-      exploreCandidate('birria', EntityType.food),
+      exploreCandidate('birria', EntityType.item),
       now,
     );
     const poor = score(
       selection,
-      exploreCandidate('el-primo', EntityType.restaurant),
+      exploreCandidate('el-primo', EntityType.place),
       now,
     );
 
@@ -198,25 +192,25 @@ describe('D41 explore selection — measured-yield UCB', () => {
 
   it('coverage rotation orders within a class: never-attempted first, then oldest', async () => {
     const { service: estimator } = buildEstimator();
-    await observe(estimator, EntityType.food, [5, 5, 5, 5], now);
-    await estimator.primeClasses(ENGINE, [EntityType.food]);
+    await observe(estimator, EntityType.item, [5, 5, 5, 5], now);
+    await estimator.primeClasses(ENGINE, [EntityType.item]);
     const selection = buildSelection(estimator);
 
     const recent = score(
       selection,
-      exploreCandidate('tacos', EntityType.food),
+      exploreCandidate('tacos', EntityType.item),
       now,
       { lastOutcome: null, lastAttemptAt: new Date('2026-08-01T00:00:00Z') },
     );
     const old = score(
       selection,
-      exploreCandidate('queso', EntityType.food),
+      exploreCandidate('queso', EntityType.item),
       now,
       { lastOutcome: null, lastAttemptAt: new Date('2026-05-01T00:00:00Z') },
     );
     const never = score(
       selection,
-      exploreCandidate('elote', EntityType.food),
+      exploreCandidate('elote', EntityType.item),
       now,
       { lastOutcome: null, lastAttemptAt: null },
     );
@@ -230,14 +224,14 @@ describe('D41 explore selection — measured-yield UCB', () => {
 
   it('the three deleted proxies are gone as ranking inputs (diagnostics only)', async () => {
     const { service: estimator } = buildEstimator();
-    await estimator.primeClasses(ENGINE, [EntityType.food]);
+    await estimator.primeClasses(ENGINE, [EntityType.item]);
     const selection = buildSelection(estimator);
 
     // Two candidates whose PROXY inputs differ wildly — under the blend
     // these scored differently; under D41 they cannot.
     const trendy = score(
       selection,
-      exploreCandidate('tacos', EntityType.food, {
+      exploreCandidate('tacos', EntityType.item, {
         currentActs: 500,
         previousActs: 1,
         localDemand: 100,
@@ -247,7 +241,7 @@ describe('D41 explore selection — measured-yield UCB', () => {
     );
     const flat = score(
       selection,
-      exploreCandidate('queso', EntityType.food, {
+      exploreCandidate('queso', EntityType.item, {
         currentActs: 0,
         previousActs: 500,
         localDemand: 1,
@@ -344,15 +338,15 @@ describe('D41 durable estimator seam', () => {
     const store = memoryStore();
 
     const first = new KeywordExploreYieldEstimatorService(store as never);
-    await observe(first, EntityType.food, [10, 12, 11, 9], now);
-    await first.primeClasses(ENGINE, [EntityType.food]);
-    const before = first.classReading(ENGINE, EntityType.food, now);
+    await observe(first, EntityType.item, [10, 12, 11, 9], now);
+    await first.primeClasses(ENGINE, [EntityType.item]);
+    const before = first.classReading(ENGINE, EntityType.item, now);
     expect(before.nEffective).toBeCloseTo(4, 5);
 
     // A brand-new process — in-memory state gone, durable state intact.
     const second = new KeywordExploreYieldEstimatorService(store as never);
-    await second.primeClasses(ENGINE, [EntityType.food]);
-    const after = second.classReading(ENGINE, EntityType.food, now);
+    await second.primeClasses(ENGINE, [EntityType.item]);
+    const after = second.classReading(ENGINE, EntityType.item, now);
 
     expect(after.nEffective).toBeCloseTo(before.nEffective, 5);
     expect(after.estimate).toBeCloseTo(before.estimate, 5);
@@ -364,7 +358,7 @@ describe('D41 durable estimator seam', () => {
     volatile.register(KEYWORD_EXPLORE_YIELD_ESTIMATOR);
     const cold = volatile.read(
       KEYWORD_EXPLORE_YIELD_ESTIMATOR.name,
-      exploreYieldSubjectKey(ENGINE, EntityType.food),
+      exploreYieldSubjectKey(ENGINE, EntityType.item),
       now,
     );
     expect(cold.uncertainty).toBe(Number.POSITIVE_INFINITY);
@@ -374,11 +368,11 @@ describe('D41 durable estimator seam', () => {
   it('hydration never clobbers fresher in-process observations', async () => {
     const store = memoryStore();
     const service = new KeywordExploreYieldEstimatorService(store as never);
-    await observe(service, EntityType.food, [10, 10], now);
-    const seen = service.classReading(ENGINE, EntityType.food, now).nEffective;
+    await observe(service, EntityType.item, [10, 10], now);
+    const seen = service.classReading(ENGINE, EntityType.item, now).nEffective;
     // A re-prime after observing must be a no-op, not a rollback.
-    await service.primeClasses(ENGINE, [EntityType.food]);
-    expect(service.classReading(ENGINE, EntityType.food, now).nEffective).toBe(
+    await service.primeClasses(ENGINE, [EntityType.item]);
+    expect(service.classReading(ENGINE, EntityType.item, now).nEffective).toBe(
       seen,
     );
   });

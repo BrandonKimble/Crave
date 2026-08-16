@@ -72,7 +72,7 @@ interface Options {
   approveEstimate?: string;
   /** Curve-derived NEW-restaurant count for the Places manifest line (see
    *  PrepareManifestEstimateParams.expectedNewRestaurants). */
-  expectedRestaurants?: number;
+  expectedPlaces?: number;
 }
 
 function parseArgs(argv: string[]): Options {
@@ -90,7 +90,7 @@ function parseArgs(argv: string[]): Options {
     else if (token === '--batch-size') options.batchSize = Number(next());
     else if (token === '--approve-estimate') options.approveEstimate = next();
     else if (token === '--expected-restaurants')
-      options.expectedRestaurants = Number(next());
+      options.expectedPlaces = Number(next());
     else throw new Error(`Unknown argument: ${token}`);
   }
   if (!options.subreddits.length) {
@@ -168,14 +168,14 @@ async function main(): Promise<void> {
       const estimate = await spendCampaigns.prepareManifestEstimate({
         name: `archive:${options.subreddits.join(',')}`,
         docCount: unitCount,
-        expectedNewRestaurants: options.expectedRestaurants,
+        expectedNewPlaces: options.expectedPlaces,
       });
       out(
         `\n=== §24.3 all-in spend manifest (campaign ${estimate.campaignId}) ===`,
       );
       out(
         `  docs=${estimate.docCount}  expected new restaurants=${estimate.expectedEntities} ` +
-          (options.expectedRestaurants !== undefined
+          (options.expectedPlaces !== undefined
             ? `(curve-derived override — measured discovery curve)`
             : `(measured entities/kilodoc ratio)`),
       );
@@ -228,7 +228,7 @@ async function main(): Promise<void> {
     const startedAt = new Date();
     const baseline = {
       entities: await prisma.entity.count({ where: { status: 'active' } }),
-      restaurants: await prisma.restaurantLocation.count({
+      places: await prisma.placeLocation.count({
         where: { googlePlaceId: { not: null } },
       }),
     };
@@ -300,12 +300,12 @@ async function main(): Promise<void> {
     }
     const after = {
       entities: await prisma.entity.count({ where: { status: 'active' } }),
-      restaurants: await prisma.restaurantLocation.count({
+      places: await prisma.placeLocation.count({
         where: { googlePlaceId: { not: null } },
       }),
     };
     out(
-      `\nentities +${after.entities - baseline.entities}; place-backed locations +${after.restaurants - baseline.restaurants} (wall-clock, ALL subreddits — the per-subreddit truth is the post-sequence section above)`,
+      `\nentities +${after.entities - baseline.entities}; place-backed locations +${after.places - baseline.places} (wall-clock, ALL subreddits — the per-subreddit truth is the post-sequence section above)`,
     );
     out(`report also written to ${logFile}`);
 

@@ -133,17 +133,17 @@ async function main(): Promise<void> {
         (meta.queryAnalysis as { browseMode?: boolean } | undefined)
           ?.browseMode === true;
       const dishes = res.dishes?.length ?? 0;
-      const restaurants = res.restaurants?.length ?? 0;
-      const total = dishes + restaurants;
+      const places = res.places?.length ?? 0;
+      const total = dishes + places;
       const coverage = String(meta.resultCoverageStatus);
       const scold = typeof meta.emptyQueryMessage === 'string';
       const top = (
         (res.dishes ?? []).slice(0, 3) as Array<{
           name?: string;
-          foodName?: string;
+          itemName?: string;
         }>
       )
-        .map((d) => d.name ?? d.foodName ?? '?')
+        .map((d) => d.name ?? d.itemName ?? '?')
         .join(' | ');
 
       const problems: string[] = [];
@@ -168,7 +168,7 @@ async function main(): Promise<void> {
       out(`--- '${c.q}'  (${c.note})`);
       out(
         `    browseMode=${String(browseMode)} dishes=${dishes} ` +
-          `restaurants=${restaurants} coverage=${coverage} ` +
+          `restaurants=${places} coverage=${coverage} ` +
           `scold=${String(scold)} top=[${top}]` +
           (problems.length ? `  RED: ${problems.join(', ')}` : '  ok'),
       );

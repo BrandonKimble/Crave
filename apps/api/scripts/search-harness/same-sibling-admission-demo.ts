@@ -64,14 +64,14 @@ async function main(): Promise<void> {
         pagination: { page: 1, pageSize: 20 },
       } as SearchQueryRequestDto;
 
-      const anchors = (request.entities?.food ?? []).flatMap(
+      const anchors = (request.entities?.items ?? []).flatMap(
         (f) => (f as { entityIds?: string[] }).entityIds ?? [],
       );
       const reader = expansion.forRequest();
       const [category, variants, judged] = await Promise.all([
-        reader.getCategoryMemberFoodIds(anchors),
-        reader.getNameContainmentVariantFoodIds(anchors),
-        reader.getSatisfiesFoodIds(anchors),
+        reader.getCategoryMemberItemIds(anchors),
+        reader.getNameContainmentVariantItemIds(anchors),
+        reader.getSatisfiesItemIds(anchors),
       ]);
       const anchorSet = new Set(anchors);
       const catSet = new Set([
@@ -79,10 +79,10 @@ async function main(): Promise<void> {
         ...variants.isVariantOf,
         ...judged.satisfies,
       ]);
-      const label = (foodId: string): string =>
-        anchorSet.has(foodId)
+      const label = (itemId: string): string =>
+        anchorSet.has(itemId)
           ? 'exact'
-          : catSet.has(foodId)
+          : catSet.has(itemId)
             ? 'category'
             : 'ring';
 
@@ -95,11 +95,11 @@ async function main(): Promise<void> {
       );
       const counts: Record<string, number> = {};
       for (const [i, d] of dishes.entries()) {
-        const reason = label(d.foodId);
+        const reason = label(d.itemId);
         counts[reason] = (counts[reason] ?? 0) + 1;
         out(
           `  ${String(i + 1).padStart(2)}  ${reason.padEnd(13)}` +
-            ` rel=${(d.relevance ?? 1).toFixed(3)}  ${d.foodName}  @ ${d.restaurantName}`,
+            ` rel=${(d.relevance ?? 1).toFixed(3)}  ${d.itemName}  @ ${d.placeName}`,
         );
       }
       out(

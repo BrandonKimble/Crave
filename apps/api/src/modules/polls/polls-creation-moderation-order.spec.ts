@@ -85,8 +85,8 @@ function createHarness() {
     moderateText: jest.fn().mockResolvedValue({ kind: 'allowed' }),
   };
   const pollEntitySeedService = {
-    resolveRestaurant: jest.fn(),
-    resolveFood: jest.fn(),
+    resolvePlace: jest.fn(),
+    resolveItem: jest.fn(),
     resolveAttribute: jest.fn(),
   };
   const service = new PollsService(
@@ -127,7 +127,7 @@ describe('poll creation: moderation runs BEFORE the spend boundary', () => {
       service.createPoll(
         {
           topicType: 'what_to_order',
-          targetRestaurantName: 'Slur Diner',
+          targetPlaceName: 'Slur Diner',
           description: 'A perfectly ordinary description',
           bounds: BOUNDS,
         } as never,
@@ -135,7 +135,7 @@ describe('poll creation: moderation runs BEFORE the spend boundary', () => {
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
 
-    expect(pollEntitySeedService.resolveRestaurant).not.toHaveBeenCalled();
+    expect(pollEntitySeedService.resolvePlace).not.toHaveBeenCalled();
     expect(tx.poll.create).not.toHaveBeenCalled();
   });
 
@@ -161,12 +161,12 @@ describe('poll creation: moderation runs BEFORE the spend boundary', () => {
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
 
-    expect(pollEntitySeedService.resolveFood).not.toHaveBeenCalled();
+    expect(pollEntitySeedService.resolveItem).not.toHaveBeenCalled();
   });
 
   it('a name the user PICKED from our own catalog (by id) is not re-moderated — it is already ours', async () => {
     const { service, moderation, pollEntitySeedService } = createHarness();
-    pollEntitySeedService.resolveRestaurant.mockResolvedValue({
+    pollEntitySeedService.resolvePlace.mockResolvedValue({
       entityId: 'entity-1',
       name: 'Franklin Barbecue',
     });
@@ -174,15 +174,15 @@ describe('poll creation: moderation runs BEFORE the spend boundary', () => {
     await service.createPoll(
       {
         topicType: 'what_to_order',
-        targetRestaurantId: '55555555-5555-5555-5555-555555555555',
-        targetRestaurantName: 'Franklin Barbecue',
+        targetPlaceId: '55555555-5555-5555-5555-555555555555',
+        targetPlaceName: 'Franklin Barbecue',
         description: 'A perfectly ordinary description',
         bounds: BOUNDS,
       } as never,
       USER_ID,
     );
 
-    expect(pollEntitySeedService.resolveRestaurant).toHaveBeenCalledTimes(1);
+    expect(pollEntitySeedService.resolvePlace).toHaveBeenCalledTimes(1);
     const moderated = (
       moderation.moderateText.mock.calls as unknown as string[][]
     ).map((call) => call[0]);

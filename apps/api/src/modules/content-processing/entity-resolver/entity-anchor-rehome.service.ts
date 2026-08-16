@@ -40,20 +40,20 @@ export class EntityAnchorRehomeService {
     duplicateId: string,
   ): Promise<void> {
     await tx.pollTopic.updateMany({
-      where: { targetRestaurantId: duplicateId },
-      data: { targetRestaurantId: canonicalId },
+      where: { targetPlaceId: duplicateId },
+      data: { targetPlaceId: canonicalId },
     });
     await tx.pollTopic.updateMany({
       where: { targetDishId: duplicateId },
       data: { targetDishId: canonicalId },
     });
     await tx.pollTopic.updateMany({
-      where: { targetFoodAttributeId: duplicateId },
-      data: { targetFoodAttributeId: canonicalId },
+      where: { targetItemAttributeId: duplicateId },
+      data: { targetItemAttributeId: canonicalId },
     });
     await tx.pollTopic.updateMany({
-      where: { targetRestaurantAttributeId: duplicateId },
-      data: { targetRestaurantAttributeId: canonicalId },
+      where: { targetPlaceAttributeId: duplicateId },
+      data: { targetPlaceAttributeId: canonicalId },
     });
     // topic id ARRAYS (category seeds / ballot seeds) carry entity ids too
     await tx.$executeRaw`
@@ -74,13 +74,13 @@ export class EntityAnchorRehomeService {
       data: { entityId: canonicalId },
     });
     await tx.curatedListItem.updateMany({
-      where: { restaurantId: duplicateId },
-      data: { restaurantId: canonicalId },
+      where: { placeId: duplicateId },
+      data: { placeId: canonicalId },
     });
 
     await tx.photo.updateMany({
-      where: { restaurantId: duplicateId },
-      data: { restaurantId: canonicalId },
+      where: { placeId: duplicateId },
+      data: { placeId: canonicalId },
     });
 
     await this.rehomePollEndorsements(tx, canonicalId, duplicateId);
@@ -201,7 +201,7 @@ export class EntityAnchorRehomeService {
    *  content survives every merge. */
   async rehomeUserListItems(
     tx: Prisma.TransactionClient,
-    key: 'restaurantId' | 'connectionId',
+    key: 'placeId' | 'connectionId',
     canonicalId: string,
     duplicateId: string,
   ): Promise<void> {
@@ -276,8 +276,8 @@ export class EntityAnchorRehomeService {
         engineId: true,
         lastSeenAt: true,
         lastQueuedAt: true,
-        resultRestaurantCount: true,
-        resultFoodCount: true,
+        resultPlaceCount: true,
+        resultItemCount: true,
       },
     });
 
@@ -297,8 +297,8 @@ export class EntityAnchorRehomeService {
           requestId: true,
           lastSeenAt: true,
           lastQueuedAt: true,
-          resultRestaurantCount: true,
-          resultFoodCount: true,
+          resultPlaceCount: true,
+          resultItemCount: true,
         },
       });
 
@@ -360,13 +360,13 @@ export class EntityAnchorRehomeService {
                 canonicalRequest.lastQueuedAt,
                 request.lastQueuedAt,
               ) ?? canonicalRequest.lastQueuedAt,
-            resultRestaurantCount: Math.max(
-              canonicalRequest.resultRestaurantCount,
-              request.resultRestaurantCount,
+            resultPlaceCount: Math.max(
+              canonicalRequest.resultPlaceCount,
+              request.resultPlaceCount,
             ),
-            resultFoodCount: Math.max(
-              canonicalRequest.resultFoodCount,
-              request.resultFoodCount,
+            resultItemCount: Math.max(
+              canonicalRequest.resultItemCount,
+              request.resultItemCount,
             ),
           },
         });

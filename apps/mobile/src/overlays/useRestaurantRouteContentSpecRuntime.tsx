@@ -34,8 +34,8 @@ export const useRestaurantRouteContentSpecRuntime = ({
   searchBarTop = 0,
 }: UseRestaurantRouteContentSpecRuntimeArgs): RestaurantRouteContentSpecRuntime => {
   const visibleDataRef = React.useRef(panel.data);
-  const incomingRestaurantId = panel.data?.restaurant.restaurantId ?? null;
-  const visibleRestaurantId = visibleDataRef.current?.restaurant.restaurantId ?? null;
+  const incomingRestaurantId = panel.data?.restaurant.placeId ?? null;
+  const visibleRestaurantId = visibleDataRef.current?.restaurant.placeId ?? null;
 
   if (
     !hostConfig?.shouldFreezeContent ||

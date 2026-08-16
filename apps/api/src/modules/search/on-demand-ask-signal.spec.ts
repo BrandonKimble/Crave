@@ -85,7 +85,7 @@ describe('on_demand_ask signal write (Phase C ask-event replacement)', () => {
       [
         {
           term: 'bún đậu mắm tôm',
-          entityType: 'food' as never,
+          entityType: 'item' as never,
           reason: 'unresolved' as never,
           engineIds: [ENGINE_ID],
           detectedLocale: 'vi',
@@ -120,7 +120,7 @@ describe('on_demand_ask signal write (Phase C ask-event replacement)', () => {
       [
         {
           term: 'camarones',
-          entityType: 'food' as never,
+          entityType: 'item' as never,
           reason: 'unresolved' as never,
           engineIds: [ENGINE_ID],
           detectedLocale: null,
@@ -149,7 +149,7 @@ describe('on_demand_ask signal write (Phase C ask-event replacement)', () => {
       [
         {
           term: 'khachapuri',
-          entityType: 'food' as never,
+          entityType: 'item' as never,
           reason: 'unresolved' as never,
           entityId: null,
           engineIds: [ENGINE_ID],
@@ -158,8 +158,8 @@ describe('on_demand_ask signal write (Phase C ask-event replacement)', () => {
       { userId: USER_ID },
       {
         searchRequestId: SEARCH_REQUEST_ID,
-        restaurantCount: 2,
-        foodCount: 0,
+        placeCount: 2,
+        itemCount: 0,
         source: 'low_result',
         bounds: {
           northEast: { lat: 30.4, lng: -97.6 },
@@ -185,9 +185,9 @@ describe('on_demand_ask signal write (Phase C ask-event replacement)', () => {
     expect(data.meta).toEqual({
       askSearchRequestId: SEARCH_REQUEST_ID,
       reason: 'unresolved',
-      entityType: 'food',
-      resultRestaurantCount: 2,
-      resultFoodCount: 0,
+      entityType: 'item',
+      resultPlaceCount: 2,
+      resultItemCount: 0,
       source: 'low_result',
     });
     // ECHO-KIND WRITER INVARIANT (poll-supply swap): the ask is by
@@ -207,7 +207,7 @@ describe('on_demand_ask signal write (Phase C ask-event replacement)', () => {
       [
         {
           term: 'birria',
-          entityType: 'food' as never,
+          entityType: 'item' as never,
           reason: 'low_result' as never,
           entityId: ENTITY_ID,
           engineIds: [ENGINE_ID],
@@ -239,7 +239,7 @@ describe('on_demand_ask signal write (Phase C ask-event replacement)', () => {
       [
         {
           term: 'khachapuri',
-          entityType: 'food' as never,
+          entityType: 'item' as never,
           reason: 'unresolved' as never,
           entityId: null,
           engineIds: [ENGINE_ID, ENGINE_ID_2],
@@ -265,7 +265,7 @@ describe('on_demand_ask signal write (Phase C ask-event replacement)', () => {
       [
         {
           term: 'khachapuri',
-          entityType: 'food' as never,
+          entityType: 'item' as never,
           reason: 'unresolved' as never,
           entityId: null,
           engineIds: [],
@@ -319,13 +319,13 @@ describe('territoryUnmetAsks read (the §11 unmet family input)', () => {
           return Promise.resolve([
             {
               term: 'khachapuri',
-              entity_type: 'food',
+              entity_type: 'item',
               entity_id: null,
               reason: 'unresolved',
               distinct_user_count: BigInt(2),
               demand_score: 2,
-              result_restaurant_count: 0,
-              result_food_count: 0,
+              result_place_count: 0,
+              result_item_count: 0,
               last_seen_at: new Date('2026-07-18T00:00:00Z'),
               ask_count: BigInt(3),
               // The ask's own language, carried to collection: the keyword
@@ -367,13 +367,13 @@ describe('territoryUnmetAsks read (the §11 unmet family input)', () => {
     expect(rows).toEqual([
       {
         term: 'khachapuri',
-        entityType: 'food',
+        entityType: 'item',
         entityId: null,
         reason: 'unresolved',
         distinctUserCount: 2,
         demandScore: 2,
-        resultRestaurantCount: 0,
-        resultFoodCount: 0,
+        resultPlaceCount: 0,
+        resultItemCount: 0,
         lastSeenAt: new Date('2026-07-18T00:00:00Z'),
         askCount: 3,
         detectedLocale: 'es-MX',

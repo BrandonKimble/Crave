@@ -37,14 +37,14 @@ function makeService(items: any[]) {
     {
       record: () => undefined,
       bboxFromPoint: () => null,
-      bboxFromRestaurantLocation: () => Promise.resolve(null),
+      bboxFromPlaceLocation: () => Promise.resolve(null),
     } as never,
     blocks as never,
     // D36: the one saveable-entity law (stubbed live here).
     {
-      resolveSaveableRestaurant: (id: string) =>
+      resolveSaveablePlace: (id: string) =>
         Promise.resolve({ entityId: id, name: 'R', city: null }),
-      resolveSaveableFood: (id: string) =>
+      resolveSaveableItem: (id: string) =>
         Promise.resolve({ entityId: id, name: 'F', city: null }),
       resolveActiveByIds: (ids: string[]) =>
         Promise.resolve(
@@ -62,10 +62,7 @@ describe('listMembershipsForEntity (§8.4 saved-note read)', () => {
     const { prisma, service } = makeService([]);
     await service.listMembershipsForEntity(VIEWER, ENTITY);
     const where = prisma.userListItem.findMany.mock.calls[0][0].where;
-    expect(where.OR).toEqual([
-      { restaurantId: ENTITY },
-      { connectionId: ENTITY },
-    ]);
+    expect(where.OR).toEqual([{ placeId: ENTITY }, { connectionId: ENTITY }]);
     expect(where.list.OR).toEqual([
       { ownerUserId: VIEWER },
       { collaborators: { some: { userId: VIEWER } } },

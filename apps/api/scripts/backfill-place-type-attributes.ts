@@ -30,7 +30,7 @@ import { PrismaService } from '../src/prisma/prisma.service';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 import {
   GOOGLE_PLACE_TYPE_ATTRIBUTE_MAP,
-  RESTAURANT_ATTRIBUTE_ALIASES_BY_NAME,
+  PLACE_ATTRIBUTE_ALIASES_BY_NAME,
   isClassifiedGooglePlaceType,
 } from '../src/modules/restaurant-enrichment/google-place-type-attributes';
 import { identityInsertData } from '../src/modules/content-processing/entity-resolver/entity-identity';
@@ -61,7 +61,7 @@ async function main(): Promise<void> {
              ) AS types,
              e.restaurant_attributes
         FROM core_entities e
-       WHERE e.type = 'restaurant'
+       WHERE e.type = 'place'
          AND e.status = 'active'
          AND jsonb_typeof(e.restaurant_metadata->'googlePlaces'->'types') = 'array'
          AND EXISTS (
@@ -103,7 +103,7 @@ async function main(): Promise<void> {
     // name-equality probe did not see.
     const existing = await prisma.entity.findMany({
       where: {
-        type: EntityType.restaurant_attribute,
+        type: EntityType.place_attribute,
         status: { not: 'archived' },
       },
       select: { entityId: true, identityKey: true },
@@ -118,7 +118,7 @@ async function main(): Promise<void> {
     for (const canonical of neededCanonicals) {
       const key = identityInsertData(
         canonical,
-        EntityType.restaurant_attribute,
+        EntityType.place_attribute,
       ).identityKey;
       const id = key ? idsByIdentityKey.get(key) : undefined;
       if (id) idsByName.set(canonical, id);
@@ -129,15 +129,15 @@ async function main(): Promise<void> {
 
     // Plan per-kind evidence additions.
     const perKindNew = new Map<string, number>();
-    const evidencePlan: Array<{ restaurantId: string; canonical: string }> = [];
+    const evidencePlan: Array<{ placeId: string; canonical: string }> = [];
     const arrayGrowth = new Map<string, Set<string>>();
     const existingEvidence = new Set(
       (
-        await prisma.restaurantAttributeEvidence.findMany({
+        await prisma.placeAttributeEvidence.findMany({
           where: { sourceClass: 'places_api' },
-          select: { restaurantId: true, attributeId: true },
+          select: { placeId: true, attributeId: true },
         })
-      ).map((r) => `${r.restaurantId}|${r.attributeId}`),
+      ).map((r) => `${r.placeId}|${r.attributeId}`),
     );
     for (const row of rows) {
       const canonicals = new Set<string>();
@@ -151,7 +151,7 @@ async function main(): Promise<void> {
           attributeId !== undefined &&
           existingEvidence.has(`${row.entity_id}|${attributeId}`);
         if (!alreadyEvidenced) {
-          evidencePlan.push({ restaurantId: row.entity_id, canonical });
+          evidencePlan.push({ placeId: row.entity_id, canonical });
           perKindNew.set(canonical, (perKindNew.get(canonical) ?? 0) + 1);
         }
         if (
@@ -183,13 +183,13 @@ async function main(): Promise<void> {
       const created = await prisma.entity.create({
         data: {
           name: canonicalName,
-          type: EntityType.restaurant_attribute,
-          ...identityInsertData(canonicalName, EntityType.restaurant_attribute),
+          type: EntityType.place_attribute,
+          ...identityInsertData(canonicalName, EntityType.place_attribute),
         },
         select: { entityId: true },
       });
       const seedAliases =
-        RESTAURANT_ATTRIBUTE_ALIASES_BY_NAME.get(canonicalName) ?? [];
+        PLACE_ATTRIBUTE_ALIASES_BY_NAME.get(canonicalName) ?? [];
       if (seedAliases.length) {
         await prisma.$transaction((tx) =>
           addSurfaces(
@@ -207,8 +207,8 @@ async function main(): Promise<void> {
     // Evidence rows (upsert-by-key, restating refreshes nothing here — pure
     // insert-if-absent, identical to recordAttributeEvidence).
     const evidenceData = evidencePlan
-      .map(({ restaurantId, canonical }) => ({
-        restaurantId,
+      .map(({ placeId, canonical }) => ({
+        placeId,
         attributeId: idsByName.get(canonical)!,
         sourceClass: 'places_api',
         observations: 1,
@@ -216,7 +216,7 @@ async function main(): Promise<void> {
       .filter((d) => d.attributeId);
     let inserted = 0;
     for (let i = 0; i < evidenceData.length; i += 5000) {
-      const result = await prisma.restaurantAttributeEvidence.createMany({
+      const result = await prisma.placeAttributeEvidence.createMany({
         data: evidenceData.slice(i, i + 5000),
         skipDuplicates: true,
       });
@@ -241,7 +241,7 @@ async function main(): Promise<void> {
       `;
       arraysUpdated += 1;
     }
-    out(`restaurant_attributes arrays updated: ${arraysUpdated}`);
+    out(`place_attributes arrays updated: ${arraysUpdated}`);
   } finally {
     await app.close();
   }

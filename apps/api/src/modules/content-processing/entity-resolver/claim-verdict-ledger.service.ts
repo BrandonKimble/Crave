@@ -46,7 +46,15 @@ export interface ClaimVerdictInput<TSubject = unknown> {
  * trickle refused for as long as the window remembered it, which is how
  * 97,400 hearings came to sit in front of a 200-hearing allowance.
  */
-export type HearingSource = 'steady' | 'certification';
+export type HearingSource =
+  | 'steady'
+  | 'certification'
+  // REHEARSAL GENERATION (plans/shadow-sandbox.md door 7): a verdict bought
+  // during a non-activated replay. Remembered only by its own run
+  // (decidedVerdicts' rehearsal scope); flipped to 'steady' at activation,
+  // deleted on rejection — a rehearsal's judgments never steer live
+  // resolution.
+  | `rehearsal:${string}`;
 
 export interface PendingVerdict<TSubject = unknown> {
   lane: string;
@@ -230,14 +238,25 @@ export class ClaimVerdictLedgerService {
     ruleVersion: number,
     foldVersion: number,
     claimKeys: readonly string[],
+    options?: {
+      /** Rehearsal self-visibility (plans/shadow-sandbox.md): remember
+       *  steady + THIS run's rehearsal verdicts; never another run's. Live
+       *  callers omit it and see no rehearsal verdicts at all. */
+      rehearsalRunId?: string | null;
+    },
   ): Promise<Map<string, { outcome: string; reason: string }>> {
     if (!claimKeys.length) return new Map();
+    const rehearsalSource = options?.rehearsalRunId
+      ? `rehearsal:${options.rehearsalRunId}`
+      : null;
     const rows = await this.prisma.$queryRaw<
       Array<{ claim_key: string; outcome: string; reason: string }>
     >`
       SELECT claim_key, outcome, reason FROM claim_verdicts
        WHERE lane = ${lane} AND rule_version = ${ruleVersion}
          AND fold_version = ${foldVersion}
+         AND (source NOT LIKE 'rehearsal:%'
+              OR source = ${rehearsalSource ?? ''})
          AND claim_key = ANY(${[...claimKeys]}::text[])`;
     return new Map(
       rows.map((row) => [

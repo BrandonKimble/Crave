@@ -8,7 +8,7 @@ import type {
 } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 
 // Leg 2 (geo-demand rebuild §7): the profile is restaurant-scoped (ALL locations,
-// no market slice) — the cache/request key is the restaurantId itself.
+// no market slice) — the cache/request key is the placeId itself.
 
 export const getRestaurantProfileRequestSeqFromRecord = (
   controllerState: ProfileControllerState
@@ -54,7 +54,7 @@ export const resetRestaurantFocusSessionOnRecord = (
   controllerState: ProfileControllerState
 ): void => {
   controllerState.mutable.restaurantFocusSession = {
-    restaurantId: null,
+    placeId: null,
     locationKey: null,
     hasAppliedInitialMultiLocationZoomOut: false,
   };
@@ -104,20 +104,20 @@ const RESTAURANT_PROFILE_CACHE_LIMIT = 12;
 
 export const getRestaurantProfileCacheEntryFromRecord = (
   controllerState: ProfileControllerState,
-  restaurantId: string
+  placeId: string
 ): HydratedRestaurantProfile | undefined =>
-  controllerState.mutable.restaurantProfileCache.get(restaurantId);
+  controllerState.mutable.restaurantProfileCache.get(placeId);
 
 export const setRestaurantProfileCacheEntryOnRecord = (
   controllerState: ProfileControllerState,
-  restaurantId: string,
+  placeId: string,
   hydratedRestaurantProfile: HydratedRestaurantProfile
 ): void => {
   const cache = controllerState.mutable.restaurantProfileCache;
   // Delete-then-set so the re-written key moves to the BACK: Map iteration order is
   // insertion order, so the front is always the least-recently-written entry.
-  cache.delete(restaurantId);
-  cache.set(restaurantId, hydratedRestaurantProfile);
+  cache.delete(placeId);
+  cache.set(placeId, hydratedRestaurantProfile);
   while (cache.size > RESTAURANT_PROFILE_CACHE_LIMIT) {
     const oldestKey = cache.keys().next().value;
     if (typeof oldestKey !== 'string') {
@@ -129,21 +129,21 @@ export const setRestaurantProfileCacheEntryOnRecord = (
 
 export const getRestaurantProfileRequestByIdFromRecord = (
   controllerState: ProfileControllerState,
-  restaurantId: string
+  placeId: string
 ): RestaurantProfileRequestById | undefined =>
-  controllerState.mutable.restaurantProfileRequestById.get(restaurantId);
+  controllerState.mutable.restaurantProfileRequestById.get(placeId);
 
 export const setRestaurantProfileRequestByIdOnRecord = (
   controllerState: ProfileControllerState,
-  restaurantId: string,
+  placeId: string,
   request: RestaurantProfileRequestById
 ): void => {
-  controllerState.mutable.restaurantProfileRequestById.set(restaurantId, request);
+  controllerState.mutable.restaurantProfileRequestById.set(placeId, request);
 };
 
 export const deleteRestaurantProfileRequestByIdOnRecord = (
   controllerState: ProfileControllerState,
-  restaurantId: string
+  placeId: string
 ): void => {
-  controllerState.mutable.restaurantProfileRequestById.delete(restaurantId);
+  controllerState.mutable.restaurantProfileRequestById.delete(placeId);
 };

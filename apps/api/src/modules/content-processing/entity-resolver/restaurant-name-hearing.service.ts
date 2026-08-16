@@ -5,16 +5,16 @@ import { LLMService } from '../../external-integrations/llm/llm.service';
 import { canonicalFold } from './entity-identity';
 import { surfaceClaimKey } from './entity-surface.service';
 import {
-  RESTAURANT_NAME_JUDGE_PROMPT,
-  RESTAURANT_NAME_RULE_FINGERPRINT,
-  RESTAURANT_NAME_RULE_VERSION,
+  PLACE_NAME_JUDGE_PROMPT,
+  PLACE_NAME_RULE_FINGERPRINT,
+  PLACE_NAME_RULE_VERSION,
 } from './restaurant-name-rule';
 import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
 import { ClaimRehearingBudgetService } from './claim-rehearing-budget.service';
 import {
-  RESTAURANT_NAME_LANE,
-  restaurantNameLane,
-  type RestaurantNameClaim,
+  PLACE_NAME_LANE,
+  placeNameLane,
+  type PlaceNameClaim,
 } from './restaurant-name-lane';
 import type { SurfaceTargetState } from './word-claim-adjudicator.service';
 
@@ -57,11 +57,11 @@ import type { SurfaceTargetState } from './word-claim-adjudicator.service';
  */
 
 /** Claims packed into one LLM call. Mirrored by the lane's HEARING_METER. */
-export const RESTAURANT_NAME_CLAIMS_PER_CALL = 8;
+export const PLACE_NAME_CLAIMS_PER_CALL = 8;
 
 /** What the verdict orders done — persisted as the verdict's subject, so a
  *  resumed effect replays the decision (stored bytes), never re-derives it. */
-export interface RestaurantNameEffect {
+export interface PlaceNameEffect {
   entityId: string;
   form: string;
   /** Surfaces whose recall claim dies, each with the exact (role, status) the
@@ -70,20 +70,20 @@ export interface RestaurantNameEffect {
   takeName: SurfaceTargetState[];
 }
 
-export interface RestaurantNameCase {
+export interface PlaceNameCase {
   entityId: string;
   form: string;
-  restaurantName: string;
+  placeName: string;
   outcome: 'isName' | 'notAName';
   reason: string;
   /** Surface rows the verdict deprecated / degraded (0 under dryRun). */
   surfacesTaken: number;
 }
 
-export interface RestaurantNameHearingSummary {
+export interface PlaceNameHearingSummary {
   considered: number;
   /** Skipped without paying: no active restaurant entity behind the claim. */
-  noSuchRestaurant: number;
+  noSuchPlace: number;
   /** Skipped without paying: already decided at the rule + fold in force. */
   alreadyDecided: number;
   judged: number;
@@ -91,19 +91,19 @@ export interface RestaurantNameHearingSummary {
   namesDenied: number;
   /** Judge unavailable / blank-reason answer — left undecided, offered again. */
   unjudged: number;
-  cases: RestaurantNameCase[];
+  cases: PlaceNameCase[];
 }
 
 interface PreparedCase {
-  claim: RestaurantNameClaim;
-  restaurantName: string;
+  claim: PlaceNameClaim;
+  placeName: string;
   card: string;
   /** Live recall rows this form holds on the entity — what a NO takes. */
   held: Array<{ surfaceId: string; role: string; status: string }>;
 }
 
 @Injectable()
-export class RestaurantNameHearingService {
+export class PlaceNameHearingService {
   /** Excerpts quoted on a card — enough to show a usage pattern, small
    *  enough that eight cards still fit one judge call. */
   static readonly SNIPPETS_PER_CARD = 5;
@@ -123,7 +123,7 @@ export class RestaurantNameHearingService {
     private readonly ledger: ClaimVerdictLedgerService,
     private readonly budget: ClaimRehearingBudgetService,
   ) {
-    this.logger = loggerService.setContext('RestaurantNameHearingService');
+    this.logger = loggerService.setContext('PlaceNameHearingService');
   }
 
   /**
@@ -133,15 +133,15 @@ export class RestaurantNameHearingService {
    * Resuming replays the STORED subject — the same bytes the verdict froze.
    */
   async resumePendingEffects(limit = 500): Promise<number> {
-    const pending = await this.ledger.pendingExecution<RestaurantNameEffect>(
-      RESTAURANT_NAME_LANE,
+    const pending = await this.ledger.pendingExecution<PlaceNameEffect>(
+      PLACE_NAME_LANE,
       limit,
     );
     let resumed = 0;
     for (const verdict of pending) {
       await this.applyEffect(verdict.subject);
       await this.ledger.markExecuted(
-        RESTAURANT_NAME_LANE,
+        PLACE_NAME_LANE,
         verdict.claimKey,
         verdict.ruleVersion,
         verdict.foldVersion,
@@ -163,13 +163,13 @@ export class RestaurantNameHearingService {
    * subtract the already-decided, pass the budget gate, then judge in batches.
    */
   async hear(
-    claims: RestaurantNameClaim[],
+    claims: PlaceNameClaim[],
     options: { dryRun?: boolean; approvedHash?: string | null } = {},
-  ): Promise<RestaurantNameHearingSummary> {
+  ): Promise<PlaceNameHearingSummary> {
     const dryRun = options.dryRun ?? true;
-    const summary: RestaurantNameHearingSummary = {
+    const summary: PlaceNameHearingSummary = {
       considered: 0,
-      noSuchRestaurant: 0,
+      noSuchPlace: 0,
       alreadyDecided: 0,
       judged: 0,
       namesUpheld: 0,
@@ -181,7 +181,7 @@ export class RestaurantNameHearingService {
     // One hearing per claim unit.
     const seen = new Set<string>();
     const deduped = claims.filter((claim) => {
-      const key = restaurantNameLane.canonicalClaimKey(claim);
+      const key = placeNameLane.canonicalClaimKey(claim);
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -190,32 +190,32 @@ export class RestaurantNameHearingService {
 
     // THE DUE-PREDICATE, AT THE CHOKEPOINT: already decided is not due.
     const decided = await this.ledger.decidedKeys(
-      RESTAURANT_NAME_LANE,
-      RESTAURANT_NAME_RULE_VERSION,
-      restaurantNameLane.keyFoldVersion,
-      deduped.map((claim) => restaurantNameLane.canonicalClaimKey(claim)),
+      PLACE_NAME_LANE,
+      PLACE_NAME_RULE_VERSION,
+      placeNameLane.keyFoldVersion,
+      deduped.map((claim) => placeNameLane.canonicalClaimKey(claim)),
     );
     const undecided = deduped.filter(
-      (claim) => !decided.has(restaurantNameLane.canonicalClaimKey(claim)),
+      (claim) => !decided.has(placeNameLane.canonicalClaimKey(claim)),
     );
     summary.alreadyDecided = deduped.length - undecided.length;
 
     // THE BUDGET GATE. Refuses loudly with a quote rather than truncating.
     const authorized = await this.budget.authorizeDrain({
-      lane: RESTAURANT_NAME_LANE,
-      ruleVersion: RESTAURANT_NAME_RULE_VERSION,
+      lane: PLACE_NAME_LANE,
+      ruleVersion: PLACE_NAME_RULE_VERSION,
       dueCount: undecided.length,
       approvedHash: options.approvedHash,
     });
     const docket = undecided.slice(0, authorized.allowed);
 
-    for (let i = 0; i < docket.length; i += RESTAURANT_NAME_CLAIMS_PER_CALL) {
-      const batch = docket.slice(i, i + RESTAURANT_NAME_CLAIMS_PER_CALL);
+    for (let i = 0; i < docket.length; i += PLACE_NAME_CLAIMS_PER_CALL) {
+      const batch = docket.slice(i, i + PLACE_NAME_CLAIMS_PER_CALL);
       const prepared: PreparedCase[] = [];
       for (const claim of batch) {
         const evidence = await this.evidenceCard(claim);
         if (!evidence) {
-          summary.noSuchRestaurant += 1;
+          summary.noSuchPlace += 1;
           continue;
         }
         prepared.push(evidence);
@@ -253,7 +253,7 @@ export class RestaurantNameHearingService {
         // THE TARGET STATE IS COMPUTED NOW, at decision time, and frozen into
         // the subject — the replay writes what was decided, not a function of
         // a corpus that has since moved (the word lane's idempotence law).
-        const effect: RestaurantNameEffect = {
+        const effect: PlaceNameEffect = {
           entityId: p.claim.entityId,
           form: p.claim.form,
           takeName: verdict.isName
@@ -280,7 +280,7 @@ export class RestaurantNameHearingService {
         summary.cases.push({
           entityId: p.claim.entityId,
           form: p.claim.form,
-          restaurantName: p.restaurantName,
+          placeName: p.placeName,
           outcome: verdict.isName ? 'isName' : 'notAName',
           reason: verdict.reason,
           surfacesTaken: dryRun ? 0 : effect.takeName.length,
@@ -298,28 +298,28 @@ export class RestaurantNameHearingService {
 
   /** Commit the verdict, THEN obey it (verdict-then-effect, amendment (c)). */
   private async settle(
-    claim: RestaurantNameClaim,
+    claim: PlaceNameClaim,
     outcome: 'isName' | 'notAName',
     reason: string,
-    effect: RestaurantNameEffect,
+    effect: PlaceNameEffect,
   ): Promise<void> {
-    const claimKey = restaurantNameLane.canonicalClaimKey(claim);
-    await this.ledger.record<RestaurantNameEffect>({
-      lane: RESTAURANT_NAME_LANE,
+    const claimKey = placeNameLane.canonicalClaimKey(claim);
+    await this.ledger.record<PlaceNameEffect>({
+      lane: PLACE_NAME_LANE,
       claimKey,
-      ruleVersion: RESTAURANT_NAME_RULE_VERSION,
-      foldVersion: restaurantNameLane.keyFoldVersion,
+      ruleVersion: PLACE_NAME_RULE_VERSION,
+      foldVersion: placeNameLane.keyFoldVersion,
       outcome,
       reason,
-      ruleFingerprint: RESTAURANT_NAME_RULE_FINGERPRINT,
+      ruleFingerprint: PLACE_NAME_RULE_FINGERPRINT,
       subject: effect,
     });
     await this.applyEffect(effect);
     await this.ledger.markExecuted(
-      RESTAURANT_NAME_LANE,
+      PLACE_NAME_LANE,
       claimKey,
-      RESTAURANT_NAME_RULE_VERSION,
-      restaurantNameLane.keyFoldVersion,
+      PLACE_NAME_RULE_VERSION,
+      placeNameLane.keyFoldVersion,
     );
   }
 
@@ -332,7 +332,7 @@ export class RestaurantNameHearingService {
    * the IS DISTINCT FROM guard is what makes a replay byte-identical rather
    * than merely equivalent.
    */
-  protected async applyEffect(effect: RestaurantNameEffect): Promise<void> {
+  protected async applyEffect(effect: PlaceNameEffect): Promise<void> {
     for (const target of effect.takeName) {
       await this.prisma.$executeRaw`
         UPDATE entity_surface
@@ -372,13 +372,13 @@ export class RestaurantNameHearingService {
    * the provenance question the rule asks.
    */
   private async evidenceCard(
-    claim: RestaurantNameClaim,
+    claim: PlaceNameClaim,
   ): Promise<PreparedCase | null> {
     const entities = await this.prisma.$queryRaw<
       Array<{ entity_id: string; name: string }>
     >`SELECT entity_id::text, name FROM core_entities
        WHERE entity_id = ${claim.entityId}::uuid
-         AND type = 'restaurant' AND status = 'active'`;
+         AND type = 'place' AND status = 'active'`;
     const entity = entities[0];
     if (!entity) return null;
 
@@ -426,7 +426,7 @@ export class RestaurantNameHearingService {
                 SELECT source_document_id FROM core_restaurant_entity_events
                  WHERE restaurant_id = ${claim.entityId}::uuid)
          ORDER BY d.source_created_at DESC
-         LIMIT ${RestaurantNameHearingService.SNIPPET_DOCS_SCANNED}`,
+         LIMIT ${PlaceNameHearingService.SNIPPET_DOCS_SCANNED}`,
         this.prisma.$queryRaw<Array<{ form: string }>>`
         SELECT form FROM entity_surface
          WHERE entity_id = ${claim.entityId}::uuid AND status = 'active'
@@ -452,11 +452,11 @@ export class RestaurantNameHearingService {
     const snippets = this.nameUsageSnippets(claim.form, mentionDocs);
     const usageLines = snippets.length
       ? [
-          `   name usage in source text (${documents} document(s) total; up to ${RestaurantNameHearingService.SNIPPETS_PER_CARD} excerpts, one per document):`,
+          `   name usage in source text (${documents} document(s) total; up to ${PlaceNameHearingService.SNIPPETS_PER_CARD} excerpts, one per document):`,
           ...snippets.map((s) => `     - "${s}"`),
         ]
       : [
-          `   name usage in source text: no occurrence of the form found in the ${Math.min(documents, RestaurantNameHearingService.SNIPPET_DOCS_SCANNED)} most recent of ${documents} document(s)`,
+          `   name usage in source text: no occurrence of the form found in the ${Math.min(documents, PlaceNameHearingService.SNIPPET_DOCS_SCANNED)} most recent of ${documents} document(s)`,
         ];
 
     const card = [
@@ -469,7 +469,7 @@ export class RestaurantNameHearingService {
 
     return {
       claim,
-      restaurantName: entity.name,
+      placeName: entity.name,
       card,
       held: await this.heldRecallRows(claim),
     };
@@ -479,7 +479,7 @@ export class RestaurantNameHearingService {
    *  across every locale — what a `notAName` verdict takes. The fold FETCHES
    *  the candidate rows (it is the indexed column); the claim key DECIDES. */
   private async heldRecallRows(
-    claim: RestaurantNameClaim,
+    claim: PlaceNameClaim,
   ): Promise<Array<{ surfaceId: string; role: string; status: string }>> {
     const rows = await this.prisma.$queryRaw<
       Array<{ surface_id: string; form: string; role: string; status: string }>
@@ -535,8 +535,7 @@ export class RestaurantNameHearingService {
 
     const snippets: string[] = [];
     for (const doc of docs) {
-      if (snippets.length >= RestaurantNameHearingService.SNIPPETS_PER_CARD)
-        break;
+      if (snippets.length >= PlaceNameHearingService.SNIPPETS_PER_CARD) break;
       const text = [doc.title, doc.body].filter(Boolean).join('\n');
       if (!text) continue;
       // Folded haystack with a map back to original character indices.
@@ -557,11 +556,11 @@ export class RestaurantNameHearingService {
         if (boundedLeft && boundedRight) {
           const start = Math.max(
             0,
-            originIndex[at] - RestaurantNameHearingService.SNIPPET_WINDOW,
+            originIndex[at] - PlaceNameHearingService.SNIPPET_WINDOW,
           );
           const end = Math.min(
             chars.length,
-            afterOrigin + RestaurantNameHearingService.SNIPPET_WINDOW,
+            afterOrigin + PlaceNameHearingService.SNIPPET_WINDOW,
           );
           const window = chars
             .slice(start, end)
@@ -592,8 +591,8 @@ export class RestaurantNameHearingService {
       .join('\n');
 
     const text = await this.llm.generateForCaller({
-      caller: 'aliases.restaurant_name_judge',
-      systemInstruction: RESTAURANT_NAME_JUDGE_PROMPT,
+      caller: 'aliases.place_name_judge',
+      systemInstruction: PLACE_NAME_JUDGE_PROMPT,
       prompt,
       generationConfig: {
         // Zero: name verdicts are persisted rulings; a re-ask must return the

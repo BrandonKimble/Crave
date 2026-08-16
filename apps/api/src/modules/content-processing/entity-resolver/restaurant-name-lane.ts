@@ -4,13 +4,13 @@ import { FOLD_ALGORITHM_VERSION } from './entity-identity';
 
 /** The lane name stored in `claim_verdicts.lane`. Matches the third-lane
  *  shape proof in claim-hearing-ledger.integration.spec.ts. */
-export const RESTAURANT_NAME_LANE = 'restaurant_name';
+export const PLACE_NAME_LANE = 'restaurant_name';
 
 /**
  * The identity of a restaurant-name claim: ONE surface form asking to be a
  * name of ONE restaurant entity.
  */
-export interface RestaurantNameClaim {
+export interface PlaceNameClaim {
   /** The restaurant entity the form claims to name. */
   entityId: string;
   /** The surface form under judgment, verbatim. */
@@ -43,8 +43,8 @@ export interface RestaurantNameClaim {
  * would let a wrong YES hide from its own retraction — the asymmetry the
  * ledger exists to end.
  */
-export class RestaurantNameLaneAdapter extends BaseClaimLaneAdapter<RestaurantNameClaim> {
-  readonly lane = RESTAURANT_NAME_LANE;
+export class PlaceNameLaneAdapter extends BaseClaimLaneAdapter<PlaceNameClaim> {
+  readonly lane = PLACE_NAME_LANE;
 
   /** The key contains folded text (`surfaceClaimKey` is the versioned
    *  diacritic fold), so the fold's version is part of the claim's identity —
@@ -52,9 +52,9 @@ export class RestaurantNameLaneAdapter extends BaseClaimLaneAdapter<RestaurantNa
    *  orphaning every stored verdict. */
   readonly keyFoldVersion = FOLD_ALGORITHM_VERSION;
 
-  canonicalClaimKey(claim: RestaurantNameClaim): string {
+  canonicalClaimKey(claim: PlaceNameClaim): string {
     return `${claim.entityId}|${surfaceClaimKey(claim.form)}`;
   }
 }
 
-export const restaurantNameLane = new RestaurantNameLaneAdapter();
+export const placeNameLane = new PlaceNameLaneAdapter();

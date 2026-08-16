@@ -138,7 +138,7 @@ async function main(): Promise<void> {
       Array<{ entityId: string; name: string }>
     >(Prisma.sql`
       SELECT entity_id::text AS "entityId", name FROM core_entities
-       WHERE type = 'food'::entity_type AND status = 'active'::entity_status
+       WHERE type = 'item'::entity_type AND status = 'active'::entity_status
          AND lower(name) = ANY(${ANCHORS}::text[])`);
     const byName = new Map(anchorRows.map((r) => [r.name.toLowerCase(), r]));
     const missing = ANCHORS.filter((a) => !byName.has(a));
@@ -158,7 +158,7 @@ async function main(): Promise<void> {
         SELECT s.to_entity_id::text AS "toId", t.name, s.relation::text AS relation
           FROM entity_satisfies s
           JOIN core_entities t ON t.entity_id = s.to_entity_id
-           AND t.type = 'food'::entity_type AND t.status = 'active'::entity_status
+           AND t.type = 'item'::entity_type AND t.status = 'active'::entity_status
          WHERE s.from_entity_id = ${anchor.entityId}::uuid`);
       const storedBy = new Map(stored.map((r) => [r.toId, r.relation]));
       const rejects = new Set(
@@ -166,7 +166,7 @@ async function main(): Promise<void> {
       );
 
       // --- A: the production dense read, via the REAL service ---
-      const dense = await widening.getSiblingFoodIds([anchor.entityId], CUT);
+      const dense = await widening.getSiblingItemIds([anchor.entityId], CUT);
       const denseNames = await prisma.$queryRaw<
         Array<{ entityId: string; name: string }>
       >(Prisma.sql`

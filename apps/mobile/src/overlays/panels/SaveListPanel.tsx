@@ -142,7 +142,7 @@ registerPersistentHeaderDescriptor('saveList', {
 const resolveTargetForSide = (
   side: UserListType,
   target: AppOverlaySaveListTarget | null
-): { restaurantId?: string; connectionId?: string; locationId?: string } | null => {
+): { placeId?: string; connectionId?: string; locationId?: string } | null => {
   if (!target) {
     return null;
   }
@@ -151,8 +151,8 @@ const resolveTargetForSide = (
   // (the dish's location IS a location of its restaurant; the API validates).
   const locationId = target.locationId ?? undefined;
   if (side === 'restaurant') {
-    if (target.restaurantId) {
-      return { restaurantId: target.restaurantId, locationId };
+    if (target.placeId) {
+      return { placeId: target.placeId, locationId };
     }
     if (target.connectionId) {
       return { connectionId: target.connectionId, locationId };

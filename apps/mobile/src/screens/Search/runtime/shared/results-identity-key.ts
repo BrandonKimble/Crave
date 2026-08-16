@@ -17,8 +17,8 @@ export type ResultsIdentityKeyInputs = {
   page: number;
   dishCount: number;
   restaurantCount: number;
-  totalFoodResults: number | 'na';
-  totalRestaurantResults: number | 'na';
+  totalItemResults: number | 'na';
+  totalPlaceResults: number | 'na';
 };
 
 export const buildResultsIdentityKey = ({
@@ -26,7 +26,7 @@ export const buildResultsIdentityKey = ({
   page,
   dishCount,
   restaurantCount,
-  totalFoodResults,
-  totalRestaurantResults,
+  totalItemResults,
+  totalPlaceResults,
 }: ResultsIdentityKeyInputs): string =>
-  `${searchRequestId}:page:${page}:dishes:${dishCount}:restaurants:${restaurantCount}:totalFood:${totalFoodResults}:totalRestaurants:${totalRestaurantResults}`;
+  `${searchRequestId}:page:${page}:dishes:${dishCount}:restaurants:${restaurantCount}:totalFood:${totalItemResults}:totalRestaurants:${totalPlaceResults}`;

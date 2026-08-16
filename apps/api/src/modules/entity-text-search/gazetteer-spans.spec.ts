@@ -27,9 +27,9 @@ describe('groupEntitySpans', () => {
   it('keeps EVERY entity sharing a span — the multi-type grounding law', () => {
     // "breakfast" is genuinely three entities in production data.
     const groups = groupEntitySpans([
-      span(0, 9, 'bf-food', EntityType.food, 'breakfast'),
-      span(0, 9, 'bf-fattr', EntityType.food_attribute, 'breakfast'),
-      span(0, 9, 'bf-rattr', EntityType.restaurant_attribute, 'breakfast'),
+      span(0, 9, 'bf-food', EntityType.item, 'breakfast'),
+      span(0, 9, 'bf-fattr', EntityType.item_attribute, 'breakfast'),
+      span(0, 9, 'bf-rattr', EntityType.place_attribute, 'breakfast'),
     ]);
     expect(groups).toHaveLength(1);
     expect(groups[0].entities.map((e) => e.entityId).sort()).toEqual([
@@ -44,10 +44,10 @@ describe('groupEntitySpans', () => {
     // "taco" (10-14) — sub-phrases lose, but nothing within the winning
     // span is dropped.
     const groups = groupEntitySpans([
-      span(0, 14, 'bt', EntityType.food, 'breakfast taco'),
-      span(0, 9, 'bf-food', EntityType.food, 'breakfast'),
-      span(0, 9, 'bf-rattr', EntityType.restaurant_attribute, 'breakfast'),
-      span(10, 14, 'taco', EntityType.food, 'taco'),
+      span(0, 14, 'bt', EntityType.item, 'breakfast taco'),
+      span(0, 9, 'bf-food', EntityType.item, 'breakfast'),
+      span(0, 9, 'bf-rattr', EntityType.place_attribute, 'breakfast'),
+      span(10, 14, 'taco', EntityType.item, 'taco'),
     ]);
     expect(groups).toHaveLength(1);
     expect(groups[0].entities.map((e) => e.entityId)).toEqual(['bt']);
@@ -55,20 +55,20 @@ describe('groupEntitySpans', () => {
 
   it('non-overlapping groups all survive, in text order', () => {
     const groups = groupEntitySpans([
-      span(16, 21, 'vegan', EntityType.food_attribute, 'vegan'),
-      span(0, 14, 'bt', EntityType.food, 'breakfast taco'),
+      span(16, 21, 'vegan', EntityType.item_attribute, 'vegan'),
+      span(0, 14, 'bt', EntityType.item, 'breakfast taco'),
     ]);
     expect(groups.map((g) => g.entities[0].entityId)).toEqual(['bt', 'vegan']);
   });
 
   it('entity order inside a group is deterministic (type, then id)', () => {
     const a = groupEntitySpans([
-      span(0, 5, 'z-id', EntityType.food, 'pizza'),
-      span(0, 5, 'a-id', EntityType.food, 'pizza'),
+      span(0, 5, 'z-id', EntityType.item, 'pizza'),
+      span(0, 5, 'a-id', EntityType.item, 'pizza'),
     ]);
     const b = groupEntitySpans([
-      span(0, 5, 'a-id', EntityType.food, 'pizza'),
-      span(0, 5, 'z-id', EntityType.food, 'pizza'),
+      span(0, 5, 'a-id', EntityType.item, 'pizza'),
+      span(0, 5, 'z-id', EntityType.item, 'pizza'),
     ]);
     expect(a[0].entities.map((e) => e.entityId)).toEqual(
       b[0].entities.map((e) => e.entityId),
@@ -77,8 +77,8 @@ describe('groupEntitySpans', () => {
 
   it('deduplicates the same entity matched via both name and alias', () => {
     const groups = groupEntitySpans([
-      span(0, 5, 'taco-id', EntityType.food, 'taco'),
-      span(0, 5, 'taco-id', EntityType.food, 'taco'),
+      span(0, 5, 'taco-id', EntityType.item, 'taco'),
+      span(0, 5, 'taco-id', EntityType.item, 'taco'),
     ]);
     expect(groups[0].entities).toHaveLength(1);
   });
@@ -86,26 +86,23 @@ describe('groupEntitySpans', () => {
 
 describe('pickSpanWinner', () => {
   const group = groupEntitySpans([
-    span(0, 9, 'bf-food', EntityType.food, 'breakfast'),
-    span(0, 9, 'bf-rattr', EntityType.restaurant_attribute, 'breakfast'),
-    span(0, 9, 'bf-rest', EntityType.restaurant, 'Breakfast'),
+    span(0, 9, 'bf-food', EntityType.item, 'breakfast'),
+    span(0, 9, 'bf-rattr', EntityType.place_attribute, 'breakfast'),
+    span(0, 9, 'bf-rest', EntityType.place, 'Breakfast'),
   ])[0];
 
   it("follows the CALLER's type priority (polls: restaurant first)", () => {
     const winner = pickSpanWinner(group, [
-      EntityType.restaurant,
-      EntityType.food,
-      EntityType.food_attribute,
-      EntityType.restaurant_attribute,
+      EntityType.place,
+      EntityType.item,
+      EntityType.item_attribute,
+      EntityType.place_attribute,
     ]);
     expect(winner.entityId).toBe('bf-rest');
   });
 
   it('a different priority order picks a different, still-deterministic winner', () => {
-    const winner = pickSpanWinner(group, [
-      EntityType.food,
-      EntityType.restaurant,
-    ]);
+    const winner = pickSpanWinner(group, [EntityType.item, EntityType.place]);
     expect(winner.entityId).toBe('bf-food');
   });
 
@@ -114,8 +111,8 @@ describe('pickSpanWinner', () => {
       ...group,
       entities: [...group.entities].reverse(),
     };
-    const a = pickSpanWinner(group, [EntityType.restaurant]);
-    const b = pickSpanWinner(reversed, [EntityType.restaurant]);
+    const a = pickSpanWinner(group, [EntityType.place]);
+    const b = pickSpanWinner(reversed, [EntityType.place]);
     expect(a.entityId).toBe(b.entityId);
   });
 });
@@ -339,7 +336,7 @@ describe('span selection — the cover linker', () => {
           text: phrase,
           entityId: `e:${phrase}`,
           name: phrase,
-          type: EntityType.food,
+          type: EntityType.item,
         });
       }
     }

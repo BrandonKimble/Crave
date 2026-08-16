@@ -20,7 +20,7 @@ import { EntityTextSearchService } from '../../src/modules/entity-text-search/en
  *
  *   yarn workspace api ts-node scripts/search-harness/lane-tie-margin.ts
  */
-const FOODS = [EntityType.food, EntityType.food_attribute];
+const FOODS = [EntityType.item, EntityType.item_attribute];
 const CASES: { q: string; types: EntityType[] }[] = [
   { q: 'spicy noodles', types: FOODS },
   { q: 'fried chicken sandwich', types: FOODS },

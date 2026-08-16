@@ -15,7 +15,7 @@ import {
   Max,
 } from 'class-validator';
 import { CoordinateDto, MapBoundsDto } from '../../search/dto/search-query.dto';
-import type { RestaurantStatusPreviewDto } from '../../search/dto/restaurant-status-preview.dto';
+import type { PlaceStatusPreviewDto } from '../../search/dto/restaurant-status-preview.dto';
 import type { TextMatchEvidence } from '../../entity-text-search/entity-text-search.service';
 
 export class AutocompleteRequestDto {
@@ -95,7 +95,7 @@ export class AutocompleteMatchDto {
     recentQuery?: boolean;
   };
   querySuggestionSource?: 'personal' | 'global';
-  statusPreview?: RestaurantStatusPreviewDto | null;
+  statusPreview?: PlaceStatusPreviewDto | null;
 }
 
 export class AutocompleteResponseDto {

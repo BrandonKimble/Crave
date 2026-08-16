@@ -265,7 +265,7 @@ function baseInput(
     tempId: overrides.tempId ?? 'temp-1',
     normalizedName: overrides.normalizedName ?? '',
     originalText: overrides.originalText ?? overrides.normalizedName ?? '',
-    entityType: overrides.entityType ?? EntityType.food,
+    entityType: overrides.entityType ?? EntityType.item,
     aliases: overrides.aliases,
     engineId: overrides.engineId,
     // THE DOCUMENT'S LANGUAGE, actually carried (found 2026-08-12 while
@@ -356,7 +356,7 @@ describe('EntityResolutionService — exact-tier number-variant boundary (food v
           entityId: 'food-1',
           name: 'taco',
           aliases: [],
-          type: EntityType.food,
+          type: EntityType.item,
         },
       ],
     });
@@ -365,7 +365,7 @@ describe('EntityResolutionService — exact-tier number-variant boundary (food v
         baseInput({
           tempId: 't1',
           normalizedName: 'tacos',
-          entityType: EntityType.food,
+          entityType: EntityType.item,
         }),
       ],
       CONFIG_NO_LLM,
@@ -381,7 +381,7 @@ describe('EntityResolutionService — exact-tier number-variant boundary (food v
           entityId: 'rest-1',
           name: "Torchy's Tacos",
           aliases: [],
-          type: EntityType.restaurant,
+          type: EntityType.place,
         },
         // THE CROSS-TYPE BAIT (F6622). Without it this case's emptiness could
         // not tell "the resolver scoped by type" apart from "nothing matched
@@ -394,7 +394,7 @@ describe('EntityResolutionService — exact-tier number-variant boundary (food v
           entityId: 'food-bait',
           name: "Torchy's Taco",
           aliases: [],
-          type: EntityType.food,
+          type: EntityType.item,
         },
       ],
     });
@@ -403,7 +403,7 @@ describe('EntityResolutionService — exact-tier number-variant boundary (food v
         baseInput({
           tempId: 't1',
           normalizedName: "Torchy's Taco",
-          entityType: EntityType.restaurant,
+          entityType: EntityType.place,
         }),
       ],
       { ...CONFIG_NO_LLM, allowEntityCreation: false },
@@ -431,7 +431,7 @@ describe('EntityResolutionService — exact-tier number-variant boundary (food v
           entityId: 'food-torchys',
           name: "Torchy's Tacos",
           aliases: [],
-          type: EntityType.food,
+          type: EntityType.item,
         },
       ],
     });
@@ -440,7 +440,7 @@ describe('EntityResolutionService — exact-tier number-variant boundary (food v
         baseInput({
           tempId: 't1',
           normalizedName: "Torchy's Taco",
-          entityType: EntityType.food,
+          entityType: EntityType.item,
         }),
       ],
       { ...CONFIG_NO_LLM, allowEntityCreation: false },
@@ -459,7 +459,7 @@ describe('EntityResolutionService — alias tier only fires when the exact tier 
           entityId: 'food-1',
           name: 'bacon egg and cheese',
           aliases: ['bec'],
-          type: EntityType.food,
+          type: EntityType.item,
         },
       ],
     });
@@ -468,7 +468,7 @@ describe('EntityResolutionService — alias tier only fires when the exact tier 
         baseInput({
           tempId: 't1',
           normalizedName: 'bec',
-          entityType: EntityType.food,
+          entityType: EntityType.item,
         }),
       ],
       CONFIG_NO_LLM,
@@ -485,13 +485,13 @@ describe('EntityResolutionService — alias tier only fires when the exact tier 
           entityId: 'food-exact',
           name: 'bec',
           aliases: [],
-          type: EntityType.food,
+          type: EntityType.item,
         },
         {
           entityId: 'food-alias',
           name: 'bacon egg and cheese',
           aliases: ['bec'],
-          type: EntityType.food,
+          type: EntityType.item,
         },
       ],
     });
@@ -500,7 +500,7 @@ describe('EntityResolutionService — alias tier only fires when the exact tier 
         baseInput({
           tempId: 't1',
           normalizedName: 'bec',
-          entityType: EntityType.food,
+          entityType: EntityType.item,
         }),
       ],
       CONFIG_NO_LLM,
@@ -520,7 +520,7 @@ describe('EntityResolutionService — metro adoption gate (the "Rudy\'s" class)'
           entityId: 'nyc-bar',
           name: "Rudy's Bar & Grill",
           aliases: ["rudy's"],
-          type: EntityType.restaurant,
+          type: EntityType.place,
         },
       ],
       metroAdoption: {
@@ -533,7 +533,7 @@ describe('EntityResolutionService — metro adoption gate (the "Rudy\'s" class)'
         baseInput({
           tempId: 't1',
           normalizedName: "rudy's",
-          entityType: EntityType.restaurant,
+          entityType: EntityType.place,
           engineId,
         }),
       ],
@@ -551,7 +551,7 @@ describe('EntityResolutionService — metro adoption gate (the "Rudy\'s" class)'
           entityId: 'austin-bbq',
           name: 'Franklin Barbecue',
           aliases: [],
-          type: EntityType.restaurant,
+          type: EntityType.place,
         },
       ],
       metroAdoption: {
@@ -567,7 +567,7 @@ describe('EntityResolutionService — metro adoption gate (the "Rudy\'s" class)'
         baseInput({
           tempId: 't1',
           normalizedName: 'Franklin Barbecue',
-          entityType: EntityType.restaurant,
+          entityType: EntityType.place,
           engineId: 'r/FoodNYC',
         }),
       ],
@@ -584,7 +584,7 @@ describe('EntityResolutionService — metro adoption gate (the "Rudy\'s" class)'
           entityId: 'remote-id',
           name: "rudy's",
           aliases: [],
-          type: EntityType.restaurant,
+          type: EntityType.place,
         },
       ],
       metroAdoption: {
@@ -598,7 +598,7 @@ describe('EntityResolutionService — metro adoption gate (the "Rudy\'s" class)'
         baseInput({
           tempId: 't1',
           normalizedName: "rudy's",
-          entityType: EntityType.restaurant,
+          entityType: EntityType.place,
           engineId,
         }),
       ],
@@ -615,7 +615,7 @@ describe('EntityResolutionService — metro adoption gate (the "Rudy\'s" class)'
           entityId: 'ungrounded-id',
           name: "rudy's",
           aliases: [],
-          type: EntityType.restaurant,
+          type: EntityType.place,
         },
       ],
       metroAdoption: {
@@ -630,7 +630,7 @@ describe('EntityResolutionService — metro adoption gate (the "Rudy\'s" class)'
         baseInput({
           tempId: 't1',
           normalizedName: "rudy's",
-          entityType: EntityType.restaurant,
+          entityType: EntityType.place,
           engineId,
         }),
       ],
@@ -653,12 +653,12 @@ describe('EntityResolutionService — intra-batch near-duplicate dedupe (markEnt
         baseInput({
           tempId: 't1',
           normalizedName: 'beef bulgogi',
-          entityType: EntityType.food,
+          entityType: EntityType.item,
         }),
         baseInput({
           tempId: 't2',
           normalizedName: 'bulgogi beef',
-          entityType: EntityType.food,
+          entityType: EntityType.item,
         }),
       ],
       CONFIG_NO_LLM,
@@ -684,12 +684,12 @@ describe('EntityResolutionService — intra-batch near-duplicate dedupe (markEnt
         baseInput({
           tempId: 't1',
           normalizedName: 'chicken sandwich',
-          entityType: EntityType.food,
+          entityType: EntityType.item,
         }),
         baseInput({
           tempId: 't2',
           normalizedName: 'chicken parm sandwich',
-          entityType: EntityType.food,
+          entityType: EntityType.item,
         }),
       ],
       CONFIG_NO_LLM,
@@ -722,13 +722,13 @@ describe('EntityResolutionService — intra-batch near-duplicate dedupe (markEnt
         baseInput({
           tempId: 't1',
           normalizedName: "Mario's Pizza",
-          entityType: EntityType.restaurant,
+          entityType: EntityType.place,
           engineId: 'r/austinfood',
         }),
         baseInput({
           tempId: 't2',
           normalizedName: 'Marios Pizza', // near-dup: apostrophe dropped
-          entityType: EntityType.restaurant,
+          entityType: EntityType.place,
           engineId: 'r/FoodNYC',
         }),
       ],
@@ -762,13 +762,13 @@ describe('EntityResolutionService — intra-batch near-duplicate dedupe (markEnt
         baseInput({
           tempId: 't1',
           normalizedName: "Mario's Pizza",
-          entityType: EntityType.restaurant,
+          entityType: EntityType.place,
           engineId: 'r/austinfood',
         }),
         baseInput({
           tempId: 't2',
           normalizedName: 'Marios Pizza',
-          entityType: EntityType.restaurant,
+          entityType: EntityType.place,
           engineId: 'r/austinfood',
         }),
       ],
@@ -793,12 +793,12 @@ describe('EntityResolutionService — intra-batch near-duplicate dedupe (markEnt
         baseInput({
           tempId: 't1',
           normalizedName: 'cơm chay',
-          entityType: EntityType.food,
+          entityType: EntityType.item,
         }),
         baseInput({
           tempId: 't2',
           normalizedName: 'cơm cháy',
-          entityType: EntityType.food,
+          entityType: EntityType.item,
         }),
       ],
       CONFIG_NO_LLM,
@@ -817,12 +817,12 @@ describe('EntityResolutionService — intra-batch near-duplicate dedupe (markEnt
         baseInput({
           tempId: 't1',
           normalizedName: 'pho',
-          entityType: EntityType.food,
+          entityType: EntityType.item,
         }),
         baseInput({
           tempId: 't2',
           normalizedName: 'phở',
-          entityType: EntityType.food,
+          entityType: EntityType.item,
         }),
       ],
       CONFIG_NO_LLM,
@@ -839,17 +839,17 @@ describe('EntityResolutionService — intra-batch near-duplicate dedupe (markEnt
         baseInput({
           tempId: 't1',
           normalizedName: 'cơm chay',
-          entityType: EntityType.food,
+          entityType: EntityType.item,
         }),
         baseInput({
           tempId: 't2',
           normalizedName: 'cơm cháy',
-          entityType: EntityType.food,
+          entityType: EntityType.item,
         }),
         baseInput({
           tempId: 't3',
           normalizedName: 'cơm cháy',
-          entityType: EntityType.food,
+          entityType: EntityType.item,
         }),
       ],
       CONFIG_NO_LLM,
@@ -873,7 +873,7 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
           entityId: 'r-mcd',
           name: "McDonald's",
           aliases: [],
-          type: EntityType.restaurant,
+          type: EntityType.place,
         },
       ],
     });
@@ -882,7 +882,7 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
         baseInput({
           tempId: 't1',
           normalizedName: 'Mcdonalds',
-          entityType: EntityType.restaurant,
+          entityType: EntityType.place,
         }),
       ],
       { ...CONFIG_NO_LLM, allowEntityCreation: false },
@@ -899,7 +899,7 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
           entityId: 'r-alamo',
           name: 'Alamo Springs Café',
           aliases: [],
-          type: EntityType.restaurant,
+          type: EntityType.place,
         },
       ],
     });
@@ -908,7 +908,7 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
         baseInput({
           tempId: 't1',
           normalizedName: 'Alamo Springs Cafe',
-          entityType: EntityType.restaurant,
+          entityType: EntityType.place,
         }),
       ],
       { ...CONFIG_NO_LLM, allowEntityCreation: false },
@@ -929,7 +929,7 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
           entityId: 'f-comchay',
           name: 'Cơm Chay',
           aliases: [],
-          type: EntityType.food,
+          type: EntityType.item,
         },
       ],
     });
@@ -938,7 +938,7 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
         baseInput({
           tempId: 't1',
           normalizedName: 'cơm cháy',
-          entityType: EntityType.food,
+          entityType: EntityType.item,
         }),
       ],
       { ...CONFIG_NO_LLM, allowEntityCreation: false },
@@ -957,7 +957,7 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
           entityId: 'f-pho',
           name: 'Phở',
           aliases: [],
-          type: EntityType.food,
+          type: EntityType.item,
         },
       ],
     });
@@ -966,7 +966,7 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
         baseInput({
           tempId: 't1',
           normalizedName: 'pho',
-          entityType: EntityType.food,
+          entityType: EntityType.item,
         }),
       ],
       { ...CONFIG_NO_LLM, allowEntityCreation: false },
@@ -1018,7 +1018,7 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
           entityId: 'a-cafe',
           name: 'cafe',
           aliases: ['café', 'cafes'],
-          type: EntityType.restaurant_attribute,
+          type: EntityType.place_attribute,
         },
       ],
     });
@@ -1027,7 +1027,7 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
         baseInput({
           tempId: 't1',
           normalizedName: 'café',
-          entityType: EntityType.restaurant_attribute,
+          entityType: EntityType.place_attribute,
           documentLocale: 'en',
         }),
       ],
@@ -1057,7 +1057,7 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
           entityId: 'f-phobo',
           name: 'phở bò',
           aliases: [],
-          type: EntityType.food,
+          type: EntityType.item,
         },
       ],
     });
@@ -1066,7 +1066,7 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
         baseInput({
           tempId: 't1',
           normalizedName: 'phở bo',
-          entityType: EntityType.food,
+          entityType: EntityType.item,
           documentLocale: 'vi',
         }),
       ],
@@ -1083,14 +1083,14 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
           entityId: 'f-comchay-scorched',
           name: 'cơm cháy',
           aliases: [],
-          type: EntityType.food,
+          type: EntityType.item,
         },
         {
           entityId: 'a-chay-vi',
           name: 'vegetarian',
           aliases: [],
           langForms: [{ form: 'chay', locale: 'vi' }],
-          type: EntityType.food,
+          type: EntityType.item,
         },
       ],
     });
@@ -1099,7 +1099,7 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
         baseInput({
           tempId: 't1',
           normalizedName: 'cơm chay',
-          entityType: EntityType.food,
+          entityType: EntityType.item,
           documentLocale: 'vi',
         }),
       ],
@@ -1120,14 +1120,14 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
           entityId: 'f-scorched',
           name: 'cơm cháy',
           aliases: [],
-          type: EntityType.food,
+          type: EntityType.item,
         },
         {
           entityId: 'a-chay',
           name: 'vegetarian',
           aliases: [],
           langForms: [{ form: 'chay', locale: 'vi' }],
-          type: EntityType.food,
+          type: EntityType.item,
         },
       ],
     });
@@ -1136,7 +1136,7 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
         baseInput({
           tempId: 't1',
           normalizedName: 'com chay',
-          entityType: EntityType.food,
+          entityType: EntityType.item,
           documentLocale: 'vi',
         }),
       ],
@@ -1178,7 +1178,7 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
           entityId: 'f-taco',
           name: 'taco',
           aliases: ['tacos'],
-          type: EntityType.food,
+          type: EntityType.item,
         },
       ],
     });
@@ -1187,7 +1187,7 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
         baseInput({
           tempId: 't1',
           normalizedName: 'taco',
-          entityType: EntityType.food,
+          entityType: EntityType.item,
           documentLocale: 'en',
         }),
       ],
@@ -1280,7 +1280,7 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
           entityId: 'r-pfc',
           name: "P.F. Chang's",
           aliases: [],
-          type: EntityType.restaurant,
+          type: EntityType.place,
         },
       ],
     });
@@ -1289,7 +1289,7 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
         baseInput({
           tempId: 't1',
           normalizedName: 'Pf Changs',
-          entityType: EntityType.restaurant,
+          entityType: EntityType.place,
         }),
       ],
       { ...CONFIG_NO_LLM, allowEntityCreation: false },
@@ -1307,13 +1307,13 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
           entityId: 'r-pulltab',
           name: 'Pull-tab Coffee',
           aliases: [],
-          type: EntityType.restaurant,
+          type: EntityType.place,
         },
         {
           entityId: 'r-honeymoon',
           name: 'Honey Moon Spirit Lounge',
           aliases: [],
-          type: EntityType.restaurant,
+          type: EntityType.place,
         },
       ],
     });
@@ -1322,12 +1322,12 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
         baseInput({
           tempId: 't1',
           normalizedName: 'Pulltab Coffee',
-          entityType: EntityType.restaurant,
+          entityType: EntityType.place,
         }),
         baseInput({
           tempId: 't2',
           normalizedName: 'Honeymoon Spiritlounge',
-          entityType: EntityType.restaurant,
+          entityType: EntityType.place,
         }),
       ],
       { ...CONFIG_NO_LLM, allowEntityCreation: false },
@@ -1345,7 +1345,7 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
           entityId: 'r-chicha',
           name: 'ChiCha San Chen',
           aliases: ['chicha san chen'],
-          type: EntityType.restaurant,
+          type: EntityType.place,
         },
       ],
     });
@@ -1354,7 +1354,7 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
         baseInput({
           tempId: 't1',
           normalizedName: 'Chi Cha San Chen',
-          entityType: EntityType.restaurant,
+          entityType: EntityType.place,
         }),
       ],
       { ...CONFIG_NO_LLM, allowEntityCreation: false },
@@ -1376,7 +1376,7 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
           entityId: 'food-bo-ne',
           name: 'bò né',
           aliases: [],
-          type: EntityType.food,
+          type: EntityType.item,
         },
       ],
     });
@@ -1385,7 +1385,7 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
         baseInput({
           tempId: 't1',
           normalizedName: 'bone',
-          entityType: EntityType.food,
+          entityType: EntityType.item,
         }),
       ],
       CONFIG_NO_LLM,
@@ -1406,7 +1406,7 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
           entityId: 'food-bone',
           name: 'bone',
           aliases: [],
-          type: EntityType.food,
+          type: EntityType.item,
         },
       ],
     });
@@ -1415,7 +1415,7 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
         baseInput({
           tempId: 't1',
           normalizedName: 'bò né',
-          entityType: EntityType.food,
+          entityType: EntityType.item,
         }),
       ],
       CONFIG_NO_LLM,
@@ -1431,13 +1431,13 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
           entityId: 'r-a',
           name: 'Sun Rise Cafe',
           aliases: [],
-          type: EntityType.restaurant,
+          type: EntityType.place,
         },
         {
           entityId: 'r-b',
           name: 'Sunrise Cafe',
           aliases: [],
-          type: EntityType.restaurant,
+          type: EntityType.place,
         },
       ],
     });
@@ -1446,12 +1446,12 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
         baseInput({
           tempId: 't1',
           normalizedName: 'Sunrise Cafe',
-          entityType: EntityType.restaurant,
+          entityType: EntityType.place,
         }),
         baseInput({
           tempId: 't2',
           normalizedName: 'Sun-Rise Cafe',
-          entityType: EntityType.restaurant,
+          entityType: EntityType.place,
         }),
       ],
       { ...CONFIG_NO_LLM, allowEntityCreation: false },
@@ -1468,7 +1468,7 @@ describe('EntityResolutionService — the v7 shadow twin classes (2026-08-10 pro
         baseInput({
           tempId: 't3',
           normalizedName: 'SunriseCafe', // squeeze-only: fold "sunrisecafe" matches neither identity_key
-          entityType: EntityType.restaurant,
+          entityType: EntityType.place,
         }),
       ],
       { ...CONFIG_NO_LLM, allowEntityCreation: false },

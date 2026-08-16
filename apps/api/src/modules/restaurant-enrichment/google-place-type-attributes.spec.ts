@@ -4,8 +4,8 @@ import {
   GOOGLE_BOOLEAN_ATTRIBUTE_VOCAB,
   GOOGLE_PLACE_TYPE_ATTRIBUTE_MAP,
   GOOGLE_PLACE_TYPE_IGNORED_TYPES,
-  RESTAURANT_ATTRIBUTE_ALIASES_BY_NAME,
-  RESTAURANT_ATTRIBUTE_VOCAB,
+  PLACE_ATTRIBUTE_ALIASES_BY_NAME,
+  PLACE_ATTRIBUTE_VOCAB,
 } from './google-place-type-attributes';
 
 /**
@@ -21,10 +21,10 @@ import {
 describe('the attribute vocabulary has ONE home', () => {
   it('every Google boolean attribute is an entry of the one vocabulary', () => {
     for (const entry of GOOGLE_BOOLEAN_ATTRIBUTE_VOCAB) {
-      expect(RESTAURANT_ATTRIBUTE_VOCAB).toContain(entry);
-      expect(
-        RESTAURANT_ATTRIBUTE_ALIASES_BY_NAME.get(entry.canonicalName),
-      ).toBe(entry.aliases);
+      expect(PLACE_ATTRIBUTE_VOCAB).toContain(entry);
+      expect(PLACE_ATTRIBUTE_ALIASES_BY_NAME.get(entry.canonicalName)).toBe(
+        entry.aliases,
+      );
     }
     // The 20 booleans Google reports on a place details response.
     expect(GOOGLE_BOOLEAN_ATTRIBUTE_VOCAB).toHaveLength(20);
@@ -32,7 +32,7 @@ describe('the attribute vocabulary has ONE home', () => {
 
   it('the merge kept the UNION of both alias lists — no bare alias was lost', () => {
     const aliasesOf = (name: string) =>
-      RESTAURANT_ATTRIBUTE_ALIASES_BY_NAME.get(name) ?? [];
+      PLACE_ATTRIBUTE_ALIASES_BY_NAME.get(name) ?? [];
     // The eight the service copy had dropped…
     expect(aliasesOf('allows dogs')).toEqual(
       expect.arrayContaining(['dogs', 'pets']),
@@ -56,10 +56,10 @@ describe('the attribute vocabulary has ONE home', () => {
   });
 
   it('no canonical name is declared twice, and no alias is shared by two attributes', () => {
-    const names = RESTAURANT_ATTRIBUTE_VOCAB.map((e) => e.canonicalName);
+    const names = PLACE_ATTRIBUTE_VOCAB.map((e) => e.canonicalName);
     expect(new Set(names).size).toBe(names.length);
     const owner = new Map<string, string>();
-    for (const entry of RESTAURANT_ATTRIBUTE_VOCAB) {
+    for (const entry of PLACE_ATTRIBUTE_VOCAB) {
       for (const alias of entry.aliases) {
         const previous = owner.get(alias);
         expect(previous ?? entry.canonicalName).toBe(entry.canonicalName);
@@ -70,7 +70,7 @@ describe('the attribute vocabulary has ONE home', () => {
 
   it('every mapped place type resolves to a vocabulary entry, and no type is both kind and noise (R11)', () => {
     const canonicals = new Set(
-      RESTAURANT_ATTRIBUTE_VOCAB.map((e) => e.canonicalName),
+      PLACE_ATTRIBUTE_VOCAB.map((e) => e.canonicalName),
     );
     for (const [type, canonical] of Object.entries(
       GOOGLE_PLACE_TYPE_ATTRIBUTE_MAP,

@@ -103,7 +103,7 @@ async function main(): Promise<void> {
              FROM core_entities e
              JOIN core_restaurant_locations l ON l.location_id = e.primary_location_id
              CROSS JOIN region_place rp
-            WHERE e.type = 'restaurant'
+            WHERE e.type = 'place'
               AND ST_Covers(rp.geometry,
                     ST_SetSRID(ST_MakePoint(l.longitude, l.latitude), 4326))`,
           regionPlace.name,

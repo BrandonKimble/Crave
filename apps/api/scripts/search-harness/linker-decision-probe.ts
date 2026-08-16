@@ -31,8 +31,8 @@ interface Case {
   note: string;
 }
 
-const R = EntityType.restaurant;
-const F = EntityType.food;
+const R = EntityType.place;
+const F = EntityType.item;
 
 const CASES: Case[] = [
   // exact / near-exact restaurant names

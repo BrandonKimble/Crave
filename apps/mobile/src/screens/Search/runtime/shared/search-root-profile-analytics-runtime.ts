@@ -19,7 +19,7 @@ export const useSearchRootProfileAnalyticsRuntime = ({
 
   const recordRestaurantView = React.useCallback<ProfileAnalyticsModel['recordRestaurantView']>(
     async (
-      restaurantId: string,
+      placeId: string,
       source: 'results_sheet' | 'auto_open_single_candidate' | 'autocomplete' | 'dish_card'
     ) => {
       if (!isSignedIn || source === 'autocomplete' || source === 'dish_card') {
@@ -28,15 +28,15 @@ export const useSearchRootProfileAnalyticsRuntime = ({
 
       try {
         await searchService.recordRestaurantView({
-          restaurantId,
+          placeId,
           searchRequestId:
             sessionPrimitivesLane.primitives.lastSearchRequestIdRef.current ?? undefined,
           source,
         });
       } catch (err) {
-        logger.warn('Unable to record restaurant view', {
+        logger.warn('Unable to record place view', {
           message: err instanceof Error ? err.message : 'unknown error',
-          restaurantId,
+          placeId,
           source,
         });
       }

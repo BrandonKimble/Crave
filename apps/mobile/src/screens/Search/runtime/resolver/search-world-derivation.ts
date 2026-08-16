@@ -58,7 +58,7 @@ export const createSearchWorldDerivation =
         if (__DEV__ && openResponse == null) {
           // eslint-disable-next-line no-console
           console.log(
-            `[DERIVE] open-now projection declined: coverageDerivable=${baseCoverageDerivable} baseRestaurants=${base.value.committedResponse.restaurants?.length ?? 0} coverageFeatures=${base.value.coverageByTab.restaurants?.features?.length ?? -1}`
+            `[DERIVE] open-now projection declined: coverageDerivable=${baseCoverageDerivable} baseRestaurants=${base.value.committedResponse.places?.length ?? 0} coverageFeatures=${base.value.coverageByTab.restaurants?.features?.length ?? -1}`
           );
         }
         if (openResponse != null) {

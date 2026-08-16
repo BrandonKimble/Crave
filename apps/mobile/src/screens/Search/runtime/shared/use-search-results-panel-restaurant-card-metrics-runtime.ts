@@ -33,14 +33,14 @@ export const useSearchResultsPanelRestaurantCardMetricsRuntime = ({
         Number.isFinite(restaurant.rank) &&
         restaurant.rank >= 1
       ) {
-        map.set(restaurant.restaurantId, restaurant.rank);
+        map.set(restaurant.placeId, restaurant.rank);
         return;
       }
-      if (!missingRestaurantRankByIdRef.current.has(restaurant.restaurantId)) {
-        missingRestaurantRankByIdRef.current.add(restaurant.restaurantId);
+      if (!missingRestaurantRankByIdRef.current.has(restaurant.placeId)) {
+        missingRestaurantRankByIdRef.current.add(restaurant.placeId);
         logger.error('Restaurant missing canonical rank in search results', {
-          restaurantId: restaurant.restaurantId,
-          restaurantName: restaurant.restaurantName,
+          placeId: restaurant.placeId,
+          placeName: restaurant.placeName,
           searchRequestId,
         });
       }
@@ -76,24 +76,23 @@ export const useSearchResultsPanelRestaurantCardMetricsRuntime = ({
         typeof displayLocation.longitude !== 'number'
       ) {
         logger.error('Restaurant missing coordinates', {
-          restaurantId: restaurant.restaurantId,
-          restaurantName: restaurant.restaurantName,
+          placeId: restaurant.placeId,
+          placeName: restaurant.placeName,
         });
         return;
       }
-      map.set(restaurant.restaurantId, restaurant);
+      map.set(restaurant.placeId, restaurant);
     });
 
     dishes.forEach((dish) => {
       if (
-        !map.has(dish.restaurantId) &&
-        (typeof dish.restaurantLatitude !== 'number' ||
-          typeof dish.restaurantLongitude !== 'number')
+        !map.has(dish.placeId) &&
+        (typeof dish.placeLatitude !== 'number' || typeof dish.placeLongitude !== 'number')
       ) {
         logger.warn('Dish lacks restaurant coordinates', {
           dishId: dish.connectionId,
-          restaurantId: dish.restaurantId,
-          restaurantName: dish.restaurantName,
+          placeId: dish.placeId,
+          placeName: dish.placeName,
         });
       }
     });
@@ -116,7 +115,7 @@ export const useSearchResultsPanelRestaurantCardMetricsRuntime = ({
     const startedAtMs = getNowMs();
     const map = new Map<string, string>();
     restaurants.forEach((restaurant) => {
-      map.set(restaurant.restaurantId, getMarkerColorForRestaurant(restaurant));
+      map.set(restaurant.placeId, getMarkerColorForRestaurant(restaurant));
     });
     const durationMs = getNowMs() - startedAtMs;
     if (isPerfScenarioAttributionActive(scenarioConfig)) {

@@ -300,8 +300,8 @@ describe('SignalDemandReadService — substrate readers (§22 item 6)', () => {
       const { service, queries } = createHarness({
         rows: [
           {
-            restaurant_id: ENTITY_ID,
-            restaurant_name: 'Franklin Barbecue',
+            place_id: ENTITY_ID,
+            place_name: 'Franklin Barbecue',
             city: 'Austin',
             region: 'TX',
             last_viewed_at: lastViewedAt,
@@ -310,14 +310,14 @@ describe('SignalDemandReadService — substrate readers (§22 item 6)', () => {
           },
         ],
       });
-      const rows = await service.recentlyViewedRestaurants(USER_ID, {
+      const rows = await service.recentlyViewedPlaces(USER_ID, {
         prefix: 'Fra',
         limit: 10,
       });
       expect(rows).toEqual([
         {
-          restaurantId: ENTITY_ID,
-          restaurantName: 'Franklin Barbecue',
+          placeId: ENTITY_ID,
+          placeName: 'Franklin Barbecue',
           city: 'Austin',
           region: 'TX',
           lastViewedAt,
@@ -327,7 +327,7 @@ describe('SignalDemandReadService — substrate readers (§22 item 6)', () => {
       ]);
       const sql = flatten(queries[0]);
       expect(sql).toContain("s.kind = 'entity_view'");
-      expect(sql).toContain("e.type = 'restaurant'");
+      expect(sql).toContain("e.type = 'place'");
       expect(sql).toContain('r.from_entity_id = s.subject_id');
       expect(sql).toContain("s.meta->>'locationId'");
     });
@@ -338,24 +338,24 @@ describe('SignalDemandReadService — substrate readers (§22 item 6)', () => {
         rows: [
           {
             connection_id: 'c-1',
-            food_id: 'f-1',
-            food_name: 'Brisket',
-            restaurant_id: 'r-1',
-            restaurant_name: 'Franklin Barbecue',
+            item_id: 'f-1',
+            item_name: 'Brisket',
+            place_id: 'r-1',
+            place_name: 'Franklin Barbecue',
             last_viewed_at: lastViewedAt,
             view_count: 2,
             location_id: null,
           },
         ],
       });
-      const rows = await service.recentlyViewedFoods(USER_ID, { limit: 10 });
+      const rows = await service.recentlyViewedItems(USER_ID, { limit: 10 });
       expect(rows).toEqual([
         {
           connectionId: 'c-1',
-          foodId: 'f-1',
-          foodName: 'Brisket',
-          restaurantId: 'r-1',
-          restaurantName: 'Franklin Barbecue',
+          itemId: 'f-1',
+          itemName: 'Brisket',
+          placeId: 'r-1',
+          placeName: 'Franklin Barbecue',
           lastViewedAt,
           viewCount: 2,
           locationId: null,
@@ -368,7 +368,7 @@ describe('SignalDemandReadService — substrate readers (§22 item 6)', () => {
 
     it('foods survive entity merges (red-team 2b): a dead connectionId re-resolves through entity_redirects to the SURVIVING connection', async () => {
       const { service, queries } = createHarness();
-      await service.recentlyViewedFoods(USER_ID, { limit: 10 });
+      await service.recentlyViewedItems(USER_ID, { limit: 10 });
       const sql = flatten(queries[0]);
       // The recorded connection joins LEFT (merges DELETE folded losers)...
       expect(sql).toContain('LEFT JOIN core_restaurant_items direct');
@@ -387,17 +387,17 @@ describe('SignalDemandReadService — substrate readers (§22 item 6)', () => {
       const stats = createHarness({
         rows: [
           {
-            restaurant_id: ENTITY_ID,
+            place_id: ENTITY_ID,
             last_viewed_at: new Date('2026-07-18T12:00:00Z'),
             view_count: 7,
           },
         ],
       });
       await expect(
-        stats.service.restaurantViewStats(USER_ID, [ENTITY_ID]),
+        stats.service.placeViewStats(USER_ID, [ENTITY_ID]),
       ).resolves.toEqual([
         {
-          restaurantId: ENTITY_ID,
+          placeId: ENTITY_ID,
           lastViewedAt: new Date('2026-07-18T12:00:00Z'),
           viewCount: 7,
         },
@@ -406,7 +406,7 @@ describe('SignalDemandReadService — substrate readers (§22 item 6)', () => {
       const matches = createHarness({
         rows: [
           {
-            restaurant_id: ENTITY_ID,
+            place_id: ENTITY_ID,
             name: 'Franklin Barbecue',
             aliases: null,
             last_viewed_at: new Date('2026-07-18T12:00:00Z'),
@@ -414,9 +414,9 @@ describe('SignalDemandReadService — substrate readers (§22 item 6)', () => {
         ],
       });
       await expect(
-        matches.service.viewedRestaurantNameMatches(USER_ID, 'Fra', 20),
+        matches.service.viewedPlaceNameMatches(USER_ID, 'Fra', 20),
       ).resolves.toEqual([
-        { restaurantId: ENTITY_ID, name: 'Franklin Barbecue', aliases: [] },
+        { placeId: ENTITY_ID, name: 'Franklin Barbecue', aliases: [] },
       ]);
     });
   });
@@ -430,7 +430,7 @@ describe('SignalDemandReadService — substrate readers (§22 item 6)', () => {
             query_text: 'franklin barbecue',
             last_searched_at: lastSearchedAt,
             resolved_entity_id: ENTITY_ID,
-            resolved_entity_type: 'restaurant',
+            resolved_entity_type: 'place',
             resolved_entity_name: 'Franklin Barbecue',
             explicit_selection: true,
           },
@@ -442,7 +442,7 @@ describe('SignalDemandReadService — substrate readers (§22 item 6)', () => {
           queryText: 'franklin barbecue',
           lastSearchedAt,
           resolvedEntityId: ENTITY_ID,
-          resolvedEntityType: 'restaurant',
+          resolvedEntityType: 'place',
           resolvedEntityName: 'Franklin Barbecue',
           explicitSelection: true,
         },
@@ -500,7 +500,7 @@ describe('demand reads refuse to under-count (F207)', () => {
         placeIds: ['44444444-4444-4444-4444-444444444444'],
         windowDays: 30,
         limit: 10,
-        entityTypes: ['restaurant'],
+        entityTypes: ['place'],
       }),
     ).rejects.toThrow('statement timeout');
   });

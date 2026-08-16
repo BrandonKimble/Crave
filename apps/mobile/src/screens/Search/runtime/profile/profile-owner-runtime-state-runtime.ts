@@ -47,7 +47,7 @@ export const useProfileOwnerRuntimeStateRuntime = ({
     () => ({
       getProfileTransitionStatus,
       getCurrentPanelRestaurantId: () =>
-        profileShellState.restaurantPanelSnapshot?.restaurant.restaurantId ?? null,
+        profileShellState.restaurantPanelSnapshot?.restaurant.placeId ?? null,
       hasPanelSnapshot: () => profileShellState.restaurantPanelSnapshot != null,
       getCurrentLastCameraState: nativeExecutionModel.transitionExecutionModel.getLastCameraState,
       getCurrentViewportBounds: searchContext.getCurrentViewportBounds,
@@ -60,7 +60,7 @@ export const useProfileOwnerRuntimeStateRuntime = ({
       // since the L3 machine deletion (see profile-runtime-action-execution.ts).
       getActiveOpenRestaurantId: () =>
         profileShellState.transitionStatus === 'open'
-          ? (profileShellState.restaurantPanelSnapshot?.restaurant.restaurantId ?? null)
+          ? (profileShellState.restaurantPanelSnapshot?.restaurant.placeId ?? null)
           : null,
       getLastAutoOpenKey,
       resolveProfileCameraPadding: presentationModelRuntime.resolveProfileCameraPadding,

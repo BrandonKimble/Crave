@@ -15,18 +15,18 @@ export type ProfilePreviewPresentationPlan = {
 };
 
 export const resolveProfilePreviewPresentationPlan = ({
-  restaurantId,
-  restaurantName,
+  placeId,
+  placeName,
   pressedCoordinate,
   previewModel,
 }: {
-  restaurantId: string;
-  restaurantName: string;
+  placeId: string;
+  placeName: string;
   pressedCoordinate: Coordinate | null;
   previewModel: ProfilePreviewActionModel;
 }): ProfilePreviewPresentationPlan | null => {
-  const trimmedName = restaurantName.trim();
-  if (!restaurantId || !trimmedName) {
+  const trimmedName = placeName.trim();
+  if (!placeId || !trimmedName) {
     return null;
   }
   const previewCameraResolution = resolveProfilePreviewCameraTarget({
@@ -35,13 +35,13 @@ export const resolveProfilePreviewPresentationPlan = ({
   });
   return {
     seededRestaurant: {
-      restaurantId,
-      restaurantName: trimmedName,
+      placeId,
+      placeName: trimmedName,
       scoreSubjectType: 'restaurant',
-      scoreSubjectId: restaurantId,
+      scoreSubjectId: placeId,
       craveScore: null,
       totalDishCount: 0,
-      topFood: [],
+      topItem: [],
     },
     // F1057: 'restore', unconditionally. This used to read
     // `forceMiddleSnap ? 'restore' : 'clear'` — a sheet-snap boolean choosing a dismiss

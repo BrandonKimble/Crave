@@ -16,8 +16,8 @@
  * inserts AFTER it lands live evidence on an archived tombstone: the rebuild
  * reads by restaurant with no redirect hop, so the evidence is simply dark —
  * a restaurant quietly missing the dishes people said it was good at, until a
- * nightly sweep happened to find them. So `writeRestaurantEvents` /
- * `writeRestaurantEntityEvents` in extraction-scope.service.ts resolve every
+ * nightly sweep happened to find them. So `writePlaceEvents` /
+ * `writePlaceEntityEvents` in extraction-scope.service.ts resolve every
  * id through `entity_redirects` at the moment of insert. That is the
  * invariant, and it is only an invariant if EVERY writer goes through them.
  *
@@ -86,7 +86,7 @@ const EXCEPTIONS = new Map([
  * client variable's name (`tx`, `prisma`, `this.prisma`) does not matter.
  */
 const PRISMA_WRITE =
-  /\.(restaurantEvent|restaurantEntityEvent)\s*\.\s*(create|createMany|createManyAndReturn|upsert)\s*\(/g;
+  /\.(placeEvent|placeEntityEvent)\s*\.\s*(create|createMany|createManyAndReturn|upsert)\s*\(/g;
 
 /** Raw SQL that inserts into either ledger table, in any casing/whitespace. */
 const RAW_INSERT =
@@ -122,7 +122,7 @@ if (ownerSrc === null) {
   );
   process.exit(1);
 }
-for (const door of ['writeRestaurantEvents', 'writeRestaurantEntityEvents']) {
+for (const door of ['writePlaceEvents', 'writePlaceEntityEvents']) {
   if (!ownerSrc.includes(`export async function ${door}`)) {
     console.error(
       `FAIL: ${OWNER} no longer exports ${door} — the write door this gate ` +
@@ -185,7 +185,7 @@ for (const rel of files) {
     }
     failures.push(
       `${rel}:${hit.line} — writes the evidence ledger directly. Every insert ` +
-        `must go through writeRestaurantEvents / writeRestaurantEntityEvents ` +
+        `must go through writePlaceEvents / writePlaceEntityEvents ` +
         `in ${OWNER}, which resolve entity_redirects at insert time; a direct ` +
         `write lands live evidence on a merged-away tombstone, where the ` +
         `projection rebuild cannot see it.\n      ${hit.text}`

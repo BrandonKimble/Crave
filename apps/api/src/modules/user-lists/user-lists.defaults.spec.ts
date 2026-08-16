@@ -19,7 +19,7 @@ import { UserListMapper } from './user-list.mappers';
 const OWNER = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const LIST_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const CONNECTION_ID = '99999999-9999-4999-8999-999999999999';
-const RESTAURANT_ID = '11111111-1111-4111-8111-111111111111';
+const PLACE_ID = '11111111-1111-4111-8111-111111111111';
 
 const logger: any = {
   setContext: () => logger,
@@ -129,7 +129,7 @@ describe('UserListProvisioningService.ensureDefaultLists', () => {
 describe('system-default guards + home ordering (UserListsService)', () => {
   function makeService(overrides: {
     lists?: any[];
-    connection?: { restaurantId: string } | null;
+    connection?: { placeId: string } | null;
   }) {
     const itemCreate = jest
       .fn()
@@ -165,9 +165,7 @@ describe('system-default guards + home ordering (UserListsService)', () => {
       entity: {
         findUnique: jest.fn((args: any) =>
           Promise.resolve(
-            args.where.entityId === RESTAURANT_ID
-              ? { entityId: RESTAURANT_ID }
-              : null,
+            args.where.entityId === PLACE_ID ? { entityId: PLACE_ID } : null,
           ),
         ),
       },
@@ -199,14 +197,14 @@ describe('system-default guards + home ordering (UserListsService)', () => {
       {
         record: () => undefined,
         bboxFromPoint: () => null,
-        bboxFromRestaurantLocation: () => Promise.resolve(null),
+        bboxFromPlaceLocation: () => Promise.resolve(null),
       } as never,
       blocks as never,
       // D36: the one saveable-entity law (stubbed live here).
       {
-        resolveSaveableRestaurant: (id: string) =>
+        resolveSaveablePlace: (id: string) =>
           Promise.resolve({ entityId: id, name: 'R', city: null }),
-        resolveSaveableFood: (id: string) =>
+        resolveSaveableItem: (id: string) =>
           Promise.resolve({ entityId: id, name: 'F', city: null }),
         resolveActiveByIds: (ids: string[]) =>
           Promise.resolve(
@@ -407,14 +405,14 @@ describe('system-default guards + home ordering (UserListsService)', () => {
   it('addItem on a RESTAURANT list resolves a connection target to its restaurant (save-sheet flip)', async () => {
     const { service, itemCreate } = makeService({
       lists: [baseList()],
-      connection: { restaurantId: RESTAURANT_ID },
+      connection: { placeId: PLACE_ID },
     });
     await service.addItem(OWNER, LIST_ID, {
       connectionId: CONNECTION_ID,
       note: 'flip note',
     } as any);
     const data = itemCreate.mock.calls[0][0].data;
-    expect(data.restaurantId).toBe(RESTAURANT_ID);
+    expect(data.placeId).toBe(PLACE_ID);
     expect(data.connectionId).toBeNull();
     expect(data.note).toBe('flip note');
   });

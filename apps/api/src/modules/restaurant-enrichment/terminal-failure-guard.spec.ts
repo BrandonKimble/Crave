@@ -14,7 +14,7 @@
  * recovery sweep, whose entire purpose is re-attempting known failures
  * after a root-cause fix).
  */
-import { RestaurantLocationEnrichmentService } from './restaurant-location-enrichment.service';
+import { PlaceLocationEnrichmentService } from './restaurant-location-enrichment.service';
 
 const THRESHOLD = 3;
 
@@ -45,7 +45,7 @@ function makeService(entity: Record<string, unknown>) {
     // returning no rows keeps the path honest without seeding events.
     $queryRaw: jest.fn().mockResolvedValue([]),
   };
-  const service = new RestaurantLocationEnrichmentService(
+  const service = new PlaceLocationEnrichmentService(
     prisma as never,
     googlePlaces as never,
     {} as never,
@@ -75,7 +75,7 @@ function makeService(entity: Record<string, unknown>) {
 
 const terminalEntity = {
   entityId: 'e-terminal',
-  type: 'restaurant',
+  type: 'place',
   status: 'active',
   // eslint-disable-next-line no-restricted-syntax -- test FIXTURE simulating a row the counter already incremented, not a production assignment
   enrichmentFailureCount: THRESHOLD,
@@ -87,7 +87,7 @@ const terminalEntity = {
 describe('the terminal-failure money guard', () => {
   it('refuses (skipped, zero vendor calls) at the threshold', async () => {
     const service = makeService(terminalEntity);
-    const result = await service.enrichRestaurantById('e-terminal');
+    const result = await service.enrichPlaceById('e-terminal');
     expect(result.status).toBe('skipped');
     expect(result.reason).toContain('terminal');
   });
@@ -98,7 +98,7 @@ describe('the terminal-failure money guard', () => {
       // eslint-disable-next-line no-restricted-syntax -- test fixture
       enrichmentFailureCount: THRESHOLD - 1,
     });
-    const result = await service.enrichRestaurantById('e-terminal');
+    const result = await service.enrichPlaceById('e-terminal');
     // The Proxy throws on the first Places touch; the outer catch converts it
     // to an error result — which is exactly the proof the guard stood aside.
     expect(result.status).toBe('error');
@@ -107,7 +107,7 @@ describe('the terminal-failure money guard', () => {
 
   it('retryTerminal bypasses the guard (the recovery sweep after a root-cause fix)', async () => {
     const service = makeService(terminalEntity);
-    const result = await service.enrichRestaurantById('e-terminal', {
+    const result = await service.enrichPlaceById('e-terminal', {
       retryTerminal: true,
     });
     expect(result.status).toBe('error');
@@ -120,7 +120,7 @@ describe('the terminal-failure money guard', () => {
   // grounded AND may be past the threshold. This pins that width.
   it('force bypasses the money guard too (the janitor moved-arm path)', async () => {
     const service = makeService(terminalEntity);
-    const result = await service.enrichRestaurantById('e-terminal', {
+    const result = await service.enrichPlaceById('e-terminal', {
       force: true,
     });
     expect(result.status).toBe('error');
@@ -132,7 +132,7 @@ describe('the terminal-failure money guard', () => {
       ...terminalEntity,
       primaryLocation: { googlePlaceId: 'place-1' },
     };
-    const viaRetryTerminal = await makeService(grounded).enrichRestaurantById(
+    const viaRetryTerminal = await makeService(grounded).enrichPlaceById(
       'e-terminal',
       { retryTerminal: true },
     );
@@ -140,10 +140,9 @@ describe('the terminal-failure money guard', () => {
     expect(viaRetryTerminal.status).toBe('skipped');
     expect(viaRetryTerminal.reason).toContain('already has place-backed');
 
-    const viaForce = await makeService(grounded).enrichRestaurantById(
-      'e-terminal',
-      { force: true },
-    );
+    const viaForce = await makeService(grounded).enrichPlaceById('e-terminal', {
+      force: true,
+    });
     expect(viaForce.status).toBe('error');
     expect(viaForce.reason).toContain('guard leaked a vendor call');
   });

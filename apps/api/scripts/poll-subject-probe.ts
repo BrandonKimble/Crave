@@ -28,7 +28,7 @@ const CASES: { q: string; expect: string }[] = [
     q: 'best Italian in the East Village',
     expect: 'ranked restaurant · cuisine italian · East Village',
   },
-  { q: 'best patio', expect: 'ranked restaurant · restaurant_attribute patio' },
+  { q: 'best patio', expect: 'ranked restaurant · place_attribute patio' },
   {
     q: 'best spicy ramen',
     expect: 'ranked dish · category ramen (or dish_attribute spicy)',

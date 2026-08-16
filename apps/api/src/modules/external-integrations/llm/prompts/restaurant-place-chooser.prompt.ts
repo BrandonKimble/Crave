@@ -1,11 +1,6 @@
-import {
-  LLMRestaurantPlaceChooserCandidate,
-  LLMRestaurantPlaceChooserInput,
-} from '../llm.types';
+import { LLMPlaceChooserCandidate, LLMPlaceChooserInput } from '../llm.types';
 
-function formatCandidateLine(
-  candidate: LLMRestaurantPlaceChooserCandidate,
-): string {
+function formatCandidateLine(candidate: LLMPlaceChooserCandidate): string {
   const sourceLabels =
     candidate.sourceLabels?.filter((label) => label.trim().length > 0) ?? [];
 
@@ -28,9 +23,7 @@ function formatCandidateLine(
   ].join(' | ');
 }
 
-export function buildRestaurantPlaceChooserPrompt(
-  input: LLMRestaurantPlaceChooserInput,
-): string {
+export function buildPlaceChooserPrompt(input: LLMPlaceChooserInput): string {
   const trimmedQuery = input.query?.trim() ?? '';
   const sourceText = input.sourceText?.trim() || 'unknown';
   const sourceLocale = [

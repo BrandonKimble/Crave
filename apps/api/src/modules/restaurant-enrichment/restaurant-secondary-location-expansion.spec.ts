@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/require-await -- async mock fixtures stand
    in for awaited collaborators; adding a no-op await would be noise. */
-import { RestaurantLocationEnrichmentService } from './restaurant-location-enrichment.service';
-import { RestaurantSecondaryLocationExpansionQueueService } from './restaurant-secondary-location-expansion-queue.service';
-import { RestaurantSecondaryLocationExpansionWorker } from './restaurant-secondary-location-expansion.worker';
+import { PlaceLocationEnrichmentService } from './restaurant-location-enrichment.service';
+import { PlaceSecondaryLocationExpansionQueueService } from './restaurant-secondary-location-expansion-queue.service';
+import { PlaceSecondaryLocationExpansionWorker } from './restaurant-secondary-location-expansion.worker';
 import {
   currentCampaignId,
   runInWorkContext,
@@ -42,7 +42,7 @@ const CANONICAL = place('place-canonical');
 
 /**
  * Builds the service with only the collaborators this lane touches. The
- * upstream half of `expandSecondaryLocationsForRestaurant` (autocomplete
+ * upstream half of `expandSecondaryLocationsForPlace` (autocomplete
  * eligibility resolution) is stubbed, deliberately: the ruled behaviour lives
  * entirely in the paginated loop below it, and re-deriving the whole
  * resolution path here would test somebody else's code.
@@ -56,7 +56,7 @@ function makeService(pages: Array<() => Promise<unknown>>) {
     entity: {
       findUnique: jest.fn(async () => ({
         entityId: 'ent-1',
-        type: 'restaurant',
+        type: 'place',
         name: 'Torchys Tacos',
         canonicalDomain: 'torchystacos.com',
         // Re-read fresh on EVERY attempt — this is what makes the retry
@@ -70,7 +70,7 @@ function makeService(pages: Array<() => Promise<unknown>>) {
     },
     $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
       fn({
-        restaurantLocation: {
+        placeLocation: {
           upsert: jest.fn(
             async (args: { where: { googlePlaceId: string } }) => {
               upserts.push(args.where.googlePlaceId);
@@ -106,7 +106,7 @@ function makeService(pages: Array<() => Promise<unknown>>) {
     debug: jest.fn(),
   };
 
-  const service = new RestaurantLocationEnrichmentService(
+  const service = new PlaceLocationEnrichmentService(
     prisma as never,
     googlePlacesService as never,
     {} as never,
@@ -160,7 +160,7 @@ describe('F354 — a mid-run expansion fault fails the JOB, it does not report s
     ]);
 
     await expect(
-      service.expandSecondaryLocationsForRestaurant('ent-1', 'place-canonical'),
+      service.expandSecondaryLocationsForPlace('ent-1', 'place-canonical'),
     ).rejects.toThrow('Places 503');
 
     // Page 1's work is COMMITTED — per-place transactions, so the throw
@@ -179,15 +179,12 @@ describe('F354 — a mid-run expansion fault fails the JOB, it does not report s
     ]);
 
     await expect(
-      service.expandSecondaryLocationsForRestaurant('ent-1', 'place-canonical'),
+      service.expandSecondaryLocationsForPlace('ent-1', 'place-canonical'),
     ).rejects.toThrow('Places 503');
     upserts.length = 0;
 
     // The retry the queue now performs.
-    await service.expandSecondaryLocationsForRestaurant(
-      'ent-1',
-      'place-canonical',
-    );
+    await service.expandSecondaryLocationsForPlace('ent-1', 'place-canonical');
 
     // THE assertion: page 1 produced ZERO duplicate writes on the retry,
     // because seenPlaceIds is rebuilt from the STORED rows.
@@ -216,10 +213,7 @@ describe('F354 — a mid-run expansion fault fails the JOB, it does not report s
       }),
       pageWith(['place-should-never-be-fetched']),
     ]);
-    await service.expandSecondaryLocationsForRestaurant(
-      'ent-1',
-      'place-canonical',
-    );
+    await service.expandSecondaryLocationsForPlace('ent-1', 'place-canonical');
     expect(findPlaceFromText).toHaveBeenCalledTimes(1);
     expect(upserts).toEqual([]);
   });
@@ -229,10 +223,7 @@ describe('F354 — a mid-run expansion fault fails the JOB, it does not report s
       pageWith(['place-a'], 'token-page-2'),
       pageWith(['place-b']),
     ]);
-    await service.expandSecondaryLocationsForRestaurant(
-      'ent-1',
-      'place-canonical',
-    );
+    await service.expandSecondaryLocationsForPlace('ent-1', 'place-canonical');
     expect(upserts).toEqual(['place-a', 'place-b']);
   });
 });
@@ -256,7 +247,7 @@ describe('F352-attribution — the campaign rides the payload; routine work carr
       ),
     };
     return {
-      service: new RestaurantSecondaryLocationExpansionQueueService(
+      service: new PlaceSecondaryLocationExpansionQueueService(
         queue as never,
         { metroLocationProbe: { findUnique: async () => null } } as never,
       ),
@@ -298,7 +289,7 @@ describe('F352-attribution — the campaign rides the payload; routine work carr
   it('the WORKER re-establishes the campaign across the BullMQ boundary', async () => {
     const seen: Array<string | undefined> = [];
     const enrichment = {
-      expandSecondaryLocationsForRestaurant: jest.fn(async () => {
+      expandSecondaryLocationsForPlace: jest.fn(async () => {
         seen.push(currentCampaignId());
       }),
     };
@@ -309,7 +300,7 @@ describe('F352-attribution — the campaign rides the payload; routine work carr
       error: jest.fn(),
       debug: jest.fn(),
     };
-    const worker = new RestaurantSecondaryLocationExpansionWorker(
+    const worker = new PlaceSecondaryLocationExpansionWorker(
       enrichment as never,
       {
         $queryRaw: async () => [],
@@ -322,15 +313,15 @@ describe('F352-attribution — the campaign rides the payload; routine work carr
     await worker.handle({
       id: 'j1',
       data: {
-        restaurantId: 'ent-1',
-        placeId: 'place-1',
+        placeId: 'ent-1',
+        googlePlaceId: 'place-1',
         requestedAt: 'now',
         campaignId: 'camp-reextract-v7',
       },
     } as never);
     await worker.handle({
       id: 'j2',
-      data: { restaurantId: 'ent-1', placeId: 'place-1', requestedAt: 'now' },
+      data: { placeId: 'ent-1', googlePlaceId: 'place-1', requestedAt: 'now' },
     } as never);
 
     expect(seen).toEqual(['camp-reextract-v7', undefined]);
@@ -338,7 +329,7 @@ describe('F352-attribution — the campaign rides the payload; routine work carr
 
   it('the worker does NOT swallow — a throw reaches bull', async () => {
     const enrichment = {
-      expandSecondaryLocationsForRestaurant: jest.fn(async () => {
+      expandSecondaryLocationsForPlace: jest.fn(async () => {
         throw new Error('Places 503: upstream unavailable');
       }),
     };
@@ -349,7 +340,7 @@ describe('F352-attribution — the campaign rides the payload; routine work carr
       error: jest.fn(),
       debug: jest.fn(),
     };
-    const worker = new RestaurantSecondaryLocationExpansionWorker(
+    const worker = new PlaceSecondaryLocationExpansionWorker(
       enrichment as never,
       {
         $queryRaw: async () => [],
@@ -362,8 +353,8 @@ describe('F352-attribution — the campaign rides the payload; routine work carr
       worker.handle({
         id: 'j1',
         data: {
-          restaurantId: 'ent-1',
-          placeId: 'place-1',
+          placeId: 'ent-1',
+          googlePlaceId: 'place-1',
           requestedAt: 'now',
         },
       } as never),

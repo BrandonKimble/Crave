@@ -14,7 +14,7 @@ import { entityRedirectDouble } from '../../shared/testing/prisma-doubles';
 
 const A = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const SURVIVOR = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
-const FOOD = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+const ITEM = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
 
 type ServicePrivate = {
   resolveLeaderboardSubjectRedirects(
@@ -88,16 +88,16 @@ describe('rebuildPollLeaderboard redirect resolution (F541)', () => {
     };
     const service = createService(prisma);
     const endorsers = new Map<string, Set<string>>([
-      [`${A}::${FOOD}`, new Set(['u1'])],
+      [`${A}::${ITEM}`, new Set(['u1'])],
     ]);
     const resolved = await service.resolveLeaderboardSubjectRedirects(
       endorsers,
       true,
     );
-    expect([...resolved.keys()]).toEqual([`${SURVIVOR}::${FOOD}`]);
+    expect([...resolved.keys()]).toEqual([`${SURVIVOR}::${ITEM}`]);
     // BOTH halves of the composite are asked about — a resolver that
     // collected only one half would silently stop resolving that axis.
-    expect(prisma.entityRedirect.askedFor()).toEqual([A, FOOD].sort());
+    expect(prisma.entityRedirect.askedFor()).toEqual([A, ITEM].sort());
   });
 
   it('no redirects → the map is returned unchanged (single lookup, no drift)', async () => {

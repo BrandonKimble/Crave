@@ -242,7 +242,7 @@ export class ConceptSatisfiesService {
   ): Promise<SatisfiesRunSummary> {
     const limit = options.limit ?? 200;
     const dryRun = options.dryRun ?? false;
-    const type = options.type ?? ('food' as EntityType);
+    const type = options.type ?? ('item' as EntityType);
     const summary: SatisfiesRunSummary = {
       conceptsScanned: 0,
       candidatesSeen: 0,

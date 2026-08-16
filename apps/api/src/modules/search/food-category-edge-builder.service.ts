@@ -5,9 +5,9 @@ import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.ser
 import { DerivedIndexJob } from '../../shared/derived-index-job';
 import { LoggerService } from '../../shared';
 import {
-  FOOD_CATEGORY_EDGE_LOCK,
-  foodCategoryEdgeDeleteSql,
-  foodCategoryEdgeInsertSql,
+  ITEM_CATEGORY_EDGE_LOCK,
+  itemCategoryEdgeDeleteSql,
+  itemCategoryEdgeInsertSql,
 } from '../content-processing/reddit-collector/food-category-edge-sql';
 
 /**
@@ -63,7 +63,7 @@ import {
  * says belong to it, in four fail-open readers, indefinitely.
  */
 @Injectable()
-export class FoodCategoryEdgeBuilderService extends DerivedIndexJob {
+export class ItemCategoryEdgeBuilderService extends DerivedIndexJob {
   protected readonly logger: LoggerService;
   protected readonly derivedTable = 'derived_food_category_edges';
   protected readonly disableFlagEnv = 'FOOD_CATEGORY_EDGE_BUILDER_ENABLED';
@@ -91,9 +91,9 @@ export class FoodCategoryEdgeBuilderService extends DerivedIndexJob {
         // Same advisory lock the incremental writer takes, so a nightly full
         // replace and a projection rebuild can never interleave on the rows
         // they both own.
-        await tx.$executeRawUnsafe(FOOD_CATEGORY_EDGE_LOCK);
-        await tx.$executeRawUnsafe(foodCategoryEdgeDeleteSql(null));
-        return tx.$executeRawUnsafe(foodCategoryEdgeInsertSql(null));
+        await tx.$executeRawUnsafe(ITEM_CATEGORY_EDGE_LOCK);
+        await tx.$executeRawUnsafe(itemCategoryEdgeDeleteSql(null));
+        return tx.$executeRawUnsafe(itemCategoryEdgeInsertSql(null));
       },
       // Explicit budget — the "default 5s killed large rebuilds
       // permanently-but-silently" class; every full-replace rebuild in this

@@ -241,12 +241,12 @@ export class UserTasteProfileBuilder {
         FROM totals t
         JOIN core_entities r
           ON r.entity_id = t.subject_id
-         AND r.type = 'restaurant'
+         AND r.type = 'place'
          AND r.status = 'active'
         JOIN LATERAL unnest(r.restaurant_attributes) AS ra(attribute_id) ON TRUE
         JOIN core_entities attr
           ON attr.entity_id = ra.attribute_id
-         AND attr.type = 'restaurant_attribute'
+         AND attr.type = 'place_attribute'
          AND attr.status = 'active'
         GROUP BY t.actor_id, attr.entity_id, attr.name, t.kind
       `);

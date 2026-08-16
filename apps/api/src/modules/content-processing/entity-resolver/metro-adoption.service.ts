@@ -77,11 +77,11 @@ export class MetroAdoptionService {
    *  nickname mention of them mint a duplicate. Unknown stands the gate
    *  DOWN, like a missing anchor). */
   async geoVerdicts(
-    restaurantIds: string[],
+    placeIds: string[],
     anchor: { lat: number; lng: number },
   ): Promise<Map<string, 'local' | 'remote' | 'unknown'>> {
     const verdicts = new Map<string, 'local' | 'remote' | 'unknown'>();
-    if (!restaurantIds.length) {
+    if (!placeIds.length) {
       return verdicts;
     }
     const rows = await this.prisma.$queryRaw<
@@ -96,11 +96,11 @@ export class MetroAdoptionService {
                )) < ${MetroAdoptionService.METRO_RADIUS_KM}
              ) AS local
       FROM core_restaurant_locations l
-      WHERE l.restaurant_id = ANY(${restaurantIds}::uuid[])
+      WHERE l.restaurant_id = ANY(${placeIds}::uuid[])
         AND l.latitude IS NOT NULL
       GROUP BY l.restaurant_id
     `;
-    for (const id of restaurantIds) {
+    for (const id of placeIds) {
       verdicts.set(id, 'unknown');
     }
     for (const row of rows) {
@@ -123,7 +123,7 @@ export class MetroAdoptionService {
     const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
       SELECT e.entity_id::text AS id
       FROM core_entities e
-      WHERE e.type = 'restaurant' AND e.status <> 'archived'
+      WHERE e.type = 'place' AND e.status <> 'archived'
         AND (
           lower(e.name) = ${needle}
           OR EXISTS (
@@ -162,7 +162,7 @@ export class MetroAdoptionService {
     const rows = await this.prisma.$queryRaw<Array<{ name: string }>>`
       SELECT lower(name) AS name
       FROM core_entities
-      WHERE type = 'restaurant' AND status <> 'archived'
+      WHERE type = 'place' AND status <> 'archived'
         AND lower(name) = ANY(${lowered})
       GROUP BY lower(name)
       HAVING count(*) = 1

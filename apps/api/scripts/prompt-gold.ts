@@ -40,17 +40,17 @@ import {
   MODERATION_RESPONSE_JSON_SCHEMA,
   POLL_SUBJECT_RESPONSE_JSON_SCHEMA,
   RELEVANCE_GATE_RESPONSE_JSON_SCHEMA,
-  RESTAURANT_PLACE_CHOOSER_RESPONSE_JSON_SCHEMA,
+  PLACE_CHOOSER_RESPONSE_JSON_SCHEMA,
   jsonSchemaToTypedSchema,
 } from '../src/modules/external-integrations/llm/prompts/llm-response-schemas';
-import { buildRestaurantPlaceChooserPrompt } from '../src/modules/external-integrations/llm/prompts/restaurant-place-chooser.prompt';
-import { LLMRestaurantPlaceChooserInput } from '../src/modules/external-integrations/llm/llm.types';
+import { buildPlaceChooserPrompt } from '../src/modules/external-integrations/llm/prompts/restaurant-place-chooser.prompt';
+import { LLMPlaceChooserInput } from '../src/modules/external-integrations/llm/llm.types';
 import {
   VOCABULARY_RESPONSE_SCHEMA,
   buildVocabularyPrompt,
 } from '../src/modules/entity-display/vocabulary-generator';
 import { LabelGenerationRequest } from '../src/modules/entity-display/label-generator';
-import { buildRestaurantPlaceChooserPromptPred } from './fixtures/restaurant-place-chooser.pred.prompt';
+import { buildPlaceChooserPromptPred } from './fixtures/restaurant-place-chooser.pred.prompt';
 import {
   buildVocabularyPromptV4,
   buildVocabularyPromptV6,
@@ -81,14 +81,14 @@ type GoldCase = {
   /** relevance-gate: one post. */
   post?: { title: string; body?: string };
   /** chooser: the full production input (builder-rendered per variant). */
-  chooserInput?: LLMRestaurantPlaceChooserInput;
+  chooserInput?: LLMPlaceChooserInput;
   /** dish-knowledge: one dish name. */
   dish?: string;
   /** cuisine: the editorial summary. */
   summary?: string;
   /** attribute-placement: the term + vocabulary + candidate shortlist. */
   term?: string;
-  attrKind?: 'restaurant_attribute' | 'food_attribute';
+  attrKind?: 'place_attribute' | 'item_attribute';
   candidates?: Array<{ id: string; name: string }>;
   /** vocabulary: one concept (builder-rendered per variant). */
   concept?: {
@@ -101,7 +101,7 @@ type GoldCase = {
     allowed?: boolean;
     keep?: boolean;
     mode?: 'ranked' | 'discussion';
-    targetType?: 'dish' | 'restaurant';
+    targetType?: 'dish' | 'place';
     constraintKind?: string;
     constraintValue?: string;
     anchor?: string | null;
@@ -178,9 +178,9 @@ function builderPrompt(
   if (kind === 'chooser') {
     const build =
       variant === 'live'
-        ? buildRestaurantPlaceChooserPromptPred
-        : buildRestaurantPlaceChooserPrompt;
-    return build(testCase.chooserInput as LLMRestaurantPlaceChooserInput);
+        ? buildPlaceChooserPromptPred
+        : buildPlaceChooserPrompt;
+    return build(testCase.chooserInput as LLMPlaceChooserInput);
   }
   const concept = testCase.concept!;
   const batch: LabelGenerationRequest[] = [
@@ -207,7 +207,7 @@ function schemaFor(kind: Kind): Record<string, unknown> {
     return { responseJsonSchema: POLL_SUBJECT_RESPONSE_JSON_SCHEMA };
   if (kind === 'chooser')
     return {
-      responseJsonSchema: RESTAURANT_PLACE_CHOOSER_RESPONSE_JSON_SCHEMA,
+      responseJsonSchema: PLACE_CHOOSER_RESPONSE_JSON_SCHEMA,
     };
   if (kind === 'dish-knowledge')
     return { responseJsonSchema: DISH_KNOWLEDGE_RESPONSE_JSON_SCHEMA };

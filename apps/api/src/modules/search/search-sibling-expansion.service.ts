@@ -11,11 +11,11 @@ import { LoggerService } from '../../shared';
 /** Request-scoped memoized view of the widening reads (H6). */
 export type SiblingExpansionReader = Pick<
   SearchSiblingExpansionService,
-  | 'getCategoryMemberFoodIds'
-  | 'getNameContainmentVariantFoodIds'
+  | 'getCategoryMemberItemIds'
+  | 'getNameContainmentVariantItemIds'
   | 'getSameNamedIngredientIds'
-  | 'getSiblingFoodIds'
-  | 'getSatisfiesFoodIds'
+  | 'getSiblingItemIds'
+  | 'getSatisfiesItemIds'
 >;
 
 export interface SiblingCutOptions {
@@ -38,7 +38,7 @@ export interface SiblingCutOptions {
  * `cosine ≥ floor ∧ forward_rank ≤ K ∧ mutual_rank ≤ R` from env-tunable knobs —
  * zero vector math, zero embedding calls, no per-search model inference.
  *
- * The sibling-side join re-checks `type='food' AND status='active'` so an entity
+ * The sibling-side join re-checks `type='item' AND status='active'` so an entity
  * merged/archived after the last nightly rebuild can never surface (read-time
  * staleness guard). Fails open: any error → [] (search runs unwidened).
  */
@@ -90,16 +90,16 @@ export class SearchSiblingExpansionService {
     const idsKey = (ids: string[]): string => ids.filter(Boolean).join(',');
     const copyArray = <T>(rows: T[]): T[] => rows.slice();
     return {
-      getCategoryMemberFoodIds: (ids) =>
+      getCategoryMemberItemIds: (ids) =>
         keyed(
           `cat|${idsKey(ids)}`,
-          () => this.getCategoryMemberFoodIds(ids),
+          () => this.getCategoryMemberItemIds(ids),
           copyArray,
         ),
-      getNameContainmentVariantFoodIds: (ids) =>
+      getNameContainmentVariantItemIds: (ids) =>
         keyed(
           `ncv|${idsKey(ids)}`,
-          () => this.getNameContainmentVariantFoodIds(ids),
+          () => this.getNameContainmentVariantItemIds(ids),
           (value) => ({
             isVariantOf: value.isVariantOf.slice(),
             mentionsIt: value.mentionsIt.slice(),
@@ -111,16 +111,16 @@ export class SearchSiblingExpansionService {
           () => this.getSameNamedIngredientIds(ids),
           copyArray,
         ),
-      getSiblingFoodIds: (ids, options) =>
+      getSiblingItemIds: (ids, options) =>
         keyed(
           `sib|${idsKey(ids)}|${options.forwardK}|${options.mutualR}|${options.minCosine}|${options.maxAnchors}`,
-          () => this.getSiblingFoodIds(ids, options),
+          () => this.getSiblingItemIds(ids, options),
           copyArray,
         ),
-      getSatisfiesFoodIds: (ids, options) =>
+      getSatisfiesItemIds: (ids, options) =>
         keyed(
           `sat|${idsKey(ids)}|${options?.maxAnchors ?? 3}`,
-          () => this.getSatisfiesFoodIds(ids, options),
+          () => this.getSatisfiesItemIds(ids, options),
           (value) => ({
             satisfies: value.satisfies.slice(),
             cousin: value.cousin.slice(),
@@ -138,22 +138,22 @@ export class SearchSiblingExpansionService {
    * restriction is what kills the pizza→(sibling flatbread)→(category)→rashoosh
    * transitive fan-out. Fails open to [].
    */
-  async getCategoryMemberFoodIds(categoryFoodIds: string[]): Promise<string[]> {
-    const ids = Array.from(new Set(categoryFoodIds.filter(Boolean)));
+  async getCategoryMemberItemIds(categoryItemIds: string[]): Promise<string[]> {
+    const ids = Array.from(new Set(categoryItemIds.filter(Boolean)));
     if (!ids.length) return [];
     try {
-      const rows = await this.prisma.$queryRaw<{ foodId: string }[]>(
+      const rows = await this.prisma.$queryRaw<{ itemId: string }[]>(
         Prisma.sql`
-          SELECT DISTINCT e.food_id AS "foodId"
+          SELECT DISTINCT e.food_id AS "itemId"
           FROM derived_food_category_edges e
           JOIN core_entities f ON f.entity_id = e.food_id
-            AND f.type = 'food'::entity_type
+            AND f.type = 'item'::entity_type
             AND f.status = 'active'::entity_status
           WHERE e.category_id = ANY(${ids}::uuid[])
         `,
       );
       const exclude = new Set(ids);
-      return rows.map((r) => r.foodId).filter((id) => !exclude.has(id));
+      return rows.map((r) => r.itemId).filter((id) => !exclude.has(id));
     } catch (error) {
       this.logger.warn('Category member read failed (failing open)', {
         categoryCount: ids.length,
@@ -166,11 +166,11 @@ export class SearchSiblingExpansionService {
     }
   }
 
-  async getSiblingFoodIds(
-    anchorFoodIds: string[],
+  async getSiblingItemIds(
+    anchorItemIds: string[],
     options: SiblingCutOptions,
   ): Promise<{ siblingId: string; relevance: number }[]> {
-    const anchors = Array.from(new Set(anchorFoodIds.filter(Boolean))).slice(
+    const anchors = Array.from(new Set(anchorItemIds.filter(Boolean))).slice(
       0,
       Math.max(1, options.maxAnchors),
     );
@@ -195,7 +195,7 @@ export class SearchSiblingExpansionService {
                 AS normalized
             FROM derived_entity_sibling_edges e
             JOIN core_entities s ON s.entity_id = e.sibling_entity_id
-              AND s.type = 'food'::entity_type
+              AND s.type = 'item'::entity_type
               AND s.status = 'active'::entity_status
             WHERE e.anchor_entity_id = ANY(${anchors}::uuid[])
               AND e.cosine >= ${options.minCosine}
@@ -257,28 +257,28 @@ export class SearchSiblingExpansionService {
    * the same law categories and name-containment follow — never expand an
    * expansion.
    */
-  async getSatisfiesFoodIds(
-    baseFoodIds: string[],
+  async getSatisfiesItemIds(
+    baseItemIds: string[],
     options: { maxAnchors?: number } = {},
   ): Promise<{ satisfies: string[]; cousin: string[] }> {
-    const ids = Array.from(new Set(baseFoodIds.filter(Boolean))).slice(
+    const ids = Array.from(new Set(baseItemIds.filter(Boolean))).slice(
       0,
       Math.max(1, options.maxAnchors ?? 3),
     );
     if (!ids.length) return { satisfies: [], cousin: [] };
     try {
       const rows = await this.prisma.$queryRaw<
-        { foodId: string; relation: string }[]
+        { itemId: string; relation: string }[]
       >(
         Prisma.sql`
-          SELECT ${resolvedSubjectSql('s', 'r', 'to_entity_id')} AS "foodId",
+          SELECT ${resolvedSubjectSql('s', 'r', 'to_entity_id')} AS "itemId",
                  s.relation AS "relation"
           FROM entity_satisfies s
           ${redirectJoinSql('s', 'r', 'to_entity_id')}
           JOIN core_entities t
             ON t.entity_id = ${resolvedSubjectSql('s', 'r', 'to_entity_id')}
            AND t.status = 'active'::entity_status
-           AND t.type = 'food'::entity_type
+           AND t.type = 'item'::entity_type
           WHERE s.from_entity_id = ANY(${ids}::uuid[])
             AND s.relation IN ('satisfies', 'cousin')
         `,
@@ -287,8 +287,8 @@ export class SearchSiblingExpansionService {
       const satisfies = new Set<string>();
       const cousin = new Set<string>();
       for (const row of rows) {
-        if (exclude.has(row.foodId)) continue;
-        (row.relation === 'satisfies' ? satisfies : cousin).add(row.foodId);
+        if (exclude.has(row.itemId)) continue;
+        (row.relation === 'satisfies' ? satisfies : cousin).add(row.itemId);
       }
       // A concept judged BOTH ways across different anchors is treated as the
       // weaker claim — tier 0 is the expensive place to be wrong.
@@ -307,8 +307,8 @@ export class SearchSiblingExpansionService {
     }
   }
 
-  async getNameContainmentVariantFoodIds(
-    baseFoodIds: string[],
+  async getNameContainmentVariantItemIds(
+    baseItemIds: string[],
   ): Promise<{ isVariantOf: string[]; mentionsIt: string[] }> {
     // KL-D: reads the MATERIALIZED rung-2 table — ONE folded-key definition
     // shared with the satisfies judge (the lower(name) live scan diverged
@@ -317,18 +317,18 @@ export class SearchSiblingExpansionService {
     // un-indexable word-boundary LIKE and its maxAnchors cap are deleted;
     // this is an indexed lookup now. Read-time status re-check follows the
     // sibling-edge idiom.
-    const ids = Array.from(new Set(baseFoodIds.filter(Boolean)));
+    const ids = Array.from(new Set(baseItemIds.filter(Boolean)));
     if (!ids.length) return { isVariantOf: [], mentionsIt: [] };
     try {
       const rows = await this.prisma.$queryRaw<
-        { foodId: string; headFinal: boolean }[]
+        { itemId: string; headFinal: boolean }[]
       >(
         Prisma.sql`
-          SELECT e.variant_id AS "foodId", bool_or(e.head_final) AS "headFinal"
+          SELECT e.variant_id AS "itemId", bool_or(e.head_final) AS "headFinal"
           FROM derived_name_containment_edges e
           JOIN core_entities v ON v.entity_id = e.variant_id
            AND v.status = 'active'::entity_status
-           AND v.type = 'food'::entity_type
+           AND v.type = 'item'::entity_type
           WHERE e.base_id = ANY(${ids}::uuid[])
           GROUP BY e.variant_id
         `,
@@ -337,8 +337,8 @@ export class SearchSiblingExpansionService {
       const isVariantOf = new Set<string>();
       const mentionsIt = new Set<string>();
       for (const row of rows) {
-        if (exclude.has(row.foodId)) continue;
-        (row.headFinal ? isVariantOf : mentionsIt).add(row.foodId);
+        if (exclude.has(row.itemId)) continue;
+        (row.headFinal ? isVariantOf : mentionsIt).add(row.itemId);
       }
       for (const id of isVariantOf) mentionsIt.delete(id);
       return {
@@ -365,8 +365,8 @@ export class SearchSiblingExpansionService {
    * entity ids (name or alias equality, both directions); the query builder
    * ORs their containment (evidence + canon tiers) into the food clause.
    */
-  async getSameNamedIngredientIds(baseFoodIds: string[]): Promise<string[]> {
-    const ids = Array.from(new Set(baseFoodIds.filter(Boolean)));
+  async getSameNamedIngredientIds(baseItemIds: string[]): Promise<string[]> {
+    const ids = Array.from(new Set(baseItemIds.filter(Boolean)));
     if (!ids.length) return [];
     try {
       const rows = await this.prisma.$queryRaw<{ ingredientId: string }[]>(

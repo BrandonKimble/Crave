@@ -9,8 +9,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { identityScopeWhere } from '../../shared/locale';
 import { AliasManagementService } from '../content-processing/entity-resolver/alias-management.service';
-import { RestaurantCuisineExtractionQueueService } from '../restaurant-enrichment/restaurant-cuisine-extraction-queue.service';
-import { RestaurantLocationEnrichmentService } from '../restaurant-enrichment/restaurant-location-enrichment.service';
+import { PlaceCuisineExtractionQueueService } from '../restaurant-enrichment/restaurant-cuisine-extraction-queue.service';
+import { PlaceLocationEnrichmentService } from '../restaurant-enrichment/restaurant-location-enrichment.service';
 import { EntityTextSearchService } from '../entity-text-search/entity-text-search.service';
 
 /** Phase C re-key: entity seeding is biased by the creation PLACE (centroid +
@@ -48,7 +48,7 @@ type ResolvedEntity = {
 
 type AttributeEntityType = Extract<
   EntityType,
-  'food_attribute' | 'restaurant_attribute'
+  'item_attribute' | 'place_attribute'
 >;
 
 @Injectable()
@@ -59,19 +59,19 @@ export class PollEntitySeedService {
     private readonly prisma: PrismaService,
     loggerService: LoggerService,
     private readonly aliasManagement: AliasManagementService,
-    private readonly restaurantEnrichment: RestaurantLocationEnrichmentService,
-    private readonly cuisineExtractionQueue: RestaurantCuisineExtractionQueueService,
+    private readonly placeEnrichment: PlaceLocationEnrichmentService,
+    private readonly cuisineExtractionQueue: PlaceCuisineExtractionQueueService,
     private readonly entityTextSearch: EntityTextSearchService,
   ) {
     this.logger = loggerService.setContext('PollEntitySeedService');
   }
 
-  async resolveFood(params: {
+  async resolveItem(params: {
     entityId?: string | null;
     name?: string | null;
   }): Promise<ResolvedEntity> {
     if (params.entityId) {
-      return this.assertEntityType(params.entityId, EntityType.food);
+      return this.assertEntityType(params.entityId, EntityType.item);
     }
 
     const name = this.normalizeInput(params.name);
@@ -79,7 +79,7 @@ export class PollEntitySeedService {
       throw new BadRequestException('Dish name is required');
     }
 
-    const existing = await this.findEntityByName(EntityType.food, name);
+    const existing = await this.findEntityByName(EntityType.item, name);
     if (existing) {
       return {
         entityId: existing.entityId,
@@ -91,8 +91,8 @@ export class PollEntitySeedService {
     const created = await this.prisma.entity.create({
       data: {
         name,
-        type: EntityType.food,
-        ...identityInsertData(name, EntityType.food),
+        type: EntityType.item,
+        ...identityInsertData(name, EntityType.item),
       },
     });
 
@@ -150,14 +150,14 @@ export class PollEntitySeedService {
    * place — a "Joe's Pizza" in another city must not answer for this one.
    * Returns null whenever we are not sure, which sends the caller to Google.
    */
-  private async matchKnownRestaurant(
+  private async matchKnownPlace(
     name: string,
     place: PollPlaceContext,
   ): Promise<ResolvedEntity | null> {
     try {
       const candidates = await this.entityTextSearch.retrieveCandidates(
         name,
-        [EntityType.restaurant],
+        [EntityType.place],
         LOCAL_MATCH_SHORTLIST,
         { denseMode: 'none' },
       );
@@ -252,13 +252,13 @@ export class PollEntitySeedService {
     }
   }
 
-  async resolveRestaurant(params: {
+  async resolvePlace(params: {
     entityId?: string | null;
     name?: string | null;
     place: PollPlaceContext;
   }): Promise<ResolvedEntity> {
     if (params.entityId) {
-      return this.assertEntityType(params.entityId, EntityType.restaurant);
+      return this.assertEntityType(params.entityId, EntityType.place);
     }
 
     const name = this.normalizeInput(params.name);
@@ -281,7 +281,7 @@ export class PollEntitySeedService {
     // through to Google, which is what a vendor is actually for. A local hit
     // is also the better product answer: the poll binds to the entity that
     // already carries our reviews and score, instead of minting a near-twin.
-    const local = await this.matchKnownRestaurant(name, params.place);
+    const local = await this.matchKnownPlace(name, params.place);
     if (local) {
       return local;
     }
@@ -296,7 +296,7 @@ export class PollEntitySeedService {
       );
     }
 
-    const match = await this.restaurantEnrichment.resolvePlaceForInput({
+    const match = await this.placeEnrichment.resolvePlaceForInput({
       name,
       city: params.place.city ?? undefined,
       region: params.place.region ?? undefined,
@@ -319,7 +319,7 @@ export class PollEntitySeedService {
       );
     }
 
-    const existing = await this.findRestaurantByPlaceId(placeId);
+    const existing = await this.findPlaceByPlaceId(placeId);
     if (existing) {
       return {
         entityId: existing.entityId,
@@ -331,13 +331,12 @@ export class PollEntitySeedService {
     // Geometric location data is derived inside buildRestaurantCreateInput
     // from the Google place itself — §13: creation anchors to the
     // verification result (no legacy market presence involved).
-    const entityData =
-      await this.restaurantEnrichment.buildRestaurantCreateInput({
-        name,
-        place: match.place,
-        matchMetadata: match.matchMetadata,
-        alias: name,
-      });
+    const entityData = await this.placeEnrichment.buildPlaceCreateInput({
+      name,
+      place: match.place,
+      matchMetadata: match.matchMetadata,
+      alias: name,
+    });
 
     const created = await this.prisma.$transaction(async (tx) => {
       // CROSS-PATH DUPLICATE FIX (Phase 3.1, plans/extraction-ideal-shape-
@@ -350,10 +349,10 @@ export class PollEntitySeedService {
       // name; the enrichment-time conflict resolver and the nightly sweep
       // own the finer distinct-business judgment with domain evidence).
       const resolvedName = String(entityData.name ?? name);
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`entity:restaurant:${resolvedName.toLowerCase()}`}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`entity:place:${resolvedName.toLowerCase()}`}))`;
       const sameName = await tx.entity.findFirst({
         where: {
-          type: EntityType.restaurant,
+          type: EntityType.place,
           status: 'active',
           name: { equals: resolvedName, mode: 'insensitive' },
         },
@@ -366,21 +365,21 @@ export class PollEntitySeedService {
       // duplicate entity: locations are what the map and see-locations mode
       // render). Adopt only when the domains AGREE or one side is silent;
       // two distinct owned domains mean two businesses -> create separately.
-      const placeDomain = this.restaurantEnrichment.normalizeWebsiteDomain(
+      const placeDomain = this.placeEnrichment.normalizeWebsiteDomain(
         match.place.websiteUri,
       );
-      const existingDomain = this.restaurantEnrichment.normalizeWebsiteDomain(
+      const existingDomain = this.placeEnrichment.normalizeWebsiteDomain(
         sameName?.canonicalDomain,
       );
       const domainsConflict = Boolean(
         placeDomain && existingDomain && placeDomain !== existingDomain,
       );
       if (sameName && !domainsConflict) {
-        const locationData = this.restaurantEnrichment.buildLocationCreateInput(
+        const locationData = this.placeEnrichment.buildLocationCreateInput(
           sameName.entityId,
           match.place,
         );
-        await tx.restaurantLocation.create({ data: locationData });
+        await tx.placeLocation.create({ data: locationData });
         this.logger.info(
           'Poll input matched existing restaurant (name + domain agreement) — attached location',
           {
@@ -404,15 +403,15 @@ export class PollEntitySeedService {
           ...entityColumns,
           ...identityInsertData(
             (entityColumns as { name: string }).name,
-            EntityType.restaurant,
+            EntityType.place,
           ),
         },
       });
-      const locationData = this.restaurantEnrichment.buildLocationCreateInput(
+      const locationData = this.placeEnrichment.buildLocationCreateInput(
         entity.entityId,
         match.place,
       );
-      const location = await tx.restaurantLocation.create({
+      const location = await tx.placeLocation.create({
         data: locationData,
       });
       await tx.entity.update({
@@ -478,22 +477,22 @@ export class PollEntitySeedService {
   }
 
   async ensureConnection(params: {
-    restaurantId: string;
-    foodId: string;
+    placeId: string;
+    itemId: string;
     attributeId?: string | null;
   }): Promise<string> {
     const existing = await this.prisma.connection.findFirst({
-      where: { restaurantId: params.restaurantId, foodId: params.foodId },
-      select: { connectionId: true, foodAttributes: true },
+      where: { placeId: params.placeId, itemId: params.itemId },
+      select: { connectionId: true, itemAttributes: true },
     });
 
     if (existing) {
       if (params.attributeId) {
-        const updated = new Set(existing.foodAttributes ?? []);
+        const updated = new Set(existing.itemAttributes ?? []);
         updated.add(params.attributeId);
         await this.prisma.connection.update({
           where: { connectionId: existing.connectionId },
-          data: { foodAttributes: Array.from(updated.values()) },
+          data: { itemAttributes: Array.from(updated.values()) },
         });
       }
       return existing.connectionId;
@@ -501,9 +500,9 @@ export class PollEntitySeedService {
 
     const created = await this.prisma.connection.create({
       data: {
-        restaurantId: params.restaurantId,
-        foodId: params.foodId,
-        foodAttributes: params.attributeId ? [params.attributeId] : [],
+        placeId: params.placeId,
+        itemId: params.itemId,
+        itemAttributes: params.attributeId ? [params.attributeId] : [],
       },
       select: { connectionId: true },
     });
@@ -511,30 +510,30 @@ export class PollEntitySeedService {
     return created.connectionId;
   }
 
-  async ensureRestaurantAttribute(params: {
-    restaurantId: string;
+  async ensurePlaceAttribute(params: {
+    placeId: string;
     attributeId: string;
   }): Promise<void> {
-    const restaurant = await this.prisma.entity.findUnique({
-      where: { entityId: params.restaurantId },
-      select: { restaurantAttributes: true },
+    const place = await this.prisma.entity.findUnique({
+      where: { entityId: params.placeId },
+      select: { placeAttributes: true },
     });
-    if (!restaurant) {
+    if (!place) {
       throw new BadRequestException('Restaurant not found');
     }
 
-    const updated = new Set(restaurant.restaurantAttributes ?? []);
+    const updated = new Set(place.placeAttributes ?? []);
     updated.add(params.attributeId);
     await this.prisma.entity.update({
-      where: { entityId: params.restaurantId },
-      data: { restaurantAttributes: Array.from(updated.values()) },
+      where: { entityId: params.placeId },
+      data: { placeAttributes: Array.from(updated.values()) },
     });
     // Phase 4b: a poll-seeded attribute is a claim like any other — state
     // it in the substrate so the derived array keeps it.
-    await this.prisma.restaurantAttributeEvidence.createMany({
+    await this.prisma.placeAttributeEvidence.createMany({
       data: [
         {
-          restaurantId: params.restaurantId,
+          placeId: params.placeId,
           attributeId: params.attributeId,
           sourceClass: 'poll_seed',
           observations: 1,
@@ -544,17 +543,17 @@ export class PollEntitySeedService {
     });
   }
 
-  private async findRestaurantByPlaceId(placeId: string) {
-    const location = await this.prisma.restaurantLocation.findUnique({
+  private async findPlaceByPlaceId(placeId: string) {
+    const location = await this.prisma.placeLocation.findUnique({
       where: { googlePlaceId: placeId },
-      select: { restaurantId: true },
+      select: { placeId: true },
     });
     if (!location) {
       return null;
     }
 
     return this.prisma.entity.findUnique({
-      where: { entityId: location.restaurantId },
+      where: { entityId: location.placeId },
       select: { entityId: true, name: true },
     });
   }

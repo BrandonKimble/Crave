@@ -64,7 +64,7 @@ async function main(): Promise<void> {
     );
     for (const tile of t)
       console.log(
-        `  slot ${tile.slot} ${tile.restaurantId} ${tile.thumbUrl.slice(0, 90)}`,
+        `  slot ${tile.slot} ${tile.placeId} ${tile.thumbUrl.slice(0, 90)}`,
       );
   }
 

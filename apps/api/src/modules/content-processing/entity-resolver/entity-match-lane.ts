@@ -46,7 +46,7 @@ export const ENTITY_MATCH_LANE = 'entity_match';
 export interface EntityMatchClaim {
   /** The judge's `kind` — part of the question: the same string can name a
    *  restaurant and a dish, and those are different claims. */
-  kind: 'restaurant' | 'food' | 'ingredient';
+  kind: 'place' | 'item' | 'ingredient';
   /** The extracted term as the judge sees it (normalizedName). */
   term: string;
   /** The persisted candidate entity the term is judged against. */

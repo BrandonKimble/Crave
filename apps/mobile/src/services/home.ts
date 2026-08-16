@@ -17,7 +17,7 @@ export { normalizeHomeFeedResponse } from './home-feed-normalize';
 export type CuratedListDetailItem = {
   rank: number;
   entityId: string;
-  restaurantId: string | null;
+  placeId: string | null;
   /** Dish items: the Connection id, a BUILD FACT stored on the curated row
    *  (FK-cascaded — can never dangle). Null only on legacy rows predating the
    *  column; restaurant items always null. */

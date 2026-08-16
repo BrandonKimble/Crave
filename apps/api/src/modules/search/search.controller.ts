@@ -24,14 +24,11 @@ import { SearchOrchestrationService } from './search-orchestration.service';
 import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
 import { ListSearchHistoryDto } from './dto/list-search-history.dto';
 import { SearchCoverageService } from './search-coverage.service';
-import type {
-  FoodResultDto,
-  RestaurantProfileDto,
-} from './dto/search-query.dto';
+import type { ItemResultDto, PlaceProfileDto } from './dto/search-query.dto';
 import { RateLimitTier } from '../infrastructure/throttler/throttler.decorator';
 import { NoSignal, RecordsSignal } from '../signals/records-signal.decorator';
 import { RequestLocale, type SupportedLocale } from '../../shared/locale';
-import type { RestaurantMatchedTag } from '@crave-search/shared';
+import type { PlaceMatchedTag } from '@crave-search/shared';
 import { EntityDisplayService } from '../entity-display/entity-display.service';
 import { DietaryConstraintRegistry } from './dietary-constraints';
 
@@ -64,10 +61,9 @@ export class SearchController {
     response: SearchResponseDto,
     locale: SupportedLocale,
   ): Promise<SearchResponseDto> {
-    const buckets = [
-      response.restaurants,
-      response.similarRestaurants ?? [],
-    ].filter((bucket) => bucket?.length);
+    const buckets = [response.places, response.similarPlaces ?? []].filter(
+      (bucket) => bucket?.length,
+    );
     if (!buckets.length) {
       return response;
     }
@@ -85,7 +81,7 @@ export class SearchController {
       ]),
     );
     const apply = (
-      rows: Array<{ matchedTags?: RestaurantMatchedTag[] }> | undefined,
+      rows: Array<{ matchedTags?: PlaceMatchedTag[] }> | undefined,
     ): void => {
       for (const row of rows ?? []) {
         if (!row.matchedTags?.length) {
@@ -97,8 +93,8 @@ export class SearchController {
         });
       }
     };
-    apply(response.restaurants);
-    apply(response.similarRestaurants);
+    apply(response.places);
+    apply(response.similarPlaces);
     return response;
   }
 
@@ -193,21 +189,21 @@ export class SearchController {
   }
 
   @Get('restaurants/:restaurantId/dishes')
-  async restaurantDishes(
-    @Param('restaurantId', new ParseUUIDPipe({ version: '4' }))
-    restaurantId: string,
-  ): Promise<FoodResultDto[]> {
-    return this.searchService.listRestaurantDishes(restaurantId);
+  async placeDishes(
+    @Param('placeId', new ParseUUIDPipe({ version: '4' }))
+    placeId: string,
+  ): Promise<ItemResultDto[]> {
+    return this.searchService.listPlaceDishes(placeId);
   }
 
   @Get('restaurants/:restaurantId/profile')
-  async restaurantProfile(
-    @Param('restaurantId', new ParseUUIDPipe({ version: '4' }))
-    restaurantId: string,
-  ): Promise<RestaurantProfileDto> {
+  async placeProfile(
+    @Param('placeId', new ParseUUIDPipe({ version: '4' }))
+    placeId: string,
+  ): Promise<PlaceProfileDto> {
     // NOTE: clients may still send ?marketKey= during the Leg 2 mobile
     // transition — unknown query params are ignored here by design.
-    const profile = await this.searchService.getRestaurantProfile(restaurantId);
+    const profile = await this.searchService.getPlaceProfile(placeId);
     if (!profile) {
       throw new NotFoundException('Restaurant profile not found');
     }

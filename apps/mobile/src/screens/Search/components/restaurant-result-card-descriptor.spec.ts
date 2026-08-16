@@ -3,18 +3,18 @@ import { buildRestaurantResultCardDescriptor } from './restaurant-result-card-de
 
 const buildRestaurant = (overrides: Partial<RestaurantResult> = {}): RestaurantResult => ({
   craveScore: 90,
-  restaurantId: 'r1',
-  restaurantName: 'Franklin Barbecue',
+  placeId: 'r1',
+  placeName: 'Franklin Barbecue',
   scoreSubjectId: 'r1',
   scoreSubjectType: 'restaurant',
-  topFood: [],
+  topItem: [],
   totalDishCount: 0,
   ...overrides,
 });
 
 const buildDescriptor = (restaurant: RestaurantResult) =>
   buildRestaurantResultCardDescriptor({
-    primaryFoodTerm: null,
+    primaryItemTerm: null,
     qualityColor: '#000000',
     rank: 1,
     restaurant,

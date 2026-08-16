@@ -43,7 +43,7 @@ interface HarnessOptions {
   subjects?: {
     placeId: string;
     subjectId: string;
-    entityType: 'food' | 'restaurant';
+    entityType: 'item' | 'place';
     entityName: string;
     mass: number;
     currentMass: number;
@@ -169,7 +169,7 @@ function pollCreateManyRows(
 const SUBJECT = {
   placeId: PLACE_ID,
   subjectId: DISH_ID,
-  entityType: 'food' as const,
+  entityType: 'item' as const,
   entityName: 'breakfast taco',
   mass: 40,
   currentMass: 12,
@@ -296,7 +296,7 @@ describe('PollWeeklyRitualService — the §4 weekly ritual', () => {
     expect(topicData.title).toBe('Best restaurants in Austin');
     const [pollData] = pollCreateManyRows(tx);
     expect(pollData.axis).toMatchObject({
-      targetType: 'restaurant',
+      targetType: 'place',
       marketHint: 'Austin',
     });
   });
@@ -487,7 +487,7 @@ describe('PollWeeklyRitualService — the §4 weekly ritual', () => {
       placeId: PLACE_ID,
       topicType: 'best_dish',
       targetDishId: DISH_ID,
-      targetRestaurantId: null,
+      targetPlaceId: null,
       createdAt: new Date('2026-07-12T14:30:00Z'),
       metadata: { weekOf: LAST_WEEK_OF },
     };
@@ -532,7 +532,7 @@ describe('PollWeeklyRitualService — the §4 weekly ritual', () => {
             placeId: PLACE_ID,
             topicType: 'best_restaurants',
             targetDishId: null,
-            targetRestaurantId: null,
+            targetPlaceId: null,
             createdAt: new Date('2026-07-12T14:30:00Z'),
             metadata: { weekOf: LAST_WEEK_OF },
           },
@@ -558,7 +558,7 @@ describe('PollWeeklyRitualService — the §4 weekly ritual', () => {
             placeId: PLACE_ID,
             topicType: 'best_restaurants',
             targetDishId: null,
-            targetRestaurantId: null,
+            targetPlaceId: null,
             createdAt: new Date('2026-07-05T14:30:00Z'),
             metadata: { weekOf: TWO_WEEKS_AGO_OF },
           },

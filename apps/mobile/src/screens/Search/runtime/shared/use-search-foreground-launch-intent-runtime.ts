@@ -148,16 +148,16 @@ export const useSearchForegroundLaunchIntentRuntime = ({
       activeMainIntent.action.kind === 'restaurantWorld'
     ) {
       // Phase 4 (canonical-sheet-transition-master-plan §4, BUG-1 #1/#2/#3): route the
-      // restaurant reveal from a poll-discussion comment span (or a restaurant deep link)
-      // through the COMMITTED single-restaurant search lifecycle — NOT the cold
+      // place reveal from a poll-discussion comment span (or a place deep link)
+      // through the COMMITTED single-place search lifecycle — NOT the cold
       // openRestaurantProfilePreview lane. This is the exact lane the recently-viewed
-      // restaurant tap uses (use-search-foreground-recent-submit-runtime.ts):
+      // place tap uses (use-search-foreground-recent-submit-runtime.ts):
       //   1. prime `pendingRestaurantSelectionRef` so the
       //      profile auto-open kickoff opens the WARM profile on the single committed
       //      candidate (resolveProfileAutoOpenAction's pending-selection branch) — gives
       //      "guaranteed profile, no results-list flash".
       //   2. `runRestaurantEntitySearch` runs a committed `mode:'entity'` search scoped to
-      //      the restaurant. The committed results lifecycle sets `backdropTarget='results'`
+      //      the place. The committed results lifecycle sets `backdropTarget='results'`
       //      (chrome-fade, #3), emits the committed pin for the single result (#2), and the
       //      natural openChild snap resolves to `{promoteAtLeast,middle}` (#1) via
       //      resolveDefaultSheetMotionPlan — not from set membership.
@@ -166,106 +166,105 @@ export const useSearchForegroundLaunchIntentRuntime = ({
       //
       // CRITICAL: consume the intent SYNCHRONOUSLY (like favorites/entity), THEN
       // this effect; if the intent were only consumed in an async .finally(), the re-run
-      // would cancel the fetch before it consumed, leaving activeMainIntent === 'restaurant'
+      // would cancel the fetch before it consumed, leaving activeMainIntent === 'place'
       // forever → an infinite push/dismiss loop. Snapshot the params before consuming.
-      const restaurantId = activeMainIntent.action.restaurantId;
-      // The origin may already know the restaurant's display name (a comment-span tap carries
-      // the span text). When present, warm-seed the restaurant profile SYNCHRONOUSLY via
-      // openRestaurantProfilePreview(restaurantId, name) BEFORE the committed search — this is
+      const placeId = activeMainIntent.action.placeId;
+      // The origin may already know the place's display name (a comment-span tap carries
+      // the span text). When present, warm-seed the place profile SYNCHRONOUSLY via
+      // openRestaurantProfilePreview(placeId, name) BEFORE the committed search — this is
       // the exact reference move use-search-foreground-recent-submit-runtime.ts makes. The
-      // synchronous seedRestaurantProfile populates data.restaurant.restaurantName so the
+      // synchronous seedRestaurantProfile populates data.restaurant.placeName so the
       // hard-swapped RestaurantPanel paints its header title at frame 1 (no empty-title flash);
       // the committed runRestaurantEntitySearch then provides the results / auto-open. When the
       // name is absent (a raw deep link), fall back to fetching the profile for the name.
-      const seededRestaurantName = activeMainIntent.action.restaurantName.trim() || null;
-      // Leg 4 ADOPT/OWN (design §2): a restaurant already IN the resident world's
+      const seededRestaurantName = activeMainIntent.action.placeName.trim() || null;
+      // Leg 4 ADOPT/OWN (design §2): a place already IN the resident world's
       // presented set ADOPTS it — the profile opens as sheet content over the LIVE
       // world (pin highlight derives from the selection; back pops to the world
       // untouched). The committed replace below was the B3 violation: an in-world
       // card/span tap nuked the session's world and desynced the chrome ("Tomoni").
       // OWN (non-members: comment spans to elsewhere, deep links) keeps the committed
-      // single-restaurant lifecycle.
+      // single-place lifecycle.
       const residentEntry = resolveResidentWorldEntry(
         routeSceneRuntime.routeSceneSwitchRuntime.getRouteState()
       );
       const mountedResults = getSearchMountedResultsDataSnapshot().results;
       const adoptName =
         seededRestaurantName ??
-        mountedResults?.restaurants?.find((row) => row.restaurantId === restaurantId)
-          ?.restaurantName ??
+        mountedResults?.places?.find((row) => row.placeId === placeId)?.placeName ??
         null;
       const isMemberOfResidentWorld =
         residentEntry != null &&
         mountedResults != null &&
-        ((mountedResults.restaurants ?? []).some((row) => row.restaurantId === restaurantId) ||
-          (mountedResults.dishes ?? []).some((row) => row.restaurantId === restaurantId));
+        ((mountedResults.places ?? []).some((row) => row.placeId === placeId) ||
+          (mountedResults.dishes ?? []).some((row) => row.placeId === placeId));
       if (isMemberOfResidentWorld && adoptName != null) {
         consumeActiveMainIntent();
-        pendingRestaurantSelectionRef.current = { restaurantId };
-        openRestaurantProfilePreview(restaurantId, adoptName);
+        pendingRestaurantSelectionRef.current = { placeId };
+        openRestaurantProfilePreview(placeId, adoptName);
         return;
       }
       consumeActiveMainIntent();
       // Prime the pending selection BEFORE the committed search lands so the auto-open
-      // kickoff resolves to the warm-profile open for this exact restaurant.
-      pendingRestaurantSelectionRef.current = { restaurantId };
+      // kickoff resolves to the warm-profile open for this exact place.
+      pendingRestaurantSelectionRef.current = { placeId };
       if (seededRestaurantName) {
         // Warm-seed the profile header synchronously (frame-1 title), mirroring the
-        // recently-viewed-restaurant tap, THEN run the committed search for the results.
-        openRestaurantProfilePreview(restaurantId, seededRestaurantName);
+        // recently-viewed-place tap, THEN run the committed search for the results.
+        openRestaurantProfilePreview(placeId, seededRestaurantName);
         void runRestaurantEntitySearch({
-          restaurantId,
-          restaurantName: seededRestaurantName,
+          placeId,
+          placeName: seededRestaurantName,
           submissionSource: 'recent',
           typedPrefix: seededRestaurantName,
         }).catch((error) => {
-          if (pendingRestaurantSelectionRef.current?.restaurantId === restaurantId) {
+          if (pendingRestaurantSelectionRef.current?.placeId === placeId) {
             pendingRestaurantSelectionRef.current = null;
           }
-          logger.warn('Failed to open restaurant launch intent', {
+          logger.warn('Failed to open place launch intent', {
             message: error instanceof Error ? error.message : 'unknown error',
-            restaurantId,
+            placeId,
           });
         });
         return;
       }
       void searchService
-        .restaurantProfile(restaurantId)
+        .restaurantProfile(placeId)
         .then((profile) => {
-          const restaurant = profile?.restaurant;
-          if (!restaurant?.restaurantId || !restaurant.restaurantName) {
+          const place = profile?.place;
+          if (!place?.placeId || !place.placeName) {
             return;
           }
           // Warm-seed the resolved name into the profile header before the committed search.
-          openRestaurantProfilePreview(restaurant.restaurantId, restaurant.restaurantName);
+          openRestaurantProfilePreview(place.placeId, place.placeName);
           // The detached committed search needs its OWN .catch — the outer .catch below only
           // covers the restaurantProfile() fetch, NOT this fire-and-forget rejection. Without
           // it an inner failure is an unhandled rejection AND leaves the primed pending
           // selection stranded (it would hijack the next unrelated search).
           void runRestaurantEntitySearch({
-            restaurantId: restaurant.restaurantId,
-            restaurantName: restaurant.restaurantName,
+            placeId: place.placeId,
+            placeName: place.placeName,
             submissionSource: 'recent',
-            typedPrefix: restaurant.restaurantName,
+            typedPrefix: place.placeName,
           }).catch((error) => {
-            if (pendingRestaurantSelectionRef.current?.restaurantId === restaurantId) {
+            if (pendingRestaurantSelectionRef.current?.placeId === placeId) {
               pendingRestaurantSelectionRef.current = null;
             }
-            logger.warn('Failed to open restaurant launch intent', {
+            logger.warn('Failed to open place launch intent', {
               message: error instanceof Error ? error.message : 'unknown error',
-              restaurantId,
+              placeId,
             });
           });
         })
         .catch((error) => {
           // Clear the primed selection so a failed reveal does not strand a pending
-          // restaurant selection that would hijack the next unrelated search.
-          if (pendingRestaurantSelectionRef.current?.restaurantId === restaurantId) {
+          // place selection that would hijack the next unrelated search.
+          if (pendingRestaurantSelectionRef.current?.placeId === placeId) {
             pendingRestaurantSelectionRef.current = null;
           }
-          logger.warn('Failed to open restaurant launch intent', {
+          logger.warn('Failed to open place launch intent', {
             message: error instanceof Error ? error.message : 'unknown error',
-            restaurantId,
+            placeId,
           });
         });
       return;

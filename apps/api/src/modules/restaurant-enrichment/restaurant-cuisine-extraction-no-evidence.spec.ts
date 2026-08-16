@@ -1,5 +1,5 @@
 import { EntityType } from '@prisma/client';
-import { RestaurantCuisineExtractionService } from './restaurant-cuisine-extraction.service';
+import { PlaceCuisineExtractionService } from './restaurant-cuisine-extraction.service';
 
 /**
  * NO EVIDENCE IS NOT A COMPLETED EXTRACTION (F4948).
@@ -39,7 +39,7 @@ describe('cuisine extraction does not stamp "no evidence" as done (F4948)', () =
         findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn(),
       },
-      restaurantAttributeEvidence: { createMany: jest.fn() },
+      placeAttributeEvidence: { createMany: jest.fn() },
       $transaction: jest.fn(),
     };
     const llmService = {
@@ -51,7 +51,7 @@ describe('cuisine extraction does not stamp "no evidence" as done (F4948)', () =
       // so the once-ever stamp under test is unaffected.
       validateScopeConstraints: () => ({ validAliases: [] as string[] }),
     };
-    const service = new RestaurantCuisineExtractionService(
+    const service = new PlaceCuisineExtractionService(
       prisma as never,
       llmService as never,
       aliasManagement as never,
@@ -63,10 +63,10 @@ describe('cuisine extraction does not stamp "no evidence" as done (F4948)', () =
   const NO_EVIDENCE_ENTITY = {
     entityId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     name: 'Fresh Ungrounded Spot',
-    type: EntityType.restaurant,
-    restaurantAttributes: [],
+    type: EntityType.place,
+    placeAttributes: [],
     // No matching place types, and no editorial summary to ask the LLM with.
-    restaurantMetadata: { googlePlaces: { types: [], editorialSummary: null } },
+    placeMetadata: { googlePlaces: { types: [], editorialSummary: null } },
   };
 
   it('a no-evidence restaurant writes NO cuisineExtraction record (gate stays open)', async () => {
@@ -80,7 +80,7 @@ describe('cuisine extraction does not stamp "no evidence" as done (F4948)', () =
       extractCuisineFromSummary,
     });
 
-    await service.extractCuisineForRestaurant(NO_EVIDENCE_ENTITY.entityId);
+    await service.extractCuisineForPlace(NO_EVIDENCE_ENTITY.entityId);
 
     // The LLM was never asked (there was nothing to ask with)...
     expect(extractCuisineFromSummary).not.toHaveBeenCalled();
@@ -88,7 +88,7 @@ describe('cuisine extraction does not stamp "no evidence" as done (F4948)', () =
     // the once-ever gate would read as "done". This is the assertion that
     // reds if the no-evidence branch is reverted to writing a record.
     const stampedDone = update.mock.calls.some((call) => {
-      const meta = call[0]?.data?.restaurantMetadata as
+      const meta = call[0]?.data?.placeMetadata as
         | Record<string, unknown>
         | undefined;
       const extraction = meta?.cuisineExtraction as
@@ -108,7 +108,7 @@ describe('cuisine extraction does not stamp "no evidence" as done (F4948)', () =
       .mockResolvedValue({ cuisines: ['thai'] });
     const withSummary = {
       ...NO_EVIDENCE_ENTITY,
-      restaurantMetadata: {
+      placeMetadata: {
         googlePlaces: {
           types: [],
           editorialSummary: 'A cozy Thai kitchen in East Austin.',
@@ -121,13 +121,13 @@ describe('cuisine extraction does not stamp "no evidence" as done (F4948)', () =
       extractCuisineFromSummary,
     });
 
-    await service.extractCuisineForRestaurant(withSummary.entityId);
+    await service.extractCuisineForPlace(withSummary.entityId);
 
     // First evidence arrived -> the extraction actually runs (no permanent
     // short-circuit from a prior no-evidence stamp).
     expect(extractCuisineFromSummary).toHaveBeenCalledTimes(1);
     const stampedDone = update.mock.calls.some((call) => {
-      const meta = call[0]?.data?.restaurantMetadata as
+      const meta = call[0]?.data?.placeMetadata as
         | Record<string, unknown>
         | undefined;
       const extraction = meta?.cuisineExtraction as
@@ -147,7 +147,7 @@ describe('cuisine extraction does not stamp "no evidence" as done (F4948)', () =
       .mockResolvedValue({ cuisines: [] });
     const withSummary = {
       ...NO_EVIDENCE_ENTITY,
-      restaurantMetadata: {
+      placeMetadata: {
         googlePlaces: {
           types: [],
           editorialSummary: 'An unremarkable spot with no cuisine signal.',
@@ -160,19 +160,19 @@ describe('cuisine extraction does not stamp "no evidence" as done (F4948)', () =
       extractCuisineFromSummary,
     });
 
-    await service.extractCuisineForRestaurant(withSummary.entityId);
+    await service.extractCuisineForPlace(withSummary.entityId);
 
     // We HAD evidence and asked; a distinct typed value records that so the
     // gate does not re-spend on the same unchanged summary.
     expect(extractCuisineFromSummary).toHaveBeenCalledTimes(1);
     const recorded = update.mock.calls.find((call) => {
-      const meta = call[0]?.data?.restaurantMetadata as
+      const meta = call[0]?.data?.placeMetadata as
         | Record<string, unknown>
         | undefined;
       return Boolean(meta?.cuisineExtraction);
     });
     const extraction = (
-      recorded?.[0]?.data?.restaurantMetadata as Record<string, unknown>
+      recorded?.[0]?.data?.placeMetadata as Record<string, unknown>
     )?.cuisineExtraction as Record<string, unknown>;
     expect(extraction?.source).toBe('llm_found_nothing');
     expect(extraction?.extractedAt).toBeTruthy();

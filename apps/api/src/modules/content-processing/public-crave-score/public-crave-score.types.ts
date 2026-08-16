@@ -46,20 +46,20 @@ export interface SourceContribution {
 // scoreCandidates pools them as Σ influence·(m + upvoteWeight·u)/g, then log1p.
 export interface DishCandidate {
   connectionId: string;
-  restaurantId: string;
+  placeId: string;
   contributions: SourceContribution[];
 }
 
 // A restaurant: its by-name endorsement (general praise / name mentions),
 // per source room.
-export interface RestaurantCandidate {
-  restaurantId: string;
+export interface PlaceCandidate {
+  placeId: string;
   praiseContributions: SourceContribution[];
 }
 
 export interface CraveScoreCandidates {
   dishes: DishCandidate[];
-  restaurants: RestaurantCandidate[];
+  places: PlaceCandidate[];
 }
 
 export interface ScoredCraveSubject {

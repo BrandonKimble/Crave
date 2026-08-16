@@ -241,8 +241,8 @@ export class DemandVocabularyService {
         [
           'food',
           'ingredient',
-          'food_attribute',
-          'restaurant_attribute',
+          'item_attribute',
+          'place_attribute',
         ] as EntityType[],
         CANDIDATE_POOL,
         {
@@ -282,7 +282,7 @@ export class DemandVocabularyService {
       try {
         verdict = await this.llm.matchEntity({
           term,
-          kind: 'food',
+          kind: 'item',
           candidates: candidates.map((candidate, index) => ({
             id: index,
             name: candidate.name,

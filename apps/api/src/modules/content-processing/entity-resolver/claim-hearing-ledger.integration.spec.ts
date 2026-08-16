@@ -104,12 +104,12 @@ describe('the one hearing abstraction — live database', () => {
     }
   }
 
-  const mintFood = async (name: string): Promise<string> => {
+  const mintItem = async (name: string): Promise<string> => {
     const id = randomUUID();
-    const identity = identityInsertData(name, 'food' as never);
+    const identity = identityInsertData(name, 'item' as never);
     await prisma.$executeRawUnsafe(
       `INSERT INTO core_entities (entity_id, name, type, status, identity_key, identity_key_sorted)
-       VALUES ($1::uuid, $2, 'food'::entity_type, 'active'::entity_status, $3, $4)`,
+       VALUES ($1::uuid, $2, 'item'::entity_type, 'active'::entity_status, $3, $4)`,
       id,
       name,
       identity.identityKey,
@@ -186,7 +186,7 @@ describe('the one hearing abstraction — live database', () => {
   it('commits the verdict BEFORE the effect, and resumes a decided-but-unexecuted one', async () => {
     const suffix = randomUUID().slice(0, 8);
     const word = `zzq crash ${suffix}`;
-    const claimant = await mintFood(`zzq crash claimant ${suffix}`);
+    const claimant = await mintItem(`zzq crash claimant ${suffix}`);
     const claim = {
       form: word,
       locale: 'es',
@@ -259,8 +259,8 @@ describe('the one hearing abstraction — live database', () => {
   it('replays an EXECUTED effect to byte-identical bytes', async () => {
     const suffix = randomUUID().slice(0, 8);
     const word = `zzq replay ${suffix}`;
-    const holder = await mintFood(`zzq replay holder ${suffix}`);
-    const claimant = await mintFood(`zzq replay claimant ${suffix}`);
+    const holder = await mintItem(`zzq replay holder ${suffix}`);
+    const claimant = await mintItem(`zzq replay claimant ${suffix}`);
     // The incumbent's row is a LABEL as well as a recall claim — the shape
     // the transitional effect destroyed on replay.
     await prisma.$transaction((tx) =>
@@ -383,7 +383,7 @@ describe('the one hearing abstraction — live database', () => {
   it('records a retraction the same way, verdict first', async () => {
     const suffix = randomUUID().slice(0, 8);
     const word = `zzq retain ${suffix}`;
-    const holder = await mintFood(`zzq retain holder ${suffix}`);
+    const holder = await mintItem(`zzq retain holder ${suffix}`);
     await prisma.$transaction((tx) =>
       addSurfaces(tx, holder, [
         { form: word, locale: 'es', source: 'vocabulary', role: 'recall' },
@@ -431,15 +431,15 @@ describe('the one hearing abstraction — live database', () => {
     const suffix = randomUUID().slice(0, 8);
     const granted = `zzq granted ${suffix}`;
     const lost = `zzq lost ${suffix}`;
-    const winner = await mintFood(`zzq winner ${suffix}`);
-    const loser = await mintFood(`zzq loser ${suffix}`);
+    const winner = await mintItem(`zzq winner ${suffix}`);
+    const loser = await mintItem(`zzq loser ${suffix}`);
 
     // A grant: uncontested, banked, recorded.
     await adjudicatorWith(judgeSaying({ a_owns_word: true })).adjudicate([
       { form: granted, locale: 'es', entityId: winner, source: 'vocabulary' },
     ]);
     // A loss: refused and remembered.
-    const rival = await mintFood(`zzq rival ${suffix}`);
+    const rival = await mintItem(`zzq rival ${suffix}`);
     await prisma.$transaction((tx) =>
       addSurfaces(tx, rival, [
         { form: lost, locale: 'es', source: 'vocabulary', role: 'recall' },
@@ -669,7 +669,7 @@ describe('the one hearing abstraction — live database', () => {
     // And the persisted reason on a real hearing is the judge's own words.
     const suffix = randomUUID().slice(0, 8);
     const word = `zzq reasoned ${suffix}`;
-    const entity = await mintFood(`zzq reasoned concept ${suffix}`);
+    const entity = await mintItem(`zzq reasoned concept ${suffix}`);
     const claim = {
       form: word,
       locale: 'es',
@@ -704,22 +704,20 @@ describe('the one hearing abstraction — live database', () => {
     );
     expect(entityDedupeLane.lane).not.toBe(WORD_CLAIM_LANE);
 
-    interface RestaurantNameClaim {
-      restaurantId: string;
+    interface PlaceNameClaim {
+      placeId: string;
       surface: string;
     }
-    class RestaurantNameLaneAdapter extends BaseClaimLaneAdapter<RestaurantNameClaim> {
+    class PlaceNameLaneAdapter extends BaseClaimLaneAdapter<PlaceNameClaim> {
       readonly lane = 'restaurant_name';
       readonly keyFoldVersion = 1;
-      canonicalClaimKey(claim: RestaurantNameClaim): string {
-        return `${claim.restaurantId}|${claim.surface.toLowerCase()}`;
+      canonicalClaimKey(claim: PlaceNameClaim): string {
+        return `${claim.placeId}|${claim.surface.toLowerCase()}`;
       }
     }
-    const restaurantLane = new RestaurantNameLaneAdapter();
-    expect(
-      restaurantLane.canonicalClaimKey({ restaurantId: a, surface: 'Best' }),
-    ).toBe(
-      restaurantLane.canonicalClaimKey({ restaurantId: a, surface: 'best' }),
+    const placeLane = new PlaceNameLaneAdapter();
+    expect(placeLane.canonicalClaimKey({ placeId: a, surface: 'Best' })).toBe(
+      placeLane.canonicalClaimKey({ placeId: a, surface: 'best' }),
     );
   });
 });

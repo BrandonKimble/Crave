@@ -32,11 +32,11 @@ const POOL_SIZE = 50;
 
 const prisma = new PrismaClient();
 
-type PoolRestaurant = { entityId: string; name: string };
+type PoolPlace = { entityId: string; name: string };
 
 /** Deterministic slice of the pool: offset stride keeps lists distinct but
  *  overlapping (bounds the google-photo spend to the one pool). */
-const RESTAURANT_LISTS: {
+const PLACE_LISTS: {
   name: string;
   size: number;
   offset: number;
@@ -92,7 +92,7 @@ async function userId(email: string): Promise<string> {
   return u.userId;
 }
 
-async function loadPool(): Promise<PoolRestaurant[]> {
+async function loadPool(): Promise<PoolPlace[]> {
   const rows = await prisma.$queryRawUnsafe<
     { entity_id: string; name: string }[]
   >(
@@ -111,7 +111,7 @@ async function loadPool(): Promise<PoolRestaurant[]> {
       on s.subject_id = e.entity_id and s.subject_type = 'restaurant'
     join core_restaurant_locations l on l.location_id = e.primary_location_id
     cross join austin_place ap
-    where e.type = 'restaurant' and l.google_place_id is not null
+    where e.type = 'place' and l.google_place_id is not null
       and ST_Covers(ap.geometry, ST_SetSRID(ST_MakePoint(l.longitude, l.latitude), 4326))
     order by s.display_score desc
     limit ${POOL_SIZE}
@@ -121,7 +121,7 @@ async function loadPool(): Promise<PoolRestaurant[]> {
 }
 
 async function loadConnectionPool(
-  restaurantIds: string[],
+  placeIds: string[],
 ): Promise<{ connectionId: string }[]> {
   // Up to 2 connections per pool restaurant, restaurant-score order kept by
   // the caller's id order via array position join.
@@ -136,7 +136,7 @@ async function loadConnectionPool(
     )
     select connection_id from ranked where rn <= 2 order by pool_rank, rn
     `,
-    restaurantIds,
+    placeIds,
   );
   return rows.map((r) => ({ connectionId: r.connection_id }));
 }
@@ -160,13 +160,13 @@ async function upsertList(
 async function fillList(
   listId: string,
   ownerUserId: string,
-  items: { restaurantId?: string; connectionId?: string }[],
+  items: { placeId?: string; connectionId?: string }[],
 ): Promise<number> {
   await prisma.userListItem.createMany({
     data: items.map((it, i) => ({
       listId,
       addedByUserId: ownerUserId,
-      restaurantId: it.restaurantId ?? null,
+      placeId: it.placeId ?? null,
       connectionId: it.connectionId ?? null,
       position: i,
     })),
@@ -184,7 +184,7 @@ const wrap = <T>(pool: T[], offset: number, size: number): T[] =>
 async function seedLists(ownerUserId: string): Promise<void> {
   const pool = await loadPool();
   if (pool.length < 10) throw new Error('restaurant pool unexpectedly small');
-  for (const spec of RESTAURANT_LISTS) {
+  for (const spec of PLACE_LISTS) {
     const listId = await upsertList(
       ownerUserId,
       'restaurant',
@@ -197,7 +197,7 @@ async function seedLists(ownerUserId: string): Promise<void> {
     const count = await fillList(
       listId,
       ownerUserId,
-      picks.map((restaurantId) => ({ restaurantId })),
+      picks.map((placeId) => ({ placeId })),
     );
     console.log(`list [restaurant] ${spec.name}: ${count} items`);
   }
@@ -247,27 +247,27 @@ function configureCloudinary(): string {
 async function seedOwnPhotos(ownerUserId: string): Promise<string[]> {
   const envPrefix = configureCloudinary();
   const missingSources: string[] = [];
-  const restaurantIdByName = new Map<string, string>();
+  const placeIdByName = new Map<string, string>();
   for (const name of [...OWN_PHOTO_RESTAURANTS, ...MY_SHOTS_UNSHOT]) {
     const row = await prisma.entity.findFirst({
-      where: { name, type: 'restaurant' },
+      where: { name, type: 'place' },
       select: { entityId: true },
     });
     if (!row) throw new Error(`restaurant not found: ${name}`);
-    restaurantIdByName.set(name, row.entityId);
+    placeIdByName.set(name, row.entityId);
   }
 
   for (const name of OWN_PHOTO_RESTAURANTS) {
-    const restaurantId = restaurantIdByName.get(name)!;
+    const placeId = placeIdByName.get(name)!;
     const existing = await prisma.photo.count({
-      where: { restaurantId, userId: ownerUserId },
+      where: { placeId, userId: ownerUserId },
     });
     if (existing >= OWN_PHOTOS_PER_RESTAURANT) {
       console.log(`own photos: skip ${name} (${existing} already)`);
       continue;
     }
     const sources = await prisma.photo.findMany({
-      where: { restaurantId, status: 'live', visibility: 'public' },
+      where: { placeId, status: 'live', visibility: 'public' },
       orderBy: { ticketedAt: 'asc' },
       take: OWN_PHOTOS_PER_RESTAURANT - existing,
       select: { publicId: true },
@@ -296,7 +296,7 @@ async function seedOwnPhotos(ownerUserId: string): Promise<string[]> {
         data: {
           photoId,
           userId: ownerUserId,
-          restaurantId,
+          placeId,
           publicId,
           status: 'live',
           visibility: 'public',
@@ -327,7 +327,7 @@ async function seedOwnPhotos(ownerUserId: string): Promise<string[]> {
     myShots,
     ownerUserId,
     [...OWN_PHOTO_RESTAURANTS, ...MY_SHOTS_UNSHOT].map((name) => ({
-      restaurantId: restaurantIdByName.get(name)!,
+      placeId: placeIdByName.get(name)!,
     })),
   );
   console.log(
@@ -342,7 +342,7 @@ async function linkConnectionPhotos(ownerUserId: string): Promise<string[]> {
   const importUserId = await userId(IMPORT_USER_EMAIL);
   const missingFreePhotos: string[] = [];
   const rows = await prisma.$queryRawUnsafe<
-    { connection_id: string; restaurant_id: string; name: string }[]
+    { connection_id: string; place_id: string; name: string }[]
   >(
     `
     select distinct c.connection_id, c.restaurant_id, r.name
@@ -362,7 +362,7 @@ async function linkConnectionPhotos(ownerUserId: string): Promise<string[]> {
   for (const row of rows) {
     const candidates = await prisma.photo.findMany({
       where: {
-        restaurantId: row.restaurant_id,
+        placeId: row.place_id,
         userId: importUserId,
         connectionId: null,
         status: 'live',

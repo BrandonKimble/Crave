@@ -18,13 +18,13 @@ import {
 } from '../search/search-query-suggestion.service';
 import type { User } from '@prisma/client';
 import { SearchPopularityService } from '../search/search-popularity.service';
-import { RestaurantStatusService } from '../search/restaurant-status.service';
+import { PlaceStatusService } from '../search/restaurant-status.service';
 import { viewportEnvelopeSql } from '../search/engine-coverage.service';
 import type { MapBoundsDto } from '../search/dto/search-query.dto';
 import {
   SignalDemandReadService,
-  type RestaurantViewStatsRow,
-  type ViewedRestaurantNameMatch,
+  type PlaceViewStatsRow,
+  type ViewedPlaceNameMatch,
 } from '../signals/signal-demand-read.service';
 import {
   EVIDENCE_TIER_LADDER,
@@ -37,11 +37,11 @@ import { DEFAULT_LOCALE } from '../../shared/locale';
 /** Row shape of the favorites read (user_list_items under the user's own
  *  lists): restaurant saves vs dish saves (connection → food entity). */
 interface UserListItemMatchRow {
-  restaurantId: string | null;
-  restaurant: { name: string } | null;
+  placeId: string | null;
+  place: { name: string } | null;
   connection: {
-    foodId: string;
-    food: { name: string };
+    itemId: string;
+    item: { name: string };
   } | null;
 }
 
@@ -154,22 +154,22 @@ export function mergeIngredientTwinMatches(
       );
     }
   }
-  const foodNames = new Set(
+  const itemNames = new Set(
     candidates
-      .filter((c) => c.match.entityType === EntityType.food)
+      .filter((c) => c.match.entityType === EntityType.item)
       .map((c) => c.match.name.trim().toLowerCase()),
   );
   const merged: LaneCandidate[] = [];
   for (const candidate of candidates) {
     const key = candidate.match.name.trim().toLowerCase();
     if (candidate.match.entityType === EntityType.ingredient) {
-      if (!foodNames.has(key)) {
+      if (!itemNames.has(key)) {
         merged.push(candidate); // ingredient-only name keeps its own seat
       }
       continue; // twin: the food candidate carries the merged row
     }
     const twin =
-      candidate.match.entityType === EntityType.food
+      candidate.match.entityType === EntityType.item
         ? ingredientByName.get(key)
         : undefined;
     merged.push(
@@ -237,7 +237,7 @@ export class AutocompleteService {
     private readonly prisma: PrismaService,
     private readonly searchQuerySuggestionService: SearchQuerySuggestionService,
     private readonly searchPopularityService: SearchPopularityService,
-    private readonly restaurantStatusService: RestaurantStatusService,
+    private readonly placeStatusService: PlaceStatusService,
     private readonly signalDemandRead: SignalDemandReadService,
     // N10: the one display boundary. Type-ahead rows are localized here and
     // nowhere else in this file.
@@ -357,7 +357,7 @@ export class AutocompleteService {
     const entityTypes = this.resolveEntityTypes(dto);
     const attributeEntityTypes = this.resolveAttributeEntityTypes(dto);
     const cacheEntityTypes = [...entityTypes, ...attributeEntityTypes];
-    const primaryEntityType = entityTypes[0] ?? EntityType.food;
+    const primaryEntityType = entityTypes[0] ?? EntityType.item;
 
     if (normalizedQuery.length < MIN_QUERY_LENGTH) {
       return {
@@ -518,28 +518,28 @@ export class AutocompleteService {
   private async attachStatusPreviews(
     matches: AutocompleteMatchDto[],
   ): Promise<AutocompleteMatchDto[]> {
-    const restaurantIds = Array.from(
+    const placeIds = Array.from(
       new Set(
         matches
-          .filter((match) => match.entityType === EntityType.restaurant)
+          .filter((match) => match.entityType === EntityType.place)
           .map((match) => match.entityId)
           .filter((id): id is string => Boolean(id)),
       ),
     );
 
-    if (restaurantIds.length === 0) {
+    if (placeIds.length === 0) {
       return matches;
     }
 
-    const previews = await this.restaurantStatusService.getStatusPreviews({
-      restaurantIds,
+    const previews = await this.placeStatusService.getStatusPreviews({
+      placeIds,
     });
     const previewMap = new Map(
-      previews.map((preview) => [preview.restaurantId, preview]),
+      previews.map((preview) => [preview.placeId, preview]),
     );
 
     return matches.map((match) => {
-      if (match.entityType !== EntityType.restaurant) {
+      if (match.entityType !== EntityType.place) {
         return match;
       }
       const preview = previewMap.get(match.entityId);
@@ -566,15 +566,15 @@ export class AutocompleteService {
     // Favorites live in the list system (user_list_items under the user's
     // own lists): restaurant saves carry restaurantId, dish saves carry a
     // connection whose food entity is the suggestable subject.
-    const includeRestaurants = entityTypes.includes(EntityType.restaurant);
-    const includeFoods = entityTypes.includes(EntityType.food);
+    const includePlaces = entityTypes.includes(EntityType.place);
+    const includeItems = entityTypes.includes(EntityType.item);
     const namePrefix = {
       name: { startsWith: normalizedQuery, mode: 'insensitive' as const },
     };
     const favoriteBranches = [
-      ...(includeRestaurants ? [{ restaurant: { is: namePrefix } }] : []),
-      ...(includeFoods
-        ? [{ connection: { is: { food: { is: namePrefix } } } }]
+      ...(includePlaces ? [{ place: { is: namePrefix } }] : []),
+      ...(includeItems
+        ? [{ connection: { is: { item: { is: namePrefix } } } }]
         : []),
     ];
     const favoritesTask = favoriteBranches.length
@@ -584,12 +584,12 @@ export class AutocompleteService {
             OR: favoriteBranches,
           },
           select: {
-            restaurantId: true,
-            restaurant: { select: { name: true } },
+            placeId: true,
+            place: { select: { name: true } },
             connection: {
               select: {
-                foodId: true,
-                food: { select: { name: true } },
+                itemId: true,
+                item: { select: { name: true } },
               },
             },
           },
@@ -599,18 +599,18 @@ export class AutocompleteService {
     tasks.push(favoritesTask);
     // READER CUT (§22 item 6): "viewed" suggestions read the signals ledger
     // (kind = entity_view), not the dying user_restaurant_views table.
-    const viewedTask = includeRestaurants
-      ? this.signalDemandRead.viewedRestaurantNameMatches(
+    const viewedTask = includePlaces
+      ? this.signalDemandRead.viewedPlaceNameMatches(
           user.userId,
           normalizedQuery,
           20,
         )
-      : Promise.resolve([] as ViewedRestaurantNameMatch[]);
+      : Promise.resolve([] as ViewedPlaceNameMatch[]);
     tasks.push(viewedTask);
 
     const [favoriteRows, viewedRows] = (await Promise.all(tasks)) as [
       UserListItemMatchRow[],
-      ViewedRestaurantNameMatch[],
+      ViewedPlaceNameMatch[],
     ];
 
     const prefixMatches = (name: string | undefined): boolean =>
@@ -628,15 +628,15 @@ export class AutocompleteService {
     const favoritesById = new Map<string, AutocompleteMatchDto>();
     for (const row of favoriteRows) {
       if (
-        includeRestaurants &&
-        row.restaurantId &&
-        row.restaurant &&
-        prefixMatches(row.restaurant.name)
+        includePlaces &&
+        row.placeId &&
+        row.place &&
+        prefixMatches(row.place.name)
       ) {
-        favoritesById.set(row.restaurantId, {
-          entityId: row.restaurantId,
-          entityType: EntityType.restaurant,
-          name: row.restaurant.name,
+        favoritesById.set(row.placeId, {
+          entityId: row.placeId,
+          entityType: EntityType.place,
+          name: row.place.name,
           confidence: 0.65,
           aliases: [],
           matchType: 'entity',
@@ -644,14 +644,14 @@ export class AutocompleteService {
         });
       }
       if (
-        includeFoods &&
-        row.connection?.food &&
-        prefixMatches(row.connection.food.name)
+        includeItems &&
+        row.connection?.item &&
+        prefixMatches(row.connection.item.name)
       ) {
-        favoritesById.set(row.connection.foodId, {
-          entityId: row.connection.foodId,
-          entityType: EntityType.food,
-          name: row.connection.food.name,
+        favoritesById.set(row.connection.itemId, {
+          entityId: row.connection.itemId,
+          entityType: EntityType.item,
+          name: row.connection.item.name,
           confidence: 0.65,
           aliases: [],
           matchType: 'entity',
@@ -662,8 +662,8 @@ export class AutocompleteService {
     const favorites = Array.from(favoritesById.values());
 
     const viewed: AutocompleteMatchDto[] = viewedRows.map((row) => ({
-      entityId: row.restaurantId,
-      entityType: EntityType.restaurant,
+      entityId: row.placeId,
+      entityType: EntityType.place,
       name: row.name,
       confidence: 0.65,
       aliases: row.aliases ?? [],
@@ -765,8 +765,8 @@ export class AutocompleteService {
       new Set(entityMatches.map((match) => match.entityId)),
     );
 
-    const restaurantIds = entityMatches
-      .filter((match) => match.entityType === EntityType.restaurant)
+    const placeIds = entityMatches
+      .filter((match) => match.entityType === EntityType.place)
       .map((match) => match.entityId);
 
     // READER CUT (§22 item 6): popularity/affinity read the signals substrate
@@ -787,34 +787,34 @@ export class AutocompleteService {
             where: {
               list: { is: { ownerUserId: user.userId } },
               OR: [
-                { restaurantId: { in: entityIds } },
-                { connection: { is: { foodId: { in: entityIds } } } },
+                { placeId: { in: entityIds } },
+                { connection: { is: { itemId: { in: entityIds } } } },
               ],
             },
             select: {
-              restaurantId: true,
-              connection: { select: { foodId: true } },
+              placeId: true,
+              connection: { select: { itemId: true } },
             },
           })
         : Promise.resolve(
             [] as Array<{
-              restaurantId: string | null;
-              connection: { foodId: string } | null;
+              placeId: string | null;
+              connection: { itemId: string } | null;
             }>,
           ),
-      user?.userId && restaurantIds.length
-        ? this.signalDemandRead.restaurantViewStats(user.userId, restaurantIds)
-        : Promise.resolve([] as RestaurantViewStatsRow[]),
+      user?.userId && placeIds.length
+        ? this.signalDemandRead.placeViewStats(user.userId, placeIds)
+        : Promise.resolve([] as PlaceViewStatsRow[]),
     ]);
 
     const favoriteSet = new Set(
       favorites
-        .map((fav) => fav.restaurantId ?? fav.connection?.foodId)
+        .map((fav) => fav.placeId ?? fav.connection?.itemId)
         .filter((id): id is string => Boolean(id)),
     );
-    const viewByRestaurantId = new Map(
+    const viewByPlaceId = new Map(
       views.map((row) => [
-        row.restaurantId,
+        row.placeId,
         { lastViewedAt: row.lastViewedAt, viewCount: row.viewCount },
       ]),
     );
@@ -825,7 +825,7 @@ export class AutocompleteService {
       const popularity = globalScores.get(match.entityId) ?? 0;
       const affinity = affinityScores.get(match.entityId) ?? 0;
       const isFavorite = favoriteSet.has(match.entityId);
-      const view = viewByRestaurantId.get(match.entityId) ?? null;
+      const view = viewByPlaceId.get(match.entityId) ?? null;
       const isViewed = Boolean(view);
       const viewAffinity = view
         ? this.calculateViewAffinity(view.lastViewedAt, view.viewCount)
@@ -1396,7 +1396,7 @@ export class AutocompleteService {
         Array<{
           attributeId: string;
           corpusConnectionCount: number;
-          totalRestaurantCount: number;
+          totalPlaceCount: number;
         }>
       >(Prisma.sql`
       WITH scoped_restaurants AS (
@@ -1404,7 +1404,7 @@ export class AutocompleteService {
         -- support is global (matching the global demand lanes above).
         SELECT r.entity_id AS restaurant_id
         FROM core_entities r
-        WHERE r.type = 'restaurant'
+        WHERE r.type = 'place'
       ),
       attribute_refs AS (
         SELECT UNNEST(r.restaurant_attributes) AS attribute_id, r.entity_id AS restaurant_id
@@ -1434,7 +1434,7 @@ export class AutocompleteService {
         row.attributeId,
         {
           connectionCount: Number(row.corpusConnectionCount ?? 0),
-          totalRestaurantCount: Number(row.totalRestaurantCount ?? 0),
+          totalPlaceCount: Number(row.totalPlaceCount ?? 0),
         },
       ]),
     );
@@ -1450,7 +1450,7 @@ export class AutocompleteService {
         corpusUsefulness: this.normalizeAttributeCorpusUsefulness(
           corpusById.get(attributeId) ?? {
             connectionCount: 0,
-            totalRestaurantCount: 0,
+            totalPlaceCount: 0,
           },
         ),
       });
@@ -1472,14 +1472,14 @@ export class AutocompleteService {
 
   private normalizeAttributeCorpusUsefulness(params: {
     connectionCount: number;
-    totalRestaurantCount: number;
+    totalPlaceCount: number;
   }): number {
-    if (params.connectionCount <= 0 || params.totalRestaurantCount <= 0) {
+    if (params.connectionCount <= 0 || params.totalPlaceCount <= 0) {
       return 0;
     }
     const breadth = clamp01(Math.log2(1 + params.connectionCount) / 6);
     const selectivity = clamp01(
-      params.connectionCount / params.totalRestaurantCount,
+      params.connectionCount / params.totalPlaceCount,
     );
     const selectivityPenalty = Math.max(0.12, Math.pow(1 - selectivity, 0.8));
     return breadth * selectivityPenalty;
@@ -1489,8 +1489,8 @@ export class AutocompleteService {
     entityType: EntityType | 'query' | 'poll' | 'user',
   ): entityType is EntityType {
     return (
-      entityType === EntityType.food_attribute ||
-      entityType === EntityType.restaurant_attribute
+      entityType === EntityType.item_attribute ||
+      entityType === EntityType.place_attribute
     );
   }
 
@@ -1528,7 +1528,7 @@ export class AutocompleteService {
           : // Ingredient rows joined the panel 2026-07-25 (owner ruling —
             // the "octopus"/"jalapeño" discovery surface). Same-named food
             // rows win the seat: see dropShadowedIngredientMatches.
-            [EntityType.food, EntityType.restaurant, EntityType.ingredient];
+            [EntityType.item, EntityType.place, EntityType.ingredient];
     const filtered = requested.filter(
       (entityType) => !this.isAttributeType(entityType),
     );
@@ -1537,7 +1537,7 @@ export class AutocompleteService {
     }
     return hasExplicitTypes
       ? []
-      : [EntityType.food, EntityType.restaurant, EntityType.ingredient];
+      : [EntityType.item, EntityType.place, EntityType.ingredient];
   }
 
   private resolveAttributeEntityTypes(
@@ -1555,7 +1555,7 @@ export class AutocompleteService {
           ? [dto.entityType]
           : [];
     if (!hasExplicitTypes) {
-      return [EntityType.food_attribute, EntityType.restaurant_attribute];
+      return [EntityType.item_attribute, EntityType.place_attribute];
     }
     return requested.filter((entityType) => this.isAttributeType(entityType));
   }

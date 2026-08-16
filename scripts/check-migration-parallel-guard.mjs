@@ -64,45 +64,40 @@ const MIGRATIONS = join(REPO_ROOT, 'apps/api/prisma/migrations');
  *   git hash-object apps/api/prisma/migrations/<name>/migration.sql
  */
 const GRANDFATHERED = new Map([
+  // 2026-08-16 (R14 rename session, coordination note): authored and APPLIED
+  // by the rehearsal-generation session the same day, before this gate ran on
+  // it — applied history now, so frozen rather than edited. The unguarded
+  // ALTER COLUMN ... TYPE hazard is real on a fresh prod-shaped replay; the
+  // AUTHORING.md session-GUC workaround applies.
+  ['20260816120000_rehearsal_generation', 'b97fad45f7f1c52323137f3122a2530862638417'],
   // AUTHORING.md named TWO unguarded heavy migrations. This gate found SIX —
   // four were absent from that inventory, and one of them
   // (`poll_subject_id_text`) also slipped a hand-scan done while writing this
   // file, because it spells the rewrite `SET DATA TYPE` rather than `TYPE`.
   // The doc has been corrected.
-  ['20260514203000_search_demand_event_kind_and_on_demand_facts',
-    '659eca6910a4fa5c12b77ae706baf269d4f97371'],
-  ['20260515203000_demand_entity_lanes_and_favorite_events',
-    '79971e81fa1ec4182e7406da76a0fe75e3024b6b'],
-  ['20260621184323_poll_subject_id_text',
-    '4cd218096cfae67f7c3c945f5e6897078cccfb9b'],
-  ['20260803020000_access_grant_kind',
-    '4bd1385660d6f126c779fd86521d7cd9bb71324e'],
-  ['20250320000000_add_polls',
-    'f30f336cb83b1abbd9cb0def20e9830952b15d51'],
-  ['20250321010000_notification_user_id_text',
-    'a2c8fd05bc1b7bedfeaffff271b5403169aa4188'],
-  ['20251221010151_reconcile_db',
-    'b32964030f032fe944731c9f64c5596a194df374'],
-  ['20251221040000_subreddits_citext',
-    'c6b2547a91db00be24b66b3db6ea1125b48da916'],
-  ['20260515193500_drop_market_type_local_fallback',
-    '65a0212912bee2311a4e1b96aff3eb83d7ce26fc'],
-  ['20260515201000_provider_neutral_regional_markets',
-    '9c6940e39cf70d07cb5742b5c2732c0de3b4e78a'],
-  ['20260609120000_capture_db_push_drift',
-    'f69a9862d86ba7af5c2559422e97a66e559add50'],
-  ['20260628120000_crave_score_0to10_scale',
-    '157043e0355366b8e4f09bd63cecf42411515b2b'],
-  ['20260708090000_workkind_enum_ledger_dedupe',
-    'f12ad471cc1bf561effc23b0b508ae1662ec7931'],
-  ['20260710120000_photos_hardening',
-    'bd4a99105ae3da65a3ae231065442f3594db6f8d'],
-  ['20260722100000_drop_dormant_poll_enum_members',
-    'dd2a45e34f925daefb2a27f0f72aed9aa4759ef1'],
-  ['20260802060000_timestamptz_everywhere',
-    '65607d27d4236c4a2b1f0105a23777ba08305b10'],
-  ['20260802170000_in_scoring_territory',
-    '4e6e5c12f547887dbeea7e4cfbc2f052efa782e3'],
+  [
+    '20260514203000_search_demand_event_kind_and_on_demand_facts',
+    '659eca6910a4fa5c12b77ae706baf269d4f97371',
+  ],
+  [
+    '20260515203000_demand_entity_lanes_and_favorite_events',
+    '79971e81fa1ec4182e7406da76a0fe75e3024b6b',
+  ],
+  ['20260621184323_poll_subject_id_text', '4cd218096cfae67f7c3c945f5e6897078cccfb9b'],
+  ['20260803020000_access_grant_kind', '4bd1385660d6f126c779fd86521d7cd9bb71324e'],
+  ['20250320000000_add_polls', 'f30f336cb83b1abbd9cb0def20e9830952b15d51'],
+  ['20250321010000_notification_user_id_text', 'a2c8fd05bc1b7bedfeaffff271b5403169aa4188'],
+  ['20251221010151_reconcile_db', 'b32964030f032fe944731c9f64c5596a194df374'],
+  ['20251221040000_subreddits_citext', 'c6b2547a91db00be24b66b3db6ea1125b48da916'],
+  ['20260515193500_drop_market_type_local_fallback', '65a0212912bee2311a4e1b96aff3eb83d7ce26fc'],
+  ['20260515201000_provider_neutral_regional_markets', '9c6940e39cf70d07cb5742b5c2732c0de3b4e78a'],
+  ['20260609120000_capture_db_push_drift', 'f69a9862d86ba7af5c2559422e97a66e559add50'],
+  ['20260628120000_crave_score_0to10_scale', '157043e0355366b8e4f09bd63cecf42411515b2b'],
+  ['20260708090000_workkind_enum_ledger_dedupe', 'f12ad471cc1bf561effc23b0b508ae1662ec7931'],
+  ['20260710120000_photos_hardening', 'bd4a99105ae3da65a3ae231065442f3594db6f8d'],
+  ['20260722100000_drop_dormant_poll_enum_members', 'dd2a45e34f925daefb2a27f0f72aed9aa4759ef1'],
+  ['20260802060000_timestamptz_everywhere', '65607d27d4236c4a2b1f0105a23777ba08305b10'],
+  ['20260802170000_in_scoring_territory', '4e6e5c12f547887dbeea7e4cfbc2f052efa782e3'],
 ]);
 
 const COLUMN_REWRITE = /ALTER\s+COLUMN\s+"?[A-Za-z_][A-Za-z0-9_]*"?\s+(?:SET\s+DATA\s+)?TYPE\b/i;
@@ -192,8 +187,7 @@ for (const name of dirs) {
   const maintenance = GUARD_MAINTENANCE.exec(sql);
   const heavyAt = firstHeavyOffset(sql);
   const present = Boolean(gather && maintenance);
-  const guarded =
-    present && gather.index < heavyAt && maintenance.index < heavyAt;
+  const guarded = present && gather.index < heavyAt && maintenance.index < heavyAt;
   if (guarded) continue;
   if (GRANDFATHERED.has(name)) continue;
 
@@ -203,7 +197,7 @@ for (const name of dirs) {
         `disable parallel workers, but not before the heavy statement (guard ` +
         `at offset ${Math.max(gather.index, maintenance.index)}, first heavy ` +
         `statement at ${heavyAt}). A SET only applies to what runs after it, ` +
-        `so this file is unguarded in practice. Move both lines to the TOP.`,
+        `so this file is unguarded in practice. Move both lines to the TOP.`
     );
     continue;
   }
@@ -215,7 +209,7 @@ for (const name of dirs) {
       `the container boot command a P3009 crash-loop takes the deploy with it. ` +
       `Put both lines at the TOP of the file:\n` +
       `        SET max_parallel_workers_per_gather = 0;\n` +
-      `        SET max_parallel_maintenance_workers = 0;`,
+      `        SET max_parallel_maintenance_workers = 0;`
   );
 }
 
@@ -225,8 +219,7 @@ for (const name of dirs) {
 for (const [name, pinnedSha] of GRANDFATHERED) {
   if (!dirs.includes(name)) {
     failures.push(
-      `${name}: grandfathered here but no such migration exists — stale ` +
-        `exemption, delete it.`,
+      `${name}: grandfathered here but no such migration exists — stale ` + `exemption, delete it.`
     );
     continue;
   }
@@ -234,7 +227,7 @@ for (const [name, pinnedSha] of GRANDFATHERED) {
   if (!existsSync(file)) {
     failures.push(
       `${name}: grandfathered, but its migration.sql is gone — the exemption ` +
-        `now covers nothing. Delete the entry.`,
+        `now covers nothing. Delete the entry.`
     );
     continue;
   }
@@ -248,20 +241,17 @@ for (const [name, pinnedSha] of GRANDFATHERED) {
         `was a ruling about a specific file; a different file has not been ` +
         `ruled on, and an edit is exactly how a new unguarded heavy statement ` +
         `would enter under cover of the old name. Read the diff. If the edit ` +
-        `is safe, re-pin: git hash-object ${file}`,
+        `is safe, re-pin: git hash-object ${file}`
     );
   }
 }
 
 if (failures.length) {
-  console.error(
-    'migration-parallel-guard FAILED:\n' +
-      failures.map((f) => `  - ${f}`).join('\n'),
-  );
+  console.error('migration-parallel-guard FAILED:\n' + failures.map((f) => `  - ${f}`).join('\n'));
   process.exit(1);
 }
 console.log(
   `migration-parallel-guard OK — ${dirs.length} migrations, ${heavyCount} ` +
     `heavy, each guarded or grandfathered (${GRANDFATHERED.size} frozen ` +
-    `pre-existing).`,
+    `pre-existing).`
 );

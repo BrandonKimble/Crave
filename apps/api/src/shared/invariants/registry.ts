@@ -1065,7 +1065,7 @@ export const INVARIANTS: readonly Invariant[] = [
         // somebody stages it.
         file: SCRATCH,
         content:
-          'declare const tx: {\n  restaurantEvent: { createMany: (a: unknown) => Promise<void> };\n};\ndeclare const rows: unknown[];\nexport const w = async () => tx.restaurantEvent.createMany({ data: rows });\n',
+          'declare const tx: {\n  placeEvent: { createMany: (a: unknown) => Promise<void> };\n};\ndeclare const rows: unknown[];\nexport const w = async () => tx.placeEvent.createMany({ data: rows });\n',
       },
       {
         // THE SAME WRITE, WRAPPED BY PRETTIER. The gate matched line by line
@@ -1074,7 +1074,7 @@ export const INVARIANTS: readonly Invariant[] = [
         // the one-line mutation above with a newline in it, and nothing else.
         file: SCRATCH,
         content:
-          'declare const tx: {\n  restaurantEvent: { createMany: (a: unknown) => Promise<void> };\n};\ndeclare const rows: unknown[];\nexport const w = async () =>\n  tx.restaurantEvent\n    .createMany({ data: rows });\n',
+          'declare const tx: {\n  placeEvent: { createMany: (a: unknown) => Promise<void> };\n};\ndeclare const rows: unknown[];\nexport const w = async () =>\n  tx.placeEvent\n    .createMany({ data: rows });\n',
       },
       {
         // THE SAME WRITE IN A NODE SCRIPT. The pathspec was .ts/.tsx/.sql,
@@ -1084,7 +1084,7 @@ export const INVARIANTS: readonly Invariant[] = [
         // ids and then inserts after a merge has landed.
         file: SCRATCH_LEDGER_MJS,
         content:
-          'export const w = async (prisma, rows) =>\n  prisma.restaurantEntityEvent.createMany({ data: rows });\n',
+          'export const w = async (prisma, rows) =>\n  prisma.placeEntityEvent.createMany({ data: rows });\n',
       },
     ],
   },

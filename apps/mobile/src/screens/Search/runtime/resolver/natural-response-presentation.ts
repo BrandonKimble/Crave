@@ -11,12 +11,12 @@ type ResultsActiveTab = 'dishes' | 'restaurants';
 
 const resolveIntentDefaultTab = (response: SearchResponse): SegmentValue | null => {
   const filters = [
-    ...(response.plan?.restaurantFilters ?? []),
+    ...(response.plan?.placeFilters ?? []),
     ...(response.plan?.connectionFilters ?? []),
   ];
   const hasRestaurantAttributeFilter = filters.some(
     (filter) =>
-      filter.entityType === 'restaurant_attribute' &&
+      filter.entityType === 'place_attribute' &&
       Array.isArray(filter.entityIds) &&
       filter.entityIds.length > 0
   );
@@ -25,7 +25,7 @@ const resolveIntentDefaultTab = (response: SearchResponse): SegmentValue | null 
   }
   const hasFoodFilter = filters.some(
     (filter) =>
-      filter.entityType === 'food' && Array.isArray(filter.entityIds) && filter.entityIds.length > 0
+      filter.entityType === 'item' && Array.isArray(filter.entityIds) && filter.entityIds.length > 0
   );
   if (hasFoodFilter) {
     return 'dishes';
@@ -43,7 +43,7 @@ export const resolveNaturalResponseAdoptedTab = (params: {
 }): ResultsActiveTab => {
   const { response, currentTab, submissionContext } = params;
   const hasFoodResults = (response.dishes?.length ?? 0) > 0;
-  const hasRestaurantsResults = (response.restaurants?.length ?? 0) > 0;
+  const hasRestaurantsResults = (response.places?.length ?? 0) > 0;
   const submissionDefaultTab = resolveSubmissionDefaultTab(submissionContext);
   const intentDefaultTab = submissionDefaultTab ?? resolveIntentDefaultTab(response);
   if (intentDefaultTab === 'dishes' && hasFoodResults) {
@@ -71,7 +71,7 @@ export const resolveFavoritesAdoptedTab = (params: {
   listTab: ResultsActiveTab;
 }): ResultsActiveTab => {
   const hasFoodResults = (params.response.dishes?.length ?? 0) > 0;
-  const hasRestaurantsResults = (params.response.restaurants?.length ?? 0) > 0;
+  const hasRestaurantsResults = (params.response.places?.length ?? 0) > 0;
   if (params.listTab === 'dishes' && hasFoodResults) {
     return 'dishes';
   }

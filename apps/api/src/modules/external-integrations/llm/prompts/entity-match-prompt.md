@@ -13,7 +13,7 @@ Every judgment is one `term` against one shortlist:
   to the right market — so the real match, if any, is almost always here. But
   **proximity is not sameness**: the shortlist is where to look, never a
   reason to match.
-- `kind` — what the term is: `restaurant` (a specific place/business), `food`
+- `kind` — what the term is: `place` (a specific place/business), `item`
   (a dish, drink, or food item), or `ingredient` (a component of dishes).
 
 ## THE ONE-THING TEST

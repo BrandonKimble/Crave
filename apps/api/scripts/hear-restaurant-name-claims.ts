@@ -27,16 +27,16 @@ import 'dotenv/config';
 import { readFileSync } from 'fs';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
-import { RestaurantNameHearingService } from '../src/modules/content-processing/entity-resolver/restaurant-name-hearing.service';
-import { RESTAURANT_NAME_RULE_VERSION } from '../src/modules/content-processing/entity-resolver/restaurant-name-rule';
-import type { RestaurantNameClaim } from '../src/modules/content-processing/entity-resolver/restaurant-name-lane';
+import { PlaceNameHearingService } from '../src/modules/content-processing/entity-resolver/restaurant-name-hearing.service';
+import { PLACE_NAME_RULE_VERSION } from '../src/modules/content-processing/entity-resolver/restaurant-name-rule';
+import type { PlaceNameClaim } from '../src/modules/content-processing/entity-resolver/restaurant-name-lane';
 import {
   DrainExceedsStandingCapError,
   StaleDrainApprovalError,
 } from '../src/modules/content-processing/entity-resolver/claim-rehearing-budget.service';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
-function parseClaims(argv: string[]): RestaurantNameClaim[] {
+function parseClaims(argv: string[]): PlaceNameClaim[] {
   const flag = (name: string): string | null => {
     const i = argv.indexOf(`--${name}`);
     return i >= 0 ? (argv[i + 1] ?? null) : null;
@@ -83,14 +83,14 @@ async function main(): Promise<void> {
   });
   stopCronsForScript(app);
   try {
-    const court = app.get(RestaurantNameHearingService);
+    const court = app.get(PlaceNameHearingService);
 
     // FINISH FIRST: paid decisions a dead run left unexecuted.
     const resumed = await court.resumePendingEffects();
     if (resumed) out(`resumed=${resumed} decided-but-unexecuted verdicts`);
 
     out(
-      `docket=${claims.length} rule=v${RESTAURANT_NAME_RULE_VERSION} ` +
+      `docket=${claims.length} rule=v${PLACE_NAME_RULE_VERSION} ` +
         (apply ? 'APPLY' : 'DRY RUN — judge consulted, nothing written'),
     );
     try {
@@ -100,7 +100,7 @@ async function main(): Promise<void> {
       });
       for (const c of summary.cases) {
         out(
-          `${c.outcome.padEnd(9)} "${c.form}" as a name of "${c.restaurantName}"` +
+          `${c.outcome.padEnd(9)} "${c.form}" as a name of "${c.placeName}"` +
             (c.surfacesTaken ? ` | surfaces taken: ${c.surfacesTaken}` : '') +
             `\n    reason: ${c.reason}`,
         );

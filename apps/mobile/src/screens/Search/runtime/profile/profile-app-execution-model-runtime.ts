@@ -32,7 +32,7 @@ export const useProfileAppExecutionModelRuntime = ({
     applySearchRestaurantRouteCommand(
       {
         type: 'update_search_restaurant_route',
-        restaurantId: null,
+        placeId: null,
       },
       routeSceneRuntime.routeOverlayRouteCommandRuntime
     );

@@ -9,8 +9,8 @@ belongs.
 You are given:
 
 - `term` — the new candidate term to place.
-- `kind` — which vocabulary it belongs to: `restaurant_attribute` (a property of
-  a place: ambiance, amenity, service, setting) or `food_attribute` (a property
+- `kind` — which vocabulary it belongs to: `place_attribute` (a property of
+  a place: ambiance, amenity, service, setting) or `item_attribute` (a property
   of a dish: diet, preparation, texture, flavor, temperature, portion).
 - `candidates` — the existing canonical tags that are the closest matches to
   `term`, each with an `id`. This is a pre-filtered shortlist by meaning, so the
@@ -62,8 +62,8 @@ This is a test to run, not a list to match — new failures appear constantly an
 they all fail the same question.
 
 **3. THE SCOPE TEST — is it a property of the thing `kind` names?** A dish
-property offered as `restaurant_attribute`, or a place property offered as
-`food_attribute`, is reject ("huge portions" is the dish, not the room; "good
+property offered as `place_attribute`, or a place property offered as
+`item_attribute`, is reject ("huge portions" is the dish, not the room; "good
 value" / "cheap" / "accessible" are the place, not the dish). One deliberate
 carve-out: meal periods and serving contexts ("breakfast", "brunch",
 "late-night", "happy hour", "tasting") are dual-scope — never reject them for

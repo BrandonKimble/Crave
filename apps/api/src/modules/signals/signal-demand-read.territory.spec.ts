@@ -77,7 +77,7 @@ describe('territoryEntityDemand (C3: demand reaches collection only through the 
       placeIds: [PLACE_A, PLACE_B],
       windowDays: 30,
       limit: 100,
-      entityTypes: ['restaurant', 'food'],
+      entityTypes: ['place', 'item'],
     });
     const demandSql = h.queries.find((q) =>
       q.text.includes('signal_demand_daily'),
@@ -99,7 +99,7 @@ describe('territoryEntityDemand (C3: demand reaches collection only through the 
       placeIds: [PLACE_A],
       windowDays: 30,
       limit: 10,
-      entityTypes: ['restaurant'],
+      entityTypes: ['place'],
     });
     const query = h.queries.find((q) =>
       q.text.includes('signal_demand_daily'),
@@ -120,7 +120,7 @@ describe('territoryEntityDemand (C3: demand reaches collection only through the 
       placeIds: [PLACE_A, PLACE_B],
       windowDays: 30,
       limit: 10,
-      entityTypes: ['restaurant'],
+      entityTypes: ['place'],
     });
     const sql = h.queries.find((q) =>
       q.text.includes('signal_demand_daily'),
@@ -136,7 +136,7 @@ describe('territoryEntityDemand (C3: demand reaches collection only through the 
       placeIds: [PLACE_A],
       windowDays: 30,
       limit: 10,
-      entityTypes: ['restaurant'],
+      entityTypes: ['place'],
     });
     const demandSql = h.queries.find((q) =>
       q.text.includes('signal_demand_daily'),
@@ -151,7 +151,7 @@ describe('territoryEntityDemand (C3: demand reaches collection only through the 
       placeIds: [PLACE_A],
       windowDays: 30,
       limit: 10,
-      entityTypes: ['restaurant'],
+      entityTypes: ['place'],
     });
     const demandSql = h.queries.find((q) =>
       q.text.includes('signal_demand_daily'),
@@ -172,7 +172,7 @@ describe('territoryEntityDemand (C3: demand reaches collection only through the 
       placeIds: [],
       windowDays: 30,
       limit: 10,
-      entityTypes: ['restaurant'],
+      entityTypes: ['place'],
     });
     expect(result).toEqual([]);
     expect(h.prisma.$queryRaw).not.toHaveBeenCalled();
@@ -182,7 +182,7 @@ describe('territoryEntityDemand (C3: demand reaches collection only through the 
     const h = createHarness([
       {
         entity_id: ENTITY,
-        entity_type: 'restaurant',
+        entity_type: 'place',
         entity_name: 'Franklin Barbecue',
         demand_score: 4.2,
         distinct_actors: BigInt(3),
@@ -193,11 +193,11 @@ describe('territoryEntityDemand (C3: demand reaches collection only through the 
       placeIds: [PLACE_A],
       windowDays: 30,
       limit: 10,
-      entityTypes: ['restaurant'],
+      entityTypes: ['place'],
     });
     expect(row).toEqual({
       entityId: ENTITY,
-      entityType: 'restaurant',
+      entityType: 'place',
       entityName: 'Franklin Barbecue',
       demandScore: 4.2,
       distinctActors: 3,

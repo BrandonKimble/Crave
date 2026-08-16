@@ -205,7 +205,7 @@ const SEED_SHAPE: Record<string, Record<string, SeedValue>> = {
   // a fixture that plants a "restaurant" which is not one is the kind of quiet
   // wrongness this file exists to refuse.
   core_entities: {
-    type: `'restaurant'`,
+    type: `'place'`,
   },
 };
 

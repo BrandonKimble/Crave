@@ -113,7 +113,7 @@ export class UserListsService {
           orderBy: { position: 'asc' },
           take: 5,
           include: {
-            restaurant: {
+            place: {
               select: {
                 entityId: true,
                 name: true,
@@ -123,13 +123,13 @@ export class UserListsService {
             connection: {
               select: {
                 connectionId: true,
-                food: {
+                item: {
                   select: {
                     entityId: true,
                     name: true,
                   },
                 },
-                restaurant: {
+                place: {
                   select: {
                     entityId: true,
                     name: true,
@@ -213,14 +213,14 @@ export class UserListsService {
           orderBy: { position: 'asc' },
           take: 5,
           include: {
-            restaurant: {
+            place: {
               select: { entityId: true, name: true, city: true },
             },
             connection: {
               select: {
                 connectionId: true,
-                food: { select: { entityId: true, name: true } },
-                restaurant: { select: { entityId: true, name: true } },
+                item: { select: { entityId: true, name: true } },
+                place: { select: { entityId: true, name: true } },
               },
             },
           },
@@ -257,7 +257,7 @@ export class UserListsService {
   async listMembershipsForEntity(userId: string, entityId: string) {
     const items = await this.prisma.userListItem.findMany({
       where: {
-        OR: [{ restaurantId: entityId }, { connectionId: entityId }],
+        OR: [{ placeId: entityId }, { connectionId: entityId }],
         list: {
           OR: [
             { ownerUserId: userId },
@@ -295,19 +295,17 @@ export class UserListsService {
    */
   async listMembershipsBatch(
     userId: string,
-    query: { restaurantIds?: string[]; connectionIds?: string[] },
-  ): Promise<{ savedRestaurantIds: string[]; savedConnectionIds: string[] }> {
-    const restaurantIds = query.restaurantIds ?? [];
+    query: { placeIds?: string[]; connectionIds?: string[] },
+  ): Promise<{ savedPlaceIds: string[]; savedConnectionIds: string[] }> {
+    const placeIds = query.placeIds ?? [];
     const connectionIds = query.connectionIds ?? [];
-    if (!restaurantIds.length && !connectionIds.length) {
-      return { savedRestaurantIds: [], savedConnectionIds: [] };
+    if (!placeIds.length && !connectionIds.length) {
+      return { savedPlaceIds: [], savedConnectionIds: [] };
     }
     const items = await this.prisma.userListItem.findMany({
       where: {
         OR: [
-          ...(restaurantIds.length
-            ? [{ restaurantId: { in: restaurantIds } }]
-            : []),
+          ...(placeIds.length ? [{ placeId: { in: placeIds } }] : []),
           ...(connectionIds.length
             ? [{ connectionId: { in: connectionIds } }]
             : []),
@@ -319,20 +317,20 @@ export class UserListsService {
           ],
         },
       },
-      select: { restaurantId: true, connectionId: true },
+      select: { placeId: true, connectionId: true },
     });
-    const savedRestaurantIds = new Set<string>();
+    const savedPlaceIds = new Set<string>();
     const savedConnectionIds = new Set<string>();
     for (const item of items) {
-      if (item.restaurantId && restaurantIds.includes(item.restaurantId)) {
-        savedRestaurantIds.add(item.restaurantId);
+      if (item.placeId && placeIds.includes(item.placeId)) {
+        savedPlaceIds.add(item.placeId);
       }
       if (item.connectionId && connectionIds.includes(item.connectionId)) {
         savedConnectionIds.add(item.connectionId);
       }
     }
     return {
-      savedRestaurantIds: [...savedRestaurantIds],
+      savedPlaceIds: [...savedPlaceIds],
       savedConnectionIds: [...savedConnectionIds],
     };
   }
@@ -389,13 +387,13 @@ export class UserListsService {
           orderBy: { position: 'asc' },
           include: {
             location: true,
-            restaurant: {
+            place: {
               include: { primaryLocation: true },
             },
             connection: {
               include: {
-                food: true,
-                restaurant: {
+                item: true,
+                place: {
                   include: { primaryLocation: true },
                 },
               },
@@ -447,22 +445,20 @@ export class UserListsService {
     userId: string,
     listId: string,
     dto: UserListResultsDto,
-  ): Promise<
-    Array<{ placeId: string; name: string; restaurantCount: number }>
-  > {
+  ): Promise<Array<{ placeId: string; name: string; placeCount: number }>> {
     const source = await this.resolveResultsSource(userId, listId, dto);
-    const restaurantIds = Array.from(
+    const placeIds = Array.from(
       new Set(
         source.items
-          .map((item) => item.restaurantId ?? item.connection?.restaurantId)
+          .map((item) => item.placeId ?? item.connection?.placeId)
           .filter((id): id is string => Boolean(id)),
       ),
     );
-    if (!restaurantIds.length) {
+    if (!placeIds.length) {
       return [];
     }
     const rows = await this.prisma.$queryRaw<
-      Array<{ placeId: string; name: string; restaurantCount: bigint | number }>
+      Array<{ placeId: string; name: string; placeCount: bigint | number }>
     >(Prisma.sql`
       SELECT p.place_id AS "placeId",
              p.name,
@@ -486,7 +482,7 @@ export class UserListsService {
        -- fact. Ladder-audit 2026-08-01: the previous lowercase literal
        -- matched NOTHING, so this chip returned zero cities since birth.
        AND p.provider_level_code = 'Municipality'
-      WHERE rl.restaurant_id = ANY(${restaurantIds}::uuid[])
+      WHERE rl.restaurant_id = ANY(${placeIds}::uuid[])
         AND rl.latitude IS NOT NULL
         AND rl.longitude IS NOT NULL
       GROUP BY p.place_id, p.name
@@ -495,7 +491,7 @@ export class UserListsService {
     return rows.map((row) => ({
       placeId: row.placeId,
       name: row.name,
-      restaurantCount: Number(row.restaurantCount),
+      placeCount: Number(row.placeCount),
     }));
   }
 
@@ -518,13 +514,13 @@ export class UserListsService {
           orderBy: { position: 'asc' },
           include: {
             location: true,
-            restaurant: {
+            place: {
               include: { primaryLocation: true },
             },
             connection: {
               include: {
-                food: true,
-                restaurant: {
+                item: true,
+                place: {
                   include: { primaryLocation: true },
                 },
               },
@@ -588,13 +584,13 @@ export class UserListsService {
           orderBy: { position: 'asc' },
           include: {
             location: true,
-            restaurant: {
+            place: {
               include: { primaryLocation: true },
             },
             connection: {
               include: {
-                food: true,
-                restaurant: {
+                item: true,
+                place: {
                   include: { primaryLocation: true },
                 },
               },
@@ -634,13 +630,13 @@ export class UserListsService {
           orderBy: { position: 'asc' },
           include: {
             location: true,
-            restaurant: {
+            place: {
               include: { primaryLocation: true },
             },
             connection: {
               include: {
-                food: true,
-                restaurant: {
+                item: true,
+                place: {
                   include: { primaryLocation: true },
                 },
               },
@@ -826,10 +822,10 @@ export class UserListsService {
    * a never-hearted target is a no-op.
    */
   async removeFavoriteItemByTarget(userId: string, dto: AddUserListItemDto) {
-    if (!dto.restaurantId && !dto.connectionId) {
+    if (!dto.placeId && !dto.connectionId) {
       throw new BadRequestException('Missing list item target');
     }
-    if (dto.restaurantId && dto.connectionId) {
+    if (dto.placeId && dto.connectionId) {
       throw new BadRequestException('Only one list item target is allowed');
     }
     // TRUE no-op law: unhearting when no favorites list exists must not
@@ -842,20 +838,20 @@ export class UserListsService {
     if (!list) {
       return { removed: false };
     }
-    let restaurantId = dto.restaurantId ?? null;
-    if (!restaurantId && dto.connectionId) {
+    let placeId = dto.placeId ?? null;
+    if (!placeId && dto.connectionId) {
       const connection = await this.prisma.connection.findUnique({
         where: { connectionId: dto.connectionId },
-        select: { restaurantId: true },
+        select: { placeId: true },
       });
       if (!connection) {
         throw new NotFoundException('Connection not found');
       }
-      restaurantId = connection.restaurantId;
+      placeId = connection.placeId;
     }
     // D36/F600: no counter to decrement — the deleted rows ARE the count.
     const result = await this.prisma.userListItem.deleteMany({
-      where: { listId: list.listId, restaurantId },
+      where: { listId: list.listId, placeId },
     });
     return { removed: result.count > 0 };
   }
@@ -877,14 +873,14 @@ export class UserListsService {
     }
     await this.access.assertOwnerOrCollaborator(list, userId);
 
-    if (!dto.restaurantId && !dto.connectionId) {
+    if (!dto.placeId && !dto.connectionId) {
       throw new BadRequestException('Missing list item target');
     }
-    if (dto.restaurantId && dto.connectionId) {
+    if (dto.placeId && dto.connectionId) {
       throw new BadRequestException('Only one list item target is allowed');
     }
 
-    let restaurantId = dto.restaurantId ?? null;
+    let placeId = dto.placeId ?? null;
     let connectionId = dto.connectionId ?? null;
 
     // Save-sheet side flip (page-registry §8.8): a dish-triggered save flipped
@@ -894,16 +890,16 @@ export class UserListsService {
     if (list.listType === UserListType.restaurant && connectionId) {
       const connection = await this.prisma.connection.findUnique({
         where: { connectionId },
-        select: { restaurantId: true },
+        select: { placeId: true },
       });
       if (!connection) {
         throw new NotFoundException('Connection not found');
       }
-      restaurantId = connection.restaurantId;
+      placeId = connection.placeId;
       connectionId = null;
     }
 
-    if (list.listType === UserListType.restaurant && !restaurantId) {
+    if (list.listType === UserListType.restaurant && !placeId) {
       throw new BadRequestException(
         'Restaurant list items require a restaurant',
       );
@@ -912,32 +908,32 @@ export class UserListsService {
       throw new BadRequestException('Dish list items require a connection');
     }
 
-    if (restaurantId) {
+    if (placeId) {
       // ONE saveable-entity law (D36/F602): redirect-resolve → type →
       // status='active'. This used to be a bare existence check, so an
       // ARCHIVED restaurant, or a FOOD id passed as restaurantId, was
       // accepted onto a restaurant list. A merge loser now saves as its
       // survivor instead of rotting.
       const saveable =
-        await this.saveableEntities.resolveSaveableRestaurant(restaurantId);
+        await this.saveableEntities.resolveSaveablePlace(placeId);
       if (!saveable) {
         throw new NotFoundException('Restaurant not found');
       }
-      restaurantId = saveable.entityId;
+      placeId = saveable.entityId;
     }
 
     // The existence check doubles as the restaurant resolution for the
     // locationId validation below — one query, not two.
-    let connectionRestaurantId: string | null = null;
+    let connectionPlaceId: string | null = null;
     if (connectionId) {
       const connection = await this.prisma.connection.findUnique({
         where: { connectionId },
-        select: { connectionId: true, restaurantId: true },
+        select: { connectionId: true, placeId: true },
       });
       if (!connection) {
         throw new NotFoundException('Connection not found');
       }
-      connectionRestaurantId = connection.restaurantId;
+      connectionPlaceId = connection.placeId;
     }
 
     // Location-centric saves (master plan §7): validate the saved location
@@ -945,20 +941,20 @@ export class UserListsService {
     let validatedLocationId: string | null = null;
     let validatedLocationPoint: { lat: number; lng: number } | null = null;
     if (dto.locationId) {
-      const location = await this.prisma.restaurantLocation.findUnique({
+      const location = await this.prisma.placeLocation.findUnique({
         where: { locationId: dto.locationId },
         select: {
           locationId: true,
-          restaurantId: true,
+          placeId: true,
           latitude: true,
           longitude: true,
         },
       });
-      const expectedRestaurantId = restaurantId ?? connectionRestaurantId;
+      const expectedPlaceId = placeId ?? connectionPlaceId;
       if (
         !location ||
-        !expectedRestaurantId ||
-        location.restaurantId !== expectedRestaurantId
+        !expectedPlaceId ||
+        location.placeId !== expectedPlaceId
       ) {
         throw new BadRequestException(
           'locationId does not belong to the saved restaurant',
@@ -984,7 +980,7 @@ export class UserListsService {
         data: {
           listId,
           addedByUserId: userId,
-          restaurantId,
+          placeId,
           connectionId,
           locationId: validatedLocationId,
           note: dto.note?.slice(0, 512) ?? null,
@@ -999,9 +995,7 @@ export class UserListsService {
         if (opts?.idempotent) {
           // Heart-verb idempotency: re-hearting returns the existing item.
           const existing = await this.prisma.userListItem.findFirst({
-            where: restaurantId
-              ? { listId, restaurantId }
-              : { listId, connectionId },
+            where: placeId ? { listId, placeId } : { listId, connectionId },
           });
           if (existing) {
             return existing;
@@ -1016,19 +1010,19 @@ export class UserListsService {
     // §3 signals: a list add is the favorite_added act. Subject = the saved
     // restaurant (a connection item resolves to its restaurant). Geo = the
     // saved location's point, else the restaurant's primary location.
-    const signalRestaurantId = restaurantId ?? connectionRestaurantId;
-    if (signalRestaurantId) {
+    const signalPlaceId = placeId ?? connectionPlaceId;
+    if (signalPlaceId) {
       this.signals.record({
         kind: 'favorite_added',
         userId,
-        subject: { entityId: signalRestaurantId },
+        subject: { entityId: signalPlaceId },
         geo: validatedLocationPoint
           ? this.signals.bboxFromPoint(
               validatedLocationPoint.lat,
               validatedLocationPoint.lng,
             )
-          : this.signals.bboxFromRestaurantLocation({
-              restaurantId: signalRestaurantId,
+          : this.signals.bboxFromPlaceLocation({
+              placeId: signalPlaceId,
             }),
         meta: { locationId: validatedLocationId ?? undefined },
       });
@@ -1369,12 +1363,12 @@ export class UserListsService {
       ? 'custom'
       : 'best';
     if (list.listType === UserListType.restaurant) {
-      const restaurantItems = list.items.filter((item) => item.restaurant);
-      const results = await this.mapper.mapRestaurantResults(restaurantItems);
-      return { list: summary, viewerRole, defaultSort, restaurants: results };
+      const placeItems = list.items.filter((item) => item.place);
+      const results = await this.mapper.mapPlaceResults(placeItems);
+      return { list: summary, viewerRole, defaultSort, places: results };
     }
     const connectionItems = list.items.filter((item) => item.connection);
-    const results = await this.mapper.mapFoodResults(connectionItems);
+    const results = await this.mapper.mapItemResults(connectionItems);
     return { list: summary, viewerRole, defaultSort, dishes: results };
   }
 

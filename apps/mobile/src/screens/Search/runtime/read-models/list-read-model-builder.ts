@@ -14,7 +14,7 @@ export type ResultsMountedRestaurantCardRow = {
   kind: 'mounted_restaurant_card';
   key: string;
   restaurant: RestaurantResult;
-  restaurantId: string;
+  placeId: string;
   preparedDescriptor: RestaurantResultCardDescriptor;
 };
 

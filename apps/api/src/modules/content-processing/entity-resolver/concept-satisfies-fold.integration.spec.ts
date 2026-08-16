@@ -103,7 +103,7 @@ beforeAll(async () => {
     data: {
       entityId: ANCHOR_ID,
       name: ANCHOR_NAME,
-      type: 'food',
+      type: 'item',
       status: 'active',
       identityKey: canonicalFold(ANCHOR_NAME),
     },
@@ -112,7 +112,7 @@ beforeAll(async () => {
     data: {
       entityId: CANDIDATE_ID,
       name: CANDIDATE_NAME,
-      type: 'food',
+      type: 'item',
       status: 'active',
       identityKey: canonicalFold(CANDIDATE_NAME),
     },
@@ -159,7 +159,7 @@ describe('ConceptSatisfiesService.residualFor: rung-2 containment folds accents 
           summary: SatisfiesRunSummary,
         ) => Promise<Array<{ entityId: string }>>;
       }
-    ).residualFor({ entity_id: ANCHOR_ID, name: ANCHOR_NAME }, 'food', summary);
+    ).residualFor({ entity_id: ANCHOR_ID, name: ANCHOR_NAME }, 'item', summary);
     // It WAS recalled as a candidate...
     expect(summary.candidatesSeen).toBe(1);
     // ...and the fold-aware containment arm excluded it (mutation to lower()

@@ -2,20 +2,17 @@ import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { identityInsertData, canonicalFold } from './entity-identity';
 import {
-  RestaurantNameHearingService,
-  type RestaurantNameEffect,
+  PlaceNameHearingService,
+  type PlaceNameEffect,
 } from './restaurant-name-hearing.service';
 import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
 import { ClaimRehearingBudgetService } from './claim-rehearing-budget.service';
 import {
-  RESTAURANT_NAME_RULE_FINGERPRINT,
-  RESTAURANT_NAME_RULE_VERSION,
+  PLACE_NAME_RULE_FINGERPRINT,
+  PLACE_NAME_RULE_VERSION,
 } from './restaurant-name-rule';
-import {
-  RESTAURANT_NAME_LANE,
-  restaurantNameLane,
-} from './restaurant-name-lane';
-import { writeRestaurantEvents } from '../reddit-collector/extraction-scope.service';
+import { PLACE_NAME_LANE, placeNameLane } from './restaurant-name-lane';
+import { writePlaceEvents } from '../reddit-collector/extraction-scope.service';
 
 /**
  * THE RESTAURANT-NAME COURT (C4a) — proven against a real database.
@@ -73,8 +70,8 @@ describe('the restaurant-name hearing lane (C4a) — live database', () => {
     ),
   });
 
-  const courtWith = (judge: unknown): RestaurantNameHearingService =>
-    new RestaurantNameHearingService(
+  const courtWith = (judge: unknown): PlaceNameHearingService =>
+    new PlaceNameHearingService(
       prisma as never,
       judge as never,
       logger(),
@@ -83,21 +80,21 @@ describe('the restaurant-name hearing lane (C4a) — live database', () => {
     );
 
   /** The court with the EFFECT step killed — the crash seam. */
-  class CrashingCourt extends RestaurantNameHearingService {
+  class CrashingCourt extends PlaceNameHearingService {
     protected applyEffect(): Promise<void> {
       return Promise.reject(new Error('process died before the effect ran'));
     }
   }
 
-  const mintRestaurant = async (
+  const mintPlace = async (
     name: string,
     options: { grounded?: boolean } = {},
   ): Promise<string> => {
     const id = randomUUID();
-    const identity = identityInsertData(name, 'restaurant' as never);
+    const identity = identityInsertData(name, 'place' as never);
     await prisma.$executeRawUnsafe(
       `INSERT INTO core_entities (entity_id, name, type, status, identity_key, identity_key_sorted)
-       VALUES ($1::uuid, $2, 'restaurant'::entity_type, 'active'::entity_status, $3, $4)`,
+       VALUES ($1::uuid, $2, 'place'::entity_type, 'active'::entity_status, $3, $4)`,
       id,
       name,
       identity.identityKey,
@@ -133,7 +130,7 @@ describe('the restaurant-name hearing lane (C4a) — live database', () => {
   };
 
   const trackKey = (claim: { entityId: string; form: string }): string => {
-    const key = restaurantNameLane.canonicalClaimKey(claim);
+    const key = placeNameLane.canonicalClaimKey(claim);
     madeKeys.push(key);
     return key;
   };
@@ -146,7 +143,7 @@ describe('the restaurant-name hearing lane (C4a) — live database', () => {
     rule_version: number;
     fold_version: number;
     rule_fingerprint: string | null;
-    subject: RestaurantNameEffect;
+    subject: PlaceNameEffect;
     executed_at: Date | null;
   } | null> => {
     const rows = await prisma.$queryRawUnsafe<
@@ -156,14 +153,14 @@ describe('the restaurant-name hearing lane (C4a) — live database', () => {
         rule_version: number;
         fold_version: number;
         rule_fingerprint: string | null;
-        subject: RestaurantNameEffect;
+        subject: PlaceNameEffect;
         executed_at: Date | null;
       }>
     >(
       `SELECT outcome, reason, rule_version, fold_version, rule_fingerprint,
               subject, executed_at
          FROM claim_verdicts WHERE lane = $1 AND claim_key = $2`,
-      RESTAURANT_NAME_LANE,
+      PLACE_NAME_LANE,
       claimKey,
     );
     return rows[0] ?? null;
@@ -186,7 +183,7 @@ describe('the restaurant-name hearing lane (C4a) — live database', () => {
     if (madeKeys.length) {
       await prisma.$executeRawUnsafe(
         `DELETE FROM claim_verdicts WHERE lane = $1 AND claim_key = ANY($2::text[])`,
-        RESTAURANT_NAME_LANE,
+        PLACE_NAME_LANE,
         madeKeys,
       );
     }
@@ -213,7 +210,7 @@ describe('the restaurant-name hearing lane (C4a) — live database', () => {
    */
   it('notAName: surface deprecated with an audited verdict; the entity survives untouched', async () => {
     const suffix = randomUUID().slice(0, 8);
-    const ghost = await mintRestaurant(`Zzq Best ${suffix}`);
+    const ghost = await mintPlace(`Zzq Best ${suffix}`);
     const form = `zzqbest${suffix}`;
     const surfaceId = await mintSurface(ghost, form, 'recall');
     const claim = { entityId: ghost, form };
@@ -232,8 +229,8 @@ describe('the restaurant-name hearing lane (C4a) — live database', () => {
     expect(summary.namesDenied).toBe(1);
     const stored = await verdictRow(key);
     expect(stored?.outcome).toBe('notAName');
-    expect(stored?.rule_version).toBe(RESTAURANT_NAME_RULE_VERSION);
-    expect(stored?.rule_fingerprint).toBe(RESTAURANT_NAME_RULE_FINGERPRINT);
+    expect(stored?.rule_version).toBe(PLACE_NAME_RULE_VERSION);
+    expect(stored?.rule_fingerprint).toBe(PLACE_NAME_RULE_FINGERPRINT);
     expect(stored?.reason).toContain('shorthand');
     expect(stored?.executed_at).not.toBeNull();
 
@@ -256,13 +253,13 @@ describe('the restaurant-name hearing lane (C4a) — live database', () => {
    */
   it('isName moves nothing; a notAName on a both-row degrades to display instead of deprecating', async () => {
     const suffix = randomUUID().slice(0, 8);
-    const chilis = await mintRestaurant(`Zzq Chilis ${suffix}`, {
+    const chilis = await mintPlace(`Zzq Chilis ${suffix}`, {
       grounded: true,
     });
     const nameForm = `zzqchili${suffix}`;
     const nameSurface = await mintSurface(chilis, nameForm, 'recall');
 
-    const labeled = await mintRestaurant(`Zzq Favorite ${suffix}`);
+    const labeled = await mintPlace(`Zzq Favorite ${suffix}`);
     const labelForm = `zzqfavorite${suffix}`;
     const labelSurface = await mintSurface(labeled, labelForm, 'both');
 
@@ -298,7 +295,7 @@ describe('the restaurant-name hearing lane (C4a) — live database', () => {
   /** PROOF 3 — decided is not due: a second hearing never consults the judge. */
   it('skips already-decided claims without paying', async () => {
     const suffix = randomUUID().slice(0, 8);
-    const venue = await mintRestaurant(`Zzq Decided ${suffix}`, {
+    const venue = await mintPlace(`Zzq Decided ${suffix}`, {
       grounded: true,
     });
     const form = `zzqdecided${suffix}`;
@@ -327,7 +324,7 @@ describe('the restaurant-name hearing lane (C4a) — live database', () => {
    */
   it('commits the verdict before the effect, resumes it, and replays byte-identically', async () => {
     const suffix = randomUUID().slice(0, 8);
-    const ghost = await mintRestaurant(`Zzq Crash ${suffix}`);
+    const ghost = await mintPlace(`Zzq Crash ${suffix}`);
     const form = `zzqcrash${suffix}`;
     const surfaceId = await mintSurface(ghost, form);
     const claim = { entityId: ghost, form };
@@ -366,7 +363,7 @@ describe('the restaurant-name hearing lane (C4a) — live database', () => {
     await prisma.$executeRawUnsafe(
       `UPDATE claim_verdicts SET executed_at = NULL
         WHERE lane = $1 AND claim_key = $2`,
-      RESTAURANT_NAME_LANE,
+      PLACE_NAME_LANE,
       key,
     );
     expect(await court.resumePendingEffects()).toBeGreaterThanOrEqual(1);
@@ -384,7 +381,7 @@ describe('the restaurant-name hearing lane (C4a) — live database', () => {
    */
   it('dry-run consults the judge but writes nothing; a blank-reason answer leaves the claim unjudged', async () => {
     const suffix = randomUUID().slice(0, 8);
-    const venue = await mintRestaurant(`Zzq Dry ${suffix}`);
+    const venue = await mintPlace(`Zzq Dry ${suffix}`);
     const form = `zzqdry${suffix}`;
     const surfaceId = await mintSurface(venue, form);
     const claim = { entityId: venue, form };
@@ -429,7 +426,7 @@ describe('the restaurant-name hearing lane (C4a) — live database', () => {
     const madeDocs: string[] = [];
 
     const mintMentionDoc = async (
-      restaurantId: string,
+      placeId: string,
       body: string,
     ): Promise<void> => {
       if (!runId) {
@@ -464,12 +461,12 @@ describe('the restaurant-name hearing lane (C4a) — live database', () => {
       madeDocs.push(doc.documentId);
       // Through the ledger's one write door — never a direct INSERT
       // (ledger.the-evidence-ledger-has-one-write-door).
-      await writeRestaurantEvents(prisma, [
+      await writePlaceEvents(prisma, [
         {
           extractionRunId: runId,
           inputId: input.inputId,
           sourceDocumentId: doc.documentId,
-          restaurantId,
+          placeId,
           mentionKey: `zzq-card:${randomUUID().slice(0, 8)}`,
           evidenceType: 'general_praise',
           mentionedAt: new Date(),
@@ -496,7 +493,7 @@ describe('the restaurant-name hearing lane (C4a) — live database', () => {
     it('a Supper-shaped venue: raw name-usage excerpts and both labeled counts reach the judge; the name is upheld', async () => {
       const suffix = randomUUID().slice(0, 8);
       const form = `zzqsupper${suffix}`;
-      const venue = await mintRestaurant(`Zzqsupper${suffix}`, {
+      const venue = await mintPlace(`Zzqsupper${suffix}`, {
         grounded: true,
       });
       await mintSurface(venue, form, 'recall');
@@ -541,7 +538,7 @@ describe('the restaurant-name hearing lane (C4a) — live database', () => {
       // venue. This pin makes that regression RED.
       const suffix = randomUUID().slice(0, 8);
       const form = `zzqninos${suffix}`;
-      const venue = await mintRestaurant(`Zzqninos${suffix}`, {
+      const venue = await mintPlace(`Zzqninos${suffix}`, {
         grounded: false,
       });
       await mintSurface(venue, form, 'recall');
@@ -570,7 +567,7 @@ describe('the restaurant-name hearing lane (C4a) — live database', () => {
     it('a Stars-shaped mint: the card says no name usage was found, and the denial stands', async () => {
       const suffix = randomUUID().slice(0, 8);
       const form = `zzqstars${suffix}`;
-      const ghost = await mintRestaurant(`Zzqstars${suffix}`);
+      const ghost = await mintPlace(`Zzqstars${suffix}`);
       const surfaceId = await mintSurface(ghost, form, 'recall');
       const claim = { entityId: ghost, form };
       trackKey(claim);

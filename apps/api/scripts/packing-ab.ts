@@ -265,9 +265,9 @@ async function runChunks(
 
 const norm = (s: string | null | undefined) => (s ?? '').trim().toLowerCase();
 const keyOf = (r: MentionRecord) =>
-  `${r.sourceId}|${norm(r.mention.restaurant)}|${norm(r.mention.food)}`;
+  `${r.sourceId}|${norm(r.mention.place)}|${norm(r.mention.item)}`;
 const postKeyOf = (r: MentionRecord) =>
-  `${norm(r.mention.restaurant)}|${norm(r.mention.food)}`;
+  `${norm(r.mention.place)}|${norm(r.mention.item)}`;
 
 function churn(
   a: MentionRecord[],
@@ -301,8 +301,8 @@ function report(
   const aNamesByPost = new Map<string, Set<string>>();
   for (const r of a.records) {
     const set = aNamesByPost.get(r.postId) ?? new Set<string>();
-    if (norm(r.mention.restaurant)) set.add(norm(r.mention.restaurant));
-    if (norm(r.mention.food)) set.add(norm(r.mention.food));
+    if (norm(r.mention.place)) set.add(norm(r.mention.place));
+    if (norm(r.mention.item)) set.add(norm(r.mention.item));
     aNamesByPost.set(r.postId, set);
   }
   // Which posts shared a packed request (for attribution of contaminants).
@@ -337,8 +337,8 @@ function report(
     const aNames = aNamesByPost.get(r.postId) ?? new Set<string>();
     const squashedText = squash(postText.get(r.postId) ?? '');
     for (const [kind, name] of [
-      ['restaurant', norm(r.mention.restaurant)],
-      ['food', norm(r.mention.food)],
+      ['restaurant', norm(r.mention.place)],
+      ['food', norm(r.mention.item)],
     ] as const) {
       if (!name) continue;
       if (aNames.has(name)) continue;
@@ -460,7 +460,7 @@ function report(
   }
   out();
   out(
-    `CANONICAL/SET CONSISTENCY: ${canonicalChanged}/${postIds.length} posts changed (restaurant,food) sets`,
+    `CANONICAL/SET CONSISTENCY: ${canonicalChanged}/${postIds.length} posts changed (place,item) sets`,
   );
   canonicalExamples.forEach((x) => out(`  ${x}`));
   out('====================================================');

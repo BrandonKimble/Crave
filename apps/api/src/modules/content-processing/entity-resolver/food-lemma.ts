@@ -128,7 +128,7 @@ function pluralCandidates(word: string): string[] {
  * number: "breakfast tacos" == "breakfast taco", while "chicken tacos" and
  * "beef tacos" stay distinct.
  */
-export function foodNameVariants(name: string): string[] {
+export function itemNameVariants(name: string): string[] {
   const normalized = name.toLowerCase().replace(/\s+/g, ' ').trim();
   if (!normalized) {
     return [];
@@ -142,7 +142,7 @@ export function foodNameVariants(name: string): string[] {
 }
 
 /** True when the two names denote the same food up to singular/plural. */
-export function isSameFoodUpToNumber(a: string, b: string): boolean {
+export function isSameItemUpToNumber(a: string, b: string): boolean {
   const left = a.toLowerCase().replace(/\s+/g, ' ').trim();
   const right = b.toLowerCase().replace(/\s+/g, ' ').trim();
   if (!left || !right) {
@@ -150,7 +150,7 @@ export function isSameFoodUpToNumber(a: string, b: string): boolean {
   }
   return (
     left === right ||
-    foodNameVariants(left).includes(right) ||
-    foodNameVariants(right).includes(left)
+    itemNameVariants(left).includes(right) ||
+    itemNameVariants(right).includes(left)
   );
 }

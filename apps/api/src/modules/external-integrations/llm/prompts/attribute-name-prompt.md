@@ -3,7 +3,7 @@
 A food-discovery app groups synonymous attribute terms — filters diners tap —
 under one canonical display name. You are given one synonym group:
 
-- `kind` — `food_attribute` (a property of a dish) or `restaurant_attribute`
+- `kind` — `item_attribute` (a property of a dish) or `place_attribute`
   (a property of a place).
 - `terms` — the group's names, all meaning the same filter.
 

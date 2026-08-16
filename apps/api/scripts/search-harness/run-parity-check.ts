@@ -64,7 +64,7 @@ async function main(): Promise<void> {
          FROM entity_surface a
          JOIN core_entities e ON e.entity_id = a.entity_id
         WHERE a.locale LIKE 'es%' AND a.status = 'active' AND a.role <> 'display'
-          AND e.status = 'active' AND e.type = 'food'::entity_type
+          AND e.status = 'active' AND e.type = 'item'::entity_type
           AND lower(a.form) <> lower(e.name)
           AND NOT EXISTS (
                 SELECT 1 FROM entity_surface b

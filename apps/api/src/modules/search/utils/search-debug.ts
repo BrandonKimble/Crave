@@ -49,10 +49,10 @@ export function summarizeEntities(
   };
 
   return {
-    restaurants: summarizeGroup(entities.restaurants),
-    food: summarizeGroup(entities.food),
-    foodAttributes: summarizeGroup(entities.foodAttributes),
-    restaurantAttributes: summarizeGroup(entities.restaurantAttributes),
+    places: summarizeGroup(entities.places),
+    item: summarizeGroup(entities.items),
+    itemAttributes: summarizeGroup(entities.itemAttributes),
+    placeAttributes: summarizeGroup(entities.placeAttributes),
   };
 }
 

@@ -99,7 +99,7 @@ async function getCandidates(): Promise<Candidate[]> {
         on s.subject_id = e.entity_id and s.subject_type = 'restaurant'
       join core_restaurant_locations rl on rl.location_id = e.primary_location_id
       cross join austin_place ap
-      where e.type = 'restaurant'
+      where e.type = 'place'
         and ap.place_id is not null
         and ST_Covers(ap.geometry, ST_SetSRID(ST_MakePoint(rl.longitude, rl.latitude), 4326))
       order by s.display_score desc
@@ -164,7 +164,7 @@ async function main(): Promise<void> {
   let created = 0;
   for (const c of candidates) {
     const existing = await prisma.photo.count({
-      where: { restaurantId: c.entityId, userId: importUserId },
+      where: { placeId: c.entityId, userId: importUserId },
     });
     if (existing >= 5) {
       console.log(`skip (${existing} already): ${c.name}`);
@@ -195,7 +195,7 @@ async function main(): Promise<void> {
           data: {
             photoId,
             userId: importUserId,
-            restaurantId: c.entityId,
+            placeId: c.entityId,
             publicId,
             status: 'live',
             visibility: 'public',

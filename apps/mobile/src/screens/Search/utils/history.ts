@@ -10,7 +10,7 @@ const buildRecentSearchLookup = (
   const restaurantIds = new Set<string>();
   recentSearches.forEach((entry) => {
     names.add(normalizeHistoryLabel(entry.queryText));
-    if (entry.selectedEntityType === 'restaurant' && entry.selectedEntityId) {
+    if (entry.selectedEntityType === 'place' && entry.selectedEntityId) {
       restaurantIds.add(entry.selectedEntityId);
     }
   });
@@ -26,9 +26,9 @@ export const filterRecentlyViewedByRecentSearches = (
   }
   const lookup = buildRecentSearchLookup(recentSearches);
   return recentlyViewed.filter((item) => {
-    if (lookup.restaurantIds.has(item.restaurantId)) {
+    if (lookup.restaurantIds.has(item.placeId)) {
       return false;
     }
-    return !lookup.names.has(normalizeHistoryLabel(item.restaurantName));
+    return !lookup.names.has(normalizeHistoryLabel(item.placeName));
   });
 };

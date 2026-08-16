@@ -28,8 +28,8 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { ProjectionRebuildService } from '../../content-processing/reddit-collector/projection-rebuild.service';
 import {
-  writeRestaurantEntityEvents,
-  writeRestaurantEvents,
+  writePlaceEntityEvents,
+  writePlaceEvents,
 } from '../../content-processing/reddit-collector/extraction-scope.service';
 import {
   POLL_SURFACE_PLATFORM,
@@ -43,9 +43,9 @@ export const BALLOT_PROMPT_HASH = 'ballot-k6-v1';
 
 interface BallotChoice {
   userId: string;
-  restaurantId: string;
+  placeId: string;
   /** Set for dish-axis (connection) choices. */
-  foodId: string | null;
+  itemId: string | null;
 }
 
 @Injectable()
@@ -105,15 +105,15 @@ export class PollBallotMentionService {
     });
     if (existingDocument?.activeExtractionRunId) {
       const [minted, mintedEntity] = await Promise.all([
-        this.prisma.restaurantEvent.findMany({
+        this.prisma.placeEvent.findMany({
           where: { extractionRunId: existingDocument.activeExtractionRunId },
-          select: { restaurantId: true },
-          distinct: ['restaurantId'],
+          select: { placeId: true },
+          distinct: ['placeId'],
         }),
-        this.prisma.restaurantEntityEvent.findMany({
+        this.prisma.placeEntityEvent.findMany({
           where: { extractionRunId: existingDocument.activeExtractionRunId },
-          select: { restaurantId: true },
-          distinct: ['restaurantId'],
+          select: { placeId: true },
+          distinct: ['placeId'],
         }),
       ]);
       if (minted.length > 0 || mintedEntity.length > 0) {
@@ -121,16 +121,16 @@ export class PollBallotMentionService {
         // mint commit and the projection rebuild would otherwise leave the
         // evidence invisible forever (this early return was the only path
         // that skipped the rebuild). Rebuild is idempotent — run it here too.
-        await this.projectionRebuild.rebuildForRestaurants([
+        await this.projectionRebuild.rebuildForPlaces([
           ...new Set(
-            [...minted, ...mintedEntity].map((event) => event.restaurantId),
+            [...minted, ...mintedEntity].map((event) => event.placeId),
           ),
         ]);
         return;
       }
     }
 
-    const affectedRestaurantIds = new Set<string>();
+    const affectedPlaceIds = new Set<string>();
     await this.prisma.$transaction(async (tx) => {
       const document = existingDocument
         ? { documentId: existingDocument.documentId }
@@ -201,7 +201,7 @@ export class PollBallotMentionService {
       let ordinal = 1;
       for (const choice of choices) {
         const mentionKey = `poll-ballot:${pollId}:${choice.userId}`;
-        affectedRestaurantIds.add(choice.restaurantId);
+        affectedPlaceIds.add(choice.placeId);
         // source_id is VARCHAR(64); base (48 chars) + raw voter uuid
         // overflows it and Postgres 22001-aborts the whole graduation
         // (round-3 red team C1) — a short voter hash keeps it at 61.
@@ -248,21 +248,21 @@ export class PollBallotMentionService {
           skipDuplicates: true,
         });
         ordinal += 1;
-        if (choice.foodId) {
+        if (choice.itemId) {
           // Dish-axis choice: a direct menu-item mention (m=1) — exactly the
           // shape the projection counts as one dish mention. Written through
           // THE redirect-aware chokepoint: resolveBallot resolves redirects
           // at read, but a merge landing between that read and this insert
           // would otherwise put the vote on a tombstone.
-          await writeRestaurantEntityEvents(tx, [
+          await writePlaceEntityEvents(tx, [
             {
               extractionRunId: run.extractionRunId,
               inputId: input.inputId,
               sourceDocumentId: voterDocument.documentId,
-              restaurantId: choice.restaurantId,
+              placeId: choice.placeId,
               mentionKey,
-              entityId: choice.foodId,
-              entityType: EntityType.food,
+              entityId: choice.itemId,
+              entityType: EntityType.item,
               evidenceType: 'menu_item_food',
               isMenuItem: true,
               mentionedAt,
@@ -273,12 +273,12 @@ export class PollBallotMentionService {
         } else {
           // Restaurant-axis choice: one restaurant-level mention. The score's
           // praise read dedupes by mention_key and counts it m=1; upvotes 0.
-          await writeRestaurantEvents(tx, [
+          await writePlaceEvents(tx, [
             {
               extractionRunId: run.extractionRunId,
               inputId: input.inputId,
               sourceDocumentId: voterDocument.documentId,
-              restaurantId: choice.restaurantId,
+              placeId: choice.placeId,
               mentionKey,
               evidenceType: 'poll_ballot',
               mentionedAt,
@@ -301,13 +301,11 @@ export class PollBallotMentionService {
       });
     });
 
-    await this.projectionRebuild.rebuildForRestaurants([
-      ...affectedRestaurantIds,
-    ]);
+    await this.projectionRebuild.rebuildForPlaces([...affectedPlaceIds]);
     this.logger.info('Minted K6 ballot mentions', {
       pollId,
       distinctVoters: choices.length,
-      restaurants: affectedRestaurantIds.size,
+      places: affectedPlaceIds.size,
     });
   }
 
@@ -347,16 +345,16 @@ export class PollBallotMentionService {
     const parsed = [...latestByUser.values()]
       .map((endorsement) => {
         if (endorsement.subjectType === PollLeaderboardSubjectType.connection) {
-          const [restaurantId, foodId] = endorsement.subjectId.split('::');
-          if (!restaurantId || !foodId) {
+          const [placeId, itemId] = endorsement.subjectId.split('::');
+          if (!placeId || !itemId) {
             return null;
           }
-          return { userId: endorsement.userId, restaurantId, foodId };
+          return { userId: endorsement.userId, placeId, itemId };
         }
         return {
           userId: endorsement.userId,
-          restaurantId: endorsement.subjectId,
-          foodId: null,
+          placeId: endorsement.subjectId,
+          itemId: null,
         };
       })
       .filter((choice): choice is BallotChoice => choice !== null);
@@ -364,8 +362,8 @@ export class PollBallotMentionService {
     // §3 read-time identity: resolve every entity id through redirects.
     const ids = new Set<string>();
     parsed.forEach((choice) => {
-      ids.add(choice.restaurantId);
-      if (choice.foodId) ids.add(choice.foodId);
+      ids.add(choice.placeId);
+      if (choice.itemId) ids.add(choice.itemId);
     });
     const redirects = await this.prisma.entityRedirect.findMany({
       where: { fromEntityId: { in: [...ids] } },
@@ -376,9 +374,9 @@ export class PollBallotMentionService {
     );
     return parsed.map((choice) => ({
       userId: choice.userId,
-      restaurantId: redirectMap.get(choice.restaurantId) ?? choice.restaurantId,
-      foodId: choice.foodId
-        ? (redirectMap.get(choice.foodId) ?? choice.foodId)
+      placeId: redirectMap.get(choice.placeId) ?? choice.placeId,
+      itemId: choice.itemId
+        ? (redirectMap.get(choice.itemId) ?? choice.itemId)
         : null,
     }));
   }

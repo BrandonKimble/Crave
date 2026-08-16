@@ -4,30 +4,30 @@ import { SearchQueryBuilder } from './search-query.builder';
 import { renderInlinedSql } from './sql-preview';
 import type { SearchConstraints } from './search-constraints';
 
-const FOOD_ID = '33333333-3333-3333-3333-333333333333';
+const ITEM_ID = '33333333-3333-3333-3333-333333333333';
 
 function constraints(): SearchConstraints {
   return {
     format: 'dual_list',
     inputPresence: {
-      restaurants: 0,
-      food: 1,
-      foodAttributes: 0,
-      restaurantAttributes: 0,
+      places: 0,
+      items: 1,
+      itemAttributes: 0,
+      placeAttributes: 0,
     },
-    hadFoodGroup: true,
-    hadRestaurantGroup: false,
-    hadFoodAttributeGroup: false,
-    hadRestaurantAttributeGroup: false,
-    primaryFoodAttributeQuery: false,
+    hadItemGroup: true,
+    hadPlaceGroup: false,
+    hadItemAttributeGroup: false,
+    hadPlaceAttributeGroup: false,
+    primaryItemAttributeQuery: false,
     grounding: {
-      food: { anchors: [], family: [], similar: {}, twinIngredientIds: [] },
+      item: { anchors: [], family: [], similar: {}, twinIngredientIds: [] },
     },
     ids: {
-      restaurantIds: [],
-      foodIds: [FOOD_ID],
-      foodAttributeIds: [],
-      restaurantAttributeIds: [],
+      placeIds: [],
+      itemIds: [ITEM_ID],
+      itemAttributeIds: [],
+      placeAttributeIds: [],
       ingredientIds: [],
     },
     filters: { priceLevels: [], minimumVotes: null, rising: false },
@@ -52,7 +52,7 @@ function constraints(): SearchConstraints {
 describe('restaurant rollup counts one claim once, most specific carrier wins', () => {
   const preview = (): string =>
     renderInlinedSql(
-      new SearchQueryBuilder().buildRestaurantQuery({
+      new SearchQueryBuilder().buildPlaceQuery({
         plan: compileQueryPlanFromConstraints(constraints()),
         pagination: { skip: 0, take: 10 },
         searchCenter: null,

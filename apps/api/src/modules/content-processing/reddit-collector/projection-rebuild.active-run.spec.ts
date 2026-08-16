@@ -38,18 +38,15 @@ function buildService(captured: Captured[]) {
         },
       ),
     // Present so a regression back to the ORM shape is caught, not silently run.
-    restaurantEvent: { findMany: jest.fn().mockResolvedValue([]) },
-    restaurantEntityEvent: { findMany: jest.fn().mockResolvedValue([]) },
+    placeEvent: { findMany: jest.fn().mockResolvedValue([]) },
+    placeEntityEvent: { findMany: jest.fn().mockResolvedValue([]) },
   };
   const service = new ProjectionRebuildService(
     {} as never,
     logger as never,
   ) as unknown as {
-    loadActiveRestaurantEvents: (
-      tx: unknown,
-      ids: string[],
-    ) => Promise<unknown[]>;
-    loadActiveRestaurantEntityEvents: (
+    loadActivePlaceEvents: (tx: unknown, ids: string[]) => Promise<unknown[]>;
+    loadActivePlaceEntityEvents: (
       tx: unknown,
       ids: string[],
     ) => Promise<unknown[]>;
@@ -67,7 +64,7 @@ describe.each([
       s: ReturnType<typeof buildService>['service'],
       tx: unknown,
       ids: string[],
-    ) => s.loadActiveRestaurantEvents(tx, ids),
+    ) => s.loadActivePlaceEvents(tx, ids),
   ],
   [
     'loadActiveRestaurantEntityEvents',
@@ -76,7 +73,7 @@ describe.each([
       s: ReturnType<typeof buildService>['service'],
       tx: unknown,
       ids: string[],
-    ) => s.loadActiveRestaurantEntityEvents(tx, ids),
+    ) => s.loadActivePlaceEntityEvents(tx, ids),
   ],
 ] as const)('%s', (_name, table, load) => {
   it('excludes non-active generations INSIDE the join, not in JS', async () => {
@@ -102,8 +99,8 @@ describe.each([
 
     await load(service, tx, IDS);
 
-    expect(tx.restaurantEvent.findMany).not.toHaveBeenCalled();
-    expect(tx.restaurantEntityEvent.findMany).not.toHaveBeenCalled();
+    expect(tx.placeEvent.findMany).not.toHaveBeenCalled();
+    expect(tx.placeEntityEvent.findMany).not.toHaveBeenCalled();
   });
 
   it('does not select the joined column it used to carry only to discard rows', async () => {

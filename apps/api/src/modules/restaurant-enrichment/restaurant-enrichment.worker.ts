@@ -3,19 +3,19 @@ import { Process, Processor } from '@nestjs/bull';
 import { Job } from 'bull';
 import { LoggerService } from '../../shared';
 import { runInWorkContext } from '../external-integrations/shared/work-context';
-import { RestaurantLocationEnrichmentService } from './restaurant-location-enrichment.service';
+import { PlaceLocationEnrichmentService } from './restaurant-location-enrichment.service';
 import {
-  RESTAURANT_ENRICHMENT_QUEUE_NAME,
-  RESTAURANT_ENRICHMENT_JOB_NAME,
-  RestaurantEnrichmentJobData,
+  PLACE_ENRICHMENT_QUEUE_NAME,
+  PLACE_ENRICHMENT_JOB_NAME,
+  PlaceEnrichmentJobData,
 } from './restaurant-enrichment-queue.service';
 
-@Processor(RESTAURANT_ENRICHMENT_QUEUE_NAME)
-export class RestaurantEnrichmentWorker implements OnModuleInit {
+@Processor(PLACE_ENRICHMENT_QUEUE_NAME)
+export class PlaceEnrichmentWorker implements OnModuleInit {
   private logger!: LoggerService;
 
   constructor(
-    private readonly enrichment: RestaurantLocationEnrichmentService,
+    private readonly enrichment: PlaceLocationEnrichmentService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
@@ -23,10 +23,10 @@ export class RestaurantEnrichmentWorker implements OnModuleInit {
     this.logger = this.loggerService.setContext('RestaurantEnrichmentWorker');
   }
 
-  @Process({ name: RESTAURANT_ENRICHMENT_JOB_NAME, concurrency: 5 })
-  async handle(job: Job<RestaurantEnrichmentJobData>): Promise<void> {
-    const restaurantId = job.data?.restaurantId?.trim();
-    if (!restaurantId) {
+  @Process({ name: PLACE_ENRICHMENT_JOB_NAME, concurrency: 5 })
+  async handle(job: Job<PlaceEnrichmentJobData>): Promise<void> {
+    const placeId = job.data?.placeId?.trim();
+    if (!placeId) {
       this.logger.warn('Enrichment job missing restaurantId', {
         jobId: job.id,
       });
@@ -37,7 +37,7 @@ export class RestaurantEnrichmentWorker implements OnModuleInit {
     const result = await runInWorkContext(
       { campaignId: job.data.campaignId },
       () =>
-        this.enrichment.enrichRestaurantById(restaurantId, {
+        this.enrichment.enrichPlaceById(placeId, {
           sourceLocale: job.data.sourceLocale ?? undefined,
           countryCode: job.data.countryCode ?? undefined,
           locationBias: job.data.locationBias ?? undefined,
@@ -55,7 +55,7 @@ export class RestaurantEnrichmentWorker implements OnModuleInit {
     // queue's author configured actually runs.
     if (result.status === 'error') {
       throw new Error(
-        `enrichment failed for ${restaurantId}: ${result.reason ?? 'unknown'}`,
+        `enrichment failed for ${placeId}: ${result.reason ?? 'unknown'}`,
       );
     }
   }

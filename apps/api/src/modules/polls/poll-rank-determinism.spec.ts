@@ -37,7 +37,7 @@ function commentFor(subjectId: string, i: number) {
   return {
     commentId: `c${i}`,
     userId: `u${i}`,
-    entitySpans: [{ type: 'restaurant', entityId: subjectId }],
+    entitySpans: [{ type: 'place', entityId: subjectId }],
   };
 }
 
@@ -71,7 +71,7 @@ async function rebuildWithCommentOrder(
           placeId: null,
           topic: {
             topicType: PollTopicType.best_restaurant_attribute,
-            targetRestaurantId: null,
+            targetPlaceId: null,
             targetDishId: null,
             description: null,
           },

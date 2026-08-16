@@ -21,7 +21,7 @@ import type {
   CalibrationIndex,
   CraveScoreCandidates,
   DishCandidate,
-  RestaurantCandidate,
+  PlaceCandidate,
   ScoredCraveSubject,
   SourceContribution,
 } from '../src/modules/content-processing/public-crave-score';
@@ -141,7 +141,7 @@ let calibrationSummary: Record<string, unknown> = {};
 
 function runInMemoryChecks(): void {
   const dishes: DishCandidate[] = [];
-  const restaurants: RestaurantCandidate[] = [];
+  const places: PlaceCandidate[] = [];
   // §8: candidates carry per-source contributions; with no calibration index
   // (this in-memory suite) every room is neutral (g = 1) — raw v3 math, i.e.
   // the kill-condition baseline these named scenarios pin.
@@ -153,90 +153,86 @@ function runInMemoryChecks(): void {
   // the global percentile has a real population to spread across all buckets.
   for (let i = 0; i < 24; i += 1) {
     const id = `filler-${i}`;
-    restaurants.push({
-      restaurantId: id,
+    places.push({
+      placeId: id,
       praiseContributions: room(0, 0),
     });
     dishes.push({
       connectionId: `${id}-dish`,
-      restaurantId: id,
+      placeId: id,
       contributions: room(i + 1, (i + 1) * 5),
     });
   }
 
   // Named scenarios.
-  const addRestaurant = (
-    id: string,
-    praiseM: number,
-    praiseU: number,
-  ): void => {
-    restaurants.push({
-      restaurantId: id,
+  const addPlace = (id: string, praiseM: number, praiseU: number): void => {
+    places.push({
+      placeId: id,
       praiseContributions: room(praiseM, praiseU),
     });
   };
   const addDish = (rid: string, suffix: string, m: number, u: number): void => {
     dishes.push({
       connectionId: `${rid}-${suffix}`,
-      restaurantId: rid,
+      placeId: rid,
       contributions: room(m, u),
     });
   };
 
-  addRestaurant('peak', 0, 0);
+  addPlace('peak', 0, 0);
   addDish('peak', 'd1', 40, 300);
 
-  addRestaurant('mediocre', 0, 0);
+  addPlace('mediocre', 0, 0);
   addDish('mediocre', 'd1', 1, 1);
   addDish('mediocre', 'd2', 1, 1);
   addDish('mediocre', 'd3', 1, 1);
 
-  addRestaurant('broad', 0, 0);
+  addPlace('broad', 0, 0);
   addDish('broad', 'd1', 40, 300);
   addDish('broad', 'd2', 30, 200);
   addDish('broad', 'd3', 20, 120);
 
-  addRestaurant('peakWeak', 0, 0);
+  addPlace('peakWeak', 0, 0);
   addDish('peakWeak', 'd1', 40, 300);
   addDish('peakWeak', 'd2', 1, 1);
 
-  addRestaurant('dishlessStrong', 25, 400);
-  addRestaurant('dishlessWeak', 1, 2);
-  addRestaurant('empty', 0, 0); // no dishes, no praise → must be excluded
+  addPlace('dishlessStrong', 25, 400);
+  addPlace('dishlessWeak', 1, 2);
+  addPlace('empty', 0, 0); // no dishes, no praise → must be excluded
 
   // Reorder-regime cases — exercise the pooled model (upvote = mention = 1 vote),
   // the regime the extreme-separation fixtures above never hit.
-  addRestaurant('upvoteHeavyHost', 0, 0);
+  addPlace('upvoteHeavyHost', 0, 0);
   addDish('upvoteHeavyHost', 'd1', 1, 50); // 1 mention + 50 upvotes → 51 pooled
-  addRestaurant('mentionHeavyHost', 0, 0);
+  addPlace('mentionHeavyHost', 0, 0);
   addDish('mentionHeavyHost', 'd1', 10, 10); // 10 + 10 → 20 pooled
   // Calibration-only (no hard assert — the "right" order is a real-data call): a
   // single wildly-upvoted dish vs a broad-but-modest menu with some by-name praise.
-  addRestaurant('viralOneDish', 0, 0);
+  addPlace('viralOneDish', 0, 0);
   addDish('viralOneDish', 'd1', 2, 500);
-  addRestaurant('broadModest', 8, 12);
+  addPlace('broadModest', 8, 12);
   addDish('broadModest', 'd1', 5, 10);
   addDish('broadModest', 'd2', 5, 10);
   addDish('broadModest', 'd3', 5, 10);
   addDish('broadModest', 'd4', 5, 10);
 
-  const scored = score({ dishes, restaurants });
-  const restaurantScored = scored.filter((r) => r.subjectType === 'restaurant');
+  const scored = score({ dishes, places });
+  const placeScored = scored.filter((r) => r.subjectType === 'restaurant');
   const dishScored = scored.filter((r) => r.subjectType === 'connection');
-  const byId = new Map(restaurantScored.map((r) => [r.subjectId, r]));
+  const byId = new Map(placeScored.map((r) => [r.subjectId, r]));
   const display = (id: string): number => byId.get(id)?.displayScore ?? -1;
   const dishById = new Map(dishScored.map((d) => [d.subjectId, d]));
   const dishDisplay = (id: string): number =>
     dishById.get(id)?.displayScore ?? -1;
 
-  const restDisplays = restaurantScored.map((r) => r.displayScore);
+  const restDisplays = placeScored.map((r) => r.displayScore);
   const dishDisplays = dishScored.map((r) => r.displayScore);
 
   calibrationSummary = {
-    restaurantCount: restaurantScored.length,
+    placeCount: placeScored.length,
     dishCount: dishScored.length,
-    restaurantBucketsCovered: bucketsCovered(restDisplays),
-    restaurantRange: [
+    placeBucketsCovered: bucketsCovered(restDisplays),
+    placeRange: [
       round(Math.min(...restDisplays)),
       round(Math.max(...restDisplays)),
     ],
@@ -412,28 +408,28 @@ function runCalibrationChecks(): void {
 
   const buildCandidates = (): CraveScoreCandidates => {
     const dishes: DishCandidate[] = [];
-    const restaurants: RestaurantCandidate[] = [];
+    const places: PlaceCandidate[] = [];
     for (let i = 0; i < 24; i += 1) {
       const id = `cal-filler-${i}`;
-      restaurants.push({ restaurantId: id, praiseContributions: [] });
+      places.push({ placeId: id, praiseContributions: [] });
       dishes.push({
         connectionId: `${id}-dish`,
-        restaurantId: id,
+        placeId: id,
         contributions: roomOf('src-metro', 'reddit', i + 1, (i + 1) * 5),
       });
     }
     const add = (rid: string, sourceId: string, m: number, u: number): void => {
-      restaurants.push({ restaurantId: rid, praiseContributions: [] });
+      places.push({ placeId: rid, praiseContributions: [] });
       dishes.push({
         connectionId: `${rid}-d1`,
-        restaurantId: rid,
+        placeId: rid,
         contributions: roomOf(sourceId, 'reddit', m, u),
       });
     };
     add('metroElite', 'src-metro', 40, 300);
     add('sparseWinner', 'src-sparse', 2, 4);
     add('metroTwin', 'src-metro', 2, 4); // identical raw counts, metro room
-    return { dishes, restaurants };
+    return { dishes, places };
   };
 
   const displayUnder = (index: CalibrationIndex): ((id: string) => number) => {
@@ -493,19 +489,19 @@ function runCalibrationChecks(): void {
     const linDishes: DishCandidate[] = [
       {
         connectionId: 'lin-u10',
-        restaurantId: 'lin-host',
+        placeId: 'lin-host',
         contributions: roomOf('src-metro', 'reddit', 0, 10),
       },
       {
         connectionId: 'lin-u20',
-        restaurantId: 'lin-host',
+        placeId: 'lin-host',
         contributions: roomOf('src-metro', 'reddit', 0, 20),
       },
     ];
     const scored = scorer.scoreCandidates(
       {
         dishes: linDishes,
-        restaurants: [{ restaurantId: 'lin-host', praiseContributions: [] }],
+        places: [{ placeId: 'lin-host', praiseContributions: [] }],
       },
       config,
       calibrated,
@@ -532,13 +528,13 @@ function runCalibrationChecks(): void {
   // ordering sentences must survive non-neutral g (rooms mixed on purpose).
   {
     const dishes: DishCandidate[] = [];
-    const restaurants: RestaurantCandidate[] = [];
+    const places: PlaceCandidate[] = [];
     for (let i = 0; i < 24; i += 1) {
       const id = `dial-filler-${i}`;
-      restaurants.push({ restaurantId: id, praiseContributions: [] });
+      places.push({ placeId: id, praiseContributions: [] });
       dishes.push({
         connectionId: `${id}-dish`,
-        restaurantId: id,
+        placeId: id,
         contributions: roomOf('src-metro', 'reddit', i + 1, (i + 1) * 5),
       });
     }
@@ -551,35 +547,29 @@ function runCalibrationChecks(): void {
     ): void => {
       dishes.push({
         connectionId: `${rid}-${suffix}`,
-        restaurantId: rid,
+        placeId: rid,
         contributions: roomOf(sourceId, 'reddit', m, u),
       });
     };
-    const addRestaurant = (
-      rid: string,
-      praise: SourceContribution[] = [],
-    ): void => {
-      restaurants.push({ restaurantId: rid, praiseContributions: praise });
+    const addPlace = (rid: string, praise: SourceContribution[] = []): void => {
+      places.push({ placeId: rid, praiseContributions: praise });
     };
-    addRestaurant('dial-peak');
+    addPlace('dial-peak');
     addDish('dial-peak', 'd1', 'src-metro', 40, 300);
-    addRestaurant('dial-mediocre');
+    addPlace('dial-mediocre');
     addDish('dial-mediocre', 'd1', 'src-sparse', 1, 1);
     addDish('dial-mediocre', 'd2', 'src-metro', 1, 1);
     addDish('dial-mediocre', 'd3', 'src-metro', 1, 1);
-    addRestaurant('dial-broad');
+    addPlace('dial-broad');
     addDish('dial-broad', 'd1', 'src-metro', 40, 300);
     addDish('dial-broad', 'd2', 'src-sparse', 3, 20);
     addDish('dial-broad', 'd3', 'src-metro', 20, 120);
-    addRestaurant('dial-peakWeak');
+    addPlace('dial-peakWeak');
     addDish('dial-peakWeak', 'd1', 'src-metro', 40, 300);
     addDish('dial-peakWeak', 'd2', 'src-sparse', 1, 1);
-    addRestaurant(
-      'dial-dishlessStrong',
-      roomOf('src-metro', 'reddit', 25, 400),
-    );
+    addPlace('dial-dishlessStrong', roomOf('src-metro', 'reddit', 25, 400));
     const scored = scorer.scoreCandidates(
-      { dishes, restaurants },
+      { dishes, places },
       config,
       calibrated,
     );
@@ -630,16 +620,16 @@ function runCalibrationChecks(): void {
         dishes: [
           {
             connectionId: 'conc-dense',
-            restaurantId: 'conc-host',
+            placeId: 'conc-host',
             contributions: roomOf('src-dense', 'reddit', 100, 0),
           },
           {
             connectionId: 'conc-light',
-            restaurantId: 'conc-host',
+            placeId: 'conc-host',
             contributions: roomOf('src-light', 'reddit', 10, 0),
           },
         ],
-        restaurants: [{ restaurantId: 'conc-host', praiseContributions: [] }],
+        places: [{ placeId: 'conc-host', praiseContributions: [] }],
       },
       config,
       concIndex,
@@ -761,13 +751,13 @@ async function runDbSmokeCheck(): Promise<void> {
   const rows = await prisma.$queryRaw<
     Array<{ subject_type: string; display_score: unknown }>
   >`SELECT subject_type, display_score FROM core_public_entity_scores WHERE score_version = ${config.scoreVersion}`;
-  const restaurants = rows
+  const places = rows
     .filter((r) => r.subject_type === 'restaurant')
     .map((r) => Number(r.display_score));
   const connections = rows
     .filter((r) => r.subject_type === 'connection')
     .map((r) => Number(r.display_score));
-  const all = [...restaurants, ...connections];
+  const all = [...places, ...connections];
 
   const [orphan] = await prisma.$queryRaw<Array<{ c: bigint }>>`
     SELECT COUNT(*) c
@@ -775,19 +765,19 @@ async function runDbSmokeCheck(): Promise<void> {
     WHERE s.subject_type = 'restaurant'
       AND NOT EXISTS (
         SELECT 1 FROM core_entities e
-        WHERE e.entity_id = s.subject_id AND e.type = 'restaurant'
+        WHERE e.entity_id = s.subject_id AND e.type = 'place'
       )
   `;
 
   expectCheck(
     'DB rebuild scores both restaurants and dishes',
-    restaurants.length > 0 && connections.length > 0,
+    places.length > 0 && connections.length > 0,
     'restaurants > 0 and connections > 0',
     {
       // Counted from the written rows: the coordinator's tick reports an
       // outcome, not a row count, and the rows are the fact we care about.
       scored: rows.length,
-      restaurants: restaurants.length,
+      places: places.length,
       connections: connections.length,
     },
   );
@@ -804,9 +794,9 @@ async function runDbSmokeCheck(): Promise<void> {
 
   expectCheck(
     'DB restaurant scores spread across the full color range',
-    bucketsCovered(restaurants) >= 7,
+    bucketsCovered(places) >= 7,
     'covers >=7 of 10 buckets',
-    { buckets: bucketsCovered(restaurants) },
+    { buckets: bucketsCovered(places) },
   );
 
   expectCheck(

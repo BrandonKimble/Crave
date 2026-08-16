@@ -103,7 +103,7 @@ const resolveMultiLocationFocusCamera = ({
 };
 
 export const resolveRestaurantProfileCameraMotion = ({
-  restaurantId,
+  placeId,
   source,
   focusTarget,
   cameraActionModel: {
@@ -119,7 +119,7 @@ export const resolveRestaurantProfileCameraMotion = ({
     restaurantFocusZoomEpsilon,
   },
 }: {
-  restaurantId: string;
+  placeId: string;
   source: SearchProfileSource;
   focusTarget: RestaurantProfileFocusTarget | null;
   cameraActionModel: ProfileRestaurantCameraActionModel;
@@ -134,7 +134,7 @@ export const resolveRestaurantProfileCameraMotion = ({
   }
 
   const { focusCoordinate, focusLocationKey } = focusTarget;
-  const isSameRestaurantFocusSession = previousFocusSession.restaurantId === restaurantId;
+  const isSameRestaurantFocusSession = previousFocusSession.placeId === placeId;
   const isMultiLocationTarget =
     shouldUseMultiLocationZoomForSource(source) && restaurantLocations.length > 1;
   let nextCenter: [number, number] = [focusCoordinate.lng, focusCoordinate.lat];
@@ -212,7 +212,7 @@ export const resolveRestaurantProfileCameraMotion = ({
         padding: profilePadding,
       },
       nextFocusSession: {
-        restaurantId,
+        placeId,
         locationKey: focusLocationKey,
         hasAppliedInitialMultiLocationZoomOut: nextHasAppliedMultiLocationZoomOut,
       },
@@ -225,7 +225,7 @@ export const resolveRestaurantProfileCameraMotion = ({
     return {
       targetCamera: null,
       nextFocusSession: {
-        restaurantId,
+        placeId,
         locationKey: focusLocationKey,
         hasAppliedInitialMultiLocationZoomOut: nextHasAppliedMultiLocationZoomOut,
       },

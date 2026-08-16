@@ -63,7 +63,7 @@ const LOW_LOCATION_ID = '00000000-0000-4000-8000-0000000000a1';
 const HIGH_LOCATION_ID = 'ffffffff-ffff-4fff-8fff-ffffffffffa1';
 
 let scoreRunId: string;
-let restaurantId: string;
+let placeId: string;
 const seeded: string[] = [];
 
 beforeAll(async () => {
@@ -84,20 +84,20 @@ beforeAll(async () => {
   scoreRunId = run.scoreRunId;
 
   const entity = await prisma.entity.create({
-    data: { name: `${TEST_TAG}-restaurant`, type: 'restaurant' },
+    data: { name: `${TEST_TAG}-restaurant`, type: 'place' },
   });
-  restaurantId = entity.entityId;
-  seeded.push(restaurantId);
+  placeId = entity.entityId;
+  seeded.push(placeId);
 
   // Insertion order is the REVERSE of the required output order.
   for (const [index, locationId] of [
     HIGH_LOCATION_ID,
     LOW_LOCATION_ID,
   ].entries()) {
-    await prisma.restaurantLocation.create({
+    await prisma.placeLocation.create({
       data: {
         locationId,
-        restaurantId,
+        placeId,
         googlePlaceId: `${TEST_TAG}-place-${index}`,
         address: `${index} Test Way`,
         longitude: LNG + index * 0.001,
@@ -106,17 +106,17 @@ beforeAll(async () => {
     });
   }
 
-  const food = await prisma.entity.create({
-    data: { name: `${TEST_TAG}-food`, type: 'food' },
+  const item = await prisma.entity.create({
+    data: { name: `${TEST_TAG}-food`, type: 'item' },
   });
-  seeded.push(food.entityId);
+  seeded.push(item.entityId);
   await prisma.connection.create({
-    data: { restaurantId, foodId: food.entityId },
+    data: { placeId, itemId: item.entityId },
   });
   await prisma.publicEntityScore.create({
     data: {
       subjectType: 'restaurant',
-      subjectId: restaurantId,
+      subjectId: placeId,
       scoreRunId,
       endorsementRaw: 1,
       // Both location rows read THIS one score row, so they are tied on every
@@ -133,8 +133,8 @@ afterAll(async () => {
   await prisma.publicEntityScore.deleteMany({
     where: { scoreVersion: TEST_TAG },
   });
-  await prisma.connection.deleteMany({ where: { restaurantId } });
-  await prisma.restaurantLocation.deleteMany({ where: { restaurantId } });
+  await prisma.connection.deleteMany({ where: { placeId } });
+  await prisma.placeLocation.deleteMany({ where: { placeId } });
   await prisma.entity.deleteMany({ where: { entityId: { in: seeded } } });
   await prisma.craveScoreRun.deleteMany({ where: { scoreRunId } });
   await prisma.$disconnect();
@@ -146,7 +146,7 @@ describe('shortcut coverage: fully-tied locations of one restaurant get a total 
       bounds: BOUNDS,
     } as never)) as { features: Feature[] };
     return geojson.features
-      .filter((f) => f.properties.restaurantId === restaurantId)
+      .filter((f) => f.properties.placeId === placeId)
       .map((f) => f.properties.locationId);
   }
 

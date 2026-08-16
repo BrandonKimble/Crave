@@ -40,8 +40,8 @@ export const useProfilePanelSeedRuntime = ({
       queryLabel: string,
       options?: { selectedLocationId?: string | null }
     ) => {
-      const restaurantId = restaurant.restaurantId;
-      const cachedProfile = getCachedRestaurantProfile(restaurantId);
+      const placeId = restaurant.placeId;
+      const cachedProfile = getCachedRestaurantProfile(placeId);
 
       setRestaurantPanelSnapshot((prev) =>
         createSeededRestaurantPanelSnapshot({

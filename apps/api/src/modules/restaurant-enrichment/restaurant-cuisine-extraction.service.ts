@@ -43,7 +43,7 @@ const CUISINE_STRIP_TOKENS = new Set([
 const CUISINE_SPLIT_PATTERN = /[,&/;|]+/g;
 
 @Injectable()
-export class RestaurantCuisineExtractionService {
+export class PlaceCuisineExtractionService {
   private readonly logger: LoggerService;
 
   constructor(
@@ -55,38 +55,38 @@ export class RestaurantCuisineExtractionService {
     this.logger = loggerService.setContext('RestaurantCuisineExtraction');
   }
 
-  async extractCuisineForRestaurant(
-    restaurantId: string,
+  async extractCuisineForPlace(
+    placeId: string,
     options: { source?: string } = {},
   ): Promise<void> {
     const entity = await this.prisma.entity.findUnique({
-      where: { entityId: restaurantId },
+      where: { entityId: placeId },
       select: {
         entityId: true,
         name: true,
         type: true,
-        restaurantAttributes: true,
-        restaurantMetadata: true,
+        placeAttributes: true,
+        placeMetadata: true,
       },
     });
 
     if (!entity) {
       this.logger.warn('Cuisine extraction skipped (restaurant not found)', {
-        restaurantId,
+        placeId,
         source: options.source,
       });
       return;
     }
 
-    if (entity.type !== EntityType.restaurant) {
+    if (entity.type !== EntityType.place) {
       this.logger.warn('Cuisine extraction skipped (not a restaurant)', {
-        restaurantId: entity.entityId,
+        placeId: entity.entityId,
         type: entity.type,
       });
       return;
     }
 
-    const metadata = this.toRecord(entity.restaurantMetadata);
+    const metadata = this.toRecord(entity.placeMetadata);
     const existingExtraction = this.toRecord(metadata.cuisineExtraction);
     const extractedAt = this.coerceString(existingExtraction.extractedAt);
     const priorAttributeIds = this.coerceStringArray(
@@ -116,19 +116,19 @@ export class RestaurantCuisineExtractionService {
     if (extractedAt) {
       if (priorAttributeIds.length > 0) {
         const mergedAttributes = this.unionStringArrays(
-          entity.restaurantAttributes,
+          entity.placeAttributes,
           priorAttributeIds,
         );
         if (
           !this.setsEqual(
-            new Set(entity.restaurantAttributes),
+            new Set(entity.placeAttributes),
             new Set(mergedAttributes),
           )
         ) {
           await this.prisma.entity.update({
             where: { entityId: entity.entityId },
             data: {
-              restaurantAttributes: mergedAttributes,
+              placeAttributes: mergedAttributes,
               lastUpdated: new Date(),
             },
           });
@@ -140,7 +140,7 @@ export class RestaurantCuisineExtractionService {
       }
 
       this.logger.debug('Cuisine extraction already completed', {
-        restaurantId: entity.entityId,
+        placeId: entity.entityId,
         extractedAt,
       });
       return;
@@ -174,7 +174,7 @@ export class RestaurantCuisineExtractionService {
       // Write NO record: the absence IS "not yet asked", and the next run
       // re-tries once first evidence exists (F4948).
       this.logger.debug('Cuisine extraction deferred (no evidence yet)', {
-        restaurantId: entity.entityId,
+        placeId: entity.entityId,
         source: options.source,
       });
       return;
@@ -182,7 +182,7 @@ export class RestaurantCuisineExtractionService {
 
     const normalizedCuisines = this.normalizeCuisineList(rawCuisines);
     const scopeCheck = this.aliasManagement.validateScopeConstraints(
-      EntityType.restaurant_attribute,
+      EntityType.place_attribute,
       normalizedCuisines,
     );
     const filteredCuisines = this.normalizeCuisineList(scopeCheck.validAliases);
@@ -192,7 +192,7 @@ export class RestaurantCuisineExtractionService {
         ? await this.resolveCuisineAttributeIds(filteredCuisines)
         : [];
     const mergedAttributes = this.unionStringArrays(
-      entity.restaurantAttributes,
+      entity.placeAttributes,
       cuisineAttributeIds,
     );
 
@@ -205,21 +205,21 @@ export class RestaurantCuisineExtractionService {
     };
 
     const updatedMetadata = this.applyCuisineMetadata(
-      entity.restaurantMetadata,
+      entity.placeMetadata,
       cuisineMetadata,
     );
 
     await this.prisma.entity.update({
       where: { entityId: entity.entityId },
       data: {
-        restaurantAttributes: mergedAttributes,
-        restaurantMetadata: updatedMetadata,
+        placeAttributes: mergedAttributes,
+        placeMetadata: updatedMetadata,
         lastUpdated: new Date(),
       },
     });
 
     this.logger.info('Cuisine extraction completed', {
-      restaurantId: entity.entityId,
+      placeId: entity.entityId,
       cuisines: filteredCuisines,
       source,
       matchedTypes: typeMapping.matchedTypes,
@@ -372,7 +372,7 @@ export class RestaurantCuisineExtractionService {
         this.buildCuisineAliases(cuisine),
       );
       const scopeCheck = this.aliasManagement.validateScopeConstraints(
-        EntityType.restaurant_attribute,
+        EntityType.place_attribute,
         aliasCandidates,
       );
       const scopedAliases = this.normalizeAliasList(scopeCheck.validAliases);
@@ -402,8 +402,8 @@ export class RestaurantCuisineExtractionService {
       const created = await this.prisma.entity.create({
         data: {
           name: cuisine,
-          type: EntityType.restaurant_attribute,
-          ...identityInsertData(cuisine, EntityType.restaurant_attribute),
+          type: EntityType.place_attribute,
+          ...identityInsertData(cuisine, EntityType.place_attribute),
         },
         select: { entityId: true },
       });
@@ -553,15 +553,15 @@ export class RestaurantCuisineExtractionService {
 
   /** Phase 4b: cuisine-LLM attribute claims -> evidence substrate. */
   private async recordCuisineEvidence(
-    restaurantId: string,
+    placeId: string,
     attributeIds: string[],
   ): Promise<void> {
     const ids = Array.from(new Set(attributeIds.filter(Boolean)));
-    if (!restaurantId || !ids.length) return;
+    if (!placeId || !ids.length) return;
     try {
-      await this.prisma.restaurantAttributeEvidence.createMany({
+      await this.prisma.placeAttributeEvidence.createMany({
         data: ids.map((attributeId) => ({
-          restaurantId,
+          placeId,
           attributeId,
           sourceClass: 'cuisine_llm',
           observations: 1,
@@ -571,7 +571,7 @@ export class RestaurantCuisineExtractionService {
     } catch (error) {
       this.logger.warn('Cuisine attribute evidence write failed', {
         operation: 'attribute_evidence_write',
-        restaurantId,
+        placeId,
         error: {
           message: error instanceof Error ? error.message : String(error),
         },

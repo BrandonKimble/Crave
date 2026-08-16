@@ -21,12 +21,12 @@ describe('alias ingress guards — proven against a live database', () => {
   const prisma = new PrismaClient();
   const made: string[] = [];
 
-  const mintFood = async (name: string): Promise<string> => {
+  const mintItem = async (name: string): Promise<string> => {
     const id = randomUUID();
-    const identity = identityInsertData(name, 'food' as never);
+    const identity = identityInsertData(name, 'item' as never);
     await prisma.$executeRawUnsafe(
       `INSERT INTO core_entities (entity_id, name, type, status, identity_key, identity_key_sorted)
-       VALUES ($1::uuid, $2, 'food'::entity_type, 'active'::entity_status, $3, $4)`,
+       VALUES ($1::uuid, $2, 'item'::entity_type, 'active'::entity_status, $3, $4)`,
       id,
       name,
       identity.identityKey,
@@ -51,7 +51,7 @@ describe('alias ingress guards — proven against a live database', () => {
   });
 
   it('P0-a: a locale-TAGGED surface is stored as a row but stays OUT of the untagged recall slice', async () => {
-    const id = await mintFood(`zzq guard dish ${randomUUID().slice(0, 8)}`);
+    const id = await mintItem(`zzq guard dish ${randomUUID().slice(0, 8)}`);
     await prisma.$transaction(async (tx) => {
       await addSurfaces(tx, id, [
         { form: 'zzq-untagged-surface', source: 'extraction' },
@@ -86,8 +86,8 @@ describe('alias ingress guards — proven against a live database', () => {
 
   it('P0-b: an INFERRED form that already names another entity is refused', async () => {
     const occupied = `zzq occupied name ${randomUUID().slice(0, 8)}`;
-    await mintFood(occupied); // this entity owns the name
-    const target = await mintFood(
+    await mintItem(occupied); // this entity owns the name
+    const target = await mintItem(
       `zzq target dish ${randomUUID().slice(0, 8)}`,
     );
 
@@ -110,8 +110,8 @@ describe('alias ingress guards — proven against a live database', () => {
 
   it('P0-b: an OBSERVED form is EXEMPT — testimony may collide', async () => {
     const occupied = `zzq observed name ${randomUUID().slice(0, 8)}`;
-    await mintFood(occupied);
-    const target = await mintFood(
+    await mintItem(occupied);
+    const target = await mintItem(
       `zzq observed target ${randomUUID().slice(0, 8)}`,
     );
 
@@ -133,7 +133,7 @@ describe('alias ingress guards — proven against a live database', () => {
     // property of the ROWS: (entity, locale, form) is unique, so a second
     // offer of the same form changes nothing. This is what let the enrichment
     // and knowledge passes stop hand-deduping against a loaded array.
-    const id = await mintFood(`zzq idem dish ${randomUUID().slice(0, 8)}`);
+    const id = await mintItem(`zzq idem dish ${randomUUID().slice(0, 8)}`);
     await prisma.$transaction(async (tx) => {
       await addSurfaces(tx, id, [{ form: 'zzq-idem-a', source: 'extraction' }]);
     });

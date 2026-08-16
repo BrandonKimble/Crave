@@ -186,9 +186,9 @@ type GroundSets = {
   rejects: Ids;
   twinIngredients: Ids;
   askIngredients: Ids;
-  softFoodAttrs: Ids;
+  softItemAttrs: Ids;
   softRestAttrs: Ids;
-  dietaryFoodAttrs: Ids;
+  dietaryItemAttrs: Ids;
   dietaryRestAttrs: Ids;
 };
 
@@ -197,16 +197,16 @@ async function deriveConceptSets(
   req: SearchQueryRequestDto,
 ): Promise<GroundSets> {
   const anchors = uniq(
-    (req.entities.food ?? []).flatMap((e) => e.entityIds ?? []),
+    (req.entities.items ?? []).flatMap((e) => e.entityIds ?? []),
   );
   const askIngredients = uniq(
     (req.entities.ingredients ?? []).flatMap((e) => e.entityIds ?? []),
   );
-  const foodAttrs = uniq(
-    (req.entities.foodAttributes ?? []).flatMap((e) => e.entityIds ?? []),
+  const itemAttrs = uniq(
+    (req.entities.itemAttributes ?? []).flatMap((e) => e.entityIds ?? []),
   );
   const restAttrs = uniq(
-    (req.entities.restaurantAttributes ?? []).flatMap((e) => e.entityIds ?? []),
+    (req.entities.placeAttributes ?? []).flatMap((e) => e.entityIds ?? []),
   );
 
   // Dietary vocabulary is a curated flag on the attribute entities themselves.
@@ -217,7 +217,7 @@ async function deriveConceptSets(
                WHERE constraint_class = 'dietary' AND status = 'active'::entity_status`,
   );
   const dietarySet = new Set(dietaryRows.map((r) => r.entity_id));
-  const dietaryFoodAttrs = foodAttrs.filter((id) => dietarySet.has(id));
+  const dietaryItemAttrs = itemAttrs.filter((id) => dietarySet.has(id));
   const dietaryRestAttrs = restAttrs.filter((id) => dietarySet.has(id));
 
   if (!anchors.length) {
@@ -228,9 +228,9 @@ async function deriveConceptSets(
       rejects: [],
       twinIngredients: [],
       askIngredients,
-      softFoodAttrs: foodAttrs.filter((id) => !dietarySet.has(id)),
+      softItemAttrs: itemAttrs.filter((id) => !dietarySet.has(id)),
       softRestAttrs: restAttrs.filter((id) => !dietarySet.has(id)),
-      dietaryFoodAttrs,
+      dietaryItemAttrs,
       dietaryRestAttrs,
     };
   }
@@ -279,14 +279,14 @@ async function deriveConceptSets(
         SELECT DISTINCT e.food_id AS id
         FROM derived_food_category_edges e
         JOIN core_entities f ON f.entity_id = e.food_id
-          AND f.type = 'food'::entity_type AND f.status = 'active'::entity_status
+          AND f.type = 'item'::entity_type AND f.status = 'active'::entity_status
         WHERE e.category_id = ANY(${a}::uuid[])`),
       // 3b. name containment: head_final = IS-A (tier 0), else mentions (ring)
       prisma.$queryRaw<{ id: string; head_final: boolean }[]>(Prisma.sql`
         SELECT n.variant_id AS id, bool_or(n.head_final) AS head_final
         FROM derived_name_containment_edges n
         JOIN core_entities v ON v.entity_id = n.variant_id
-          AND v.type = 'food'::entity_type AND v.status = 'active'::entity_status
+          AND v.type = 'item'::entity_type AND v.status = 'active'::entity_status
         WHERE n.base_id = ANY(${a}::uuid[])
         GROUP BY n.variant_id`),
       // 4. judged satisfies / cousin / reject, redirect-followed
@@ -295,14 +295,14 @@ async function deriveConceptSets(
         FROM entity_satisfies s
         ${redirectJoinSql('s', 'rd', 'to_entity_id')}
         JOIN core_entities t ON t.entity_id = ${resolvedSubjectSql('s', 'rd', 'to_entity_id')}
-          AND t.type = 'food'::entity_type AND t.status = 'active'::entity_status
+          AND t.type = 'item'::entity_type AND t.status = 'active'::entity_status
         WHERE s.from_entity_id = ANY(${a}::uuid[])`),
       // 5. dense sibling ring, at the shipped cut (part anchors included below)
       prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
         SELECT DISTINCT e.sibling_entity_id AS id
         FROM derived_entity_sibling_edges e
         JOIN core_entities s ON s.entity_id = e.sibling_entity_id
-          AND s.type = 'food'::entity_type AND s.status = 'active'::entity_status
+          AND s.type = 'item'::entity_type AND s.status = 'active'::entity_status
         WHERE e.anchor_entity_id = ANY(${anchorsCut}::uuid[])
           AND e.cosine >= ${SIB.minCosine}
           AND e.forward_rank <= ${SIB.forwardK}
@@ -355,7 +355,7 @@ async function deriveConceptSets(
           SELECT unnest(${partAnchors}::uuid[])
         ) x
         JOIN core_entities f ON f.entity_id = x.id
-          AND f.type = 'food'::entity_type AND f.status = 'active'::entity_status`)
+          AND f.type = 'item'::entity_type AND f.status = 'active'::entity_status`)
     : [];
   const ring = uniq([
     ...partRing.map((r) => r.id),
@@ -371,19 +371,19 @@ async function deriveConceptSets(
     rejects: uniq(rejects).filter((id) => !tier0Set.has(id)),
     twinIngredients: uniq(twins.map((r) => r.id)),
     askIngredients,
-    softFoodAttrs: foodAttrs.filter((id) => !dietarySet.has(id)),
+    softItemAttrs: itemAttrs.filter((id) => !dietarySet.has(id)),
     softRestAttrs: restAttrs.filter((id) => !dietarySet.has(id)),
-    dietaryFoodAttrs,
+    dietaryItemAttrs,
     dietaryRestAttrs,
   };
 }
 
 type TruthRow = {
   connectionId: string;
-  foodId: string;
-  foodName: string;
-  restaurantId: string;
-  restaurantName: string;
+  itemId: string;
+  itemName: string;
+  placeId: string;
+  placeName: string;
   viaTier0: boolean;
   /** the tier-0 CONCEPT arm alone, without the twin-ingredient union — the two
    *  differ exactly on rows admitted only because the dish carries an
@@ -422,8 +422,8 @@ async function deriveTruthRows(
   if (
     !memberIds.length &&
     !ingredientIds.length &&
-    !sets.softFoodAttrs.length &&
-    !sets.dietaryFoodAttrs.length
+    !sets.softItemAttrs.length &&
+    !sets.dietaryItemAttrs.length
   ) {
     return [];
   }
@@ -465,12 +465,12 @@ async function deriveTruthRows(
       ? ingArm
       : // SUBJECT-IS-SACRED asks ("halal", "spicy"): the attribute IS the
         // subject, dietary or not, so the attribute arm forms the universe.
-        Prisma.sql`c.food_attributes && ${uniq([...sets.softFoodAttrs, ...sets.dietaryFoodAttrs])}::uuid[]`;
-  const dietaryOkSql = sets.dietaryFoodAttrs.length
-    ? Prisma.sql`c.food_attributes @> ${sets.dietaryFoodAttrs}::uuid[]`
+        Prisma.sql`c.food_attributes && ${uniq([...sets.softItemAttrs, ...sets.dietaryItemAttrs])}::uuid[]`;
+  const dietaryOkSql = sets.dietaryItemAttrs.length
+    ? Prisma.sql`c.food_attributes @> ${sets.dietaryItemAttrs}::uuid[]`
     : Prisma.sql`TRUE`;
-  const softAllSql = sets.softFoodAttrs.length
-    ? Prisma.sql`c.food_attributes @> ${sets.softFoodAttrs}::uuid[]`
+  const softAllSql = sets.softItemAttrs.length
+    ? Prisma.sql`c.food_attributes @> ${sets.softItemAttrs}::uuid[]`
     : Prisma.sql`TRUE`;
   // THE POOLED GATE HAS TWO SIDES AND THE HARNESS ONLY EVER MEASURED ONE.
   // `search-query.builder.ts`'s `pooledRestFullExpr` makes tier-0 membership
@@ -492,7 +492,7 @@ async function deriveTruthRows(
       c.connection_id                              AS "connectionId",
       c.food_id                                    AS "foodId",
       f.name                                       AS "foodName",
-      c.restaurant_id                              AS "restaurantId",
+      c.restaurant_id                              AS "placeId",
       r.name                                       AS "restaurantName",
       (${tier0Arm} OR ${twinArm})                  AS "viaTier0",
       (${tier0Arm})                                AS "viaTier0Concept",
@@ -514,9 +514,9 @@ async function deriveTruthRows(
       r.price_level                                AS "priceLevel"
     FROM core_restaurant_items c
     JOIN core_entities f ON f.entity_id = c.food_id
-      AND f.type = 'food'::entity_type AND f.status = 'active'::entity_status
+      AND f.type = 'item'::entity_type AND f.status = 'active'::entity_status
     JOIN core_entities r ON r.entity_id = c.restaurant_id
-      AND r.type = 'restaurant'::entity_type AND r.status = 'active'::entity_status
+      AND r.type = 'place'::entity_type AND r.status = 'active'::entity_status
     JOIN core_restaurant_locations rl ON rl.restaurant_id = r.entity_id
       AND rl.latitude IS NOT NULL AND rl.longitude IS NOT NULL
     WHERE NOT c.is_category_item
@@ -527,10 +527,10 @@ async function deriveTruthRows(
 
   return rows.map((r) => ({
     connectionId: String(r.connectionId),
-    foodId: String(r.foodId),
-    foodName: String(r.foodName),
-    restaurantId: String(r.restaurantId),
-    restaurantName: String(r.restaurantName),
+    itemId: String(r.itemId),
+    itemName: String(r.itemName),
+    placeId: String(r.placeId),
+    placeName: String(r.placeName),
     viaTier0: Boolean(r.viaTier0),
     viaTier0Concept: Boolean(r.viaTier0Concept),
     viaRing: Boolean(r.viaRing),
@@ -556,14 +556,11 @@ type Served = {
   /** page-1 analysis metadata — records whether PLAN EXPANSION fired, which is
    *  the arm that admits lexical/attribute widening beyond the concept graph. */
   expansionFired: boolean;
-  dishes: Map<
-    string,
-    { foodId: string; foodName: string; restaurantId: string }
-  >;
-  restaurants: Set<string>;
+  dishes: Map<string, { itemId: string; itemName: string; placeId: string }>;
+  places: Set<string>;
   pages: number;
   exhausted: boolean;
-  totals: { dishes: number; restaurants: number };
+  totals: { dishes: number; places: number };
 };
 
 async function serveToExhaustion(
@@ -571,10 +568,10 @@ async function serveToExhaustion(
   base: SearchQueryRequestDto,
 ): Promise<Served> {
   const dishes: Served['dishes'] = new Map();
-  const restaurants = new Set<string>();
+  const places = new Set<string>();
   let page = 1;
   let exhausted = false;
-  let totals = { dishes: 0, restaurants: 0 };
+  let totals = { dishes: 0, places: 0 };
   let expansionFired = false;
   for (; page <= MAX_PAGES; page += 1) {
     const res = await search.runQuery({
@@ -582,23 +579,23 @@ async function serveToExhaustion(
       pagination: { page, pageSize: PAGE_SIZE },
     } as SearchQueryRequestDto);
     totals = {
-      dishes: res.metadata.totalFoodResults ?? 0,
-      restaurants: res.metadata.totalRestaurantResults ?? 0,
+      dishes: res.metadata.totalItemResults ?? 0,
+      places: res.metadata.totalPlaceResults ?? 0,
     };
     if (page === 1) {
       const am = res.metadata.analysisMetadata;
       expansionFired = Boolean(am?.idExpansion);
     }
     const d = res.dishes ?? [];
-    const r = res.restaurants ?? [];
+    const r = res.places ?? [];
     for (const row of d) {
       dishes.set(row.connectionId, {
-        foodId: row.foodId,
-        foodName: row.foodName,
-        restaurantId: row.restaurantId,
+        itemId: row.itemId,
+        itemName: row.itemName,
+        placeId: row.placeId,
       });
     }
-    for (const row of r) restaurants.add(row.restaurantId);
+    for (const row of r) places.add(row.placeId);
     if (d.length === 0 && r.length === 0) {
       exhausted = true;
       break;
@@ -606,7 +603,7 @@ async function serveToExhaustion(
   }
   return {
     dishes,
-    restaurants,
+    places,
     pages: Math.min(page, MAX_PAGES),
     exhausted,
     totals,
@@ -627,13 +624,13 @@ function chaseMiss(
     served: Served;
     hasSoft: boolean;
     hasSoftRest: boolean;
-    restaurantIds: string[];
+    placeIds: string[];
     priceLevels: number[];
   },
 ): string {
   // A grounded RESTAURANT is a hard AND on the whole query — one junk venue
   // entity matching a common word annihilates the ask (see the "Best" finding).
-  if (ctx.restaurantIds.length && !ctx.restaurantIds.includes(row.restaurantId))
+  if (ctx.placeIds.length && !ctx.placeIds.includes(row.placeId))
     return `restaurant-entity conjunction (query grounded a venue)`;
   if (
     ctx.priceLevels.length &&
@@ -721,16 +718,16 @@ async function main(): Promise<void> {
       } as SearchQueryRequestDto;
 
       const groundedText = [
-        ...(req.entities.food ?? []),
-        ...(req.entities.foodAttributes ?? []),
-        ...(req.entities.restaurantAttributes ?? []),
+        ...(req.entities.items ?? []),
+        ...(req.entities.itemAttributes ?? []),
+        ...(req.entities.placeAttributes ?? []),
         ...(req.entities.ingredients ?? []),
-        ...(req.entities.restaurants ?? []),
+        ...(req.entities.places ?? []),
       ].map((e) => e.normalizedName);
       // GROUNDING FIDELITY: did the ask survive as ONE concept, or shatter?
       const shattered =
-        (req.entities.food ?? []).length > 1 &&
-        c.q.split(/\s+/).length === (req.entities.food ?? []).length;
+        (req.entities.items ?? []).length > 1 &&
+        c.q.split(/\s+/).length === (req.entities.items ?? []).length;
 
       const hasTargets =
         groundedText.length > 0 || (interpretation.unresolved ?? []).length > 0;
@@ -739,11 +736,11 @@ async function main(): Promise<void> {
         ? await serveToExhaustion(search, req)
         : {
             dishes: new Map(),
-            restaurants: new Set<string>(),
+            places: new Set<string>(),
             pages: 0,
             exhausted: true,
             expansionFired: false,
-            totals: { dishes: 0, restaurants: 0 },
+            totals: { dishes: 0, places: 0 },
           };
 
       const sets = await deriveConceptSets(prisma, req);
@@ -757,7 +754,7 @@ async function main(): Promise<void> {
       const mayAppear = truth.filter((t) => !mustAppear.includes(t));
       const mustSet = new Set(mustAppear.map((t) => t.connectionId));
       const maySet = new Set(mayAppear.map((t) => t.connectionId));
-      const truthFoods = new Set(truth.map((t) => t.foodId));
+      const truthItems = new Set(truth.map((t) => t.itemId));
 
       const threshold = Math.max(25, PAGE_SIZE);
       // Tier-0 is the CONJUNCTION of both soft sides, matching the builder's
@@ -766,7 +763,7 @@ async function main(): Promise<void> {
       const tier0Count = mustAppear.filter(
         (t) => t.softAllMet && t.restSoftMet,
       ).length;
-      const hasSoft = sets.softFoodAttrs.length > 0;
+      const hasSoft = sets.softItemAttrs.length > 0;
       const hasSoftRest = sets.softRestAttrs.length > 0;
 
       const missing = mustAppear.filter(
@@ -781,8 +778,8 @@ async function main(): Promise<void> {
           served,
           hasSoft,
           hasSoftRest,
-          restaurantIds: uniq(
-            (req.entities.restaurants ?? []).flatMap((e) => e.entityIds ?? []),
+          placeIds: uniq(
+            (req.entities.places ?? []).flatMap((e) => e.entityIds ?? []),
           ),
           priceLevels: req.priceLevels ?? [],
         });
@@ -791,8 +788,8 @@ async function main(): Promise<void> {
           if (missSamples.length < 12)
             missSamples.push({
               connectionId: m.connectionId,
-              food: m.foodName,
-              restaurant: m.restaurantName,
+              item: m.itemName,
+              place: m.placeName,
               reason,
             });
       }
@@ -809,21 +806,21 @@ async function main(): Promise<void> {
       // the one signal built to stop it. Counted separately from the MUST∪MAY
       // diff for exactly that reason.
       const rejectsServed = Array.from(served.dishes.values()).filter((d) =>
-        sets.rejects.includes(d.foodId),
+        sets.rejects.includes(d.itemId),
       );
       const leakIds: {
         connId: string;
-        foodId: string;
-        foodName: string;
-        restaurantId: string;
+        itemId: string;
+        itemName: string;
+        placeId: string;
       }[] = [];
       for (const [connId, d] of served.dishes) {
         if (mustSet.has(connId) || maySet.has(connId)) continue;
         leakIds.push({
           connId,
-          foodId: d.foodId,
-          foodName: d.foodName,
-          restaurantId: d.restaurantId,
+          itemId: d.itemId,
+          itemName: d.itemName,
+          placeId: d.placeId,
         });
       }
       const groundedRestAttrs = uniq([
@@ -834,7 +831,7 @@ async function main(): Promise<void> {
       if (groundedRestAttrs.length && leakIds.length) {
         const rows = await prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
           SELECT entity_id AS id FROM core_entities
-          WHERE entity_id = ANY(${uniq(leakIds.map((l) => l.restaurantId))}::uuid[])
+          WHERE entity_id = ANY(${uniq(leakIds.map((l) => l.placeId))}::uuid[])
             AND restaurant_attributes && ${groundedRestAttrs}::uuid[]`);
         for (const r of rows) venueArm.add(r.id);
       }
@@ -846,16 +843,16 @@ async function main(): Promise<void> {
       const leakReasons = new Map<string, number>();
       for (const l of leakIds) {
         let reason: string;
-        if (sets.rejects.includes(l.foodId)) reason = 'JUDGED-REJECT SERVED';
-        else if (venueArm.has(l.restaurantId))
+        if (sets.rejects.includes(l.itemId)) reason = 'JUDGED-REJECT SERVED';
+        else if (venueArm.has(l.placeId))
           reason = 'venue-attribute arm (whole menu of a matching restaurant)';
         else if (
           queryTokens.some((t) =>
-            l.foodName.toLowerCase().includes(t.slice(0, 4)),
+            l.itemName.toLowerCase().includes(t.slice(0, 4)),
           )
         )
           reason = 'lexical-expansion arm (name look-alike)';
-        else if (sets.softFoodAttrs.length)
+        else if (sets.softItemAttrs.length)
           reason = 'dish-attribute arm (no concept relation)';
         else if (served.expansionFired)
           reason =
@@ -863,7 +860,7 @@ async function main(): Promise<void> {
         else reason = 'UNRELATED-CONCEPT (no arm explains it)';
         leakReasons.set(reason, (leakReasons.get(reason) ?? 0) + 1);
         if (leaks.length < 12)
-          leaks.push({ connectionId: l.connId, food: l.foodName, reason });
+          leaks.push({ connectionId: l.connId, item: l.itemName, reason });
       }
 
       const coverage =
@@ -885,13 +882,13 @@ async function main(): Promise<void> {
         tier0Concepts: sets.tier0.length,
         ringConcepts: sets.ring.length,
         dietaryWallActive:
-          sets.dietaryFoodAttrs.length + sets.dietaryRestAttrs.length > 0,
+          sets.dietaryItemAttrs.length + sets.dietaryRestAttrs.length > 0,
         served: {
           expansionFired: served.expansionFired,
           pages: served.pages,
           exhausted: served.exhausted,
           dishes: served.dishes.size,
-          restaurants: served.restaurants.size,
+          places: served.places.size,
           reportedTotals: served.totals,
         },
         truth: {
@@ -908,11 +905,11 @@ async function main(): Promise<void> {
         leakSamples: leaks,
         judgedRejectsServed: rejectsServed.length,
         judgedRejectSamples: Array.from(
-          new Set(rejectsServed.map((d) => d.foodName)),
+          new Set(rejectsServed.map((d) => d.itemName)),
         ).slice(0, 8),
         expectEmpty: c.expectEmpty ?? false,
         honestEmptyHeld: c.expectEmpty
-          ? served.dishes.size === 0 && served.restaurants.size === 0
+          ? served.dishes.size === 0 && served.places.size === 0
           : null,
       };
       results.push(row);
@@ -929,7 +926,7 @@ async function main(): Promise<void> {
       if (rejectsServed.length)
         out(
           `      REJECT ${String(rejectsServed.length).padStart(3)}  judged-reject concepts served: ` +
-            Array.from(new Set(rejectsServed.map((d) => d.foodName))).join(
+            Array.from(new Set(rejectsServed.map((d) => d.itemName))).join(
               ', ',
             ),
         );

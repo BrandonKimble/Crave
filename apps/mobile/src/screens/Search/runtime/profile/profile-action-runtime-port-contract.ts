@@ -29,33 +29,33 @@ export type ProfileActionExecutionPorts = {
   // the plan is what knows. Widening this to match the plan field made the adapter
   // re-derive the same control flow from the data, a guard no caller could ever reach.
   setLastCameraState: (state: { center: [number, number]; zoom: number } | null) => void;
-  setMapHighlightedRestaurantId: (restaurantId: string | null) => void;
+  setMapHighlightedRestaurantId: (placeId: string | null) => void;
   openPreparedProfilePresentation: (
-    restaurantId: string,
+    placeId: string,
     targetCamera: CameraSnapshot | null | undefined
   ) => void;
-  closePreparedProfilePresentation: (restaurantId: string | null) => void;
+  closePreparedProfilePresentation: (placeId: string | null) => void;
   focusPreparedProfileCamera: (targetCamera: CameraSnapshot) => void;
   seedRestaurantProfile: (
     restaurant: RestaurantProfileSeed,
     queryLabel: string,
     options?: { selectedLocationId?: string | null }
   ) => void;
-  hydrateRestaurantProfileById: (restaurantId: string) => void;
-  deferRecentlyViewedTrack: (restaurantId: string, restaurantName: string) => void;
-  recordRestaurantView: (restaurantId: string, source: SearchProfileSource) => Promise<void>;
+  hydrateRestaurantProfileById: (placeId: string) => void;
+  deferRecentlyViewedTrack: (placeId: string, placeName: string) => void;
+  recordRestaurantView: (placeId: string, source: SearchProfileSource) => Promise<void>;
   prepareForProfileClose: () => void;
 };
 
 export type ProfileRefreshSelectionExecutionPorts = {
-  setMapHighlightedRestaurantId: (restaurantId: string | null) => void;
+  setMapHighlightedRestaurantId: (placeId: string | null) => void;
   seedRestaurantProfile: (
     restaurant: RestaurantProfileSeed,
     queryLabel: string,
     options?: { selectedLocationId?: string | null }
   ) => void;
   focusRestaurantProfileCamera: (restaurant: RestaurantResult, source: SearchProfileSource) => void;
-  hydrateRestaurantProfileById: (restaurantId: string) => void;
+  hydrateRestaurantProfileById: (placeId: string) => void;
 };
 
 export type ProfileAutoOpenActionExecutionPorts = {
@@ -129,7 +129,7 @@ export type CreateProfileActionRuntimeArgs = {
     getProfileTransitionSnapshotCapture: () => ProfileTransitionSnapshotCapture;
     getProfileMultiLocationZoomBaseline: () => number | null;
     getRestaurantFocusSession: () => RestaurantFocusSession;
-    getPendingSelection: () => { restaurantId: string } | null;
+    getPendingSelection: () => { placeId: string } | null;
     getActiveOpenRestaurantId: () => string | null;
     getLastAutoOpenKey: () => string | null;
   };
@@ -168,8 +168,8 @@ export type ProfileActionRuntime = {
   ) => void;
   refreshOpenRestaurantProfileSelection: (restaurant: RestaurantResult, queryLabel: string) => void;
   openRestaurantProfilePreview: (
-    restaurantId: string,
-    restaurantName: string,
+    placeId: string,
+    placeName: string,
     options?: ProfilePreviewOpenOptions
   ) => void;
   openRestaurantProfile: (restaurant: RestaurantResult, options?: ProfileOpenOptions) => void;

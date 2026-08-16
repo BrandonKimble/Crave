@@ -8,9 +8,9 @@ const base = {
   topCosine: 0.78,
   runnerCosine: 0.7,
   rrfRank: 1,
-  candidateType: 'food',
+  candidateType: 'item',
   spanTypeAffinity: null as 'attribute' | null,
-  inputType: 'food',
+  inputType: 'item',
 };
 
 describe('dense admission tier (M4)', () => {
@@ -42,9 +42,9 @@ describe('dense admission tier (M4)', () => {
     it('never links a restaurant proper noun for a non-restaurant input', () => {
       expect(
         denseTypeAdmits({
-          candidateType: 'restaurant',
+          candidateType: 'place',
           spanTypeAffinity: null,
-          inputType: 'food',
+          inputType: 'item',
         }),
       ).toBe(false);
     });
@@ -52,9 +52,9 @@ describe('dense admission tier (M4)', () => {
     it('still allows a restaurant candidate for a restaurant input', () => {
       expect(
         denseTypeAdmits({
-          candidateType: 'restaurant',
+          candidateType: 'place',
           spanTypeAffinity: null,
-          inputType: 'restaurant',
+          inputType: 'place',
         }),
       ).toBe(true);
     });
@@ -63,14 +63,14 @@ describe('dense admission tier (M4)', () => {
       expect(
         denseAdmits({
           ...base,
-          candidateType: 'food',
+          candidateType: 'item',
           spanTypeAffinity: 'attribute',
         }),
       ).toBe(false);
       expect(
         denseAdmits({
           ...base,
-          candidateType: 'food_attribute',
+          candidateType: 'item_attribute',
           spanTypeAffinity: 'attribute',
         }),
       ).toBe(true);

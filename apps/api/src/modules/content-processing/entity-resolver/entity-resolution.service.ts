@@ -6,7 +6,7 @@ import { EntityStatus, EntityType, Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
 import { Redis } from 'ioredis';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { foodNameVariants } from './food-lemma';
+import { itemNameVariants } from './food-lemma';
 import {
   admitsAtExactTier,
   canonicalFold,
@@ -98,7 +98,7 @@ interface EntityResolutionCacheConfig {
  *  "Torchy's Tacos" is not "Torchy's Taco". Shared by the exact-match tier
  *  and the within-batch creation dedupe so the two cannot drift apart. */
 function entityTypeUsesNumberVariants(entityType: EntityType): boolean {
-  return entityType === EntityType.food || entityType === EntityType.ingredient;
+  return entityType === EntityType.item || entityType === EntityType.ingredient;
 }
 
 @Injectable()
@@ -404,7 +404,7 @@ export class EntityResolutionService implements OnModuleInit {
     globalNewEntityMap: Map<string, EntityResolutionResult>,
     documentLocale: string | null,
   ): Promise<EntityResolutionResult[]> {
-    if (entityType !== 'restaurant') {
+    if (entityType !== 'place') {
       return this.resolveEntitiesByTypeForEngine(
         entities,
         entityType,
@@ -455,12 +455,15 @@ export class EntityResolutionService implements OnModuleInit {
       count: entities.length,
     });
 
+    const rehearsalRunId = config.rehearsalRunId ?? null;
+
     // Tier 1: Exact match resolution (bulk query)
     const exactMatchResults = await this.performExactMatches(
       entities,
       entityType,
       engineId,
       documentLocale,
+      rehearsalRunId,
     );
     const unmatchedAfterExact = entities.filter(
       (entity) =>
@@ -506,6 +509,7 @@ export class EntityResolutionService implements OnModuleInit {
       entityType,
       engineId,
       documentLocale,
+      rehearsalRunId,
     );
     const unmatchedAfterJoined = unmatchedAfterAlias.filter(
       (entity) =>
@@ -521,8 +525,8 @@ export class EntityResolutionService implements OnModuleInit {
     const useLlmMatcher =
       config.useLlmMatcher === true &&
       config.enableFuzzyMatching &&
-      (entityType === 'restaurant' ||
-        entityType === 'food' ||
+      (entityType === 'place' ||
+        entityType === 'item' ||
         // Ingredient vocabulary needs the same duplicate protection as dishes
         // ("burrata" vs "burrata cheese") — without the judge, near-variants
         // accumulate as separate entities.
@@ -533,6 +537,7 @@ export class EntityResolutionService implements OnModuleInit {
           entityType,
           engineId,
           documentLocale,
+          rehearsalRunId,
         )
       : [];
 
@@ -558,7 +563,7 @@ export class EntityResolutionService implements OnModuleInit {
     // branches). Executed evidence: "Rudy's" in r/austinfood reached an
     // NYC bar through fold matching — 182 misattributed events.
     const demotedInputs =
-      entityType === 'restaurant' && engineId
+      entityType === 'place' && engineId
         ? await this.applyMetroAdoptionGate(
             [
               ...exactMatchResults,
@@ -739,6 +744,7 @@ export class EntityResolutionService implements OnModuleInit {
     entityType: EntityType,
     engineId: string | null,
     documentLocale: string | null,
+    rehearsalRunId: string | null,
   ): Promise<EntityResolutionResult[]> {
     if (entities.length === 0) return [];
 
@@ -760,7 +766,7 @@ export class EntityResolutionService implements OnModuleInit {
     const usesNumberVariants = entityTypeUsesNumberVariants(entityType);
     const probeNames = usesNumberVariants
       ? Array.from(
-          new Set(entities.flatMap((e) => foodNameVariants(e.normalizedName))),
+          new Set(entities.flatMap((e) => itemNameVariants(e.normalizedName))),
         )
       : normalizedNames;
     // IDENTITY-KEY PROBE (2026-08-11, the v7 shadow twin class). The
@@ -784,7 +790,21 @@ export class EntityResolutionService implements OnModuleInit {
       // tier (the ontology banked its name there), not match its tombstone.
       const whereClause: Prisma.EntityWhereInput = {
         type: entityType,
-        status: { not: EntityStatus.archived },
+        // Archived rows forward via the alias tier; rehearsal rows are
+        // visible ONLY to their own run (plans/shadow-sandbox.md): a live
+        // run must never adopt an invisible mint, and a rehearsal must see
+        // its own so its chunks cohere.
+        AND: [
+          { status: { not: EntityStatus.archived } },
+          rehearsalRunId
+            ? {
+                OR: [
+                  { status: { not: EntityStatus.rehearsal } },
+                  { bornExtractionRunId: rehearsalRunId },
+                ],
+              }
+            : { status: { not: EntityStatus.rehearsal } },
+        ],
         OR: [
           {
             name: {
@@ -901,7 +921,7 @@ export class EntityResolutionService implements OnModuleInit {
       // all-ASCII case — when no probe carries an accent.
       const foldProbesFor = (entity: EntityResolutionInput): string[] => {
         const raw = entity.normalizedName.toLowerCase().trim();
-        return usesNumberVariants ? [raw, ...foodNameVariants(raw)] : [raw];
+        return usesNumberVariants ? [raw, ...itemNameVariants(raw)] : [raw];
       };
       // WHOSE spellings must we go and read? An owner whose stored name
       // already agrees with the probe accent-for-accent proves itself from the
@@ -964,7 +984,7 @@ export class EntityResolutionService implements OnModuleInit {
           entityId = claimByFold(raw);
         }
         if (!entityId && usesNumberVariants) {
-          for (const variant of foodNameVariants(raw)) {
+          for (const variant of itemNameVariants(raw)) {
             entityId = nameToEntityMap.get(variant) ?? claimByFold(variant);
             if (entityId) break;
           }
@@ -1344,6 +1364,7 @@ export class EntityResolutionService implements OnModuleInit {
     entityType: EntityType,
     engineId: string | null,
     documentLocale: string | null,
+    rehearsalRunId: string | null,
   ): Promise<EntityResolutionResult[]> {
     if (entities.length === 0) return [];
 
@@ -1406,6 +1427,8 @@ export class EntityResolutionService implements OnModuleInit {
           FROM core_entities e
          WHERE e.type = ${entityType}::entity_type
            AND e.status <> 'archived'::entity_status
+           AND (e.status <> 'rehearsal'::entity_status
+                OR e.born_extraction_run_id = ${rehearsalRunId}::uuid)
            AND e.identity_key IS NOT NULL
            AND replace(e.identity_key, ' ', '') = ANY(${probeArray}::text[])
         UNION
@@ -1496,15 +1519,16 @@ export class EntityResolutionService implements OnModuleInit {
     entityType: EntityType,
     engineId: string | null,
     documentLocale: string | null,
+    rehearsalRunId: string | null,
   ): Promise<EntityResolutionResult[]> {
     if (entities.length === 0) return [];
 
-    const kind: 'restaurant' | 'food' | 'ingredient' =
-      entityType === 'restaurant'
-        ? 'restaurant'
+    const kind: 'place' | 'item' | 'ingredient' =
+      entityType === 'place'
+        ? 'place'
         : entityType === 'ingredient'
           ? 'ingredient'
-          : 'food';
+          : 'item';
     const unmatchedFor = (
       entity: EntityResolutionInput,
     ): EntityResolutionResult => ({
@@ -1586,6 +1610,7 @@ export class EntityResolutionService implements OnModuleInit {
           entityMatchLane.canonicalClaimKey(pairClaim(r.term, c.entityId)),
         ),
       ),
+      { rehearsalRunId },
     );
     const priorOf = (
       term: string,
@@ -1674,11 +1699,16 @@ export class EntityResolutionService implements OnModuleInit {
           decision: matched ? 'match' : 'new',
           candidate: matched,
         });
-        await this.recordEntityMatchVerdicts(r.term, r.shown, {
-          matched,
-          reason: verdict?.reason?.trim() ?? '',
-          kind,
-        });
+        await this.recordEntityMatchVerdicts(
+          r.term,
+          r.shown,
+          {
+            matched,
+            reason: verdict?.reason?.trim() ?? '',
+            kind,
+          },
+          rehearsalRunId,
+        );
       }
     });
 
@@ -1744,6 +1774,7 @@ export class EntityResolutionService implements OnModuleInit {
       reason: string;
       kind: EntityMatchClaim['kind'];
     },
+    rehearsalRunId: string | null,
   ): Promise<void> {
     if (!verdict.reason) return;
     const judged = verdict.matched ? [verdict.matched] : shown;
@@ -1764,6 +1795,9 @@ export class EntityResolutionService implements OnModuleInit {
         reason: verdict.reason,
         ruleFingerprint: ENTITY_DEDUPE_RULE_FINGERPRINT,
         subject: { ...claim, candidateName: candidate.name, outcome },
+        ...(rehearsalRunId
+          ? { source: `rehearsal:${rehearsalRunId}` as const }
+          : {}),
       });
       await this.claimLedger.markExecuted(
         ENTITY_MATCH_LANE,
@@ -2014,8 +2048,8 @@ export class EntityResolutionService implements OnModuleInit {
     // junk term is permanently absorbed at zero judge cost.
     const attributeTombstonesByName = new Map<string, string>();
     if (
-      entityType === EntityType.food_attribute ||
-      entityType === EntityType.restaurant_attribute
+      entityType === EntityType.item_attribute ||
+      entityType === EntityType.place_attribute
     ) {
       const names = Array.from(
         new Set(entities.map((e) => e.normalizedName.toLowerCase().trim())),
@@ -2071,7 +2105,7 @@ export class EntityResolutionService implements OnModuleInit {
         // rule as entityLockKey).
         const identityName = canonicalFold(normalizedName) || normalizedName;
         const baseKey =
-          entityType === 'restaurant'
+          entityType === 'place'
             ? `${entityType}:${this.normalizeEngineScope(
                 entity.engineId,
               )}:${identityName}`
@@ -2132,7 +2166,7 @@ export class EntityResolutionService implements OnModuleInit {
             entityType,
             normalizedName: entity.normalizedName,
             engineScope:
-              entityType === 'restaurant'
+              entityType === 'place'
                 ? this.normalizeEngineScope(entity.engineId)
                 : undefined,
             primaryTempId: existingPrimary.tempId,
@@ -2174,7 +2208,7 @@ export class EntityResolutionService implements OnModuleInit {
         // sameness (correct polarity here: "patty"↔"patties" IS one entity).
         // Fail-closed: judge says new → separate entity, exactly as today.
         const lanePrefix =
-          entityType === 'restaurant'
+          entityType === 'place'
             ? `${entityType}:${this.normalizeEngineScope(entity.engineId)}:`
             : `${entityType}:`;
         // Dedupe by tempId (red team R5): number-variant registration puts
@@ -2220,11 +2254,11 @@ export class EntityResolutionService implements OnModuleInit {
           const verdict = await this.llmService.matchEntity({
             term: entity.normalizedName,
             kind:
-              entityType === 'restaurant'
-                ? 'restaurant'
+              entityType === 'place'
+                ? 'place'
                 : entityType === 'ingredient'
                   ? 'ingredient'
-                  : 'food',
+                  : 'item',
             candidates: overlayCandidates.map((c, i) => {
               const name = c.normalizedName ?? '';
               // The SAME alias evidence the batch judge carries: overlay
@@ -2318,7 +2352,7 @@ export class EntityResolutionService implements OnModuleInit {
         // under its number variants makes the later form find it. First
         // primary wins; never steal a key another primary already owns.
         if (entityTypeUsesNumberVariants(entityType)) {
-          for (const variant of foodNameVariants(identityName)) {
+          for (const variant of itemNameVariants(identityName)) {
             const variantKey = `${entityType}:${canonicalFold(variant) || variant}`;
             if (!primaryNewEntityMap.has(variantKey)) {
               primaryNewEntityMap.set(variantKey, primaryResult);
@@ -2348,7 +2382,7 @@ export class EntityResolutionService implements OnModuleInit {
           entityType,
           normalizedName: entity.normalizedName,
           engineScope:
-            entityType === 'restaurant'
+            entityType === 'place'
               ? this.normalizeEngineScope(entity.engineId)
               : undefined,
           originalText: entity.originalText,
@@ -2541,7 +2575,7 @@ export class EntityResolutionService implements OnModuleInit {
       version: this.cacheVersion,
       entityType: entity.entityType,
       engineScope:
-        entity.entityType === 'restaurant'
+        entity.entityType === 'place'
           ? this.normalizeEngineScope(entity.engineId)
           : 'global',
       // The document's language is part of WHAT WAS ASKED: the same word out

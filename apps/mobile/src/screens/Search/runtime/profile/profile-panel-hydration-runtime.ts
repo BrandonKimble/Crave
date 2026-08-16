@@ -15,7 +15,7 @@ import { publishMapMarkerSource } from '../shared/search-mounted-results-data-st
 import { focusSeededMarkerCamera } from './profile-seeded-camera-focus-handler';
 
 export type ProfilePanelHydrationRuntime = {
-  hydrateRestaurantProfileById: (restaurantId: string) => void;
+  hydrateRestaurantProfileById: (placeId: string) => void;
 };
 
 type UseProfilePanelHydrationRuntimeArgs = {
@@ -38,15 +38,15 @@ type UseProfilePanelHydrationRuntimeArgs = {
 // results exist (e.g. opened from an autocomplete suggestion). The seed is cleared on profile
 // dismiss via the highlight-clear funnel in profile-shell-state-publisher.
 const publishHydratedRestaurantMarkerSource = ({
-  restaurantId,
+  placeId,
   hydratedProfile,
 }: {
-  restaurantId: string;
+  placeId: string;
   hydratedProfile: HydratedRestaurantProfile;
 }): void => {
   const hydratedRestaurant = hydratedProfile.restaurant;
   if (
-    hydratedRestaurant.restaurantId !== restaurantId ||
+    hydratedRestaurant.placeId !== placeId ||
     typeof hydratedRestaurant.latitude !== 'number' ||
     typeof hydratedRestaurant.longitude !== 'number'
   ) {
@@ -75,24 +75,24 @@ export const useProfilePanelHydrationRuntime = ({
   const { getCachedRestaurantProfile, loadRestaurantProfileData } = hydrationRequestRuntime;
 
   const hydrateRestaurantProfileById = React.useCallback(
-    (restaurantId: string) => {
-      if (!restaurantId) {
+    (placeId: string) => {
+      if (!placeId) {
         return;
       }
 
-      const requestSeq = beginRestaurantProfileHydrationIntent(restaurantId);
-      const cachedProfile = getCachedRestaurantProfile(restaurantId);
+      const requestSeq = beginRestaurantProfileHydrationIntent(placeId);
+      const cachedProfile = getCachedRestaurantProfile(placeId);
 
       if (cachedProfile) {
         setRestaurantPanelSnapshot((prev) =>
           applyHydratedRestaurantProfileToPanelSnapshot({
             currentSnapshot: prev,
-            restaurantId,
+            placeId,
             hydratedProfile: cachedProfile,
           })
         );
         publishHydratedRestaurantMarkerSource({
-          restaurantId,
+          placeId,
           hydratedProfile: cachedProfile,
         });
         clearActiveHydrationIntentForRequestSeqOnRecord(
@@ -105,11 +105,11 @@ export const useProfilePanelHydrationRuntime = ({
       setRestaurantPanelSnapshot((prev) =>
         markRestaurantPanelSnapshotHydrating({
           currentSnapshot: prev,
-          restaurantId,
+          placeId,
         })
       );
 
-      void loadRestaurantProfileData(restaurantId)
+      void loadRestaurantProfileData(placeId)
         .then((loadedProfile) => {
           if (!isRestaurantProfileRequestCurrent(requestSeq)) {
             return;
@@ -118,12 +118,12 @@ export const useProfilePanelHydrationRuntime = ({
           setRestaurantPanelSnapshot((prev) =>
             applyHydratedRestaurantProfileToPanelSnapshot({
               currentSnapshot: prev,
-              restaurantId,
+              placeId,
               hydratedProfile: loadedProfile,
             })
           );
           publishHydratedRestaurantMarkerSource({
-            restaurantId,
+            placeId,
             hydratedProfile: loadedProfile,
           });
         })
@@ -135,7 +135,7 @@ export const useProfilePanelHydrationRuntime = ({
           setRestaurantPanelSnapshot((prev) =>
             clearRestaurantPanelSnapshotHydrating({
               currentSnapshot: prev,
-              restaurantId,
+              placeId,
             })
           );
         })

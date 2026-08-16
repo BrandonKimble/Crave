@@ -84,16 +84,16 @@ const PhotoGrid: React.FC<{ photos: PhotoStripItemDto[] }> = ({ photos }) => (
 );
 
 export const RestaurantPhotosView: React.FC<{
-  restaurantId: string;
-  restaurantName: string;
+  placeId: string;
+  placeName: string;
   /** connectionId → { name, rank } from the panel's ranked dish list — orders
    *  the per-dish slices by dish rank and names the slice headers. */
   dishByConnectionId: Map<string, { name: string; rank: number }>;
-}> = ({ restaurantId, restaurantName, dishByConnectionId }) => {
+}> = ({ placeId, placeName, dishByConnectionId }) => {
   const galleryQuery = useQuery({
-    queryKey: ['restaurantGallery', restaurantId],
-    queryFn: () => photosService.getRestaurantGallery(restaurantId),
-    enabled: Boolean(restaurantId),
+    queryKey: ['restaurantGallery', placeId],
+    queryFn: () => photosService.getRestaurantGallery(placeId),
+    enabled: Boolean(placeId),
   });
 
   const gallery = galleryQuery.data ?? null;
@@ -116,7 +116,7 @@ export const RestaurantPhotosView: React.FC<{
     <View style={styles.viewBody}>
       <Pressable
         style={styles.addPhotosButton}
-        onPress={() => openPostPhotosFunnel({ restaurantId, restaurantName })}
+        onPress={() => openPostPhotosFunnel({ placeId, placeName })}
         accessibilityRole="button"
         testID="restaurant-photos-add"
       >
@@ -184,8 +184,8 @@ const MentionCard: React.FC<{
 };
 
 export const RestaurantMentionsView: React.FC<{
-  restaurantId: string;
-}> = ({ restaurantId }) => {
+  placeId: string;
+}> = ({ placeId }) => {
   const { pushRoute } = useAppOverlayRouteController();
   const [sort, setSort] = React.useState<'top' | 'new'>('top');
   const [search, setSearch] = React.useState('');
@@ -193,14 +193,14 @@ export const RestaurantMentionsView: React.FC<{
 
   const tagList = React.useMemo(() => [...selectedTags].sort(), [selectedTags]);
   const mentionsQuery = useQuery({
-    queryKey: ['restaurantMentions', restaurantId, sort, search, tagList],
+    queryKey: ['restaurantMentions', placeId, sort, search, tagList],
     queryFn: () =>
-      fetchRestaurantMentions(restaurantId, {
+      fetchRestaurantMentions(placeId, {
         sort,
         search: search.trim() || undefined,
         tags: tagList.length ? tagList : undefined,
       }),
-    enabled: Boolean(restaurantId),
+    enabled: Boolean(placeId),
     placeholderData: (previous) => previous,
   });
 
@@ -300,11 +300,11 @@ export const RestaurantMentionsView: React.FC<{
 // WITH a note, the note (+ which list) leads the Overview composite. A real
 // committed component (queries fire here, unlike the panel spec hook).
 
-export const RestaurantSavedNote: React.FC<{ restaurantId: string }> = ({ restaurantId }) => {
+export const RestaurantSavedNote: React.FC<{ placeId: string }> = ({ placeId }) => {
   const membershipsQuery = useQuery({
-    queryKey: ['entityMemberships', restaurantId],
-    queryFn: () => userListsService.entityMemberships(restaurantId),
-    enabled: Boolean(restaurantId),
+    queryKey: ['entityMemberships', placeId],
+    queryFn: () => userListsService.entityMemberships(placeId),
+    enabled: Boolean(placeId),
     // VIEWER-STATE class — also unifies this key with use-favorite-heart's read
     // of the SAME ['entityMemberships', id] key, which wore a different ad-hoc
     // staleTime before the policy module existed.
@@ -331,14 +331,14 @@ export const RestaurantSavedNote: React.FC<{ restaurantId: string }> = ({ restau
 // ─── Overview mention extras (tags collage + top discussions) ───────────────
 
 export const RestaurantOverviewMentions: React.FC<{
-  restaurantId: string;
+  placeId: string;
   onSeeAllDiscussions: () => void;
-}> = ({ restaurantId, onSeeAllDiscussions }) => {
+}> = ({ placeId, onSeeAllDiscussions }) => {
   const { pushRoute } = useAppOverlayRouteController();
   const mentionsQuery = useQuery({
-    queryKey: ['restaurantMentions', restaurantId, 'top', '', [] as string[]],
-    queryFn: () => fetchRestaurantMentions(restaurantId, { sort: 'top' }),
-    enabled: Boolean(restaurantId),
+    queryKey: ['restaurantMentions', placeId, 'top', '', [] as string[]],
+    queryFn: () => fetchRestaurantMentions(placeId, { sort: 'top' }),
+    enabled: Boolean(placeId),
   });
   const data = mentionsQuery.data ?? null;
   if (!data || (data.tags.length === 0 && data.cards.length === 0)) {

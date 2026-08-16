@@ -45,7 +45,7 @@ import { NoSignal } from '../signals/records-signal.decorator';
 
 export class CreateUploadTicketDto {
   @IsUUID('4')
-  restaurantId!: string;
+  placeId!: string;
 
   @IsOptional()
   @IsUUID('4')
@@ -101,7 +101,7 @@ export class RecordPhotoEventsDto {
  *  photos only); absent = restaurant card. */
 export class PhotoStripRefDto {
   @IsUUID('4')
-  restaurantId!: string;
+  placeId!: string;
 
   @IsOptional()
   @IsUUID('4')
@@ -118,7 +118,7 @@ export class PhotoStripRefDto {
  * a 500-photo restaurant reports 500 and hands back 60 — so the gap shows, and
  * gets closed.
  */
-export class RestaurantGalleryQueryDto {
+export class PlaceGalleryQueryDto {
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -173,21 +173,19 @@ export class PhotosController {
   // took no viewer. The seam makes the viewer mandatory and filters inside
   // the read, so forgetting is unrepresentable rather than reviewable.
   @Get('restaurants/:restaurantId/gallery')
-  async restaurantGallery(
+  async placeGallery(
     @CurrentUser() viewer: User,
-    @Param('restaurantId', new ParseUUIDPipe()) restaurantId: string,
-    @Query() query: RestaurantGalleryQueryDto,
+    @Param('placeId', new ParseUUIDPipe()) placeId: string,
+    @Query() query: PlaceGalleryQueryDto,
   ) {
-    return this.photoReads
-      .forViewer(viewer.userId)
-      .restaurantGallery(restaurantId, {
-        limit: query.limit,
-        offset: query.offset,
-      });
+    return this.photoReads.forViewer(viewer.userId).placeGallery(placeId, {
+      limit: query.limit,
+      offset: query.offset,
+    });
   }
 
   @Get('users/:userId/food-log')
-  async foodLog(
+  async itemLog(
     @CurrentUser() viewer: User,
     @Param('userId', new ParseUUIDPipe()) userId: string,
   ) {
@@ -200,7 +198,7 @@ export class PhotosController {
     }
     return this.photoReads
       .forViewer(viewer.userId)
-      .userFoodLog(userId, viewer.userId);
+      .userItemLog(userId, viewer.userId);
   }
 
   /** Batch card-strip read: one POST per visible screen of cards (search
@@ -257,7 +255,7 @@ export class PhotosController {
   ) {
     return this.photos.createUploadTicket({
       userId: user.userId,
-      restaurantId: dto.restaurantId,
+      placeId: dto.placeId,
       connectionId: dto.connectionId,
       caption: dto.caption,
       pendingDishName: dto.pendingDishName,

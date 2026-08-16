@@ -10,7 +10,7 @@ export class BatchMembershipsDto {
   @IsArray()
   @ArrayMaxSize(200)
   @IsUUID('all', { each: true })
-  restaurantIds?: string[];
+  placeIds?: string[];
 
   @IsOptional()
   @IsArray()

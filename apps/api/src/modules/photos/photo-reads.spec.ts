@@ -2,10 +2,7 @@ import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { PhotoReads } from './photo-reads';
-import {
-  PhotosController,
-  RestaurantGalleryQueryDto,
-} from './photos.controller';
+import { PhotosController, PlaceGalleryQueryDto } from './photos.controller';
 
 // BLOCKING IS A PROPERTY OF THE QUERY, NOT OF THE RESULT.
 //
@@ -33,17 +30,17 @@ type Call = Record<string, unknown>;
 function build() {
   const reads = {
     cardStrips: jest.fn().mockResolvedValue({ strips: [] }),
-    restaurantGallery: jest.fn().mockResolvedValue({
-      restaurantId: 'r1',
+    placeGallery: jest.fn().mockResolvedValue({
+      placeId: 'r1',
       totalCount: 0,
       all: [],
       byDish: [],
     }),
-    userFoodLog: jest.fn().mockResolvedValue([]),
+    userItemLog: jest.fn().mockResolvedValue([]),
     stripPhotos: jest.fn().mockResolvedValue({
-      byRestaurant: new Map(),
+      byPlace: new Map(),
       byConnection: new Map(),
-      countsByRestaurant: new Map(),
+      countsByPlace: new Map(),
       countsByConnection: new Map(),
     }),
   };
@@ -62,7 +59,7 @@ function build() {
 describe('the exclusion is pushed into the query', () => {
   it('cardStrips passes the blocked set down, and does not post-filter', async () => {
     const { model, reads } = build();
-    await model.forViewer(VIEWER).cardStrips([{ restaurantId: 'r1' }]);
+    await model.forViewer(VIEWER).cardStrips([{ placeId: 'r1' }]);
     const options = (reads.cardStrips.mock.calls as Call[][])[0][1] as {
       excludeUserIds: readonly string[];
     };
@@ -73,10 +70,8 @@ describe('the exclusion is pushed into the query', () => {
     // The page params must survive — an earlier draft spread them in the wrong
     // order and would have silently reset pagination.
     const { model, reads } = build();
-    await model
-      .forViewer(VIEWER)
-      .restaurantGallery('r1', { limit: 30, offset: 60 });
-    const params = (reads.restaurantGallery.mock.calls as Call[][])[0][1] as {
+    await model.forViewer(VIEWER).placeGallery('r1', { limit: 30, offset: 60 });
+    const params = (reads.placeGallery.mock.calls as Call[][])[0][1] as {
       limit: number;
       offset: number;
       excludeUserIds: readonly string[];
@@ -91,7 +86,7 @@ describe('the exclusion is pushed into the query', () => {
     // straight, so a blocked author could front a tile while the seam claimed
     // forgetting was unrepresentable.
     const { model, reads } = build();
-    await model.forViewer(VIEWER).stripPhotos({ restaurantIds: ['r1'] });
+    await model.forViewer(VIEWER).stripPhotos({ placeIds: ['r1'] });
     const params = (reads.stripPhotos.mock.calls as Call[][])[0][0] as {
       excludeUserIds: readonly string[];
     };
@@ -106,22 +101,22 @@ describe('the exclusion is pushed into the query', () => {
     // page of 3 — if anything downstream re-derives the count from the page,
     // this fails.
     const { model, reads } = build();
-    reads.restaurantGallery.mockResolvedValue({
-      restaurantId: 'r1',
+    reads.placeGallery.mockResolvedValue({
+      placeId: 'r1',
       totalCount: 87,
       all: [1, 2, 3].map((n) => ({ photoId: `p${n}`, userId: 'a' })),
       byDish: [],
     });
     const gallery = await model
       .forViewer(VIEWER)
-      .restaurantGallery('r1', { limit: 3 });
+      .placeGallery('r1', { limit: 3 });
     expect(gallery.totalCount).toBe(87);
     expect(gallery.all).toHaveLength(3);
   });
 
   it('an anonymous viewer excludes nothing and asks the block store nothing', async () => {
     const { model, reads, blocks } = build();
-    await model.forViewer(null).cardStrips([{ restaurantId: 'r1' }]);
+    await model.forViewer(null).cardStrips([{ placeId: 'r1' }]);
     const options = (reads.cardStrips.mock.calls as Call[][])[0][1] as {
       excludeUserIds: readonly string[];
     };
@@ -131,7 +126,7 @@ describe('the exclusion is pushed into the query', () => {
 
   it('blocking is BOTH directions — it uses the peer set', async () => {
     const { model, blocks } = build();
-    await model.forViewer(VIEWER).cardStrips([{ restaurantId: 'r1' }]);
+    await model.forViewer(VIEWER).cardStrips([{ placeId: 'r1' }]);
     expect(blocks.blockedPeerIds).toHaveBeenCalledWith(VIEWER);
   });
 
@@ -140,8 +135,8 @@ describe('the exclusion is pushed into the query', () => {
     // no-op or it empties the whole log. The meaningful gate is the blocked-
     // PAIR check the controller performs.
     const { model, reads } = build();
-    await model.forViewer(VIEWER).userFoodLog('u2', VIEWER);
-    expect(reads.userFoodLog).toHaveBeenCalledWith('u2', VIEWER);
+    await model.forViewer(VIEWER).userItemLog('u2', VIEWER);
+    expect(reads.userItemLog).toHaveBeenCalledWith('u2', VIEWER);
   });
 });
 
@@ -168,28 +163,28 @@ describe('gallery paging reaches the route', () => {
   }
 
   it('forwards limit and offset from the query to the seam', async () => {
-    const restaurantGallery = jest.fn().mockResolvedValue({ totalCount: 0 });
-    const forViewer = jest.fn().mockReturnValue({ restaurantGallery });
+    const placeGallery = jest.fn().mockResolvedValue({ totalCount: 0 });
+    const forViewer = jest.fn().mockReturnValue({ placeGallery });
     const controller = controllerWith({ forViewer });
 
-    await controller.restaurantGallery(
+    await controller.placeGallery(
       { userId: VIEWER } as never,
       'r1',
-      Object.assign(new RestaurantGalleryQueryDto(), {
+      Object.assign(new PlaceGalleryQueryDto(), {
         limit: 30,
         offset: 60,
       }),
     );
 
     expect(forViewer).toHaveBeenCalledWith(VIEWER);
-    expect(restaurantGallery).toHaveBeenCalledWith('r1', {
+    expect(placeGallery).toHaveBeenCalledWith('r1', {
       limit: 30,
       offset: 60,
     });
   });
 
   it('an unbounded limit is REJECTED by validation — it is a DoS lever', async () => {
-    const dto = plainToInstance(RestaurantGalleryQueryDto, {
+    const dto = plainToInstance(PlaceGalleryQueryDto, {
       limit: 100_000,
       offset: 0,
     });
@@ -202,15 +197,13 @@ describe('gallery paging reaches the route', () => {
     ['offset', { offset: -1 }],
   ])('rejects a nonsensical %s', async (property, payload) => {
     const errors = await validate(
-      plainToInstance(RestaurantGalleryQueryDto, payload),
+      plainToInstance(PlaceGalleryQueryDto, payload),
     );
     expect(errors.map((e) => e.property)).toEqual([property]);
   });
 
   it('omitting paging entirely is valid — both are optional', async () => {
-    const errors = await validate(
-      plainToInstance(RestaurantGalleryQueryDto, {}),
-    );
+    const errors = await validate(plainToInstance(PlaceGalleryQueryDto, {}));
     expect(errors).toEqual([]);
   });
 });

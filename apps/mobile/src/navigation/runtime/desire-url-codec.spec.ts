@@ -9,21 +9,21 @@ type LiveLink = Exclude<ParsedDesireLink, { kind: 'none' }>;
 const ROUND_TRIP_CASES: LiveLink[] = [
   {
     kind: 'entityAction',
-    action: { kind: 'restaurantWorld', restaurantId: 'rest-123', restaurantName: 'Caffè Panna' },
+    action: { kind: 'restaurantWorld', placeId: 'rest-123', placeName: 'Caffè Panna' },
   },
   {
     kind: 'entityAction',
-    action: { kind: 'restaurantWorld', restaurantId: 'rest-123', restaurantName: '' },
+    action: { kind: 'restaurantWorld', placeId: 'rest-123', placeName: '' },
   },
   {
     kind: 'entityAction',
-    action: { kind: 'entityDesire', entityType: 'food', entityId: 'e-9', label: 'gelato' },
+    action: { kind: 'entityDesire', entityType: 'item', entityId: 'e-9', label: 'gelato' },
   },
   {
     kind: 'entityAction',
     action: {
       kind: 'entityDesire',
-      entityType: 'restaurant_attribute',
+      entityType: 'place_attribute',
       entityId: 'attr/slash',
       label: 'outdoor seating',
     },
@@ -105,7 +105,7 @@ describe('desire-url-codec', () => {
   it('parses the legacy restaurant path', () => {
     expect(parseDesireLink('https://crave-search.app/restaurant/rest-42')).toEqual({
       kind: 'entityAction',
-      action: { kind: 'restaurantWorld', restaurantId: 'rest-42', restaurantName: '' },
+      action: { kind: 'restaurantWorld', placeId: 'rest-42', placeName: '' },
     });
   });
 

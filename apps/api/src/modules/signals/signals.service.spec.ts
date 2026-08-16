@@ -4,7 +4,7 @@ import { SignalsService } from './signals.service';
 const USER_ID = '11111111-1111-1111-1111-111111111111';
 const ACTOR_ID = '22222222-2222-2222-2222-222222222222';
 const ENTITY_ID = '33333333-3333-3333-3333-333333333333';
-const RESTAURANT_ID = '44444444-4444-4444-4444-444444444444';
+const PLACE_ID = '44444444-4444-4444-4444-444444444444';
 
 function createLogger() {
   const logger = {
@@ -30,7 +30,7 @@ function createPrisma() {
       upsert: jest.fn().mockResolvedValue({ actorId: ACTOR_ID }),
     },
     place: { findUnique: jest.fn().mockResolvedValue(null) },
-    restaurantLocation: { findFirst: jest.fn().mockResolvedValue(null) },
+    placeLocation: { findFirst: jest.fn().mockResolvedValue(null) },
     connection: { findFirst: jest.fn().mockResolvedValue(null) },
   };
 }
@@ -165,7 +165,7 @@ describe('SignalsService write shape', () => {
       subject: { entityId: ENTITY_ID },
       geo: GEO,
       occurredAt,
-      meta: { contextRestaurantId: RESTAURANT_ID, locationId: undefined },
+      meta: { contextRestaurantId: PLACE_ID, locationId: undefined },
     });
     await flush();
 
@@ -188,7 +188,7 @@ describe('SignalsService write shape', () => {
         actorId: ACTOR_ID,
         occurredAt,
         // undefined meta values are compacted away.
-        meta: { contextRestaurantId: RESTAURANT_ID },
+        meta: { contextRestaurantId: PLACE_ID },
       },
     });
   });
@@ -291,27 +291,27 @@ describe('SignalsService fire-and-forget law (a write failure never fails the ac
 describe('SignalsService restaurant-location bbox lookup', () => {
   it('prefers the given locationId, else the primary location; never rejects', async () => {
     const { service, prisma } = createService();
-    prisma.restaurantLocation.findFirst.mockResolvedValue({
+    prisma.placeLocation.findFirst.mockResolvedValue({
       latitude: '30.25',
       longitude: '-97.75',
     });
 
     expect(
-      await service.bboxFromRestaurantLocation({
-        restaurantId: RESTAURANT_ID,
+      await service.bboxFromPlaceLocation({
+        placeId: PLACE_ID,
         locationId: ENTITY_ID,
       }),
     ).toEqual({ minLat: 30.25, maxLat: 30.25, minLng: -97.75, maxLng: -97.75 });
-    expect(prisma.restaurantLocation.findFirst).toHaveBeenCalledWith({
-      where: { locationId: ENTITY_ID, restaurantId: RESTAURANT_ID },
+    expect(prisma.placeLocation.findFirst).toHaveBeenCalledWith({
+      where: { locationId: ENTITY_ID, placeId: PLACE_ID },
       select: { latitude: true, longitude: true },
     });
 
-    prisma.restaurantLocation.findFirst.mockClear();
-    await service.bboxFromRestaurantLocation({ restaurantId: RESTAURANT_ID });
-    expect(prisma.restaurantLocation.findFirst).toHaveBeenCalledWith({
+    prisma.placeLocation.findFirst.mockClear();
+    await service.bboxFromPlaceLocation({ placeId: PLACE_ID });
+    expect(prisma.placeLocation.findFirst).toHaveBeenCalledWith({
       where: {
-        restaurantId: RESTAURANT_ID,
+        placeId: PLACE_ID,
         latitude: { not: null },
         longitude: { not: null },
       },
@@ -319,10 +319,10 @@ describe('SignalsService restaurant-location bbox lookup', () => {
       select: { latitude: true, longitude: true },
     });
 
-    prisma.restaurantLocation.findFirst.mockRejectedValue(new Error('db down'));
+    prisma.placeLocation.findFirst.mockRejectedValue(new Error('db down'));
     expect(
-      await service.bboxFromRestaurantLocation({
-        restaurantId: RESTAURANT_ID,
+      await service.bboxFromPlaceLocation({
+        placeId: PLACE_ID,
       }),
     ).toBeNull();
   });
@@ -332,27 +332,27 @@ describe('SignalsService food-location bbox lookup (via connection)', () => {
   it('resolves the food -> most-evidenced connection -> restaurant location', async () => {
     const { service, prisma } = createService();
     prisma.connection.findFirst.mockResolvedValue({
-      restaurantId: RESTAURANT_ID,
+      placeId: PLACE_ID,
     });
-    prisma.restaurantLocation.findFirst.mockResolvedValue({
+    prisma.placeLocation.findFirst.mockResolvedValue({
       latitude: '30.25',
       longitude: '-97.75',
     });
 
-    expect(await service.bboxFromFoodLocation(ENTITY_ID)).toEqual({
+    expect(await service.bboxFromItemLocation(ENTITY_ID)).toEqual({
       minLat: 30.25,
       maxLat: 30.25,
       minLng: -97.75,
       maxLng: -97.75,
     });
     expect(prisma.connection.findFirst).toHaveBeenCalledWith({
-      where: { foodId: ENTITY_ID },
+      where: { itemId: ENTITY_ID },
       orderBy: { mentionCount: 'desc' },
-      select: { restaurantId: true },
+      select: { placeId: true },
     });
-    expect(prisma.restaurantLocation.findFirst).toHaveBeenCalledWith({
+    expect(prisma.placeLocation.findFirst).toHaveBeenCalledWith({
       where: {
-        restaurantId: RESTAURANT_ID,
+        placeId: PLACE_ID,
         latitude: { not: null },
         longitude: { not: null },
       },
@@ -363,9 +363,9 @@ describe('SignalsService food-location bbox lookup (via connection)', () => {
 
   it('returns null (never rejects) when the food has no connection or the DB fails', async () => {
     const { service, prisma } = createService();
-    expect(await service.bboxFromFoodLocation(ENTITY_ID)).toBeNull();
+    expect(await service.bboxFromItemLocation(ENTITY_ID)).toBeNull();
 
     prisma.connection.findFirst.mockRejectedValue(new Error('db down'));
-    expect(await service.bboxFromFoodLocation(ENTITY_ID)).toBeNull();
+    expect(await service.bboxFromItemLocation(ENTITY_ID)).toBeNull();
   });
 });

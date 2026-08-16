@@ -67,9 +67,9 @@ function createHarness(
         placeId: options.pollPlaceId ?? null,
         topic: {
           targetDishId: TARGET_DISH_ID,
-          targetRestaurantId: null,
-          targetFoodAttributeId: null,
-          targetRestaurantAttributeId: null,
+          targetPlaceId: null,
+          targetItemAttributeId: null,
+          targetPlaceAttributeId: null,
         },
       }),
     },

@@ -64,6 +64,11 @@ const RULE_RELEASES: readonly RuleRelease[] = [
     fingerprint: 'c80052ba5a9e',
     note: 'first ledgered dedupe rule — the canonical entity-match text (cost-asymmetry framing, alias evidence, fail-closed to new) as it stood when the dedupe lane adopted the hearing ledger',
   },
+  {
+    version: 2,
+    fingerprint: 'd8f7b025db6b',
+    note: 'R14 taxonomy rename (2026-08-16): schema/kind vocabulary restaurant->place, food->item swept through the prompt text; the rule semantics are unchanged, but the vocabulary the judge answers in is the renamed one',
+  },
 ];
 
 function resolveRuleVersion(): number {

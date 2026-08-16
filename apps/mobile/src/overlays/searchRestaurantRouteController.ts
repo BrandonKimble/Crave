@@ -4,14 +4,14 @@ import type { AppOverlayRouteCommandRuntime } from '../navigation/runtime/app-ov
 export type SearchRestaurantRouteCommand =
   | {
       type: 'show_search_restaurant_route';
-      restaurantId: string | null;
+      placeId: string | null;
     }
   | {
       type: 'hide_search_restaurant_route';
     }
   | {
       type: 'update_search_restaurant_route';
-      restaurantId: string | null;
+      placeId: string | null;
     };
 
 export const isSearchRestaurantRouteEntry = (
@@ -33,14 +33,14 @@ export const applySearchRestaurantRouteCommand = (
     case 'show_search_restaurant_route': {
       if (isSearchRestaurantRouteActive) {
         routeOverlayRouteCommandRuntime.updateRoute('restaurant', {
-          restaurantId: command.restaurantId,
+          placeId: command.placeId,
           source: 'search',
         });
         return;
       }
       if (activeOverlayRoute.key !== 'restaurant') {
         routeOverlayRouteCommandRuntime.pushRoute('restaurant', {
-          restaurantId: command.restaurantId,
+          placeId: command.placeId,
           source: 'search',
         });
       }
@@ -55,7 +55,7 @@ export const applySearchRestaurantRouteCommand = (
     case 'update_search_restaurant_route': {
       if (isSearchRestaurantRouteActive) {
         routeOverlayRouteCommandRuntime.updateRoute('restaurant', {
-          restaurantId: command.restaurantId,
+          placeId: command.placeId,
           source: 'search',
         });
       }

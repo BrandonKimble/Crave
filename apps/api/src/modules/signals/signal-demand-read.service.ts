@@ -74,9 +74,9 @@ export interface RecentSearchRow {
   explicitSelection: boolean;
 }
 
-export interface RecentlyViewedRestaurantRow {
-  restaurantId: string;
-  restaurantName: string;
+export interface RecentlyViewedPlaceRow {
+  placeId: string;
+  placeName: string;
   city: string | null;
   region: string | null;
   lastViewedAt: Date;
@@ -85,19 +85,19 @@ export interface RecentlyViewedRestaurantRow {
   locationId: string | null;
 }
 
-export interface RecentlyViewedFoodRow {
+export interface RecentlyViewedItemRow {
   connectionId: string;
-  foodId: string;
-  foodName: string;
-  restaurantId: string;
-  restaurantName: string;
+  itemId: string;
+  itemName: string;
+  placeId: string;
+  placeName: string;
   lastViewedAt: Date;
   viewCount: number;
   locationId: string | null;
 }
 
-export interface RestaurantViewStatsRow {
-  restaurantId: string;
+export interface PlaceViewStatsRow {
+  placeId: string;
   lastViewedAt: Date;
   viewCount: number;
 }
@@ -131,14 +131,14 @@ export interface TerritoryUnmetAskRow {
   reason: string;
   distinctUserCount: number;
   demandScore: number;
-  resultRestaurantCount: number | null;
-  resultFoodCount: number | null;
+  resultPlaceCount: number | null;
+  resultItemCount: number | null;
   lastSeenAt: Date;
   askCount: number;
 }
 
-export interface ViewedRestaurantNameMatch {
-  restaurantId: string;
+export interface ViewedPlaceNameMatch {
+  placeId: string;
   name: string;
   aliases: string[];
 }
@@ -487,10 +487,10 @@ export class SignalDemandReadService {
    * resolved subject; the frozen history contract plus the latest view's
    * locationId.
    */
-  async recentlyViewedRestaurants(
+  async recentlyViewedPlaces(
     userId: string,
     params: { prefix?: string | null; limit: number },
-  ): Promise<RecentlyViewedRestaurantRow[]> {
+  ): Promise<RecentlyViewedPlaceRow[]> {
     const actorId = await this.resolveActorId(userId);
     if (!actorId) {
       return [];
@@ -501,8 +501,8 @@ export class SignalDemandReadService {
       : Prisma.empty;
     const rows = await this.prisma.$queryRaw<
       {
-        restaurant_id: string;
-        restaurant_name: string;
+        place_id: string;
+        place_name: string;
         city: string | null;
         region: string | null;
         last_viewed_at: Date;
@@ -511,8 +511,8 @@ export class SignalDemandReadService {
       }[]
     >`
       SELECT
-        e.entity_id AS restaurant_id,
-        e.name AS restaurant_name,
+        e.entity_id AS place_id,
+        e.name AS place_name,
         e.city,
         e.region,
         MAX(s.occurred_at) AS last_viewed_at,
@@ -522,7 +522,7 @@ export class SignalDemandReadService {
       ${redirectJoinSql('s')}
       JOIN core_entities e
         ON e.entity_id = ${resolvedSubjectSql('s')}
-       AND e.type = 'restaurant'
+       AND e.type = 'place'
       WHERE s.actor_id = ${actorId}::uuid
         AND s.kind = 'entity_view'
         AND s.subject_id IS NOT NULL
@@ -532,8 +532,8 @@ export class SignalDemandReadService {
       LIMIT ${Math.max(1, params.limit)}
     `;
     return rows.map((row) => ({
-      restaurantId: row.restaurant_id,
-      restaurantName: row.restaurant_name,
+      placeId: row.place_id,
+      placeName: row.place_name,
       city: row.city,
       region: row.region,
       lastViewedAt: row.last_viewed_at,
@@ -554,10 +554,10 @@ export class SignalDemandReadService {
    * food's old views appear under the survivor; acts landing on the same
    * surviving connection fold into one row.
    */
-  async recentlyViewedFoods(
+  async recentlyViewedItems(
     userId: string,
     params: { prefix?: string | null; limit: number },
-  ): Promise<RecentlyViewedFoodRow[]> {
+  ): Promise<RecentlyViewedItemRow[]> {
     const actorId = await this.resolveActorId(userId);
     if (!actorId) {
       return [];
@@ -569,10 +569,10 @@ export class SignalDemandReadService {
     const rows = await this.prisma.$queryRaw<
       {
         connection_id: string;
-        food_id: string;
-        food_name: string;
-        restaurant_id: string;
-        restaurant_name: string;
+        item_id: string;
+        item_name: string;
+        place_id: string;
+        place_name: string;
         last_viewed_at: Date;
         view_count: number;
         location_id: string | null;
@@ -619,10 +619,10 @@ export class SignalDemandReadService {
       )
       SELECT
         v.connection_id,
-        c.food_id,
-        f.name AS food_name,
-        c.restaurant_id,
-        rr.name AS restaurant_name,
+        c.food_id AS item_id,
+        f.name AS item_name,
+        c.restaurant_id AS place_id,
+        rr.name AS place_name,
         v.last_viewed_at,
         v.view_count,
         v.location_id
@@ -636,10 +636,10 @@ export class SignalDemandReadService {
     `;
     return rows.map((row) => ({
       connectionId: row.connection_id,
-      foodId: row.food_id,
-      foodName: row.food_name,
-      restaurantId: row.restaurant_id,
-      restaurantName: row.restaurant_name,
+      itemId: row.item_id,
+      itemName: row.item_name,
+      placeId: row.place_id,
+      placeName: row.place_name,
       lastViewedAt: row.last_viewed_at,
       viewCount: Number(row.view_count),
       locationId: row.location_id,
@@ -681,11 +681,11 @@ export class SignalDemandReadService {
   }
 
   /** Per-restaurant view stats for a candidate set (autocomplete affinity). */
-  async restaurantViewStats(
+  async placeViewStats(
     userId: string,
-    restaurantIds: string[],
-  ): Promise<RestaurantViewStatsRow[]> {
-    if (!restaurantIds.length) {
+    placeIds: string[],
+  ): Promise<PlaceViewStatsRow[]> {
+    if (!placeIds.length) {
       return [];
     }
     const actorId = await this.resolveActorId(userId);
@@ -693,10 +693,10 @@ export class SignalDemandReadService {
       return [];
     }
     const rows = await this.prisma.$queryRaw<
-      { restaurant_id: string; last_viewed_at: Date; view_count: number }[]
+      { place_id: string; last_viewed_at: Date; view_count: number }[]
     >`
       SELECT
-        ${resolvedSubjectSql('s')} AS restaurant_id,
+        ${resolvedSubjectSql('s')} AS place_id,
         MAX(s.occurred_at) AS last_viewed_at,
         SUM(${EVENT_COUNT_SQL})::int AS view_count
       FROM signals s
@@ -704,11 +704,11 @@ export class SignalDemandReadService {
       WHERE s.actor_id = ${actorId}::uuid
         AND s.kind = 'entity_view'
         AND s.subject_id IS NOT NULL
-        AND ${resolvedSubjectSql('s')} = ANY(${restaurantIds}::uuid[])
+        AND ${resolvedSubjectSql('s')} = ANY(${placeIds}::uuid[])
       GROUP BY 1
     `;
     return rows.map((row) => ({
-      restaurantId: row.restaurant_id,
+      placeId: row.place_id,
       lastViewedAt: row.last_viewed_at,
       viewCount: Number(row.view_count),
     }));
@@ -716,11 +716,11 @@ export class SignalDemandReadService {
 
   /** Name-prefix matches among one user's viewed restaurants (autocomplete
    *  "viewed" suggestion lane). */
-  async viewedRestaurantNameMatches(
+  async viewedPlaceNameMatches(
     userId: string,
     prefix: string,
     limit: number,
-  ): Promise<ViewedRestaurantNameMatch[]> {
+  ): Promise<ViewedPlaceNameMatch[]> {
     const actorId = await this.resolveActorId(userId);
     if (!actorId) {
       return [];
@@ -731,14 +731,14 @@ export class SignalDemandReadService {
     }
     const rows = await this.prisma.$queryRaw<
       {
-        restaurant_id: string;
+        place_id: string;
         name: string;
         aliases: string[] | null;
         last_viewed_at: Date;
       }[]
     >`
       SELECT
-        e.entity_id AS restaurant_id,
+        e.entity_id AS place_id,
         e.name,
         -- The entity's RECALL SURFACES, read through the locale read door
         -- rather than a hand-written predicate. Purely a client-side
@@ -766,7 +766,7 @@ export class SignalDemandReadService {
       ${redirectJoinSql('s')}
       JOIN core_entities e
         ON e.entity_id = ${resolvedSubjectSql('s')}
-       AND e.type = 'restaurant'
+       AND e.type = 'place'
       WHERE s.actor_id = ${actorId}::uuid
         AND s.kind = 'entity_view'
         AND s.subject_id IS NOT NULL
@@ -776,7 +776,7 @@ export class SignalDemandReadService {
       LIMIT ${Math.max(1, limit)}
     `;
     return rows.map((row) => ({
-      restaurantId: row.restaurant_id,
+      placeId: row.place_id,
       name: row.name,
       aliases: row.aliases ?? [],
     }));
@@ -933,8 +933,8 @@ export class SignalDemandReadService {
         reason: string;
         distinct_user_count: bigint;
         demand_score: number;
-        result_restaurant_count: number | null;
-        result_food_count: number | null;
+        result_place_count: number | null;
+        result_item_count: number | null;
         last_seen_at: Date;
         ask_count: bigint;
         detected_locale: string | null;
@@ -1030,8 +1030,8 @@ export class SignalDemandReadService {
       reason: row.reason,
       distinctUserCount: Number(row.distinct_user_count),
       demandScore: Number(row.demand_score),
-      resultRestaurantCount: row.result_restaurant_count,
-      resultFoodCount: row.result_food_count,
+      resultPlaceCount: row.result_place_count,
+      resultItemCount: row.result_item_count,
       lastSeenAt: row.last_seen_at,
       askCount: Number(row.ask_count),
     }));

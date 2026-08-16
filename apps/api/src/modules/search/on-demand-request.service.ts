@@ -108,10 +108,8 @@ export class OnDemandRequestService {
 
     await this.prisma.$transaction(async (tx) => {
       for (const request of capped) {
-        const resultRestaurantCount = this.extractInteger(
-          context.restaurantCount,
-        );
-        const resultFoodCount = this.extractInteger(context.foodCount);
+        const resultPlaceCount = this.extractInteger(context.placeCount);
+        const resultItemCount = this.extractInteger(context.itemCount);
         const queueTargets = this.expandCollectableQueueTargets(request);
         const metadata = this.buildMetadata(request.metadata, context);
 
@@ -138,11 +136,11 @@ export class OnDemandRequestService {
             };
           }
 
-          if (resultRestaurantCount !== null) {
-            createData.resultRestaurantCount = resultRestaurantCount;
+          if (resultPlaceCount !== null) {
+            createData.resultPlaceCount = resultPlaceCount;
           }
-          if (resultFoodCount !== null) {
-            createData.resultFoodCount = resultFoodCount;
+          if (resultItemCount !== null) {
+            createData.resultItemCount = resultItemCount;
           }
 
           const updateData: Prisma.OnDemandRequestUpdateInput = {
@@ -172,11 +170,11 @@ export class OnDemandRequestService {
               ? { connect: { entityId: request.entityId } }
               : { disconnect: true };
           }
-          if (resultRestaurantCount !== null) {
-            updateData.resultRestaurantCount = resultRestaurantCount;
+          if (resultPlaceCount !== null) {
+            updateData.resultPlaceCount = resultPlaceCount;
           }
-          if (resultFoodCount !== null) {
-            updateData.resultFoodCount = resultFoodCount;
+          if (resultItemCount !== null) {
+            updateData.resultItemCount = resultItemCount;
           }
 
           // Demand identity excludes `reason` — the same demand arriving as
@@ -254,8 +252,8 @@ export class OnDemandRequestService {
             askSearchRequestId: searchRequestId ?? undefined,
             reason: request.reason,
             entityType: request.entityType,
-            resultRestaurantCount: resultRestaurantCount ?? undefined,
-            resultFoodCount: resultFoodCount ?? undefined,
+            resultPlaceCount: resultPlaceCount ?? undefined,
+            resultItemCount: resultItemCount ?? undefined,
             source:
               typeof context.source === 'string' ? context.source : undefined,
           },

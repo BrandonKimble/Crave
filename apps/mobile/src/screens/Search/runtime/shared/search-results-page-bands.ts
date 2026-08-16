@@ -26,17 +26,17 @@ export const searchResultsRowKeyOf = (item: ResultsListItem, index: number): str
   if (item && typeof item === 'object' && 'kind' in item) {
     return item.key || `row-${index}`;
   }
-  if (item && 'foodId' in item) {
+  if (item && 'itemId' in item) {
     if (item.connectionId) {
       return item.connectionId;
     }
-    if (item.foodId && item.restaurantId) {
-      return `${item.foodId}-${item.restaurantId}`;
+    if (item.itemId && item.placeId) {
+      return `${item.itemId}-${item.placeId}`;
     }
     return `dish-${index}`;
   }
-  if (item && 'restaurantId' in item) {
-    return item.restaurantId || `restaurant-${index}`;
+  if (item && 'placeId' in item) {
+    return item.placeId || `restaurant-${index}`;
   }
   return `result-${index}`;
 };

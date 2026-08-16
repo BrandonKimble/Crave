@@ -22,16 +22,16 @@ import {
 import { EntityType } from '@prisma/client';
 import type {
   DishResult as SharedDishResult,
-  DishRestaurantData as SharedDishRestaurantData,
-  DishRestaurantLocation as SharedDishRestaurantLocation,
+  DishPlaceData as SharedDishPlaceData,
+  DishPlaceLocation as SharedDishPlaceLocation,
   FilterClause as SharedFilterClause,
-  FoodResult as SharedFoodResult,
+  ItemResult as SharedItemResult,
   QueryEntity as SharedQueryEntity,
   QueryFormat as SharedQueryFormat,
   QueryPlan as SharedQueryPlan,
-  RestaurantFoodSnippet as SharedRestaurantFoodSnippet,
-  RestaurantProfile as SharedRestaurantProfile,
-  RestaurantResult as SharedRestaurantResult,
+  PlaceItemSnippet as SharedPlaceItemSnippet,
+  PlaceProfile as SharedPlaceProfile,
+  PlaceResult as SharedPlaceResult,
   SearchResponse as SharedSearchResponse,
   SearchResponseMetadata as SharedSearchResponseMetadata,
 } from '@crave-search/shared';
@@ -98,22 +98,22 @@ export class QueryEntityGroupDto {
   @IsOptional()
   @ValidateNested({ each: true })
   @Type(() => QueryEntityDto)
-  restaurants?: QueryEntityDto[];
+  places?: QueryEntityDto[];
 
   @IsOptional()
   @ValidateNested({ each: true })
   @Type(() => QueryEntityDto)
-  food?: QueryEntityDto[];
+  items?: QueryEntityDto[];
 
   @IsOptional()
   @ValidateNested({ each: true })
   @Type(() => QueryEntityDto)
-  foodAttributes?: QueryEntityDto[];
+  itemAttributes?: QueryEntityDto[];
 
   @IsOptional()
   @ValidateNested({ each: true })
   @Type(() => QueryEntityDto)
-  restaurantAttributes?: QueryEntityDto[];
+  placeAttributes?: QueryEntityDto[];
 
   /** Ingredient lane: linked when a food-classified term resolves to an
    *  ingredient entity instead of a dish ("burrata"). */
@@ -140,10 +140,10 @@ export class QueryEntityGroupDto {
  *    empty state discovered in production.
  */
 export const QUERY_ENTITY_GROUP_KEYS = [
-  'restaurants',
-  'food',
-  'foodAttributes',
-  'restaurantAttributes',
+  'places',
+  'items',
+  'itemAttributes',
+  'placeAttributes',
   'ingredients',
 ] as const satisfies readonly (keyof QueryEntityGroupDto)[];
 
@@ -409,12 +409,15 @@ export class SearchCacheAttributionDto {
   submissionContext?: SearchSubmissionContextDto;
 }
 
+/** R14 carry-list #3: EntityScope collapsed onto the renamed EntityType —
+ *  the members ARE the Prisma enum values (one vocabulary, no duplicate
+ *  string enum), plus the one scope EntityType cannot carry: 'connection'. */
 export const EntityScope = {
-  RESTAURANT: 'restaurant',
-  FOOD: 'food',
-  FOOD_ATTRIBUTE: 'food_attribute',
-  RESTAURANT_ATTRIBUTE: 'restaurant_attribute',
-  INGREDIENT: 'ingredient',
+  PLACE: EntityType.place,
+  ITEM: EntityType.item,
+  ITEM_ATTRIBUTE: EntityType.item_attribute,
+  PLACE_ATTRIBUTE: EntityType.place_attribute,
+  INGREDIENT: EntityType.ingredient,
   CONNECTION: 'connection',
 } as const satisfies Record<string, SharedFilterClause['entityType']>;
 
@@ -428,21 +431,21 @@ export interface SearchPlanResponseDto {
   sqlPreview?: string | null;
 }
 
-export interface FoodResultDto extends SharedFoodResult {
-  restaurantLocationId?: string;
-  restaurantDistanceMiles?: number | null;
+export interface ItemResultDto extends SharedItemResult {
+  placeLocationId?: string;
+  placeDistanceMiles?: number | null;
 }
 
-export type RestaurantFoodSnippetDto = SharedRestaurantFoodSnippet;
+export type PlaceItemSnippetDto = SharedPlaceItemSnippet;
 
-export interface RestaurantResultDto extends SharedRestaurantResult {
+export interface PlaceResultDto extends SharedPlaceResult {
   distanceMiles?: number | null;
 }
 
-export type RestaurantProfileDto = SharedRestaurantProfile;
+export type PlaceProfileDto = SharedPlaceProfile;
 
-export type DishRestaurantLocationDto = SharedDishRestaurantLocation;
-export type DishRestaurantDataDto = SharedDishRestaurantData;
+export type DishPlaceLocationDto = SharedDishPlaceLocation;
+export type DishPlaceDataDto = SharedDishPlaceData;
 export type DishResultDto = SharedDishResult;
 
 export type SearchResponseMetadataDto = SharedSearchResponseMetadata;

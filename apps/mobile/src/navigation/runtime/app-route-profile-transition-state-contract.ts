@@ -17,7 +17,7 @@ type MapCameraPadding = {
 };
 
 export type RestaurantFocusSession = {
-  restaurantId: string | null;
+  placeId: string | null;
   locationKey: string | null;
   hasAppliedInitialMultiLocationZoomOut: boolean;
 };

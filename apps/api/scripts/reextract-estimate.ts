@@ -220,7 +220,7 @@ async function main(): Promise<void> {
     const estimate = await campaigns.prepareManifestEstimate({
       name,
       docCount,
-      expectedNewRestaurants: 0,
+      expectedNewPlaces: 0,
       perDocRateOverrides: replayPriorOverrides ?? {
         'gemini.interactive_pipeline': interactivePerDocMicros,
       },

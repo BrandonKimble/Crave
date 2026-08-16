@@ -114,21 +114,21 @@ interface GoldCorpus {
 
 /** Buckets in the structured request, and the entity type each implies. */
 const BUCKETS: Array<[string, string]> = [
-  ['restaurants', 'restaurant'],
-  ['food', 'food'],
-  ['foodAttributes', 'food_attribute'],
-  ['restaurantAttributes', 'restaurant_attribute'],
+  ['places', 'place'],
+  ['items', 'item'],
+  ['itemAttributes', 'item_attribute'],
+  ['placeAttributes', 'place_attribute'],
   ['ingredients', 'ingredient'],
 ];
 
-const ATTRIBUTE_TYPES = new Set(['food_attribute', 'restaurant_attribute']);
+const ATTRIBUTE_TYPES = new Set(['item_attribute', 'place_attribute']);
 
 const GAZETTEER_TYPES: EntityType[] = [
-  'food',
+  'item',
   'ingredient',
-  'food_attribute',
-  'restaurant_attribute',
-  'restaurant',
+  'item_attribute',
+  'place_attribute',
+  'place',
 ] as EntityType[];
 
 interface Grounded {
@@ -379,7 +379,7 @@ async function main(): Promise<void> {
       //   (3) FOLDED both sides — compare canonicalFold(query) tokens against
       //       canonicalFold(name) tokens, so accented lemmas ("camarón") match
       //       and the fold is the gazetteer's N1 fold, not a raw lowercase.
-      const COMPOSITIONAL_TYPES = new Set(['food', 'ingredient']);
+      const COMPOSITIONAL_TYPES = new Set(['item', 'ingredient']);
       const queryLemmas = new Set(
         norm(entry.query)
           .split(' ')

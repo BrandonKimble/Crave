@@ -154,8 +154,8 @@ export class SharePackageResolverService {
         // "unavailable" although the survivor is one hop away.
         const entity =
           kind === SharedEntityKind.restaurant
-            ? await this.saveableEntities.resolveSaveableRestaurant(id)
-            : await this.saveableEntities.resolveSaveableFood(id);
+            ? await this.saveableEntities.resolveSaveablePlace(id)
+            : await this.saveableEntities.resolveSaveableItem(id);
         if (!entity) return unavailable;
         // Explicit non-gate: entities carry no author identity.
         if (await this.blockedByAuthorGate(viewerUserId, null)) {

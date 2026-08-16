@@ -13,17 +13,17 @@ async function main() {
     const search = app.get(SearchService);
     const prisma = app.get(PrismaService);
     const rows = await prisma.$queryRawUnsafe<{ entity_id: string }[]>(
-      `SELECT entity_id FROM core_entities WHERE lower(name)='dessert' AND type='food' AND status='active' LIMIT 1`,
+      `SELECT entity_id FROM core_entities WHERE lower(name)='dessert' AND type='item' AND status='active' LIMIT 1`,
     );
     const id = rows[0]?.entity_id;
     for (const page of [1, 2, 3]) {
       const res = await search.runQuery({
-        entities: { food: [{ normalizedName: 'dessert', entityIds: [id] }] },
+        entities: { item: [{ normalizedName: 'dessert', entityIds: [id] }] },
         pagination: { page, pageSize: 20 },
       } as unknown as SearchQueryRequestDto);
       const meta = res.metadata as unknown as Record<string, unknown>;
       out(
-        `page ${page}: dishes=${res.dishes?.length} restaurants=${res.restaurants?.length} totals=${String(meta?.totalFoodResults)}/${String(meta?.totalRestaurantResults)} metaPage=${(meta as any)?.page} pageSize=${(meta as any)?.pageSize}`,
+        `page ${page}: dishes=${res.dishes?.length} restaurants=${res.places?.length} totals=${String(meta?.totalItemResults)}/${String(meta?.totalPlaceResults)} metaPage=${(meta as any)?.page} pageSize=${(meta as any)?.pageSize}`,
       );
     }
   } finally {

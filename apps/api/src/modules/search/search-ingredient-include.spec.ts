@@ -6,7 +6,7 @@ import type { SearchConstraints } from './search-constraints';
 import type { QueryPlan } from './dto/search-query.dto';
 
 const INCLUDE_ID = '11111111-1111-1111-1111-111111111111';
-const FOOD_ID = '33333333-3333-3333-3333-333333333333';
+const ITEM_ID = '33333333-3333-3333-3333-333333333333';
 
 /**
  * The ingredient INCLUDE lane (testimony/knowledge doctrine): recall unions
@@ -24,24 +24,24 @@ function buildConstraints(
   return {
     format: 'dual_list',
     inputPresence: {
-      restaurants: 0,
-      food: 1,
-      foodAttributes: 0,
-      restaurantAttributes: 0,
+      places: 0,
+      items: 1,
+      itemAttributes: 0,
+      placeAttributes: 0,
     },
-    hadFoodGroup: true,
-    hadRestaurantGroup: false,
-    hadFoodAttributeGroup: false,
-    hadRestaurantAttributeGroup: false,
-    primaryFoodAttributeQuery: false,
+    hadItemGroup: true,
+    hadPlaceGroup: false,
+    hadItemAttributeGroup: false,
+    hadPlaceAttributeGroup: false,
+    primaryItemAttributeQuery: false,
     grounding: {
-      food: { anchors: [], family: [], similar: {}, twinIngredientIds: [] },
+      item: { anchors: [], family: [], similar: {}, twinIngredientIds: [] },
     },
     ids: {
-      restaurantIds: [],
-      foodIds: [FOOD_ID],
-      foodAttributeIds: [],
-      restaurantAttributeIds: [],
+      placeIds: [],
+      itemIds: [ITEM_ID],
+      itemAttributeIds: [],
+      placeAttributeIds: [],
       ingredientIds: [],
       ...overrides,
     },
@@ -111,7 +111,7 @@ describe('ingredient include lane (compiler → builder)', () => {
     });
     const preview = renderInlinedSql(dataSql);
     expect(preview).toContain(
-      `(c.food_id = ANY(ARRAY['${FOOD_ID}'::uuid]::uuid[])) OR`,
+      `(c.food_id = ANY(ARRAY['${ITEM_ID}'::uuid]::uuid[])) OR`,
     );
     expect(preview).toContain(
       `c.ingredients && ARRAY['${INCLUDE_ID}'::uuid]::uuid[]`,

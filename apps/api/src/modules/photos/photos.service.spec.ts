@@ -12,7 +12,7 @@ import { ImageModerationUnavailableError } from '../external-integrations/google
  */
 function makeService(overrides?: {
   photo?: Record<string, unknown> | null;
-  isFood?: boolean;
+  isItem?: boolean;
   safetyRejected?: boolean;
   safetyError?: Error;
   reportThreshold?: number;
@@ -22,10 +22,10 @@ function makeService(overrides?: {
     entity: {
       findUnique: jest
         .fn()
-        .mockResolvedValue({ entityId: 'r1', type: 'restaurant' }),
+        .mockResolvedValue({ entityId: 'r1', type: 'place' }),
     },
     connection: {
-      findUnique: jest.fn().mockResolvedValue({ restaurantId: 'r1' }),
+      findUnique: jest.fn().mockResolvedValue({ placeId: 'r1' }),
     },
     photoReport: {
       create: jest.fn().mockResolvedValue({}),
@@ -38,7 +38,7 @@ function makeService(overrides?: {
         Promise.resolve({
           photoId: data.photoId ?? 'p1',
           userId: data.userId,
-          restaurantId: data.restaurantId,
+          placeId: data.placeId,
           connectionId: data.connectionId ?? null,
           publicId: data.publicId,
           status: 'pending',
@@ -51,7 +51,7 @@ function makeService(overrides?: {
         Promise.resolve({
           photoId: 'p1',
           userId: 'u1',
-          restaurantId: 'r1',
+          placeId: 'r1',
           connectionId: null,
           publicId: 'crave/test/photos/p1',
           status: data?.status ?? 'pending',
@@ -109,7 +109,7 @@ function makeService(overrides?: {
       .mockReturnValue('https://res/img/upload/t/v99/crave/test/avatars/u1'),
   };
   const vision = {
-    isFoodContent: jest.fn().mockResolvedValue(overrides?.isFood ?? true),
+    isItemContent: jest.fn().mockResolvedValue(overrides?.isItem ?? true),
   };
   // SAFETY moderation (D149-V): Google Vision SafeSearch, called by us.
   // Default = approved; `safetyError` makes every call throw, which is the
@@ -150,9 +150,9 @@ function makeService(overrides?: {
     vision as never,
     safety as never,
     {
-      resolveSaveableRestaurant: (id: string) =>
+      resolveSaveablePlace: (id: string) =>
         Promise.resolve({ entityId: id, name: 'R', city: null }),
-      resolveSaveableFood: (id: string) =>
+      resolveSaveableItem: (id: string) =>
         Promise.resolve({ entityId: id, name: 'F', city: null }),
       resolveActiveByIds: (ids: string[]) =>
         Promise.resolve(
@@ -172,7 +172,7 @@ describe('PhotosService lifecycle', () => {
     const { service, prisma } = makeService();
     const result = await service.createUploadTicket({
       userId: 'u1',
-      restaurantId: 'r1',
+      placeId: 'r1',
       connectionId: 'c1',
     });
     // ONE create carries the REAL publicId (no placeholder row, ever) and
@@ -184,12 +184,12 @@ describe('PhotosService lifecycle', () => {
     expect(result.photo.photoId).toBe(createArgs.data.photoId);
 
     prisma.connection.findUnique.mockResolvedValueOnce({
-      restaurantId: 'OTHER',
+      placeId: 'OTHER',
     });
     await expect(
       service.createUploadTicket({
         userId: 'u1',
-        restaurantId: 'r1',
+        placeId: 'r1',
         connectionId: 'c1',
       }),
     ).rejects.toThrow(BadRequestException);
@@ -200,7 +200,7 @@ describe('PhotosService lifecycle', () => {
     await expect(
       service.createUploadTicket({
         userId: 'u1',
-        restaurantId: 'r1',
+        placeId: 'r1',
         connectionId: 'c1',
         pendingDishName: 'secret menu birria',
       }),
@@ -222,7 +222,7 @@ describe('PhotosService lifecycle', () => {
   };
 
   it('moderation approved + is-food -> LIVE (conditional transition from pending)', async () => {
-    const { service, prisma } = makeService({ isFood: true });
+    const { service, prisma } = makeService({ isItem: true });
     await service.handleNotification({ ...uploadNotification });
     const update = prisma.photo.updateMany.mock.calls.find(
       ([args]) =>
@@ -233,7 +233,7 @@ describe('PhotosService lifecycle', () => {
 
   it('a LOST transition race never double-settles (updateMany count 0 -> no side effects)', async () => {
     const { service, prisma, cloudinary } = makeService({
-      isFood: true,
+      isItem: true,
       safetyRejected: true,
     });
     prisma.photo.updateMany.mockResolvedValue({ count: 0 });
@@ -242,7 +242,7 @@ describe('PhotosService lifecycle', () => {
   });
 
   it('moderation approved but NOT food -> REMOVED, asset KEPT (auditable false-positives)', async () => {
-    const { service, prisma, cloudinary } = makeService({ isFood: false });
+    const { service, prisma, cloudinary } = makeService({ isItem: false });
     await service.handleNotification({ ...uploadNotification });
     const update = prisma.photo.updateMany.mock.calls.find(
       ([args]) => args.data?.status === 'removed',
@@ -324,7 +324,7 @@ describe('PhotosService lifecycle', () => {
     );
     expect(transitions).toHaveLength(0);
     // And the is-food gate never even ran — safety is the first door.
-    expect(vision.isFoodContent).not.toHaveBeenCalled();
+    expect(vision.isItemContent).not.toHaveBeenCalled();
   });
 
   it('the reconciliation sweep is the RETRY ARM: a still-pending row is re-moderated, and an unknown verdict is not counted as settled', async () => {
@@ -537,7 +537,7 @@ describe('PhotosService lifecycle', () => {
         userId: 'owner',
         publicId: 'x',
         status: 'hidden',
-        restaurantId: 'r1',
+        placeId: 'r1',
         connectionId: null,
         caption: null,
         takenAt: null,
@@ -559,7 +559,7 @@ describe('PhotosService lifecycle', () => {
         publicId: 'x',
         status: 'live',
         visibility: 'private',
-        restaurantId: 'r1',
+        placeId: 'r1',
         connectionId: null,
         caption: null,
         takenAt: null,
@@ -576,11 +576,11 @@ describe('PhotosService lifecycle', () => {
 
   it('ticket: visibility lands on the row at create (default public, explicit private)', async () => {
     const { service, prisma } = makeService();
-    await service.createUploadTicket({ userId: 'u1', restaurantId: 'r1' });
+    await service.createUploadTicket({ userId: 'u1', placeId: 'r1' });
     expect(prisma.photo.create.mock.calls[0][0].data.visibility).toBe('public');
     await service.createUploadTicket({
       userId: 'u1',
-      restaurantId: 'r1',
+      placeId: 'r1',
       visibility: 'private',
     });
     expect(prisma.photo.create.mock.calls[1][0].data.visibility).toBe(

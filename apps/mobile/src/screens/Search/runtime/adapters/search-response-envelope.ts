@@ -23,5 +23,5 @@ export const createSearchResponseEnvelope = (
       ? response.metadata.searchRequestId
       : null,
   dishCount: response.dishes?.length ?? 0,
-  restaurantCount: response.restaurants?.length ?? 0,
+  restaurantCount: response.places?.length ?? 0,
 });

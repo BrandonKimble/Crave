@@ -28,7 +28,7 @@ import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.ser
 export interface PhotoDto {
   photoId: string;
   userId: string;
-  restaurantId: string;
+  placeId: string;
   connectionId: string | null;
   status: PhotoStatus;
   visibility: PhotoVisibility;
@@ -109,7 +109,7 @@ const UNKNOWN_TERMINAL: SafetyDecision = {
 const PHOTO_DTO_SELECT = {
   photoId: true,
   userId: true,
-  restaurantId: true,
+  placeId: true,
   connectionId: true,
   publicId: true,
   status: true,
@@ -181,7 +181,7 @@ export class PhotosService {
    *  storage) and why the server can't extract capture time itself. */
   async createUploadTicket(params: {
     userId: string;
-    restaurantId: string;
+    placeId: string;
     connectionId?: string;
     caption?: string;
     pendingDishName?: string;
@@ -191,15 +191,15 @@ export class PhotosService {
     // ONE saveable-entity law (D36/F621): redirect-resolve → type →
     // status='active'. Type alone let a photo be anchored on an ARCHIVED
     // restaurant — uploaded, moderated, BILLED, and invisible forever.
-    const restaurant = await this.saveableEntities.resolveSaveableRestaurant(
-      params.restaurantId,
+    const place = await this.saveableEntities.resolveSaveablePlace(
+      params.placeId,
     );
-    if (!restaurant) {
+    if (!place) {
       throw new BadRequestException('restaurantId must be a restaurant');
     }
     // A merge loser's id resolves to the survivor: the photo anchors on the
     // live restaurant rather than the husk.
-    const restaurantId = restaurant.entityId;
+    const placeId = place.entityId;
     // connectionId (a real dish link) and pendingDishName (the "Other…"
     // free-text demand signal) are mutually exclusive by construction —
     // a ticket carrying both is a client bug; reject loudly.
@@ -211,9 +211,9 @@ export class PhotosService {
     if (params.connectionId) {
       const connection = await this.prisma.connection.findUnique({
         where: { connectionId: params.connectionId },
-        select: { restaurantId: true },
+        select: { placeId: true },
       });
-      if (!connection || connection.restaurantId !== restaurantId) {
+      if (!connection || connection.placeId !== placeId) {
         throw new BadRequestException(
           'connectionId must be a dish of the given restaurant',
         );
@@ -237,7 +237,7 @@ export class PhotosService {
       data: {
         photoId,
         userId: params.userId,
-        restaurantId,
+        placeId,
         connectionId: params.connectionId ?? null,
         caption: params.caption?.slice(0, 512) ?? null,
         pendingDishName: params.pendingDishName?.slice(0, 256) ?? null,
@@ -481,8 +481,8 @@ export class PhotosService {
     if (!photo || photo.status !== PhotoStatus.pending) return; // settled
     if (verdict.decision === 'approved') {
       const urls = this.cloudinary.buildUrls(publicId);
-      const isFood = await this.vision.isFoodContent(urls.thumb);
-      if (!isFood) {
+      const isItem = await this.vision.isItemContent(urls.thumb);
+      if (!isItem) {
         // Not-food keeps the ASSET (classifier false-positives must stay
         // auditable/recoverable); only the row leaves circulation.
         await this.transition(
@@ -980,7 +980,7 @@ export class PhotosService {
     return {
       photoId: photo.photoId,
       userId: photo.userId,
-      restaurantId: photo.restaurantId,
+      placeId: photo.placeId,
       connectionId: photo.connectionId,
       status: photo.status,
       visibility: photo.visibility,

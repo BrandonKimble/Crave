@@ -185,7 +185,7 @@ export class AliasManagementService implements OnModuleInit {
     const lowercaseAlias = alias.toLowerCase().trim();
 
     // Restaurant-specific terms that shouldn't be in food attributes
-    const restaurantTerms = [
+    const placeTerms = [
       'patio',
       'romantic',
       'family-friendly',
@@ -198,7 +198,7 @@ export class AliasManagementService implements OnModuleInit {
     ];
 
     // Food-specific terms that shouldn't be in restaurant attributes
-    const foodTerms = [
+    const itemTerms = [
       'spicy',
       'mild',
       'crispy',
@@ -211,20 +211,20 @@ export class AliasManagementService implements OnModuleInit {
     ];
 
     switch (entityType) {
-      case 'food_attribute':
-        if (restaurantTerms.some((term) => lowercaseAlias.includes(term))) {
-          return `Restaurant-specific term "${alias}" not allowed in food_attribute`;
+      case 'item_attribute':
+        if (placeTerms.some((term) => lowercaseAlias.includes(term))) {
+          return `Restaurant-specific term "${alias}" not allowed in item_attribute`;
         }
         break;
 
-      case 'restaurant_attribute':
-        if (foodTerms.some((term) => lowercaseAlias.includes(term))) {
-          return `Food-specific term "${alias}" not allowed in restaurant_attribute`;
+      case 'place_attribute':
+        if (itemTerms.some((term) => lowercaseAlias.includes(term))) {
+          return `Food-specific term "${alias}" not allowed in place_attribute`;
         }
         break;
 
-      case 'restaurant':
-      case 'food':
+      case 'place':
+      case 'item':
       case 'ingredient':
         // No cross-scope restrictions for main entity types
         break;

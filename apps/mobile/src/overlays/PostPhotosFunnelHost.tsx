@@ -22,8 +22,8 @@ import { useAppOverlayRouteController } from './useAppOverlayRouteController';
 // render-produced onPress is the one shape that works from every surface.
 
 export type PostPhotosFunnelContext = {
-  restaurantId?: string;
-  restaurantName?: string;
+  placeId?: string;
+  placeName?: string;
   dishId?: string;
   dishName?: string;
 };

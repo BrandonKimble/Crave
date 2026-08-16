@@ -18,7 +18,7 @@ export type ProfileShellStatePublisher = {
   ) => void;
   setProfileCameraPadding: (padding: SearchRuntimeProfileShellState['mapCameraPadding']) => void;
   setMapHighlightedRestaurantId: (
-    restaurantId: SearchRuntimeProfileShellState['mapHighlightedRestaurantId']
+    placeId: SearchRuntimeProfileShellState['mapHighlightedRestaurantId']
   ) => void;
   setRestaurantPanelSnapshot: (
     update:
@@ -92,15 +92,15 @@ export const useProfileShellStatePublisher = ({
   const setMapHighlightedRestaurantId = React.useCallback<
     ProfileShellStatePublisher['setMapHighlightedRestaurantId']
   >(
-    (restaurantId) => {
+    (placeId) => {
       // The seeded map marker source is bound to the profile highlight: it is published when a
       // profile hydrates with geometry and must clear exactly when the highlight clears. This is the
       // single funnel every clear path (close, search dismiss, runtime-state-owner) routes through.
-      if (restaurantId == null) {
+      if (placeId == null) {
         publishMapMarkerSource(null);
       }
       publishProfileShellState({
-        mapHighlightedRestaurantId: restaurantId,
+        mapHighlightedRestaurantId: placeId,
       });
     },
     [publishProfileShellState]

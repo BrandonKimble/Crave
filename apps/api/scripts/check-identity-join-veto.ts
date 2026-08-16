@@ -28,8 +28,7 @@ import { join } from 'path';
 const SRC = join(__dirname, '../src');
 const MERGE_GROUP = /GROUP BY identity_key\b/;
 const PAIR_JOIN = /\w+\.identity_key_sorted\s*=\s*\w+\.identity_key_sorted/;
-const VETO =
-  /accentsAgreeUnbanked|accentAdmits|accentVetoed|restaurantNamesAgree/;
+const VETO = /accentsAgreeUnbanked|accentAdmits|accentVetoed|placeNamesAgree/;
 
 function walk(dir: string): string[] {
   const out: string[] = [];

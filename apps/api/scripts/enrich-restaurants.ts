@@ -8,8 +8,8 @@
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
-import { RestaurantEnrichmentModule } from '../src/modules/restaurant-enrichment';
-import { RestaurantLocationEnrichmentService } from '../src/modules/restaurant-enrichment';
+import { PlaceEnrichmentModule } from '../src/modules/restaurant-enrichment';
+import { PlaceLocationEnrichmentService } from '../src/modules/restaurant-enrichment';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 interface CliOptions {
@@ -56,7 +56,7 @@ async function bootstrap(): Promise<void> {
   const cliOptions = parseArgs(process.argv.slice(2));
 
   const app = await NestFactory.createApplicationContext(
-    RestaurantEnrichmentModule,
+    PlaceEnrichmentModule,
     {
       logger: ['error', 'warn'],
     },
@@ -64,7 +64,7 @@ async function bootstrap(): Promise<void> {
   stopCronsForScript(app);
 
   try {
-    const service = app.get(RestaurantLocationEnrichmentService);
+    const service = app.get(PlaceLocationEnrichmentService);
 
     Logger.log(
       `Starting restaurant enrichment (limit=${cliOptions.limit}${
@@ -75,7 +75,7 @@ async function bootstrap(): Promise<void> {
       'RestaurantEnrichmentCLI',
     );
 
-    const summary = await service.enrichMissingRestaurants({
+    const summary = await service.enrichMissingPlaces({
       limit: cliOptions.limit,
       dryRun: cliOptions.dryRun,
       force: cliOptions.force,

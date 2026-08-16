@@ -45,7 +45,7 @@ describe('PhotoVisionService.isFoodContent', () => {
     mockFetchOk();
     const generate = jest.fn().mockResolvedValue('{"answer":"YES"}');
     const service = makeService(generate);
-    await expect(service.isFoodContent('http://x/thumb.jpg')).resolves.toBe(
+    await expect(service.isItemContent('http://x/thumb.jpg')).resolves.toBe(
       true,
     );
     const call = (generate.mock.calls as unknown[][])[0][0] as {
@@ -65,7 +65,7 @@ describe('PhotoVisionService.isFoodContent', () => {
   it('NO means false', async () => {
     mockFetchOk();
     const service = makeService(jest.fn().mockResolvedValue('{"answer":"NO"}'));
-    await expect(service.isFoodContent('http://x/thumb.jpg')).resolves.toBe(
+    await expect(service.isItemContent('http://x/thumb.jpg')).resolves.toBe(
       false,
     );
   });
@@ -78,7 +78,7 @@ describe('PhotoVisionService.isFoodContent', () => {
     const service = makeService(
       jest.fn().mockResolvedValue('I think the answer is NO'),
     );
-    await expect(service.isFoodContent('http://x/thumb.jpg')).resolves.toBe(
+    await expect(service.isItemContent('http://x/thumb.jpg')).resolves.toBe(
       true,
     );
   });
@@ -88,7 +88,7 @@ describe('PhotoVisionService.isFoodContent', () => {
     const service = makeService(
       jest.fn().mockRejectedValue(new Error('spend budget closed')),
     );
-    await expect(service.isFoodContent('http://x/thumb.jpg')).resolves.toBe(
+    await expect(service.isItemContent('http://x/thumb.jpg')).resolves.toBe(
       true,
     );
   });
@@ -99,7 +99,7 @@ describe('PhotoVisionService.isFoodContent', () => {
       .mockResolvedValue({ ok: false, status: 404 }) as unknown as typeof fetch;
     const generate = jest.fn();
     const service = makeService(generate);
-    await expect(service.isFoodContent('http://x/thumb.jpg')).resolves.toBe(
+    await expect(service.isItemContent('http://x/thumb.jpg')).resolves.toBe(
       true,
     );
     expect(generate).not.toHaveBeenCalled();

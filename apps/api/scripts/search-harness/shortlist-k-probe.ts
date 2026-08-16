@@ -37,7 +37,7 @@ async function main(): Promise<void> {
   const fixture = loadFixture();
   const pairs: { term: string; truth: FixtureEntity }[] = [];
   for (const e of fixture.entities) {
-    if (e.type !== 'food' && e.type !== 'restaurant') continue;
+    if (e.type !== 'item' && e.type !== 'place') continue;
     for (const alias of e.aliases) {
       const a = alias.trim().toLowerCase();
       if (!a || a === e.name.trim().toLowerCase()) continue;
@@ -99,10 +99,7 @@ async function main(): Promise<void> {
     if (nineToFifteen.length) {
       for (const K of [K_BASE, K_WIDE]) {
         const verdicts = await llm.matchEntitiesBatch({
-          kind:
-            nineToFifteen[0].truth.type === 'restaurant'
-              ? 'restaurant'
-              : 'food',
+          kind: nineToFifteen[0].truth.type === 'place' ? 'place' : 'item',
           items: nineToFifteen.map((c) => ({
             term: c.term,
             candidates: c.candidates

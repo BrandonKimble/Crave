@@ -17,7 +17,7 @@ type Waiter = {
   reject: (error: unknown) => void;
 };
 
-const stripKeyOf = (ref: PhotoStripRef): string => ref.connectionId ?? ref.restaurantId;
+const stripKeyOf = (ref: PhotoStripRef): string => ref.connectionId ?? ref.placeId;
 
 let pendingWaiters = new Map<string, Waiter[]>();
 let batchTimer: ReturnType<typeof setTimeout> | null = null;

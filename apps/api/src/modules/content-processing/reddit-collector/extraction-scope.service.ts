@@ -74,11 +74,9 @@ export class ExtractionScopeService {
    * dish entity) lives solely in core_restaurant_events, and omitting it
    * leaves its projections serving the pre-activation graph (D7).
    */
-  async affectedRestaurantsForDocuments(
-    documentIds: string[],
-  ): Promise<string[]> {
+  async affectedPlacesForDocuments(documentIds: string[]): Promise<string[]> {
     if (documentIds.length === 0) return [];
-    const rows = await this.prisma.$queryRaw<Array<{ restaurant_id: string }>>(
+    const rows = await this.prisma.$queryRaw<Array<{ place_id: string }>>(
       Prisma.sql`
         SELECT DISTINCT restaurant_id FROM core_restaurant_entity_events
         WHERE source_document_id = ANY(${documentIds}::uuid[])
@@ -86,7 +84,7 @@ export class ExtractionScopeService {
         SELECT DISTINCT restaurant_id FROM core_restaurant_events
         WHERE source_document_id = ANY(${documentIds}::uuid[])`,
     );
-    return rows.map((row) => row.restaurant_id);
+    return rows.map((row) => row.place_id);
   }
 
   /**
@@ -163,36 +161,36 @@ export class ExtractionScopeService {
  * double-counting" incident class). The fragment lives HERE so the
  * definition cannot fork; readers import it, never hand-roll the join.
  */
-export function activeRestaurantEventExistsSql(restaurantRef: string): string {
+export function activePlaceEventExistsSql(placeRef: string): string {
   return `EXISTS (
     SELECT 1 FROM core_restaurant_events ev_scope
     JOIN collection_source_documents d_scope
       ON d_scope.document_id = ev_scope.source_document_id
      AND d_scope.active_extraction_run_id = ev_scope.extraction_run_id
-    WHERE ev_scope.restaurant_id = ${restaurantRef}
+    WHERE ev_scope.restaurant_id = ${placeRef}
   )`;
 }
 
-export function activeRestaurantEventCountSql(restaurantRef: string): string {
+export function activePlaceEventCountSql(placeRef: string): string {
   return `(SELECT count(*)::int FROM core_restaurant_events ev_scope
     JOIN collection_source_documents d_scope
       ON d_scope.document_id = ev_scope.source_document_id
      AND d_scope.active_extraction_run_id = ev_scope.extraction_run_id
-    WHERE ev_scope.restaurant_id = ${restaurantRef})`;
+    WHERE ev_scope.restaurant_id = ${placeRef})`;
 }
 
-export function activeEntityEventCountSql(restaurantRef: string): string {
+export function activeEntityEventCountSql(placeRef: string): string {
   return `(SELECT count(*)::int FROM core_restaurant_entity_events ev_scope
     JOIN collection_source_documents d_scope
       ON d_scope.document_id = ev_scope.source_document_id
      AND d_scope.active_extraction_run_id = ev_scope.extraction_run_id
-    WHERE ev_scope.restaurant_id = ${restaurantRef})`;
+    WHERE ev_scope.restaurant_id = ${placeRef})`;
 }
 
 /** FROM-clause source for readers that aggregate over ACTIVE restaurant
  *  events directly (praise lane — final red team #2: praise read the raw
  *  ledger and counted retained superseded generations). Exposes ev_scope. */
-export function activeRestaurantEventsSourceSql(): string {
+export function activePlaceEventsSourceSql(): string {
   return `core_restaurant_events ev_scope
     JOIN collection_source_documents d_scope
       ON d_scope.document_id = ev_scope.source_document_id
@@ -211,22 +209,22 @@ export function activeEntityEventsSourceSql(): string {
  *  red team #1: any-overlap community gating cross-metro-merged Gueros →
  *  Gueros Brooklyn off one stray mention; identity wants the DOMINANT
  *  community of each side). */
-export function activeCommunitiesArraySql(restaurantRef: string): string {
+export function activeCommunitiesArraySql(placeRef: string): string {
   return `COALESCE((SELECT array_agg(DISTINCT lower(d_scope.community)) FILTER (WHERE d_scope.community IS NOT NULL)
     FROM core_restaurant_entity_events ev_scope
     JOIN collection_source_documents d_scope
       ON d_scope.document_id = ev_scope.source_document_id
      AND d_scope.active_extraction_run_id = ev_scope.extraction_run_id
-    WHERE ev_scope.restaurant_id = ${restaurantRef}), '{}')`;
+    WHERE ev_scope.restaurant_id = ${placeRef}), '{}')`;
 }
 
-export function dominantCommunitySql(restaurantRef: string): string {
+export function dominantCommunitySql(placeRef: string): string {
   return `(SELECT lower(d_scope.community)
     FROM core_restaurant_entity_events ev_scope
     JOIN collection_source_documents d_scope
       ON d_scope.document_id = ev_scope.source_document_id
      AND d_scope.active_extraction_run_id = ev_scope.extraction_run_id
-    WHERE ev_scope.restaurant_id = ${restaurantRef} AND d_scope.community IS NOT NULL
+    WHERE ev_scope.restaurant_id = ${placeRef} AND d_scope.community IS NOT NULL
     GROUP BY lower(d_scope.community)
     ORDER BY count(*) DESC, lower(d_scope.community)
     LIMIT 1)`;
@@ -293,7 +291,7 @@ export async function supersedeAndActivate(
   // evidence is only restaurant-level (praise with no dish entity) lives
   // solely in core_restaurant_events, and omitting it leaves its projections
   // serving the pre-activation graph.
-  const losing = await tx.$queryRaw<Array<{ restaurant_id: string }>>`
+  const losing = await tx.$queryRaw<Array<{ place_id: string }>>`
     SELECT DISTINCT ev.restaurant_id FROM (
       SELECT e.restaurant_id, e.extraction_run_id
       FROM core_restaurant_entity_events e
@@ -309,19 +307,19 @@ export async function supersedeAndActivate(
     WHERE r.system_prompt_hash = ${activatingRun.systemPromptHash}
   `;
   // Sorted so overlapping activations cannot deadlock on the rebuild locks.
-  const losingIds = losing.map((entry) => entry.restaurant_id).sort();
-  for (const restaurantId of losingIds) {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`rebuild:restaurant:${restaurantId}`}))`;
+  const losingIds = losing.map((entry) => entry.place_id).sort();
+  for (const placeId of losingIds) {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`rebuild:place:${placeId}`}))`;
   }
 
-  await tx.restaurantEntityEvent.deleteMany({
+  await tx.placeEntityEvent.deleteMany({
     where: {
       sourceDocumentId: { in: ids },
       extractionRunId: { not: activateRunId },
       extractionRun: { systemPromptHash: activatingRun.systemPromptHash },
     },
   });
-  await tx.restaurantEvent.deleteMany({
+  await tx.placeEvent.deleteMany({
     where: {
       sourceDocumentId: { in: ids },
       extractionRunId: { not: activateRunId },
@@ -385,52 +383,51 @@ export async function activeWinnerRedirectMap(
  * Writers must not call tx.restaurantEvent/.restaurantEntityEvent.createMany
  * directly — these functions are the ledger's front door.
  */
-export async function writeRestaurantEvents(
+export async function writePlaceEvents(
   tx: Prisma.TransactionClient,
-  rows: Prisma.RestaurantEventCreateManyInput[],
+  rows: Prisma.PlaceEventCreateManyInput[],
 ): Promise<void> {
   if (!rows.length) {
     return;
   }
   const redirects = await activeWinnerRedirectMap(
     tx,
-    rows.map((row) => row.restaurantId),
+    rows.map((row) => row.placeId),
   );
   const resolved = redirects.size
     ? rows.map((row) =>
-        redirects.has(row.restaurantId)
-          ? { ...row, restaurantId: redirects.get(row.restaurantId)! }
+        redirects.has(row.placeId)
+          ? { ...row, placeId: redirects.get(row.placeId)! }
           : row,
       )
     : rows;
-  await tx.restaurantEvent.createMany({
+  await tx.placeEvent.createMany({
     data: resolved,
     skipDuplicates: true,
   });
 }
 
-export async function writeRestaurantEntityEvents(
+export async function writePlaceEntityEvents(
   tx: Prisma.TransactionClient,
-  rows: Prisma.RestaurantEntityEventCreateManyInput[],
+  rows: Prisma.PlaceEntityEventCreateManyInput[],
 ): Promise<void> {
   if (!rows.length) {
     return;
   }
   const redirects = await activeWinnerRedirectMap(
     tx,
-    rows.flatMap((row) => [row.restaurantId, row.entityId]),
+    rows.flatMap((row) => [row.placeId, row.entityId]),
   );
   const resolved = redirects.size
     ? rows.map((row) => {
-        const restaurantId =
-          redirects.get(row.restaurantId) ?? row.restaurantId;
+        const placeId = redirects.get(row.placeId) ?? row.placeId;
         const entityId = redirects.get(row.entityId) ?? row.entityId;
-        return restaurantId === row.restaurantId && entityId === row.entityId
+        return placeId === row.placeId && entityId === row.entityId
           ? row
-          : { ...row, restaurantId, entityId };
+          : { ...row, placeId, entityId };
       })
     : rows;
-  await tx.restaurantEntityEvent.createMany({
+  await tx.placeEntityEvent.createMany({
     data: resolved,
     skipDuplicates: true,
   });
@@ -442,7 +439,7 @@ export async function writeRestaurantEntityEvents(
  *  at the cliff, so the pair could never merge, silently, forever).
  *  Rows whose content key already exists on the winner DELETE; the rest
  *  re-key. Lives HERE because consumers never name the event ledgers. */
-export async function rekeyRestaurantEventsToCanonical(
+export async function rekeyPlaceEventsToCanonical(
   tx: Prisma.TransactionClient,
   canonicalId: string,
   duplicateId: string,
@@ -468,7 +465,7 @@ export async function rekeyRestaurantEventsToCanonical(
     WHERE restaurant_id = ${duplicateId}::uuid`;
 }
 
-export async function rekeyRestaurantEntityEventsToCanonical(
+export async function rekeyPlaceEntityEventsToCanonical(
   tx: Prisma.TransactionClient,
   canonicalId: string,
   duplicateId: string,

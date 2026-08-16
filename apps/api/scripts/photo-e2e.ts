@@ -98,14 +98,14 @@ async function main(): Promise<void> {
     if (!user) throw new Error('probe user missing');
     const connection = await prisma.connection.findFirst({
       where: {},
-      select: { connectionId: true, restaurantId: true },
+      select: { connectionId: true, placeId: true },
     });
     if (!connection) throw new Error('no connection rows in dev DB');
 
     // 1. Ticket
     const { photo, ticket } = await photos.createUploadTicket({
       userId: user.userId,
-      restaurantId: connection.restaurantId,
+      placeId: connection.placeId,
       connectionId: connection.connectionId,
       caption: 'photo pipeline E2E',
     });

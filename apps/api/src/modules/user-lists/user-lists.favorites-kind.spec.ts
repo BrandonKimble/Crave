@@ -51,7 +51,7 @@ function makeHarness(opts: {
   createImpl?: jest.Mock;
   itemCreateImpl?: jest.Mock;
   existingItems?: any[];
-  connectionRestaurantId?: string | null;
+  connectionPlaceId?: string | null;
   deleteManyCount?: number;
 }) {
   const lists: any[] = [opts.favoritesList, opts.standardList].filter(Boolean);
@@ -98,8 +98,7 @@ function makeHarness(opts: {
           (opts.existingItems ?? []).find(
             (item: any) =>
               item.listId === args.where.listId &&
-              (!args.where.restaurantId ||
-                item.restaurantId === args.where.restaurantId),
+              (!args.where.placeId || item.placeId === args.where.placeId),
           ) ?? null,
         ),
       ),
@@ -114,11 +113,11 @@ function makeHarness(opts: {
     connection: {
       findUnique: jest.fn(() =>
         Promise.resolve(
-          opts.connectionRestaurantId === null
+          opts.connectionPlaceId === null
             ? null
             : {
                 connectionId: C1,
-                restaurantId: opts.connectionRestaurantId ?? R1,
+                placeId: opts.connectionPlaceId ?? R1,
               },
         ),
       ),
@@ -141,14 +140,14 @@ function makeHarness(opts: {
     {
       record: () => undefined,
       bboxFromPoint: () => null,
-      bboxFromRestaurantLocation: () => Promise.resolve(null),
+      bboxFromPlaceLocation: () => Promise.resolve(null),
     } as never,
     blocks as never,
     // D36: the one saveable-entity law (stubbed live here).
     {
-      resolveSaveableRestaurant: (id: string) =>
+      resolveSaveablePlace: (id: string) =>
         Promise.resolve({ entityId: id, name: 'R', city: null }),
-      resolveSaveableFood: (id: string) =>
+      resolveSaveableItem: (id: string) =>
         Promise.resolve({ entityId: id, name: 'F', city: null }),
       resolveActiveByIds: (ids: string[]) =>
         Promise.resolve(
@@ -252,40 +251,40 @@ describe('the heart verb — add/remove through the favorites selector', () => {
     const { service, listCreate, itemCreate } = makeHarness({
       favoritesList: null,
     });
-    const item = await service.addFavoriteItem(OWNER, { restaurantId: R1 });
+    const item = await service.addFavoriteItem(OWNER, { placeId: R1 });
     expect(listCreate).toHaveBeenCalledTimes(1);
     expect(itemCreate).toHaveBeenCalledTimes(1);
     expect(itemCreate.mock.calls[0][0].data).toMatchObject({
       listId: FAV_LIST_ID,
-      restaurantId: R1,
+      placeId: R1,
     });
-    expect(item.restaurantId).toBe(R1);
+    expect(item.placeId).toBe(R1);
   });
 
   it('re-hearting is idempotent: P2002 on the item returns the existing item, never a 400', async () => {
     const existing = {
       itemId: 'item-existing',
       listId: FAV_LIST_ID,
-      restaurantId: R1,
+      placeId: R1,
     };
     const { service } = makeHarness({
       favoritesList: favoritesRow(),
       itemCreateImpl: jest.fn().mockRejectedValue(p2002()),
       existingItems: [existing],
     });
-    const item = await service.addFavoriteItem(OWNER, { restaurantId: R1 });
+    const item = await service.addFavoriteItem(OWNER, { placeId: R1 });
     expect(item).toEqual(existing);
   });
 
   it('a dish-triggered heart side-flips to the restaurant of the connection (the favorites list is restaurant-typed)', async () => {
     const { service, itemCreate } = makeHarness({
       favoritesList: favoritesRow(),
-      connectionRestaurantId: R1,
+      connectionPlaceId: R1,
     });
     await service.addFavoriteItem(OWNER, { connectionId: C1 });
     expect(itemCreate.mock.calls[0][0].data).toMatchObject({
       listId: FAV_LIST_ID,
-      restaurantId: R1,
+      placeId: R1,
       connectionId: null,
     });
   });
@@ -294,9 +293,9 @@ describe('the heart verb — add/remove through the favorites selector', () => {
     const { service, prisma, itemDeleteMany } = makeHarness({
       favoritesList: favoritesRow(),
     });
-    await service.removeFavoriteItemByTarget(OWNER, { restaurantId: R1 });
+    await service.removeFavoriteItemByTarget(OWNER, { placeId: R1 });
     expect(itemDeleteMany).toHaveBeenCalledWith({
-      where: { listId: FAV_LIST_ID, restaurantId: R1 },
+      where: { listId: FAV_LIST_ID, placeId: R1 },
     });
     // The deleted row IS the count. There is no second copy to decrement —
     // which is what made 26 of 64 mirror lists wrong.
@@ -306,12 +305,12 @@ describe('the heart verb — add/remove through the favorites selector', () => {
   it('unhearting a connection target resolves to its restaurant; a never-hearted target is a no-op (no decrement)', async () => {
     const { service, prisma, itemDeleteMany } = makeHarness({
       favoritesList: favoritesRow(),
-      connectionRestaurantId: R1,
+      connectionPlaceId: R1,
       deleteManyCount: 0,
     });
     await service.removeFavoriteItemByTarget(OWNER, { connectionId: C1 });
     expect(itemDeleteMany).toHaveBeenCalledWith({
-      where: { listId: FAV_LIST_ID, restaurantId: R1 },
+      where: { listId: FAV_LIST_ID, placeId: R1 },
     });
     expect(prisma.userList.update).not.toHaveBeenCalled();
   });
@@ -329,7 +328,7 @@ describe('kind in payloads', () => {
     const mapper = new UserListMapper({} as never, logger as never);
     return mapper.buildListSummary(
       { ...favoritesRow({ kind }), items: [] } as never,
-      { restaurantScores: new Map(), connectionScores: new Map() },
+      { placeScores: new Map(), connectionScores: new Map() },
       'owner',
     );
   };

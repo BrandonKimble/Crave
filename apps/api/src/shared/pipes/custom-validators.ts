@@ -40,12 +40,7 @@ export function IsSafeString(validationOptions?: ValidationOptions) {
  * Custom validator for entity type enums
  */
 export function IsEntityType(validationOptions?: ValidationOptions) {
-  const validTypes = [
-    'restaurant',
-    'food',
-    'food_attribute',
-    'restaurant_attribute',
-  ];
+  const validTypes = ['place', 'item', 'item_attribute', 'place_attribute'];
 
   return function (object: object, propertyName: string) {
     registerDecorator({

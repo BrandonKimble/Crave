@@ -4,7 +4,7 @@ import { SearchQueryBuilder } from './search-query.builder';
 import type { SearchConstraints } from './search-constraints';
 import type { SearchExecutionDirectives } from './search-execution-directives';
 
-const FOOD_ID = '33333333-3333-3333-3333-333333333333';
+const ITEM_ID = '33333333-3333-3333-3333-333333333333';
 const SOFT_FOOD_ATTR = '44444444-4444-4444-4444-444444444444';
 const SOFT_REST_ATTR = '55555555-5555-5555-5555-555555555555';
 
@@ -19,25 +19,25 @@ function constraints(): SearchConstraints {
   return {
     format: 'dual_list',
     inputPresence: {
-      restaurants: 0,
-      food: 1,
-      foodAttributes: 1,
-      restaurantAttributes: 1,
+      places: 0,
+      items: 1,
+      itemAttributes: 1,
+      placeAttributes: 1,
     },
-    hadFoodGroup: true,
-    hadRestaurantGroup: false,
-    hadFoodAttributeGroup: true,
-    hadRestaurantAttributeGroup: true,
-    primaryFoodAttributeQuery: false,
+    hadItemGroup: true,
+    hadPlaceGroup: false,
+    hadItemAttributeGroup: true,
+    hadPlaceAttributeGroup: true,
+    primaryItemAttributeQuery: false,
     grounding: {
-      food: { anchors: [], family: [], similar: {}, twinIngredientIds: [] },
+      item: { anchors: [], family: [], similar: {}, twinIngredientIds: [] },
     },
     ids: {
-      restaurantIds: [],
-      foodIds: [FOOD_ID],
+      placeIds: [],
+      itemIds: [ITEM_ID],
       // Hard-only membership: the service already stripped soft ids.
-      foodAttributeIds: [],
-      restaurantAttributeIds: [],
+      itemAttributeIds: [],
+      placeAttributeIds: [],
       ingredientIds: [],
     },
     filters: { priceLevels: [], minimumVotes: null, rising: false },
@@ -50,8 +50,8 @@ function directives(
 ): SearchExecutionDirectives {
   return {
     pooledGate: {
-      softFoodAttributeIds: [SOFT_FOOD_ATTR],
-      softRestaurantAttributeIds: [SOFT_REST_ATTR],
+      softItemAttributeIds: [SOFT_FOOD_ATTR],
+      softPlaceAttributeIds: [SOFT_REST_ATTR],
       threshold: 25,
       ...overrides,
     },
@@ -69,8 +69,8 @@ const dishData = (d: SearchExecutionDirectives) =>
     directives: d,
   }).dataSql;
 
-const restaurantData = (d: SearchExecutionDirectives) =>
-  builder.buildRestaurantQuery({
+const placeData = (d: SearchExecutionDirectives) =>
+  builder.buildPlaceQuery({
     plan: plan(),
     pagination: { skip: 0, take: 25 },
     searchCenter: null,
@@ -120,7 +120,7 @@ describe('step-3 pooled richness gate (SQL shape)', () => {
   });
 
   it('restaurant: gate present with window count; PURE score order', () => {
-    const data = restaurantData(directives());
+    const data = placeData(directives());
     const sql = data.sql.replace(/\s+/g, ' ');
     expect(sql).toContain('OVER () AS pooled_full_count');
     // Same as the dish gate: the threshold is a BOUND operand, not a literal.
@@ -131,12 +131,12 @@ describe('step-3 pooled richness gate (SQL shape)', () => {
 
   it('restaurant: the HYDRATE path never gates (executor already decided on the open set)', () => {
     const sql = builder
-      .buildRestaurantQuery({
+      .buildPlaceQuery({
         plan: plan(),
         pagination: { skip: 0, take: 25 },
         searchCenter: null,
         directives: directives(),
-        restrictToRestaurantIds: [FOOD_ID],
+        restrictToPlaceIds: [ITEM_ID],
       })
       .dataSql.sql.replace(/\s+/g, ' ');
     expect(sql).not.toContain('pooled_full_count');
@@ -157,7 +157,7 @@ describe('step-3 pooled richness gate (SQL shape)', () => {
       })
       .dataSql.sql.replace(/\s+/g, ' ');
     const rest = builder
-      .buildRestaurantQuery({
+      .buildPlaceQuery({
         plan: openPlan,
         pagination: { skip: 0, take: 25 },
         searchCenter: null,
@@ -182,7 +182,7 @@ describe('step-3 pooled richness gate (SQL shape)', () => {
       searchCenter: null,
       directives: directives(),
     }).countSql;
-    const restCount = builder.buildRestaurantQuery({
+    const restCount = builder.buildPlaceQuery({
       plan: plan(),
       pagination: { skip: 0, take: 25 },
       searchCenter: null,
@@ -206,7 +206,7 @@ describe('step-3 pooled richness gate (SQL shape)', () => {
 
   it('tier-2 similar ring: scan-admitted, never served, window-counted', () => {
     const d = directives();
-    d.pooledGate!.similarFoodIds = ['66666666-6666-6666-6666-666666666666'];
+    d.pooledGate!.similarItemIds = ['66666666-6666-6666-6666-666666666666'];
     const q = builder.buildDishQuery({
       plan: plan(),
       pagination: { skip: 0, take: 25 },
@@ -229,10 +229,10 @@ describe('step-3 pooled richness gate (SQL shape)', () => {
   it('ring-only gate (no soft words) builds without empty-array joins', () => {
     const d: SearchExecutionDirectives = {
       pooledGate: {
-        softFoodAttributeIds: [],
-        softRestaurantAttributeIds: [],
+        softItemAttributeIds: [],
+        softPlaceAttributeIds: [],
         threshold: 25,
-        similarFoodIds: ['66666666-6666-6666-6666-666666666666'],
+        similarItemIds: ['66666666-6666-6666-6666-666666666666'],
       },
     };
     expect(() =>
@@ -244,7 +244,7 @@ describe('step-3 pooled richness gate (SQL shape)', () => {
       }),
     ).not.toThrow();
     expect(() =>
-      builder.buildRestaurantQuery({
+      builder.buildPlaceQuery({
         plan: plan(),
         pagination: { skip: 0, take: 25 },
         searchCenter: null,
@@ -272,7 +272,7 @@ describe('step-3 pooled richness gate (SQL shape)', () => {
   // while the profile shows 5 real dishes is the same data contradicting
   // itself on one screen. Rollup rows are never dish rows, in EVERY lane.
   it('restaurant card top-dish lateral excludes rollup rows', () => {
-    const sql = restaurantData({}).sql.replace(/\s+/g, ' ');
+    const sql = placeData({}).sql.replace(/\s+/g, ' ');
     expect(sql).toContain('NOT c.is_category_item');
   });
 });

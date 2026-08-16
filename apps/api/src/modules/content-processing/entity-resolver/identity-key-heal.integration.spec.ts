@@ -19,7 +19,7 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
-import { FoodDedupeMergeService } from './food-dedupe-merge.service';
+import { ItemDedupeMergeService } from './food-dedupe-merge.service';
 import { canonicalFold, entityIdentityKey } from './entity-identity';
 
 const TEST_TAG = 'itest-identity-heal';
@@ -34,7 +34,7 @@ const logger = {
   debug: () => undefined,
 } as never;
 
-const service = new FoodDedupeMergeService(
+const service = new ItemDedupeMergeService(
   prisma as never,
   // The heal never calls the LLM or the anchor rehome; stubs that throw
   // prove it.
@@ -50,7 +50,7 @@ const service = new FoodDedupeMergeService(
 
 const DRIFT_KEY = 'itest-drifted-key';
 
-async function seedFood(
+async function seedItem(
   label: string,
   opts: { key: string | null; sorted: string | null; ageDays: number },
 ): Promise<string> {
@@ -59,7 +59,7 @@ async function seedFood(
     `INSERT INTO core_entities
        (name, type, status, identity_key, identity_key_sorted,
         created_at, last_updated)
-     VALUES ($1, 'food', 'active', $2, $3,
+     VALUES ($1, 'item', 'active', $2, $3,
              (now() AT TIME ZONE 'UTC') - ($4 * interval '1 day'),
              now() - ($4 * interval '1 day'))
      RETURNING entity_id`,
@@ -103,20 +103,20 @@ beforeAll(async () => {
   await cleanup();
   // Touched yesterday with wrong keys — the write-path-drift shape the
   // nightly window exists for.
-  recentDrifted = await seedFood('recent birria', {
+  recentDrifted = await seedItem('recent birria', {
     key: DRIFT_KEY,
     sorted: DRIFT_KEY,
     ageDays: 1,
   });
   // Untouched for 30 days with wrong-but-present keys — outside the window,
   // deliberately NOT a nightly candidate (the proof the narrowing is real).
-  ancientDrifted = await seedFood('ancient tlayuda', {
+  ancientDrifted = await seedItem('ancient tlayuda', {
     key: DRIFT_KEY,
     sorted: DRIFT_KEY,
     ageDays: 30,
   });
   // Ancient but NULL-keyed — a backfill gap, always a candidate.
-  ancientNullKey = await seedFood('ancient khachapuri', {
+  ancientNullKey = await seedItem('ancient khachapuri', {
     key: null,
     sorted: null,
     ageDays: 30,
@@ -137,7 +137,7 @@ describe('the narrowed nightly heal', () => {
     const name = `${TEST_TAG} recent birria`;
     expect(await keysOf(recentDrifted)).toEqual({
       key: canonicalFold(name),
-      sorted: entityIdentityKey(name, 'food' as never),
+      sorted: entityIdentityKey(name, 'item' as never),
     });
   });
 
@@ -145,7 +145,7 @@ describe('the narrowed nightly heal', () => {
     const name = `${TEST_TAG} ancient khachapuri`;
     expect(await keysOf(ancientNullKey)).toEqual({
       key: canonicalFold(name),
-      sorted: entityIdentityKey(name, 'food' as never),
+      sorted: entityIdentityKey(name, 'item' as never),
     });
   });
 
@@ -163,7 +163,7 @@ describe('the explicit full lever', () => {
     const name = `${TEST_TAG} ancient tlayuda`;
     expect(await keysOf(ancientDrifted)).toEqual({
       key: canonicalFold(name),
-      sorted: entityIdentityKey(name, 'food' as never),
+      sorted: entityIdentityKey(name, 'item' as never),
     });
   });
 });

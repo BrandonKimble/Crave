@@ -36,15 +36,15 @@ export const mergeSearchResponses = (
     (item) => item.connectionId
   );
   const mergedRestaurants = mergeById(
-    previous.restaurants ?? [],
-    incoming.restaurants ?? [],
-    (item) => item.restaurantId
+    previous.places ?? [],
+    incoming.places ?? [],
+    (item) => item.placeId
   );
 
   return {
     ...incoming,
     dishes: mergedDishes,
-    restaurants: mergedRestaurants,
+    places: mergedRestaurants,
     metadata: {
       ...previous.metadata,
       ...incoming.metadata,

@@ -16,7 +16,7 @@ import {
   EntityStatus,
   EntityType,
   Prisma,
-  RestaurantLocation,
+  PlaceLocation,
 } from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { parse as parseDomain } from 'tldts';
@@ -40,14 +40,11 @@ import {
   PublicCraveScoreService,
   RescoreCoordinatorService,
 } from '../content-processing/public-crave-score';
-import { RestaurantEntityMergeService } from './restaurant-entity-merge.service';
-import { RestaurantCuisineExtractionQueueService } from './restaurant-cuisine-extraction-queue.service';
-import { RestaurantSecondaryLocationExpansionQueueService } from './restaurant-secondary-location-expansion-queue.service';
+import { PlaceEntityMergeService } from './restaurant-entity-merge.service';
+import { PlaceCuisineExtractionQueueService } from './restaurant-cuisine-extraction-queue.service';
+import { PlaceSecondaryLocationExpansionQueueService } from './restaurant-secondary-location-expansion-queue.service';
 import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
-import {
-  brandClusterPurity,
-  restaurantNamesAgree,
-} from './business-identity-rules';
+import { brandClusterPurity, placeNamesAgree } from './business-identity-rules';
 import { ClaimVerdictLedgerService } from '../content-processing/entity-resolver/claim-verdict-ledger.service';
 import {
   PLACE_GROUNDING_LANE,
@@ -62,8 +59,8 @@ import {
   GOOGLE_BOOLEAN_ATTRIBUTE_VOCAB,
   GOOGLE_PLACE_TYPE_ATTRIBUTE_CANONICAL_NAMES,
   GOOGLE_PLACE_TYPE_ATTRIBUTE_MAP,
-  RESTAURANT_ATTRIBUTE_ALIASES_BY_NAME,
-  type RestaurantAttributeVocabEntry,
+  PLACE_ATTRIBUTE_ALIASES_BY_NAME,
+  type PlaceAttributeVocabEntry,
 } from './google-place-type-attributes';
 
 const GOOGLE_DAY_NAMES = [
@@ -122,7 +119,7 @@ interface MatchMetadata {
 // less than the cost of minting, threading and metering the tokens. If this
 // ever returns, it must arrive WITH a per-keystroke client producer, not as a
 // server-side field waiting for one.
-export interface RestaurantEnrichmentOptions {
+export interface PlaceEnrichmentOptions {
   force?: boolean;
   /** Bypass the terminal-failure money guard — for the recovery sweep after a
    *  root-cause fix, when re-attempting known failures is the entire point. */
@@ -142,7 +139,7 @@ export interface RestaurantEnrichmentOptions {
   };
 }
 
-export interface RestaurantEnrichmentResult {
+export interface PlaceEnrichmentResult {
   entityId: string;
   status: 'updated' | 'skipped' | 'not_found' | 'no_match' | 'error';
   reason?: string;
@@ -152,7 +149,7 @@ export interface RestaurantEnrichmentResult {
   mergedInto?: string;
 }
 
-export interface BatchEnrichmentOptions extends RestaurantEnrichmentOptions {
+export interface BatchEnrichmentOptions extends PlaceEnrichmentOptions {
   limit?: number;
   entityId?: string;
 }
@@ -162,7 +159,7 @@ export interface BatchEnrichmentSummary {
   updated: number;
   skipped: number;
   failures: Array<{ entityId: string; reason: string }>;
-  results: RestaurantEnrichmentResult[];
+  results: PlaceEnrichmentResult[];
 }
 
 /**
@@ -172,17 +169,17 @@ export interface BatchEnrichmentSummary {
  * `entity_surface`, so the caller strips this field, inserts the row, and
  * calls addSurfaces inside the same transaction.
  */
-export type RestaurantCreateInput = Prisma.EntityCreateInput & {
+export type PlaceCreateInput = Prisma.EntityCreateInput & {
   surfaceForms: string[];
 };
 
-type RestaurantEntity = Entity & {
-  restaurantMetadata: Prisma.JsonValue | null;
-  primaryLocation?: RestaurantLocation | null;
-  locations?: RestaurantLocation[];
+type PlaceEntity = Entity & {
+  placeMetadata: Prisma.JsonValue | null;
+  primaryLocation?: PlaceLocation | null;
+  locations?: PlaceLocation[];
 };
 
-type RestaurantEntityWithLocations = Prisma.EntityGetPayload<{
+type PlaceEntityWithLocations = Prisma.EntityGetPayload<{
   include: { primaryLocation: true; locations: true };
 }>;
 
@@ -248,9 +245,14 @@ type CandidateSelectionResult = {
  */
 export interface PlaceGroundingVerdictSubject {
   kind: 'grounding' | 'rejection';
+  /** PERSISTED-JSON CONTRACT (claim_verdicts.subject): key names are frozen
+   *  at their pre-R14 spellings — restaurantId = the place ENTITY id,
+   *  placeId = the chosen GOOGLE place id. Renaming them orphans every
+   *  decided-but-unexecuted verdict row on resume. Code-side taxonomy stops
+   *  at this boundary, like a @map on a physical column. */
   restaurantId: string;
   restaurantName: string | null;
-  /** Grounding only: the chosen (post-redirect) place id. */
+  /** Grounding only: the chosen (post-redirect) Google place id. */
   placeId?: string;
   /** Rejection only: the exact candidate set the chooser declined. */
   candidatePlaceIds?: string[];
@@ -311,7 +313,7 @@ type GeminiChooserCandidate = {
 };
 
 @Injectable()
-export class RestaurantLocationEnrichmentService {
+export class PlaceLocationEnrichmentService {
   private readonly logger: LoggerService;
   private readonly transactionTimeoutMs: number;
   private readonly transactionMaxWaitMs: number;
@@ -321,11 +323,11 @@ export class RestaurantLocationEnrichmentService {
     private readonly googlePlacesService: GooglePlacesService,
     private readonly llmService: LLMService,
     private readonly aliasManagementService: AliasManagementService,
-    private readonly restaurantEntityMergeService: RestaurantEntityMergeService,
+    private readonly placeEntityMergeService: PlaceEntityMergeService,
     private readonly publicCraveScoreService: PublicCraveScoreService,
     private readonly rescoreCoordinator: RescoreCoordinatorService,
-    private readonly cuisineExtractionQueue: RestaurantCuisineExtractionQueueService,
-    private readonly secondaryLocationExpansionQueue: RestaurantSecondaryLocationExpansionQueueService,
+    private readonly cuisineExtractionQueue: PlaceCuisineExtractionQueueService,
+    private readonly secondaryLocationExpansionQueue: PlaceSecondaryLocationExpansionQueueService,
     private readonly configService: ConfigService,
     private readonly opsAlerts: OpsAlertsService,
     private readonly claimLedger: ClaimVerdictLedgerService,
@@ -338,11 +340,11 @@ export class RestaurantLocationEnrichmentService {
     this.transactionMaxWaitMs = DEFAULT_ENRICHMENT_TX_MAX_WAIT_MS;
   }
 
-  async enrichMissingRestaurants(
+  async enrichMissingPlaces(
     options: BatchEnrichmentOptions = {},
   ): Promise<BatchEnrichmentSummary> {
     if (options.entityId) {
-      const result = await this.enrichRestaurantById(options.entityId, options);
+      const result = await this.enrichPlaceById(options.entityId, options);
       return {
         attempted: 1,
         updated: result.status === 'updated' ? 1 : 0,
@@ -356,9 +358,9 @@ export class RestaurantLocationEnrichmentService {
     }
 
     const limit = options.limit ?? 25;
-    const restaurants = await this.prisma.entity.findMany({
+    const places = await this.prisma.entity.findMany({
       where: {
-        type: EntityType.restaurant,
+        type: EntityType.place,
         // ARCHIVED IS NEVER ENRICHED (big-one red team #6): all 308
         // archived restaurants are ungrounded, so an unfiltered window
         // spends its head-of-window budget RE-GROUNDING tombstones (junk
@@ -381,15 +383,15 @@ export class RestaurantLocationEnrichmentService {
     });
 
     const summary: BatchEnrichmentSummary = {
-      attempted: restaurants.length,
+      attempted: places.length,
       updated: 0,
       skipped: 0,
       failures: [],
       results: [],
     };
 
-    for (const entity of restaurants) {
-      const result = await this.enrichRestaurant(entity, options);
+    for (const entity of places) {
+      const result = await this.enrichPlace(entity, options);
       summary.results.push(result);
 
       if (result.status === 'updated') {
@@ -407,10 +409,10 @@ export class RestaurantLocationEnrichmentService {
     return summary;
   }
 
-  async enrichRestaurantById(
+  async enrichPlaceById(
     entityId: string,
-    options: RestaurantEnrichmentOptions = {},
-  ): Promise<RestaurantEnrichmentResult> {
+    options: PlaceEnrichmentOptions = {},
+  ): Promise<PlaceEnrichmentResult> {
     const entity = await this.prisma.entity.findUnique({
       where: { entityId },
       include: { primaryLocation: true, locations: true },
@@ -427,7 +429,7 @@ export class RestaurantLocationEnrichmentService {
 
     // Attribution is derived inside enrichRestaurant (the single chokepoint),
     // so every path — this one, the bulk loop, the worker — is covered.
-    return this.enrichRestaurant(entity, options);
+    return this.enrichPlace(entity, options);
   }
 
   /**
@@ -450,13 +452,13 @@ export class RestaurantLocationEnrichmentService {
     const limit = options.limit ?? 100;
     const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
 
-    const stale = await this.prisma.restaurantLocation.findMany({
+    const stale = await this.prisma.placeLocation.findMany({
       where: {
         googlePlaceId: { not: null },
         OR: [{ lastPolledAt: null }, { lastPolledAt: { lt: cutoff } }],
         // Archived restaurants (janitor's all-locations-closed action) are
         // dead weight — never spend Places refresh polls on them.
-        restaurant: { status: { not: EntityStatus.archived } },
+        place: { status: { not: EntityStatus.archived } },
       },
       orderBy: { lastPolledAt: { sort: 'asc', nulls: 'first' } },
       take: limit,
@@ -471,7 +473,7 @@ export class RestaurantLocationEnrichmentService {
   }
 
   private async refreshStaleLocationsInner(
-    stale: Awaited<ReturnType<PrismaService['restaurantLocation']['findMany']>>,
+    stale: Awaited<ReturnType<PrismaService['placeLocation']['findMany']>>,
     summary: {
       checked: number;
       updated: number;
@@ -503,14 +505,14 @@ export class RestaurantLocationEnrichmentService {
           summary.closedOrMoved += 1;
           this.logger.warn('Refreshed location is closed or moved', {
             locationId: location.locationId,
-            restaurantId: location.restaurantId,
+            placeId: location.placeId,
             googlePlaceId: location.googlePlaceId,
             businessStatus: place.businessStatus,
             movedPlaceId: place.movedPlaceId,
           });
           // Persist the decay signal for the janitor to act on, and stamp
           // lastPolledAt so we don't re-poll it every run.
-          await this.prisma.restaurantLocation.update({
+          await this.prisma.placeLocation.update({
             where: { locationId: location.locationId },
             data: {
               lastPolledAt: new Date(),
@@ -525,11 +527,11 @@ export class RestaurantLocationEnrichmentService {
           continue;
         }
         const { update } = this.buildLocationUpsertData(
-          location.restaurantId,
+          location.placeId,
           location,
           place,
         );
-        await this.prisma.restaurantLocation.update({
+        await this.prisma.placeLocation.update({
           where: { locationId: location.locationId },
           data: update,
         });
@@ -551,23 +553,23 @@ export class RestaurantLocationEnrichmentService {
     return summary;
   }
 
-  async expandSecondaryLocationsForRestaurant(
-    restaurantId: string,
+  async expandSecondaryLocationsForPlace(
     placeId: string,
+    googlePlaceId: string,
     locationBias?: { lat: number; lng: number; radiusMeters?: number },
   ): Promise<void> {
-    const normalizedRestaurantId = restaurantId?.trim();
     const normalizedPlaceId = placeId?.trim();
-    if (!normalizedRestaurantId || !normalizedPlaceId) {
+    const normalizedGooglePlaceId = googlePlaceId?.trim();
+    if (!normalizedPlaceId || !normalizedGooglePlaceId) {
       return;
     }
 
     const entity = await this.prisma.entity.findUnique({
-      where: { entityId: normalizedRestaurantId },
+      where: { entityId: normalizedPlaceId },
       include: { primaryLocation: true, locations: true },
     });
 
-    if (!entity || entity.type !== EntityType.restaurant) {
+    if (!entity || entity.type !== EntityType.place) {
       return;
     }
 
@@ -586,16 +588,16 @@ export class RestaurantLocationEnrichmentService {
     const details = await runInWorkContext(
       { ...(currentWorkContext() ?? {}), attribution: 'grounding.expansion' },
       () =>
-        this.googlePlacesService.getPlaceDetails(normalizedPlaceId, {
+        this.googlePlacesService.getPlaceDetails(normalizedGooglePlaceId, {
           includeRaw: true,
         }),
     );
     const resolvedDetails = await this.resolveEligiblePlaceDetails({
       details,
-      fallbackPlaceId: normalizedPlaceId,
+      fallbackPlaceId: normalizedGooglePlaceId,
       query: entity.name,
       candidate: {
-        placeId: normalizedPlaceId,
+        placeId: normalizedGooglePlaceId,
         description: entity.name,
         mainText: entity.name,
       },
@@ -634,8 +636,8 @@ export class RestaurantLocationEnrichmentService {
       city: params.city ?? null,
       region: params.region ?? null,
       country: params.countryCode ?? null,
-      restaurantMetadata: null,
-    } as RestaurantEntity;
+      placeMetadata: null,
+    } as PlaceEntity;
 
     const searchContext = this.buildSearchContext(entity, {
       sourceLocale: {
@@ -735,16 +737,16 @@ export class RestaurantLocationEnrichmentService {
     };
   }
 
-  async buildRestaurantCreateInput(params: {
+  async buildPlaceCreateInput(params: {
     name: string;
     place: GooglePlacesV1Place;
     matchMetadata: MatchMetadata;
     alias?: string | null;
-  }): Promise<RestaurantCreateInput> {
+  }): Promise<PlaceCreateInput> {
     const baseEntity = {
       name: params.name,
-      restaurantMetadata: null,
-    } as RestaurantEntity;
+      placeMetadata: null,
+    } as PlaceEntity;
 
     const displayName = this.getPlaceDisplayName(params.place) || params.name;
     const alias =
@@ -763,18 +765,18 @@ export class RestaurantLocationEnrichmentService {
     const createUpdateData = this.coerceEntityUpdateToCreateInput(updateData);
 
     const googleAttributeDefinitions =
-      this.extractGoogleRestaurantAttributeDefinitions(params.place);
-    const googleRestaurantAttributeIds =
-      await this.resolveRestaurantAttributeIdsForDefinitions(
+      this.extractGooglePlaceAttributeDefinitions(params.place);
+    const googlePlaceAttributeIds =
+      await this.resolvePlaceAttributeIdsForDefinitions(
         googleAttributeDefinitions,
       );
-    const placeTypeAttributes = this.mapPlaceTypesToRestaurantAttributeNames(
+    const placeTypeAttributes = this.mapPlaceTypesToPlaceAttributeNames(
       params.place,
     );
     const placeTypeAttributeIds =
-      await this.resolveRestaurantAttributeIdsForNames(placeTypeAttributes);
-    const mergedRestaurantAttributes = this.unionStringArrays(
-      googleRestaurantAttributeIds,
+      await this.resolvePlaceAttributeIdsForNames(placeTypeAttributes);
+    const mergedPlaceAttributes = this.unionStringArrays(
+      googlePlaceAttributeIds,
       placeTypeAttributeIds,
     );
 
@@ -784,7 +786,7 @@ export class RestaurantLocationEnrichmentService {
     return {
       ...createUpdateData,
       name: displayName,
-      type: EntityType.restaurant,
+      type: EntityType.place,
       canonicalDomain:
         this.normalizeWebsiteDomain(params.place.websiteUri) ?? undefined,
       // NOT a Prisma column any more (§11 item 4 / I-2 retired
@@ -792,16 +794,16 @@ export class RestaurantLocationEnrichmentService {
       // these through addSurfaces in the SAME transaction — one store for
       // surfaces, and the entity insert carries only entity columns.
       surfaceForms: alias,
-      restaurantAttributes: mergedRestaurantAttributes,
+      placeAttributes: mergedPlaceAttributes,
       generalPraiseUpvotes: 0,
     };
   }
 
   buildLocationCreateInput(
-    restaurantId: string,
+    placeId: string,
     place: GooglePlacesV1Place,
-  ): Prisma.RestaurantLocationUncheckedCreateInput {
-    return this.buildLocationUpsertData(restaurantId, null, place).create;
+  ): Prisma.PlaceLocationUncheckedCreateInput {
+    return this.buildLocationUpsertData(placeId, null, place).create;
   }
 
   // THE single chokepoint every enrichment path funnels through — bulk loop,
@@ -812,10 +814,10 @@ export class RestaurantLocationEnrichmentService {
   // dropped from the rate numerator while its restaurants stayed in the
   // denominator, and biased the per-restaurant rate low). Setting it here
   // means no caller can bypass it.
-  private async enrichRestaurant(
-    entity: RestaurantEntity,
-    options: RestaurantEnrichmentOptions,
-  ): Promise<RestaurantEnrichmentResult> {
+  private async enrichPlace(
+    entity: PlaceEntity,
+    options: PlaceEnrichmentOptions,
+  ): Promise<PlaceEnrichmentResult> {
     const alreadyGrounded =
       Boolean(entity.primaryLocation?.googlePlaceId) ||
       Boolean(entity.locations?.some((loc) => loc.googlePlaceId));
@@ -824,15 +826,15 @@ export class RestaurantLocationEnrichmentService {
         ...(currentWorkContext() ?? {}),
         attribution: alreadyGrounded ? 'grounding.refresh' : 'grounding.new',
       },
-      () => this.enrichRestaurantInner(entity, options),
+      () => this.enrichPlaceInner(entity, options),
     );
   }
 
-  private async enrichRestaurantInner(
-    entity: RestaurantEntity,
-    options: RestaurantEnrichmentOptions,
-  ): Promise<RestaurantEnrichmentResult> {
-    if (entity.type !== EntityType.restaurant) {
+  private async enrichPlaceInner(
+    entity: PlaceEntity,
+    options: PlaceEnrichmentOptions,
+  ): Promise<PlaceEnrichmentResult> {
+    if (entity.type !== EntityType.place) {
       return {
         entityId: entity.entityId,
         status: 'skipped',
@@ -858,7 +860,7 @@ export class RestaurantLocationEnrichmentService {
     } | null = null;
     let targetNameForUpdate: string | null = null;
     let enrichmentScore: number | undefined;
-    let googleRestaurantAttributeIds: string[] = [];
+    let googlePlaceAttributeIds: string[] = [];
 
     const hasPlaceId =
       Boolean(entity.primaryLocation?.googlePlaceId) ||
@@ -1004,13 +1006,13 @@ export class RestaurantLocationEnrichmentService {
       // expensive SKU to learn what one indexed lookup knows. Merge straight
       // into the owner instead. Same-entity ownership falls through to the
       // normal refresh path unchanged.
-      const preOwned = await this.prisma.restaurantLocation.findUnique({
+      const preOwned = await this.prisma.placeLocation.findUnique({
         where: { googlePlaceId: best.entry.candidate.placeId },
-        select: { restaurantId: true },
+        select: { placeId: true },
       });
-      if (preOwned && preOwned.restaurantId !== entity.entityId) {
+      if (preOwned && preOwned.placeId !== entity.entityId) {
         const canonical = await this.prisma.entity.findUnique({
-          where: { entityId: preOwned.restaurantId },
+          where: { entityId: preOwned.placeId },
         });
         if (canonical && canonical.status === 'active') {
           this.logger.info(
@@ -1021,12 +1023,13 @@ export class RestaurantLocationEnrichmentService {
               placeId: best.entry.candidate.placeId,
             },
           );
-          const merged =
-            await this.restaurantEntityMergeService.mergeDuplicateRestaurant({
+          const merged = await this.placeEntityMergeService.mergeDuplicatePlace(
+            {
               canonical: canonical as never,
               duplicate: entity,
               canonicalUpdate: {},
-            });
+            },
+          );
           // The chooser's select IS a grounding verdict even when the effect
           // is a merge: record it with a NULL location target (the place row
           // already lives on the canonical entity — the merge is the whole
@@ -1223,30 +1226,30 @@ export class RestaurantLocationEnrichmentService {
       });
 
       const googleAttributeDefinitions =
-        this.extractGoogleRestaurantAttributeDefinitions(resolvedPlaceDetails);
-      googleRestaurantAttributeIds =
-        await this.resolveRestaurantAttributeIdsForDefinitions(
+        this.extractGooglePlaceAttributeDefinitions(resolvedPlaceDetails);
+      googlePlaceAttributeIds =
+        await this.resolvePlaceAttributeIdsForDefinitions(
           googleAttributeDefinitions,
         );
       const placeTypeAttributes =
-        this.mapPlaceTypesToRestaurantAttributeNames(resolvedPlaceDetails);
+        this.mapPlaceTypesToPlaceAttributeNames(resolvedPlaceDetails);
       const placeTypeAttributeIds =
-        await this.resolveRestaurantAttributeIdsForNames(placeTypeAttributes);
-      googleRestaurantAttributeIds = this.unionStringArrays(
-        googleRestaurantAttributeIds,
+        await this.resolvePlaceAttributeIdsForNames(placeTypeAttributes);
+      googlePlaceAttributeIds = this.unionStringArrays(
+        googlePlaceAttributeIds,
         placeTypeAttributeIds,
       );
-      const mergedRestaurantAttributes = this.unionStringArrays(
-        entity.restaurantAttributes,
-        googleRestaurantAttributeIds,
+      const mergedPlaceAttributes = this.unionStringArrays(
+        entity.placeAttributes,
+        googlePlaceAttributeIds,
       );
       if (
         !this.setsEqual(
-          new Set(entity.restaurantAttributes),
-          new Set(mergedRestaurantAttributes),
+          new Set(entity.placeAttributes),
+          new Set(mergedPlaceAttributes),
         )
       ) {
-        combinedUpdateData.restaurantAttributes = mergedRestaurantAttributes;
+        combinedUpdateData.placeAttributes = mergedPlaceAttributes;
         combinedUpdatedFields = this.mergeUpdatedFieldLists(
           combinedUpdatedFields,
           ['restaurantAttributes'],
@@ -1257,7 +1260,7 @@ export class RestaurantLocationEnrichmentService {
       // source document and cannot live in the event ledger).
       await this.recordAttributeEvidence(
         entity.entityId,
-        googleRestaurantAttributeIds,
+        googlePlaceAttributeIds,
         'places_api',
       );
 
@@ -1276,7 +1279,7 @@ export class RestaurantLocationEnrichmentService {
             details,
             matchMetadata,
             score: best.score,
-            googleRestaurantAttributeIds,
+            googlePlaceAttributeIds,
           });
           // The grounding completed THROUGH THE MERGE: the place row now
           // lives (correctly) on the canonical entity, so the recorded
@@ -1297,7 +1300,7 @@ export class RestaurantLocationEnrichmentService {
             details,
             matchMetadata,
             score: best.score,
-            googleRestaurantAttributeIds,
+            googlePlaceAttributeIds,
           });
           // Same argument as the place-collision arm above: the merge is the
           // effect, and it has run.
@@ -1337,7 +1340,7 @@ export class RestaurantLocationEnrichmentService {
         this.normalizeWebsiteDomain(placeDetails.websiteUri) ??
         this.normalizeWebsiteDomain(combinedUpdateData.canonicalDomain) ??
         this.normalizeWebsiteDomain(entity.canonicalDomain);
-      const entityForSecondary: RestaurantEntity = {
+      const entityForSecondary: PlaceEntity = {
         ...entity,
         canonicalDomain: trustedCanonicalDomain ?? entity.canonicalDomain,
       };
@@ -1348,12 +1351,12 @@ export class RestaurantLocationEnrichmentService {
         details,
         matchMetadata,
         score: best.score,
-        googleRestaurantAttributeIds,
+        googlePlaceAttributeIds,
       });
 
       const enrichmentTarget =
         domainMerge?.canonicalEntity ?? entityForSecondary;
-      const secondaryLocationTarget: RestaurantEntity = {
+      const secondaryLocationTarget: PlaceEntity = {
         ...enrichmentTarget,
         canonicalDomain:
           trustedCanonicalDomain ?? enrichmentTarget.canonicalDomain,
@@ -1457,9 +1460,7 @@ export class RestaurantLocationEnrichmentService {
     return Array.from(merged);
   }
 
-  private getOwnedPlaceId(
-    entity: RestaurantEntityWithLocations,
-  ): string | null {
+  private getOwnedPlaceId(entity: PlaceEntityWithLocations): string | null {
     const primaryPlaceId = entity.primaryLocation?.googlePlaceId?.trim();
     if (primaryPlaceId) {
       return primaryPlaceId;
@@ -1488,7 +1489,7 @@ export class RestaurantLocationEnrichmentService {
    * nothing and is the only trustworthy tag we get for free.
    */
   private computeNameAndAliasUpdate(
-    entity: RestaurantEntity,
+    entity: PlaceEntity,
     canonicalName?: string | null,
     extraAliases: string[] = [],
     canonicalLocale?: string | null,
@@ -1526,10 +1527,7 @@ export class RestaurantLocationEnrichmentService {
       // path had the same drift the ontology rename had — name changed,
       // app-written identity keys kept the OLD string, on ~7k
       // never-deleted restaurant rows).
-      const identity = identityInsertData(
-        canonicalTrimmed,
-        EntityType.restaurant,
-      );
+      const identity = identityInsertData(canonicalTrimmed, EntityType.place);
       updateData.identityKey = identity.identityKey;
       updateData.identityKeySorted = identity.identityKeySorted;
       updatedFields.push('name');
@@ -1640,7 +1638,7 @@ export class RestaurantLocationEnrichmentService {
    *  It used to also re-collect every banked alias out of
    *  core_entities.aliases[]; those are rows already, and re-offering them
    *  through the idempotent surface writer only ever produced no-ops. */
-  private collectAliasCandidates(entity: RestaurantEntity): string[] {
+  private collectAliasCandidates(entity: PlaceEntity): string[] {
     const aliases = new Set<string>();
     if (entity.name?.trim()) {
       aliases.add(entity.name.trim());
@@ -1683,26 +1681,21 @@ export class RestaurantLocationEnrichmentService {
   }
 
   private async handleGooglePlaceCollision(params: {
-    entity: RestaurantEntity;
+    entity: PlaceEntity;
     details: GooglePlacesV1PlaceDetailsResponse;
     matchMetadata: MatchMetadata;
     score?: number;
-    googleRestaurantAttributeIds?: string[];
-  }): Promise<RestaurantEnrichmentResult> {
-    const {
-      entity,
-      details,
-      matchMetadata,
-      score,
-      googleRestaurantAttributeIds,
-    } = params;
+    googlePlaceAttributeIds?: string[];
+  }): Promise<PlaceEnrichmentResult> {
+    const { entity, details, matchMetadata, score, googlePlaceAttributeIds } =
+      params;
     const placeId = details.place?.id;
 
     if (!placeId) {
       throw new Error('Google Place details missing id');
     }
 
-    const canonicalLocation = await this.prisma.restaurantLocation.findUnique({
+    const canonicalLocation = await this.prisma.placeLocation.findUnique({
       where: { googlePlaceId: placeId },
     });
 
@@ -1718,7 +1711,7 @@ export class RestaurantLocationEnrichmentService {
     }
 
     const canonical = await this.prisma.entity.findUnique({
-      where: { entityId: canonicalLocation.restaurantId },
+      where: { entityId: canonicalLocation.placeId },
       include: { primaryLocation: true, locations: true },
     });
 
@@ -1769,7 +1762,7 @@ export class RestaurantLocationEnrichmentService {
     const mergeAugmentations = this.buildCanonicalMergeAugmentations(
       canonical,
       entity,
-      googleRestaurantAttributeIds,
+      googlePlaceAttributeIds,
     );
 
     const mergedUpdate = this.mergeEntityUpdates(
@@ -1787,19 +1780,19 @@ export class RestaurantLocationEnrichmentService {
     // (F9966); the location re-point rides its `prepare` hook so it stays
     // atomic with the merge.
     const updatedCanonical =
-      await this.restaurantEntityMergeService.mergeDuplicateRestaurant({
+      await this.placeEntityMergeService.mergeDuplicatePlace({
         canonical,
         duplicate: entity,
         canonicalUpdate: mergedUpdate,
         prepare: async (tx) => {
-          const location = await tx.restaurantLocation.update({
+          const location = await tx.placeLocation.update({
             where: { locationId: canonicalLocation.locationId },
             data: {
               ...locationUpsert.update,
-              restaurantId: canonical.entityId,
+              placeId: canonical.entityId,
               isPrimary: true,
               updatedAt: new Date(),
-            } as Prisma.RestaurantLocationUncheckedUpdateInput,
+            } as Prisma.PlaceLocationUncheckedUpdateInput,
           });
           return {
             primaryLocation: { connect: { locationId: location.locationId } },
@@ -1840,20 +1833,20 @@ export class RestaurantLocationEnrichmentService {
   }
 
   private async handleEntityNameConflict(params: {
-    entity: RestaurantEntity;
+    entity: PlaceEntity;
     canonicalName: string | null;
     details: GooglePlacesV1PlaceDetailsResponse;
     matchMetadata: MatchMetadata;
     score?: number;
-    googleRestaurantAttributeIds?: string[];
-  }): Promise<RestaurantEnrichmentResult> {
+    googlePlaceAttributeIds?: string[];
+  }): Promise<PlaceEnrichmentResult> {
     const {
       entity,
       canonicalName,
       details,
       matchMetadata,
       score,
-      googleRestaurantAttributeIds,
+      googlePlaceAttributeIds,
     } = params;
 
     const resolvedName = canonicalName?.trim().length
@@ -1868,32 +1861,31 @@ export class RestaurantLocationEnrichmentService {
     const trustedCanonicalDomain =
       this.normalizeWebsiteDomain(placeDetails.websiteUri) ??
       this.normalizeWebsiteDomain(entity.canonicalDomain);
-    const canonical: RestaurantEntityWithLocations | null =
-      trustedCanonicalDomain
-        ? await this.prisma.entity.findFirst({
-            where: {
-              entityId: { not: entity.entityId },
-              type: EntityType.restaurant,
-              canonicalDomain: {
-                equals: trustedCanonicalDomain,
-                mode: 'insensitive',
-              },
+    const canonical: PlaceEntityWithLocations | null = trustedCanonicalDomain
+      ? await this.prisma.entity.findFirst({
+          where: {
+            entityId: { not: entity.entityId },
+            type: EntityType.place,
+            canonicalDomain: {
+              equals: trustedCanonicalDomain,
+              mode: 'insensitive',
             },
-            include: { primaryLocation: true, locations: true },
-          })
-        : await this.prisma.entity.findFirst({
-            where: {
-              entityId: { not: entity.entityId },
-              type: EntityType.restaurant,
-              // §13: identity is GLOBAL — name conflict is judged globally,
-              // never through a market-presence lane.
-              name:
-                resolvedName ??
-                this.getPlaceDisplayName(placeDetails) ??
-                undefined,
-            },
-            include: { primaryLocation: true, locations: true },
-          });
+          },
+          include: { primaryLocation: true, locations: true },
+        })
+      : await this.prisma.entity.findFirst({
+          where: {
+            entityId: { not: entity.entityId },
+            type: EntityType.place,
+            // §13: identity is GLOBAL — name conflict is judged globally,
+            // never through a market-presence lane.
+            name:
+              resolvedName ??
+              this.getPlaceDisplayName(placeDetails) ??
+              undefined,
+          },
+          include: { primaryLocation: true, locations: true },
+        });
 
     if (!canonical) {
       this.logger.error(
@@ -1934,7 +1926,7 @@ export class RestaurantLocationEnrichmentService {
     const mergeAugmentations = this.buildCanonicalMergeAugmentations(
       canonical,
       entity,
-      googleRestaurantAttributeIds,
+      googlePlaceAttributeIds,
     );
 
     const mergedUpdate = this.mergeEntityUpdates(
@@ -1951,14 +1943,14 @@ export class RestaurantLocationEnrichmentService {
     // The merge service owns the transaction and the post-commit rebuild
     // (F9966); the primary-location upsert rides its `prepare` hook.
     const updatedCanonical =
-      await this.restaurantEntityMergeService.mergeDuplicateRestaurant({
+      await this.placeEntityMergeService.mergeDuplicatePlace({
         canonical,
         duplicate: entity,
         canonicalUpdate: mergedUpdate,
         prepare: async (tx) => {
           const location = await this.upsertPrimaryLocation({
             tx,
-            restaurantId: canonical.entityId,
+            placeId: canonical.entityId,
             placeDetails,
             locationUpsert,
             targetLocation,
@@ -1999,9 +1991,9 @@ export class RestaurantLocationEnrichmentService {
   }
 
   private buildCanonicalMergeAugmentations(
-    canonical: RestaurantEntity,
-    duplicate: RestaurantEntity,
-    additionalRestaurantAttributes?: string[],
+    canonical: PlaceEntity,
+    duplicate: PlaceEntity,
+    additionalPlaceAttributes?: string[],
   ): {
     updateData: Prisma.EntityUpdateInput;
     updatedFields: string[];
@@ -2009,18 +2001,18 @@ export class RestaurantLocationEnrichmentService {
     const updateData: Prisma.EntityUpdateInput = {};
     const updatedFields: string[] = [];
     const mergedAttributes = this.unionStringArrays(
-      canonical.restaurantAttributes,
-      duplicate.restaurantAttributes,
-      additionalRestaurantAttributes,
+      canonical.placeAttributes,
+      duplicate.placeAttributes,
+      additionalPlaceAttributes,
     );
 
     if (
       !this.setsEqual(
-        new Set(canonical.restaurantAttributes),
+        new Set(canonical.placeAttributes),
         new Set(mergedAttributes),
       )
     ) {
-      updateData.restaurantAttributes = mergedAttributes;
+      updateData.placeAttributes = mergedAttributes;
       updatedFields.push('restaurantAttributes');
     }
 
@@ -2043,15 +2035,15 @@ export class RestaurantLocationEnrichmentService {
   }
 
   private async mergeIntoCanonicalDomainEntityIfNeeded(params: {
-    entity: RestaurantEntity;
+    entity: PlaceEntity;
     placeDetails: GooglePlacesV1Place;
     details: GooglePlacesV1PlaceDetailsResponse;
     matchMetadata: MatchMetadata;
     score?: number;
-    googleRestaurantAttributeIds?: string[];
+    googlePlaceAttributeIds?: string[];
   }): Promise<{
     mergedInto: string;
-    canonicalEntity: RestaurantEntityWithLocations;
+    canonicalEntity: PlaceEntityWithLocations;
     updatedFields: string[];
   } | null> {
     const canonicalDomain =
@@ -2063,7 +2055,7 @@ export class RestaurantLocationEnrichmentService {
 
     const candidates = await this.prisma.entity.findMany({
       where: {
-        type: EntityType.restaurant,
+        type: EntityType.place,
         canonicalDomain,
         entityId: { not: params.entity.entityId },
       },
@@ -2120,7 +2112,7 @@ export class RestaurantLocationEnrichmentService {
     const mergeAugmentations = this.buildCanonicalMergeAugmentations(
       canonical,
       params.entity,
-      params.googleRestaurantAttributeIds,
+      params.googlePlaceAttributeIds,
     );
     const mergedUpdate = this.mergeEntityUpdates(
       canonicalUpdate.updateData,
@@ -2136,7 +2128,7 @@ export class RestaurantLocationEnrichmentService {
     );
 
     const mergedCanonical =
-      await this.restaurantEntityMergeService.mergeDuplicateRestaurant({
+      await this.placeEntityMergeService.mergeDuplicatePlace({
         canonical,
         duplicate: params.entity,
         canonicalUpdate: mergedUpdate,
@@ -2266,16 +2258,16 @@ export class RestaurantLocationEnrichmentService {
    * claim refreshes it rather than accumulating duplicates.
    */
   async recordAttributeEvidence(
-    restaurantId: string,
+    placeId: string,
     attributeIds: string[],
     sourceClass: string,
   ): Promise<void> {
     const ids = Array.from(new Set(attributeIds.filter(Boolean)));
-    if (!restaurantId || !ids.length) return;
+    if (!placeId || !ids.length) return;
     try {
-      await this.prisma.restaurantAttributeEvidence.createMany({
+      await this.prisma.placeAttributeEvidence.createMany({
         data: ids.map((attributeId) => ({
-          restaurantId,
+          placeId,
           attributeId,
           sourceClass,
           observations: 1,
@@ -2286,7 +2278,7 @@ export class RestaurantLocationEnrichmentService {
       // Evidence recording must never fail the enrichment it accompanies.
       this.logger.warn('Attribute evidence write failed', {
         operation: 'attribute_evidence_write',
-        restaurantId,
+        placeId,
         sourceClass,
         error: {
           message: error instanceof Error ? error.message : String(error),
@@ -2330,8 +2322,8 @@ export class RestaurantLocationEnrichmentService {
   }
 
   private buildSearchContext(
-    entity: RestaurantEntity,
-    options: RestaurantEnrichmentOptions,
+    entity: PlaceEntity,
+    options: PlaceEnrichmentOptions,
   ): EnrichmentSearchContext {
     const sourceLocale = this.normalizeSourceLocale(options.sourceLocale);
     const query = options.query?.trim() || entity.name?.trim() || '';
@@ -2400,7 +2392,7 @@ export class RestaurantLocationEnrichmentService {
    * ceilings and the 60-result cap below — retries buy no new authority.
    */
   private async enrichSecondaryLocations(
-    entity: RestaurantEntity,
+    entity: PlaceEntity,
     placeDetails: GooglePlacesV1Place,
     locationBias?: { lat: number; lng: number; radiusMeters?: number },
   ): Promise<void> {
@@ -2478,9 +2470,7 @@ export class RestaurantLocationEnrichmentService {
         // shared by unrelated restaurants). A secondary location must also carry the brand
         // name — otherwise any same-domain place drifting into the name search would be
         // absorbed as a fake "branch".
-        if (
-          !restaurantNamesAgree(canonicalName, this.getPlaceDisplayName(place))
-        ) {
+        if (!placeNamesAgree(canonicalName, this.getPlaceDisplayName(place))) {
           continue;
         }
         if (
@@ -2513,19 +2503,19 @@ export class RestaurantLocationEnrichmentService {
 
         const ownedPlaceId = place.id;
         await this.prisma.$transaction(async (tx) => {
-          await tx.restaurantLocation.upsert({
+          await tx.placeLocation.upsert({
             where: { googlePlaceId: ownedPlaceId },
             update: {
               ...locationUpsert.update,
-              restaurantId: entity.entityId,
+              placeId: entity.entityId,
               isPrimary: existingLocation?.isPrimary ?? false,
               updatedAt: new Date(),
-            } as Prisma.RestaurantLocationUncheckedUpdateInput,
+            } as Prisma.PlaceLocationUncheckedUpdateInput,
             create: {
               ...locationUpsert.create,
-              restaurantId: entity.entityId,
+              placeId: entity.entityId,
               isPrimary: false,
-            } as Prisma.RestaurantLocationUncheckedCreateInput,
+            } as Prisma.PlaceLocationUncheckedCreateInput,
           });
         });
         seenPlaceIds.add(ownedPlaceId);
@@ -2599,15 +2589,15 @@ export class RestaurantLocationEnrichmentService {
    * of the vocabulary entry. This service used to carry a second copy that
    * had already drifted on 7 of the 20.
    */
-  private extractGoogleRestaurantAttributeDefinitions(
+  private extractGooglePlaceAttributeDefinitions(
     place: GooglePlacesV1Place,
-  ): RestaurantAttributeVocabEntry[] {
+  ): PlaceAttributeVocabEntry[] {
     return GOOGLE_BOOLEAN_ATTRIBUTE_VOCAB.filter((entry) =>
       entry.isEnabled!(place),
     );
   }
 
-  private mapPlaceTypesToRestaurantAttributeNames(
+  private mapPlaceTypesToPlaceAttributeNames(
     place: GooglePlacesV1Place,
   ): string[] {
     const types = Array.isArray(place.types) ? place.types : [];
@@ -2630,25 +2620,25 @@ export class RestaurantLocationEnrichmentService {
     return Array.from(names);
   }
 
-  private normalizeRestaurantAttributeName(value: string): string {
+  private normalizePlaceAttributeName(value: string): string {
     return value.trim().toLowerCase();
   }
 
-  private googleRestaurantAttributeIdsByNamePromise: Promise<
+  private googlePlaceAttributeIdsByNamePromise: Promise<
     Map<string, string>
   > | null = null;
 
-  private async getGoogleRestaurantAttributeIdsByName(): Promise<
+  private async getGooglePlaceAttributeIdsByName(): Promise<
     Map<string, string>
   > {
-    if (this.googleRestaurantAttributeIdsByNamePromise) {
-      return this.googleRestaurantAttributeIdsByNamePromise;
+    if (this.googlePlaceAttributeIdsByNamePromise) {
+      return this.googlePlaceAttributeIdsByNamePromise;
     }
 
-    this.googleRestaurantAttributeIdsByNamePromise = this.prisma.entity
+    this.googlePlaceAttributeIdsByNamePromise = this.prisma.entity
       .findMany({
         where: {
-          type: EntityType.restaurant_attribute,
+          type: EntityType.place_attribute,
           name: { in: GOOGLE_RESTAURANT_ATTRIBUTE_CANONICAL_NAMES },
         },
         select: { entityId: true, name: true },
@@ -2656,38 +2646,35 @@ export class RestaurantLocationEnrichmentService {
       .then((rows) => {
         const map = new Map<string, string>();
         for (const row of rows) {
-          map.set(
-            this.normalizeRestaurantAttributeName(row.name),
-            row.entityId,
-          );
+          map.set(this.normalizePlaceAttributeName(row.name), row.entityId);
         }
         return map;
       })
       .catch((error) => {
-        this.googleRestaurantAttributeIdsByNamePromise = null;
+        this.googlePlaceAttributeIdsByNamePromise = null;
         throw error;
       });
 
-    return this.googleRestaurantAttributeIdsByNamePromise;
+    return this.googlePlaceAttributeIdsByNamePromise;
   }
 
-  private async resolveRestaurantAttributeIdsForDefinitions(
-    definitions: RestaurantAttributeVocabEntry[],
+  private async resolvePlaceAttributeIdsForDefinitions(
+    definitions: PlaceAttributeVocabEntry[],
   ): Promise<string[]> {
     if (definitions.length === 0) {
       return [];
     }
 
-    const idsByName = await this.getGoogleRestaurantAttributeIdsByName();
+    const idsByName = await this.getGooglePlaceAttributeIdsByName();
     const ids: string[] = [];
 
     for (const definition of definitions) {
-      const canonicalName = this.normalizeRestaurantAttributeName(
+      const canonicalName = this.normalizePlaceAttributeName(
         definition.canonicalName,
       );
       const entityId =
         idsByName.get(canonicalName) ??
-        (await this.ensureRestaurantAttributeEntity(canonicalName, idsByName));
+        (await this.ensurePlaceAttributeEntity(canonicalName, idsByName));
       ids.push(entityId);
     }
 
@@ -2699,17 +2686,17 @@ export class RestaurantLocationEnrichmentService {
    * not in a seed file — a missing entity is created on first use so
    * enrichment never silently drops an attribute link.
    */
-  private async ensureRestaurantAttributeEntity(
+  private async ensurePlaceAttributeEntity(
     canonicalName: string,
     idsByName: Map<string, string>,
   ): Promise<string> {
     const seedAliases =
-      RESTAURANT_ATTRIBUTE_ALIASES_BY_NAME.get(canonicalName) ?? [];
+      PLACE_ATTRIBUTE_ALIASES_BY_NAME.get(canonicalName) ?? [];
     const created = await this.prisma.entity.create({
       data: {
         name: canonicalName,
-        type: EntityType.restaurant_attribute,
-        ...identityInsertData(canonicalName, EntityType.restaurant_attribute),
+        type: EntityType.place_attribute,
+        ...identityInsertData(canonicalName, EntityType.place_attribute),
       },
       select: { entityId: true },
     });
@@ -2727,28 +2714,28 @@ export class RestaurantLocationEnrichmentService {
       );
     }
     idsByName.set(canonicalName, created.entityId);
-    this.logger.info('Created restaurant_attribute entity on demand', {
+    this.logger.info('Created place_attribute entity on demand', {
       canonicalName,
       entityId: created.entityId,
     });
     return created.entityId;
   }
 
-  private async resolveRestaurantAttributeIdsForNames(
+  private async resolvePlaceAttributeIdsForNames(
     names: string[],
   ): Promise<string[]> {
     if (!names.length) {
       return [];
     }
 
-    const idsByName = await this.getGoogleRestaurantAttributeIdsByName();
+    const idsByName = await this.getGooglePlaceAttributeIdsByName();
     const ids: string[] = [];
 
     for (const name of names) {
-      const canonicalName = this.normalizeRestaurantAttributeName(name);
+      const canonicalName = this.normalizePlaceAttributeName(name);
       const entityId =
         idsByName.get(canonicalName) ??
-        (await this.ensureRestaurantAttributeEntity(canonicalName, idsByName));
+        (await this.ensurePlaceAttributeEntity(canonicalName, idsByName));
       ids.push(entityId);
     }
 
@@ -2877,7 +2864,7 @@ export class RestaurantLocationEnrichmentService {
     params: {
       autocompleteRanked: RankedCandidate[];
       searchTextRanked: RankedCandidate[];
-      entity: RestaurantEntity;
+      entity: PlaceEntity;
       context?: EnrichmentSearchContext;
     },
     strategy: CandidateSelectionResult['strategy'],
@@ -2914,15 +2901,15 @@ export class RestaurantLocationEnrichmentService {
     // heard fresh.
     const setClaim: PlaceGroundingClaim = {
       kind: 'rejection',
-      restaurantId: params.entity.entityId,
+      placeEntityId: params.entity.entityId,
       candidatePlaceIds: chooserCandidates.map(
         (candidate) => candidate.entry.candidate.placeId,
       ),
     };
-    const pairClaimOf = (placeId: string): PlaceGroundingClaim => ({
+    const pairClaimOf = (googlePlaceId: string): PlaceGroundingClaim => ({
       kind: 'grounding',
-      restaurantId: params.entity.entityId,
-      placeId,
+      placeEntityId: params.entity.entityId,
+      googlePlaceId,
     });
     const rememberedVerdicts = await this.claimLedger.decidedVerdicts(
       PLACE_GROUNDING_LANE,
@@ -2990,7 +2977,7 @@ export class RestaurantLocationEnrichmentService {
     }
 
     try {
-      const decision = await this.llmService.chooseRestaurantPlaceCandidate({
+      const decision = await this.llmService.choosePlaceCandidate({
         query: params.entity.name,
         sourceText: params.context?.sourceText,
         sourceLocale: {
@@ -3128,7 +3115,7 @@ export class RestaurantLocationEnrichmentService {
 
   private async runGeminiSelectionFlow(params: {
     autocompleteRanked: RankedCandidate[];
-    entity: RestaurantEntity;
+    entity: PlaceEntity;
     context?: EnrichmentSearchContext;
   }): Promise<GeminiSelectionFlowResult> {
     const strategy: CandidateSelectionResult['strategy'] = 'gemini_staged';
@@ -3247,7 +3234,7 @@ export class RestaurantLocationEnrichmentService {
   }
 
   private async collectFallbackSearchCandidates(
-    entity: RestaurantEntity,
+    entity: PlaceEntity,
     context: EnrichmentSearchContext,
   ): Promise<{
     attempted: boolean;
@@ -3364,7 +3351,7 @@ export class RestaurantLocationEnrichmentService {
   private buildGeminiChooserCandidates(params: {
     autocompleteRanked: RankedCandidate[];
     searchTextRanked: RankedCandidate[];
-    entity: RestaurantEntity;
+    entity: PlaceEntity;
     context?: EnrichmentSearchContext;
     autocompleteCandidateLimit?: number;
     searchTextCandidateLimit?: number;
@@ -3444,7 +3431,7 @@ export class RestaurantLocationEnrichmentService {
   }
 
   private buildEntityUpdate(
-    entity: RestaurantEntity,
+    entity: PlaceEntity,
     details: GooglePlacesV1Place,
     _requestedFieldMask: string,
     matchMetadata: MatchMetadata,
@@ -3461,8 +3448,8 @@ export class RestaurantLocationEnrichmentService {
     const trustedWebsiteDomain = this.normalizeWebsiteDomain(
       details.websiteUri,
     );
-    const metadata = this.mergeRestaurantMetadata(
-      entity.restaurantMetadata,
+    const metadata = this.mergePlaceMetadata(
+      entity.placeMetadata,
       googlePlacesMetadata,
       normalizedHours,
       null,
@@ -3470,7 +3457,7 @@ export class RestaurantLocationEnrichmentService {
 
     const updateData: Prisma.EntityUpdateInput = {
       lastUpdated: new Date(),
-      restaurantMetadata: metadata,
+      placeMetadata: metadata,
     };
 
     const updatedFields: string[] = ['restaurantMetadata'];
@@ -3560,12 +3547,9 @@ export class RestaurantLocationEnrichmentService {
       createData.lastUpdated = lastUpdated;
     }
 
-    const restaurantMetadata = this.unwrapUpdateValue(
-      updateData.restaurantMetadata,
-    );
-    if (restaurantMetadata !== undefined && restaurantMetadata !== null) {
-      createData.restaurantMetadata =
-        restaurantMetadata as Prisma.InputJsonValue;
+    const placeMetadata = this.unwrapUpdateValue(updateData.placeMetadata);
+    if (placeMetadata !== undefined && placeMetadata !== null) {
+      createData.placeMetadata = placeMetadata as Prisma.InputJsonValue;
     }
 
     const latitude = this.unwrapUpdateValue(updateData.latitude);
@@ -3634,12 +3618,12 @@ export class RestaurantLocationEnrichmentService {
   }
 
   private buildLocationUpsertData(
-    restaurantId: string,
-    current: RestaurantLocation | null | undefined,
+    placeId: string,
+    current: PlaceLocation | null | undefined,
     details: GooglePlacesV1Place,
   ): {
-    create: Prisma.RestaurantLocationUncheckedCreateInput;
-    update: Prisma.RestaurantLocationUncheckedUpdateInput;
+    create: Prisma.PlaceLocationUncheckedCreateInput;
+    update: Prisma.PlaceLocationUncheckedUpdateInput;
     updatedFields: string[];
   } {
     const addressParts = this.extractAddressParts(details);
@@ -3649,7 +3633,7 @@ export class RestaurantLocationEnrichmentService {
     const websiteDomain = this.normalizeWebsiteDomain(details.websiteUri);
 
     const baseData = {
-      restaurantId,
+      placeId,
       googlePlaceId: details.id ?? null,
       latitude:
         typeof details.location?.latitude === 'number'
@@ -3707,12 +3691,12 @@ export class RestaurantLocationEnrichmentService {
       'timeZone',
     ];
 
-    const create: Prisma.RestaurantLocationUncheckedCreateInput = {
+    const create: Prisma.PlaceLocationUncheckedCreateInput = {
       ...baseData,
       isPrimary: current?.isPrimary ?? true,
     };
 
-    const update: Prisma.RestaurantLocationUncheckedUpdateInput = {
+    const update: Prisma.PlaceLocationUncheckedUpdateInput = {
       ...baseData,
       isPrimary: current?.isPrimary ?? true,
     };
@@ -3726,19 +3710,19 @@ export class RestaurantLocationEnrichmentService {
 
   private async upsertPrimaryLocation(params: {
     tx: Prisma.TransactionClient;
-    restaurantId: string;
+    placeId: string;
     placeDetails: GooglePlacesV1Place;
     locationUpsert: {
-      create: Prisma.RestaurantLocationUncheckedCreateInput;
-      update: Prisma.RestaurantLocationUncheckedUpdateInput;
+      create: Prisma.PlaceLocationUncheckedCreateInput;
+      update: Prisma.PlaceLocationUncheckedUpdateInput;
     };
-    targetLocation?: RestaurantLocation | null;
-  }): Promise<RestaurantLocation> {
-    const { tx, restaurantId, placeDetails, locationUpsert, targetLocation } =
+    targetLocation?: PlaceLocation | null;
+  }): Promise<PlaceLocation> {
+    const { tx, placeId, placeDetails, locationUpsert, targetLocation } =
       params;
-    const placeId = placeDetails.id;
+    const googlePlaceId = placeDetails.id;
 
-    if (!placeId) {
+    if (!googlePlaceId) {
       throw new Error('Google Place details missing id');
     }
 
@@ -3746,33 +3730,33 @@ export class RestaurantLocationEnrichmentService {
       targetLocation && !targetLocation.googlePlaceId ? targetLocation : null;
 
     const location = placeholderLocation
-      ? await tx.restaurantLocation.update({
+      ? await tx.placeLocation.update({
           where: { locationId: placeholderLocation.locationId },
           data: {
             ...locationUpsert.update,
-            restaurantId,
+            placeId,
             isPrimary: true,
             updatedAt: new Date(),
-          } as Prisma.RestaurantLocationUncheckedUpdateInput,
+          } as Prisma.PlaceLocationUncheckedUpdateInput,
         })
-      : await tx.restaurantLocation.upsert({
+      : await tx.placeLocation.upsert({
           where: { googlePlaceId: placeId },
           update: {
             ...locationUpsert.update,
-            restaurantId,
+            placeId,
             isPrimary: true,
             updatedAt: new Date(),
-          } as Prisma.RestaurantLocationUncheckedUpdateInput,
+          } as Prisma.PlaceLocationUncheckedUpdateInput,
           create: {
             ...locationUpsert.create,
-            restaurantId,
+            placeId,
             isPrimary: true,
-          } as Prisma.RestaurantLocationUncheckedCreateInput,
+          } as Prisma.PlaceLocationUncheckedCreateInput,
         });
 
-    await tx.restaurantLocation.deleteMany({
+    await tx.placeLocation.deleteMany({
       where: {
-        restaurantId,
+        placeId,
         googlePlaceId: null,
         locationId: { not: location.locationId },
       },
@@ -3788,13 +3772,13 @@ export class RestaurantLocationEnrichmentService {
    * write and prove the hearing survives the crash.
    */
   protected async executeGroundingTransaction(params: {
-    entity: RestaurantEntity;
+    entity: PlaceEntity;
     placeDetails: GooglePlacesV1Place;
     locationUpsert: {
-      create: Prisma.RestaurantLocationUncheckedCreateInput;
-      update: Prisma.RestaurantLocationUncheckedUpdateInput;
+      create: Prisma.PlaceLocationUncheckedCreateInput;
+      update: Prisma.PlaceLocationUncheckedUpdateInput;
     };
-    targetLocation?: RestaurantLocation | null;
+    targetLocation?: PlaceLocation | null;
     combinedUpdateData: Prisma.EntityUpdateInput;
   }): Promise<void> {
     const { entity, placeDetails, locationUpsert, targetLocation } = params;
@@ -3802,15 +3786,15 @@ export class RestaurantLocationEnrichmentService {
       async (tx) => {
         const location = await this.upsertPrimaryLocation({
           tx,
-          restaurantId: entity.entityId,
+          placeId: entity.entityId,
           placeDetails,
           locationUpsert,
           targetLocation,
         });
 
-        await tx.restaurantLocation.updateMany({
+        await tx.placeLocation.updateMany({
           where: {
-            restaurantId: entity.entityId,
+            placeId: entity.entityId,
             locationId: { not: location.locationId },
           },
           data: { isPrimary: false },
@@ -3842,7 +3826,7 @@ export class RestaurantLocationEnrichmentService {
    * and stay out of the subject.
    */
   private groundingLocationTarget(
-    create: Prisma.RestaurantLocationUncheckedCreateInput,
+    create: Prisma.PlaceLocationUncheckedCreateInput,
   ): NonNullable<PlaceGroundingVerdictSubject['location']> {
     const asString = (value: unknown): string | null =>
       typeof value === 'string' ? value : null;
@@ -3875,7 +3859,7 @@ export class RestaurantLocationEnrichmentService {
    *  `executed` is true the effect already happened in the same breath (the
    *  pre-details merge), so the hearing closes immediately. */
   private async recordGroundingSelection(params: {
-    entity: RestaurantEntity;
+    entity: PlaceEntity;
     placeId: string;
     reason: string;
     location: PlaceGroundingVerdictSubject['location'];
@@ -3884,8 +3868,8 @@ export class RestaurantLocationEnrichmentService {
   }): Promise<void> {
     const claim: PlaceGroundingClaim = {
       kind: 'grounding',
-      restaurantId: params.entity.entityId,
-      placeId: params.placeId,
+      placeEntityId: params.entity.entityId,
+      googlePlaceId: params.placeId,
     };
     const subject: PlaceGroundingVerdictSubject = {
       kind: 'grounding',
@@ -3914,7 +3898,7 @@ export class RestaurantLocationEnrichmentService {
    *  whole effect (nothing to replay), so it closes at record — the dedupe
    *  lane's 'hold' doctrine. */
   private async recordGroundingRejection(
-    entity: RestaurantEntity,
+    entity: PlaceEntity,
     setClaim: PlaceGroundingClaim,
     reason: string,
   ): Promise<void> {
@@ -3946,15 +3930,15 @@ export class RestaurantLocationEnrichmentService {
   }
 
   private async markGroundingExecuted(
-    restaurantId: string,
-    placeId: string,
+    placeEntityId: string,
+    googlePlaceId: string,
   ): Promise<void> {
     await this.claimLedger.markExecuted(
       PLACE_GROUNDING_LANE,
       placeGroundingLane.canonicalClaimKey({
         kind: 'grounding',
-        restaurantId,
-        placeId,
+        placeEntityId,
+        googlePlaceId,
       }),
       PLACE_GROUNDING_RULE_VERSION,
       placeGroundingLane.keyFoldVersion,
@@ -3998,21 +3982,21 @@ export class RestaurantLocationEnrichmentService {
     });
     if (!entity || entity.status !== EntityStatus.active) {
       this.logger.warn('Grounding replay skipped — restaurant gone', {
-        restaurantId: subject.restaurantId,
-        placeId: target.googlePlaceId,
+        placeId: subject.restaurantId,
+        googlePlaceId: target.googlePlaceId,
       });
       return false;
     }
-    const existing = await this.prisma.restaurantLocation.findUnique({
+    const existing = await this.prisma.placeLocation.findUnique({
       where: { googlePlaceId: target.googlePlaceId },
     });
-    if (existing && existing.restaurantId !== subject.restaurantId) {
+    if (existing && existing.placeId !== subject.restaurantId) {
       this.logger.warn(
         'Grounding replay skipped — place owned by another restaurant (superseded by a merge)',
         {
-          restaurantId: subject.restaurantId,
-          ownerId: existing.restaurantId,
-          placeId: target.googlePlaceId,
+          placeId: subject.restaurantId,
+          ownerId: existing.placeId,
+          googlePlaceId: target.googlePlaceId,
         },
       );
       return false;
@@ -4041,7 +4025,9 @@ export class RestaurantLocationEnrichmentService {
       return false;
     }
     const data = {
-      restaurantId: subject.restaurantId,
+      // subject.restaurantId = the place ENTITY id (frozen persisted key);
+      // subject.placeId is the GOOGLE place id.
+      placeId: subject.restaurantId,
       googlePlaceId: target.googlePlaceId,
       latitude: target.latitude,
       longitude: target.longitude,
@@ -4065,14 +4051,14 @@ export class RestaurantLocationEnrichmentService {
       updatedAt: new Date(),
     };
     await this.prisma.$transaction(async (tx) => {
-      const location = await tx.restaurantLocation.upsert({
+      const location = await tx.placeLocation.upsert({
         where: { googlePlaceId: target.googlePlaceId },
-        update: data as Prisma.RestaurantLocationUncheckedUpdateInput,
-        create: data as Prisma.RestaurantLocationUncheckedCreateInput,
+        update: data as Prisma.PlaceLocationUncheckedUpdateInput,
+        create: data as Prisma.PlaceLocationUncheckedCreateInput,
       });
-      await tx.restaurantLocation.updateMany({
+      await tx.placeLocation.updateMany({
         where: {
-          restaurantId: subject.restaurantId,
+          placeId: subject.restaurantId,
           locationId: { not: location.locationId },
         },
         data: { isPrimary: false },
@@ -4118,7 +4104,7 @@ export class RestaurantLocationEnrichmentService {
     return resumed;
   }
 
-  private mergeRestaurantMetadata(
+  private mergePlaceMetadata(
     current: Prisma.JsonValue | null | undefined,
     googleMetadata: Record<string, unknown>,
     normalizedHours: NormalizedOpeningHours,
@@ -4334,7 +4320,7 @@ export class RestaurantLocationEnrichmentService {
   }
 
   private async tryFindPlaceFallback(
-    entity: RestaurantEntity,
+    entity: PlaceEntity,
     context: EnrichmentSearchContext,
   ): Promise<{ status: string; ranked: RankedCandidate[] } | null> {
     if (!context.query) {
@@ -4523,7 +4509,7 @@ export class RestaurantLocationEnrichmentService {
   }
 
   private async recordNoMatchCandidates(
-    entity: RestaurantEntity,
+    entity: PlaceEntity,
     reason: string,
     metadata: Record<string, unknown>,
   ): Promise<void> {
@@ -4533,8 +4519,8 @@ export class RestaurantLocationEnrichmentService {
     const verdict = classifyNoMatchReason(reason);
     try {
       const emptyHours: NormalizedOpeningHours = {};
-      const mergedMetadata = this.mergeRestaurantMetadata(
-        entity.restaurantMetadata,
+      const mergedMetadata = this.mergePlaceMetadata(
+        entity.placeMetadata,
         {},
         emptyHours,
         {
@@ -4548,7 +4534,7 @@ export class RestaurantLocationEnrichmentService {
       await this.prisma.entity.update({
         where: { entityId: entity.entityId },
         data: {
-          restaurantMetadata: mergedMetadata,
+          placeMetadata: mergedMetadata,
           // A REAL attempt counter, incremented (never replaced). The
           // janitor's archive/retry policy used to read
           // metadata.lastEnrichmentAttempt.count, whose only writer set it to
@@ -4565,7 +4551,7 @@ export class RestaurantLocationEnrichmentService {
         },
       });
 
-      entity.restaurantMetadata = mergedMetadata as unknown as Prisma.JsonValue;
+      entity.placeMetadata = mergedMetadata as unknown as Prisma.JsonValue;
     } catch (error) {
       // SWALLOW AND TELL SOMEONE (F205 doctrine, F4907's twin — F5100). This
       // catch guards the SAME attempt counter as recordEnrichmentFailure
@@ -4610,7 +4596,7 @@ export class RestaurantLocationEnrichmentService {
    *   SELECT restaurant_metadata->'lastEnrichmentAttempt'->>'failureReasonCode',
    *          restaurant_metadata->'lastEnrichmentAttempt'->>'failureClass',
    *          count(*)
-   *   FROM core_entities WHERE type='restaurant' GROUP BY 1,2;
+   *   FROM core_entities WHERE type='place' GROUP BY 1,2;
    */
   private buildFailureBreadcrumb(
     verdict: EnrichmentFailureVerdict,
@@ -4623,7 +4609,7 @@ export class RestaurantLocationEnrichmentService {
   }
 
   private async recordEnrichmentFailure(
-    entity: RestaurantEntity,
+    entity: PlaceEntity,
     reason: string,
     extras: Record<string, unknown> = {},
     // A caller that did not classify has, by definition, no evidence about
@@ -4637,8 +4623,8 @@ export class RestaurantLocationEnrichmentService {
   ): Promise<void> {
     try {
       const emptyHours: NormalizedOpeningHours = {};
-      const mergedMetadata = this.mergeRestaurantMetadata(
-        entity.restaurantMetadata,
+      const mergedMetadata = this.mergePlaceMetadata(
+        entity.placeMetadata,
         {},
         emptyHours,
         {
@@ -4666,7 +4652,7 @@ export class RestaurantLocationEnrichmentService {
       await this.prisma.entity.update({
         where: { entityId: entity.entityId },
         data: {
-          restaurantMetadata: mergedMetadata,
+          placeMetadata: mergedMetadata,
           // The `error` path wrote NO count at all, so these placeholders sat
           // at 0 forever and were re-enriched every week at real Places spend.
           //
@@ -4681,7 +4667,7 @@ export class RestaurantLocationEnrichmentService {
         },
       });
 
-      entity.restaurantMetadata = mergedMetadata as unknown as Prisma.JsonValue;
+      entity.placeMetadata = mergedMetadata as unknown as Prisma.JsonValue;
     } catch (error) {
       // SWALLOW AND TELL SOMEONE (F205 doctrine, F4907). The write this
       // catch guards is the FAILURE COUNTER — the only thing standing

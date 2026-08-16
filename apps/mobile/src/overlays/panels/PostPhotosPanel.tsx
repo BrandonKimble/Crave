@@ -38,8 +38,8 @@ import SquircleSpinner from '../../components/SquircleSpinner';
 // surface excludes them server-side.
 
 type PostPhotosParams = {
-  restaurantId?: string | null;
-  restaurantName?: string | null;
+  placeId?: string | null;
+  placeName?: string | null;
   dishId?: string | null;
   dishName?: string | null;
   sessionNonce?: string | null;
@@ -51,7 +51,7 @@ type PhotoDraft = {
   id: string;
   asset: ImagePickerAsset;
   /** Assigned dish (connectionId + display name), or null = the general/"vibes" bucket. */
-  dish: { connectionId: string; foodName: string } | null;
+  dish: { connectionId: string; itemName: string } | null;
   /** "Other…" free-text dish name — the demand signal (pendingDishName on the ticket). */
   otherDishName: string | null;
   /** Set once the Cloudinary upload succeeded (confirm-stage failure): the photo
@@ -62,11 +62,11 @@ type PhotoDraft = {
 };
 
 type PostPhotosSection = {
-  /** Panel-local section key (restaurantId can't key: unpicked sections are null). */
+  /** Panel-local section key (placeId can't key: unpicked sections are null). */
   sid: string;
   /** null = the §7.4 "pick a restaurant" state (own-profile entry / added section). */
-  restaurantId: string | null;
-  restaurantName: string | null;
+  placeId: string | null;
+  placeName: string | null;
   drafts: PhotoDraft[];
 };
 
@@ -80,7 +80,7 @@ const nextSectionId = (): string => `section-${sectionSeq++}`;
 
 const draftsFromAssets = (
   assets: ImagePickerAsset[],
-  preassignedDish: { connectionId: string; foodName: string } | null
+  preassignedDish: { connectionId: string; itemName: string } | null
 ): PhotoDraft[] =>
   assets.map((asset) => ({
     id: `draft-${draftSeq++}-${asset.fileName ?? asset.uri.slice(-24)}`,
@@ -97,7 +97,7 @@ const draftsFromAssets = (
 const RestaurantPickInline = ({
   onPick,
 }: {
-  onPick: (restaurant: { restaurantId: string; restaurantName: string }) => void;
+  onPick: (restaurant: { placeId: string; placeName: string }) => void;
 }) => {
   const [query, setQuery] = React.useState('');
   const trimmed = query.trim();
@@ -105,7 +105,7 @@ const RestaurantPickInline = ({
     queryKey: ['postPhotosRestaurantPick', trimmed],
     enabled: trimmed.length >= 2,
     queryFn: ({ signal }) =>
-      autocompleteService.fetchEntities(trimmed, { entityType: 'restaurant', signal }),
+      autocompleteService.fetchEntities(trimmed, { entityType: 'place', signal }),
   });
   const matches = (suggestionsQuery.data?.matches ?? []).filter(
     (match) => match.matchType == null || match.matchType === 'entity'
@@ -133,7 +133,7 @@ const RestaurantPickInline = ({
       {matches.map((match) => (
         <Pressable
           key={match.entityId}
-          onPress={() => onPick({ restaurantId: match.entityId, restaurantName: match.name })}
+          onPress={() => onPick({ placeId: match.entityId, placeName: match.name })}
           accessibilityRole="button"
           accessibilityLabel={`Pick ${match.name}`}
           style={styles.dishRow}
@@ -155,17 +155,17 @@ const RestaurantPickInline = ({
 
 // ─── Per-photo dish assignment: inline ranked dish list + typeahead + "Other…" ──────────────
 const DishAssignList = ({
-  restaurantId,
+  placeId,
   selectedConnectionId,
   otherDishName,
   onAssign,
   onAssignOther,
   onClear,
 }: {
-  restaurantId: string;
+  placeId: string;
   selectedConnectionId: string | null;
   otherDishName: string | null;
-  onAssign: (dish: { connectionId: string; foodName: string }) => void;
+  onAssign: (dish: { connectionId: string; itemName: string }) => void;
   onAssignOther: (name: string) => void;
   onClear: () => void;
 }) => {
@@ -174,14 +174,14 @@ const DishAssignList = ({
   const [otherText, setOtherText] = React.useState(otherDishName ?? '');
 
   const dishesQuery = useQuery({
-    queryKey: ['restaurantDishes', restaurantId],
-    queryFn: (): Promise<FoodResult[]> => searchService.restaurantDishes(restaurantId),
+    queryKey: ['restaurantDishes', placeId],
+    queryFn: (): Promise<FoodResult[]> => searchService.restaurantDishes(placeId),
   });
 
   const dishes = dishesQuery.data ?? [];
   const normalizedFilter = filter.trim().toLowerCase();
   const visibleDishes = normalizedFilter
-    ? dishes.filter((dish) => dish.foodName.toLowerCase().includes(normalizedFilter))
+    ? dishes.filter((dish) => dish.itemName.toLowerCase().includes(normalizedFilter))
     : dishes;
 
   return (
@@ -234,11 +234,11 @@ const DishAssignList = ({
               <Pressable
                 key={dish.connectionId}
                 onPress={() =>
-                  onAssign({ connectionId: dish.connectionId, foodName: dish.foodName })
+                  onAssign({ connectionId: dish.connectionId, itemName: dish.itemName })
                 }
                 accessibilityRole="button"
                 accessibilityState={{ selected: isSelected }}
-                accessibilityLabel={`Assign ${dish.foodName}`}
+                accessibilityLabel={`Assign ${dish.itemName}`}
                 style={[styles.dishRow, isSelected && styles.dishRowSelected]}
                 testID={`post-photos-dish-${dish.connectionId}`}
               >
@@ -251,7 +251,7 @@ const DishAssignList = ({
                   numberOfLines={1}
                   style={styles.dishRowName}
                 >
-                  {dish.foodName}
+                  {dish.itemName}
                 </Text>
               </Pressable>
             );
@@ -306,9 +306,8 @@ export const PostPhotosPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   const routeSceneRuntime = useAppRouteSceneRuntime();
   const params: PostPhotosParams | null =
     entry?.key === 'postPhotos' ? ((entry.params ?? {}) as PostPhotosParams) : null;
-  const restaurantId = typeof params?.restaurantId === 'string' ? params.restaurantId : null;
-  const restaurantName =
-    typeof params?.restaurantName === 'string' ? params.restaurantName : 'This restaurant';
+  const placeId = typeof params?.placeId === 'string' ? params.placeId : null;
+  const placeName = typeof params?.placeName === 'string' ? params.placeName : 'This restaurant';
   const dishId = typeof params?.dishId === 'string' ? params.dishId : null;
   const dishName = typeof params?.dishName === 'string' ? params.dishName : null;
   const sessionNonce = typeof params?.sessionNonce === 'string' ? params.sessionNonce : null;
@@ -327,11 +326,11 @@ export const PostPhotosPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
       ? [
           {
             sid: nextSectionId(),
-            restaurantId,
-            restaurantName: restaurantId != null ? restaurantName : null,
+            placeId,
+            placeName: placeId != null ? placeName : null,
             drafts: draftsFromAssets(
               initialAssets,
-              dishId != null ? { connectionId: dishId, foodName: dishName ?? 'Dish' } : null
+              dishId != null ? { connectionId: dishId, itemName: dishName ?? 'Dish' } : null
             ),
           },
         ]
@@ -384,12 +383,12 @@ export const PostPhotosPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
           // row (a fresh ticket + upload would duplicate the live photo).
           await photosService.retryConfirm(draft.photoId);
         } else {
-          if (section.restaurantId == null) {
+          if (section.placeId == null) {
             // Post is disabled while a section lacks a restaurant; loud guard.
             throw new Error('post-photos: section has no restaurant');
           }
           await photosService.uploadPhoto(draft.asset, {
-            restaurantId: section.restaurantId,
+            placeId: section.placeId,
             connectionId: draft.dish?.connectionId,
             // "Other…" free text = the demand-signal field the backend built for it.
             pendingDishName: draft.otherDishName ?? undefined,
@@ -476,13 +475,13 @@ export const PostPhotosPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   );
   // Post gate (§7.4): every photo needs a restaurant; empty added sections don't block.
   const hasUnpickedDrafts = sections.some(
-    (section) => section.restaurantId == null && section.drafts.length > 0
+    (section) => section.placeId == null && section.drafts.length > 0
   );
   const postDisabled = isPosting || totalCount === 0 || hasUnpickedDrafts;
 
   const assignSectionRestaurant = (
     sid: string,
-    restaurant: { restaurantId: string; restaurantName: string }
+    restaurant: { placeId: string; placeName: string }
   ): void => {
     setSections((current) =>
       current.map((section) => (section.sid === sid ? { ...section, ...restaurant } : section))
@@ -508,13 +507,13 @@ export const PostPhotosPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
         const selectedDraft = section.drafts.find((draft) => draft.id === selectedDraftId) ?? null;
         return (
           <View key={section.sid} style={styles.section}>
-            {section.restaurantId == null ? (
+            {section.placeId == null ? (
               <RestaurantPickInline
                 onPick={(restaurant) => assignSectionRestaurant(section.sid, restaurant)}
               />
             ) : (
               <Text variant="title" weight="semibold" numberOfLines={1} style={styles.sectionTitle}>
-                {section.restaurantName}
+                {section.placeName}
               </Text>
             )}
             {section.drafts.length > 0 ? (
@@ -536,7 +535,7 @@ export const PostPhotosPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
                       ? draft.asset.width / draft.asset.height
                       : 4 / 3)
                 );
-                const chipLabel = draft.dish?.foodName ?? draft.otherDishName;
+                const chipLabel = draft.dish?.itemName ?? draft.otherDishName;
                 const statusLabel = STATUS_LABELS[draft.status];
                 return (
                   <View key={draft.id} style={styles.thumbColumn}>
@@ -608,9 +607,9 @@ export const PostPhotosPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
                 + Add photos
               </Text>
             </Pressable>
-            {selectedDraft != null && section.restaurantId != null ? (
+            {selectedDraft != null && section.placeId != null ? (
               <DishAssignList
-                restaurantId={section.restaurantId}
+                placeId={section.placeId}
                 selectedConnectionId={selectedDraft.dish?.connectionId ?? null}
                 otherDishName={selectedDraft.otherDishName}
                 onAssign={(dish) => updateDraft(selectedDraft.id, { dish, otherDishName: null })}
@@ -629,7 +628,7 @@ export const PostPhotosPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
         onPress={() =>
           setSections((current) => [
             ...current,
-            { sid: nextSectionId(), restaurantId: null, restaurantName: null, drafts: [] },
+            { sid: nextSectionId(), placeId: null, placeName: null, drafts: [] },
           ])
         }
         accessibilityRole="button"

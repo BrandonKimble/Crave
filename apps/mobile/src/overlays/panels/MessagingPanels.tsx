@@ -218,8 +218,8 @@ type OptimisticMessage = {
 
 const SHARED_KIND_TO_ENTITY_REF_TYPE: Partial<Record<string, EntityRefType>> = {
   list: 'list',
-  restaurant: 'restaurant',
-  dish: 'food',
+  restaurant: 'place',
+  dish: 'item',
   user_profile: 'person',
 };
 

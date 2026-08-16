@@ -134,21 +134,21 @@ export class UnsegmentedResidueService {
     try {
       const analysis = await this.llmService.interpretResidue(residueText);
       const typed: Array<{ term: string; entityType: EntityType }> = [
-        ...analysis.restaurants.map((term) => ({
+        ...analysis.places.map((term) => ({
           term,
-          entityType: 'restaurant' as EntityType,
+          entityType: 'place' as EntityType,
         })),
-        ...analysis.foods.map((term) => ({
+        ...analysis.items.map((term) => ({
           term,
-          entityType: 'food' as EntityType,
+          entityType: 'item' as EntityType,
         })),
-        ...analysis.foodAttributes.map((term) => ({
+        ...analysis.itemAttributes.map((term) => ({
           term,
-          entityType: 'food_attribute' as EntityType,
+          entityType: 'item_attribute' as EntityType,
         })),
-        ...analysis.restaurantAttributes.map((term) => ({
+        ...analysis.placeAttributes.map((term) => ({
           term,
-          entityType: 'restaurant_attribute' as EntityType,
+          entityType: 'place_attribute' as EntityType,
         })),
       ].filter((entry) => entry.term.trim().length > 0);
 

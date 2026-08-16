@@ -51,7 +51,7 @@ export interface ProcessingResult {
     entitiesCreated: number;
     connectionsCreated: number;
     affectedConnectionIds: string[];
-    affectedRestaurantIds?: string[];
+    affectedPlaceIds?: string[];
     createdEntityIds?: string[];
     createdEntitySummaries?: CreatedEntitySummary[];
     reusedEntitySummaries?: {

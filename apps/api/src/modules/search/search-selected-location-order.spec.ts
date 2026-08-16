@@ -3,7 +3,7 @@ import { SearchQueryBuilder } from './search-query.builder';
 import { renderInlinedSql } from './sql-preview';
 import type { QueryPlan } from './dto/search-query.dto';
 
-const RESTAURANT_ID = '44444444-4444-4444-4444-444444444444';
+const PLACE_ID = '44444444-4444-4444-4444-444444444444';
 
 // Fame pin re-keyed to SOURCES (master §5/§7, Phase B line): the DISTINCT ON
 // representative-location order must prefer locations covered by the
@@ -24,18 +24,18 @@ const TERRITORY_ORDER_SNIPPET = 'fl.in_scoring_territory DESC';
 function buildPlan(): QueryPlan {
   return {
     format: 'dual_list',
-    restaurantFilters: [
+    placeFilters: [
       {
-        scope: 'restaurant',
+        scope: 'place',
         description: 'test restaurants',
-        entityType: 'restaurant',
-        entityIds: [RESTAURANT_ID],
+        entityType: 'place',
+        entityIds: [PLACE_ID],
       },
     ],
     connectionFilters: [],
     ranking: {
-      foodOrder: 'crave_score DESC',
-      restaurantOrder: 'crave_score DESC',
+      itemOrder: 'crave_score DESC',
+      placeOrder: 'crave_score DESC',
     },
     diagnostics: { missingEntities: [], notes: [] },
   };
@@ -56,7 +56,7 @@ describe('selected_locations fame-pin ordering (scoring territory before distanc
   const builder = new SearchQueryBuilder();
 
   it('restaurant query: territory preference sorts BEFORE distance-to-center, distance stays the tiebreak', () => {
-    const { dataSql } = builder.buildRestaurantQuery({
+    const { dataSql } = builder.buildPlaceQuery({
       plan: buildPlan(),
       pagination: { skip: 0, take: 10 },
       searchCenter: { lat: 30.27, lng: -97.74 },
@@ -75,7 +75,7 @@ describe('selected_locations fame-pin ordering (scoring territory before distanc
   });
 
   it('restaurant query without a search center: territory preference still applies, updated_at anchors', () => {
-    const { dataSql } = builder.buildRestaurantQuery({
+    const { dataSql } = builder.buildPlaceQuery({
       plan: buildPlan(),
       pagination: { skip: 0, take: 10 },
       searchCenter: null,
@@ -96,7 +96,7 @@ describe('selected_locations fame-pin ordering (scoring territory before distanc
             scope: 'connection',
             description: 'test connections',
             entityType: 'connection',
-            entityIds: [RESTAURANT_ID],
+            entityIds: [PLACE_ID],
           },
         ],
       },

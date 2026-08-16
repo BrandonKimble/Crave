@@ -18,7 +18,7 @@ import { EntitySiblingEdgeBuilderService } from '../modules/entity-text-search/e
 import { NameContainmentEdgeBuilderService } from '../modules/entity-text-search/name-containment-edge-builder.service';
 import { OpenIntervalsBuilderService } from '../modules/search/open-intervals-builder.service';
 import { EntityLexiconBuilderService } from '../modules/entity-text-search/entity-lexicon-builder.service';
-import { FoodCategoryEdgeBuilderService } from '../modules/search/food-category-edge-builder.service';
+import { ItemCategoryEdgeBuilderService } from '../modules/search/food-category-edge-builder.service';
 
 describe('DerivedIndexJob: no subclass can be driven around the guard', () => {
   it('rebuildAll is NOT public on any subclass that has one (compile-level)', () => {
@@ -47,7 +47,7 @@ describe('DerivedIndexJob: no subclass can be driven around the guard', () => {
           {} as NameContainmentEdgeBuilderService,
           {} as OpenIntervalsBuilderService,
           {} as EntityLexiconBuilderService,
-          {} as FoodCategoryEdgeBuilderService,
+          {} as ItemCategoryEdgeBuilderService,
         ] as DerivedIndexJob[]
       ).map((job) => () => job.runNow()),
     ];

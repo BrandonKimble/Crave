@@ -4,7 +4,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { RedditCollectorModule } from '../content-processing/reddit-collector/reddit-collector.module';
 import { EntityResolverModule } from '../content-processing/entity-resolver/entity-resolver.module';
 import { ExternalIntegrationsModule } from '../external-integrations/external-integrations.module';
-import { RestaurantEnrichmentModule } from '../restaurant-enrichment';
+import { PlaceEnrichmentModule } from '../restaurant-enrichment';
 import { IdentityModule } from '../identity/identity.module';
 import { EntityTextSearchModule } from '../entity-text-search/entity-text-search.module';
 import { PublicCraveScoreModule } from '../content-processing/public-crave-score';
@@ -23,14 +23,14 @@ import { EngineCoverageService } from './engine-coverage.service';
 import { OnDemandCleanupService } from './on-demand-cleanup.service';
 import { SearchQuerySuggestionService } from './search-query-suggestion.service';
 import { SearchPopularityService } from './search-popularity.service';
-import { RestaurantStatusService } from './restaurant-status.service';
+import { PlaceStatusService } from './restaurant-status.service';
 import { SearchEntityExpansionService } from './search-entity-expansion.service';
 import { SearchSiblingExpansionService } from './search-sibling-expansion.service';
 import { DietaryConstraintRegistry } from './dietary-constraints';
 import { UnsegmentedResidueService } from './unsegmented-residue.service';
 import { ScoringTerritoryRefreshService } from './scoring-territory-refresh.service';
 import { OpenIntervalsBuilderService } from './open-intervals-builder.service';
-import { FoodCategoryEdgeBuilderService } from './food-category-edge-builder.service';
+import { ItemCategoryEdgeBuilderService } from './food-category-edge-builder.service';
 
 @Module({
   imports: [
@@ -39,7 +39,7 @@ import { FoodCategoryEdgeBuilderService } from './food-category-edge-builder.ser
     RedditCollectorModule,
     EntityResolverModule,
     ExternalIntegrationsModule,
-    RestaurantEnrichmentModule,
+    PlaceEnrichmentModule,
     IdentityModule,
     EntityTextSearchModule,
     PublicCraveScoreModule,
@@ -62,14 +62,14 @@ import { FoodCategoryEdgeBuilderService } from './food-category-edge-builder.ser
     OnDemandCleanupService,
     SearchQuerySuggestionService,
     SearchPopularityService,
-    RestaurantStatusService,
+    PlaceStatusService,
     SearchEntityExpansionService,
     SearchSiblingExpansionService,
     DietaryConstraintRegistry,
     UnsegmentedResidueService,
     ScoringTerritoryRefreshService,
     OpenIntervalsBuilderService,
-    FoodCategoryEdgeBuilderService,
+    ItemCategoryEdgeBuilderService,
   ],
   exports: [
     DemandVocabularyService,
@@ -78,7 +78,7 @@ import { FoodCategoryEdgeBuilderService } from './food-category-edge-builder.ser
     OnDemandRequestService,
     SearchQuerySuggestionService,
     SearchPopularityService,
-    RestaurantStatusService,
+    PlaceStatusService,
     SearchQueryExecutor,
     DietaryConstraintRegistry,
   ],

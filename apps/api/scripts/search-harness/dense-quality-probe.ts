@@ -35,7 +35,7 @@ async function main(): Promise<void> {
     for (const q of QUERIES) {
       const dense = await search.searchByEmbedding(
         q,
-        [EntityType.food],
+        [EntityType.item],
         12,
         {},
       );

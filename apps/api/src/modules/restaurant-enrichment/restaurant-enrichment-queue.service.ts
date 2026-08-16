@@ -7,8 +7,8 @@ import { currentCampaignId } from '../external-integrations/shared/work-context'
 const QUEUE_NAME = 'restaurant-primary-enrichment';
 const JOB_NAME = 'enrich-restaurant';
 
-export interface RestaurantEnrichmentJobData {
-  restaurantId: string;
+export interface PlaceEnrichmentJobData {
+  placeId: string;
   requestedAt: string;
   /** Campaign funding the work that ENQUEUED this job. AsyncLocalStorage
    *  does not cross the BullMQ boundary (round-six cost #4: the envelope was
@@ -29,27 +29,27 @@ export interface RestaurantEnrichmentJobData {
  * worker idempotent.
  */
 @Injectable()
-export class RestaurantEnrichmentQueueService {
+export class PlaceEnrichmentQueueService {
   private readonly logger: LoggerService;
 
   constructor(
     @InjectQueue(QUEUE_NAME)
-    private readonly queue: Queue<RestaurantEnrichmentJobData>,
+    private readonly queue: Queue<PlaceEnrichmentJobData>,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('RestaurantEnrichmentQueue');
   }
 
   async queueEnrichment(
-    restaurantId: string,
-    context: Omit<RestaurantEnrichmentJobData, 'restaurantId' | 'requestedAt'>,
+    placeId: string,
+    context: Omit<PlaceEnrichmentJobData, 'placeId' | 'requestedAt'>,
   ): Promise<void> {
-    const normalized = restaurantId?.trim();
+    const normalized = placeId?.trim();
     if (!normalized) return;
     await this.queue.add(
       JOB_NAME,
       {
-        restaurantId: normalized,
+        placeId: normalized,
         requestedAt: new Date().toISOString(),
         campaignId: currentCampaignId(),
         ...context,
@@ -71,5 +71,5 @@ export class RestaurantEnrichmentQueueService {
   }
 }
 
-export const RESTAURANT_ENRICHMENT_QUEUE_NAME = QUEUE_NAME;
-export const RESTAURANT_ENRICHMENT_JOB_NAME = JOB_NAME;
+export const PLACE_ENRICHMENT_QUEUE_NAME = QUEUE_NAME;
+export const PLACE_ENRICHMENT_JOB_NAME = JOB_NAME;

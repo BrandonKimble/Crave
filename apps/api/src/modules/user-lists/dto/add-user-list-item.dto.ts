@@ -11,9 +11,9 @@ import {
 export class AddUserListItemDto {
   @ValidateIf((value: AddUserListItemDto) => !value.connectionId)
   @IsUUID()
-  restaurantId?: string;
+  placeId?: string;
 
-  @ValidateIf((value: AddUserListItemDto) => !value.restaurantId)
+  @ValidateIf((value: AddUserListItemDto) => !value.placeId)
   @IsUUID()
   connectionId?: string;
 

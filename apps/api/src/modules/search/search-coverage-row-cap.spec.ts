@@ -39,9 +39,9 @@ function createLogger() {
 
 function coverageRow(index: number) {
   return {
-    restaurant_id: `11111111-0000-4000-8000-${String(index).padStart(12, '0')}`,
+    place_id: `11111111-0000-4000-8000-${String(index).padStart(12, '0')}`,
     location_id: `22222222-0000-4000-8000-${String(index).padStart(12, '0')}`,
-    restaurant_name: `r-${index}`,
+    place_name: `r-${index}`,
     longitude: -97.75,
     latitude: 30.25,
     location_hours: null,

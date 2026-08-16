@@ -2,8 +2,8 @@ import { Inject, OnModuleInit } from '@nestjs/common';
 import { Process, Processor } from '@nestjs/bull';
 import { Job } from 'bull';
 import { LoggerService } from '../../shared';
-import { RestaurantLocationEnrichmentService } from './restaurant-location-enrichment.service';
-import { RestaurantSecondaryLocationExpansionJobData } from './restaurant-secondary-location-expansion.types';
+import { PlaceLocationEnrichmentService } from './restaurant-location-enrichment.service';
+import { PlaceSecondaryLocationExpansionJobData } from './restaurant-secondary-location-expansion.types';
 import { runInWorkContext } from '../external-integrations/shared/work-context';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -11,30 +11,28 @@ const QUEUE_NAME = 'restaurant-secondary-location-expansion';
 const JOB_NAME = 'expand-restaurant-secondary-locations';
 
 @Processor(QUEUE_NAME)
-export class RestaurantSecondaryLocationExpansionWorker
-  implements OnModuleInit
-{
+export class PlaceSecondaryLocationExpansionWorker implements OnModuleInit {
   private logger!: LoggerService;
 
   constructor(
-    private readonly restaurantLocationEnrichment: RestaurantLocationEnrichmentService,
+    private readonly restaurantLocationEnrichment: PlaceLocationEnrichmentService,
     private readonly prisma: PrismaService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext(
-      'RestaurantSecondaryLocationExpansionWorker',
+      'PlaceSecondaryLocationExpansionWorker',
     );
   }
 
   @Process(JOB_NAME)
   async handle(
-    job: Job<RestaurantSecondaryLocationExpansionJobData>,
+    job: Job<PlaceSecondaryLocationExpansionJobData>,
   ): Promise<void> {
-    const restaurantId = job.data?.restaurantId?.trim();
     const placeId = job.data?.placeId?.trim();
-    if (!restaurantId || !placeId) {
+    const googlePlaceId = job.data?.googlePlaceId?.trim();
+    if (!placeId || !googlePlaceId) {
       this.logger.warn('Secondary location expansion job missing identifiers', {
         jobId: job.id,
         data: job.data,
@@ -44,8 +42,8 @@ export class RestaurantSecondaryLocationExpansionWorker
 
     this.logger.info('Processing secondary location expansion', {
       jobId: job.id,
-      restaurantId,
       placeId,
+      googlePlaceId,
       source: job.data?.source,
     });
 
@@ -80,7 +78,7 @@ export class RestaurantSecondaryLocationExpansionWorker
       bias = rows[0] ? { ...rows[0], radiusMeters: 50_000 } : undefined;
       if (!bias) {
         this.logger.warn('Metro probe has no anchor — skipping', {
-          restaurantId,
+          placeId,
           metroHandle,
         });
         return;
@@ -88,9 +86,9 @@ export class RestaurantSecondaryLocationExpansionWorker
     }
     try {
       await runInWorkContext({ campaignId: job.data?.campaignId }, () =>
-        this.restaurantLocationEnrichment.expandSecondaryLocationsForRestaurant(
-          restaurantId,
+        this.restaurantLocationEnrichment.expandSecondaryLocationsForPlace(
           placeId,
+          googlePlaceId,
           bias,
         ),
       );
@@ -101,13 +99,13 @@ export class RestaurantSecondaryLocationExpansionWorker
       if (metroHandle) {
         await this.prisma.metroLocationProbe.upsert({
           where: {
-            restaurantId_communityHandle: {
-              restaurantId,
+            placeId_communityHandle: {
+              placeId,
               communityHandle: metroHandle,
             },
           },
           update: { probedAt: new Date() },
-          create: { restaurantId, communityHandle: metroHandle },
+          create: { placeId, communityHandle: metroHandle },
         });
       }
       throw error;
@@ -115,13 +113,13 @@ export class RestaurantSecondaryLocationExpansionWorker
     if (metroHandle) {
       await this.prisma.metroLocationProbe.upsert({
         where: {
-          restaurantId_communityHandle: {
-            restaurantId,
+          placeId_communityHandle: {
+            placeId,
             communityHandle: metroHandle,
           },
         },
         update: { probedAt: new Date() },
-        create: { restaurantId, communityHandle: metroHandle },
+        create: { placeId, communityHandle: metroHandle },
       });
     }
   }

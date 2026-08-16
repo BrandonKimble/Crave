@@ -60,8 +60,8 @@ export class AttributeOntologyQueueService {
   /** Schedule adjudication for both attribute vocabularies (debounced per type). */
   async queueAdjudication(): Promise<void> {
     await Promise.all([
-      this.queueForType('restaurant_attribute'),
-      this.queueForType('food_attribute'),
+      this.queueForType('place_attribute'),
+      this.queueForType('item_attribute'),
     ]);
   }
 

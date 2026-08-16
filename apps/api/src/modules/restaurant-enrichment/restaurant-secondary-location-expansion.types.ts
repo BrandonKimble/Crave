@@ -1,6 +1,6 @@
-export type RestaurantSecondaryLocationExpansionJobData = {
-  restaurantId: string;
+export type PlaceSecondaryLocationExpansionJobData = {
   placeId: string;
+  googlePlaceId: string;
   requestedAt: string;
   source?: string;
   /**

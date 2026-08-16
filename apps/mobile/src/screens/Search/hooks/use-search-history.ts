@@ -25,7 +25,7 @@ type LocalRecentSearchInput = {
 
 type TrackRecentlyViewedFoodInput = Pick<
   RecentlyViewedFood,
-  'connectionId' | 'foodId' | 'foodName' | 'restaurantId' | 'restaurantName' | 'statusPreview'
+  'connectionId' | 'itemId' | 'itemName' | 'placeId' | 'placeName' | 'statusPreview'
 >;
 
 type UseSearchHistoryResult = {
@@ -39,7 +39,7 @@ type UseSearchHistoryResult = {
   loadRecentlyViewedRestaurants: (options?: { force?: boolean }) => Promise<void>;
   loadRecentlyViewedFoods: (options?: { force?: boolean }) => Promise<void>;
   updateLocalRecentSearches: (value: string | LocalRecentSearchInput) => void;
-  trackRecentlyViewedRestaurant: (restaurantId: string, restaurantName: string) => void;
+  trackRecentlyViewedRestaurant: (placeId: string, placeName: string) => void;
   trackRecentlyViewedFood: (value: TrackRecentlyViewedFoodInput) => void;
 };
 

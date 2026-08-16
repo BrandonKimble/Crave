@@ -8,7 +8,7 @@ import {
   Min,
 } from 'class-validator';
 
-export class ListFoodViewsDto {
+export class ListItemViewsDto {
   @IsOptional()
   @Type(() => Number)
   @IsInt()

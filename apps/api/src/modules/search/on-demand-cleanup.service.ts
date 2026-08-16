@@ -107,7 +107,7 @@ export class OnDemandCleanupService {
       Prisma.sql`
         UPDATE core_entities e
         SET status = 'archived'
-        WHERE e.type = 'restaurant'
+        WHERE e.type = 'place'
           AND e.status <> 'archived'
           AND e.restaurant_metadata->>'origin' = 'on_demand'
           -- NAIVE COLUMN, EXPLICIT FRAME (audit 2026-08-02). core_entities

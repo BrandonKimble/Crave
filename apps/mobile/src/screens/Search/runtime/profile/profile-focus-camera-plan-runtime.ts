@@ -24,7 +24,7 @@ export const resolveProfileFocusCameraPlan = ({
   });
 
   return resolveRestaurantProfileCameraMotion({
-    restaurantId: restaurant.restaurantId,
+    placeId: restaurant.placeId,
     source,
     focusTarget,
     cameraActionModel: actionModel.restaurantCameraActionModel,

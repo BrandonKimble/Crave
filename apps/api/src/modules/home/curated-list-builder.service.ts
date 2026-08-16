@@ -26,7 +26,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
 import { recallScope } from '../../shared/locale';
 import { parseOnboardingAnswers } from '@crave-search/shared';
-import { activeRestaurantEventCountSql } from '../content-processing/reddit-collector/extraction-scope.service';
+import { activePlaceEventCountSql } from '../content-processing/reddit-collector/extraction-scope.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { LiveCitiesReader, type LiveCity } from '../places/live-cities.reader';
@@ -54,7 +54,7 @@ import {
   weeklyRotationKey,
 } from './curated-lists.constants';
 
-interface CityRestaurantRow {
+interface CityPlaceRow {
   entity_id: string;
   name: string;
   restaurant_attributes: string[];
@@ -66,9 +66,9 @@ interface CityRestaurantRow {
 
 interface CityDishRow {
   connection_id: string;
-  food_id: string;
-  food_name: string;
-  restaurant_id: string;
+  item_id: string;
+  item_name: string;
+  place_id: string;
   mention_count: number;
   display_score: number;
   percentile_rank: number;
@@ -85,7 +85,7 @@ interface ListDraft {
   rotationKey: string;
   items: Array<{
     entityId: string;
-    restaurantId: string | null;
+    placeId: string | null;
     /** Dish items: the connection id — a build fact straight from the dish
      *  read (which selects FROM core_restaurant_items). Restaurant items: null. */
     connectionId: string | null;
@@ -95,7 +95,7 @@ interface ListDraft {
 /** Named skip counters for the five GLOBAL recipes (F3806) — the same
  *  always-green defence buildPersonalWeekly already carried. */
 type GlobalRecipeSkips = {
-  noScoredRestaurants: number;
+  noScoredPlaces: number;
   cuisineTooFewMembers: number;
   cuisineAttributeMissing: number;
   dishTooFewMembers: number;
@@ -189,7 +189,7 @@ export class CuratedListBuilderService {
     // silently deleting a whole shelf, was invisible. The pattern was already
     // in this file; it just was not applied here.
     const skips: GlobalRecipeSkips = {
-      noScoredRestaurants: 0,
+      noScoredPlaces: 0,
       cuisineTooFewMembers: 0,
       cuisineAttributeMissing: 0,
       dishTooFewMembers: 0,
@@ -199,31 +199,29 @@ export class CuratedListBuilderService {
       contextNoMatchingAttributes: 0,
       contextTooFewMembers: 0,
     };
-    const restaurants = await this.cityRestaurants(city.placeId);
-    if (!restaurants.length) {
-      skips.noScoredRestaurants += 1;
+    const places = await this.cityPlaces(city.placeId);
+    if (!places.length) {
+      skips.noScoredPlaces += 1;
       this.logGlobalRecipeSkips(city, 0, skips);
       return 0;
     }
-    const dishes = await this.cityDishes(
-      restaurants.map((row) => row.entity_id),
-    );
+    const dishes = await this.cityDishes(places.map((row) => row.entity_id));
     const cuisineAttributeIds = await this.cuisineAttributeIds();
-    const attributeNames = await this.attributeNameMap(restaurants);
+    const attributeNames = await this.attributeNameMap(places);
 
     const drafts: ListDraft[] = [
       ...this.buildCuisineLists(
         city,
-        restaurants,
+        places,
         cuisineAttributeIds,
         attributeNames,
         now,
         skips,
       ),
       ...this.buildDishLists(city, dishes, now, skips),
-      ...this.buildTrendingList(city, restaurants, now, skips),
-      ...this.buildHiddenGemsList(city, restaurants, now, skips),
-      ...this.buildContextLists(city, restaurants, attributeNames, now, skips),
+      ...this.buildTrendingList(city, places, now, skips),
+      ...this.buildHiddenGemsList(city, places, now, skips),
+      ...this.buildContextLists(city, places, attributeNames, now, skips),
     ];
 
     for (const draft of drafts) {
@@ -261,14 +259,14 @@ export class CuratedListBuilderService {
    */
   private buildCuisineLists(
     city: LiveCity,
-    restaurants: CityRestaurantRow[],
+    places: CityPlaceRow[],
     cuisineAttributeIds: Set<string>,
     attributeNames: Map<string, { name: string; aliases: string[] }>,
     now: Date,
     skips: GlobalRecipeSkips,
   ): ListDraft[] {
-    const byCuisine = new Map<string, CityRestaurantRow[]>();
-    for (const row of restaurants) {
+    const byCuisine = new Map<string, CityPlaceRow[]>();
+    for (const row of places) {
       for (const attrId of new Set(row.restaurant_attributes)) {
         if (!cuisineAttributeIds.has(attrId)) {
           continue;
@@ -336,16 +334,16 @@ export class CuratedListBuilderService {
     now: Date,
     skips: GlobalRecipeSkips,
   ): ListDraft[] {
-    const byFood = new Map<string, CityDishRow[]>();
+    const byItem = new Map<string, CityDishRow[]>();
     for (const row of dishes) {
-      const bucket = byFood.get(row.food_id);
+      const bucket = byItem.get(row.item_id);
       if (bucket) {
         bucket.push(row);
       } else {
-        byFood.set(row.food_id, [row]);
+        byItem.set(row.item_id, [row]);
       }
     }
-    const ranked = [...byFood.values()]
+    const ranked = [...byItem.values()]
       .map((rows) => ({
         rows,
         volume: rows.reduce((sum, row) => sum + row.mention_count, 0),
@@ -371,19 +369,19 @@ export class CuratedListBuilderService {
             a.connection_id.localeCompare(b.connection_id),
         )
         .slice(0, MAX_LIST_ITEMS);
-      const foodName = titleCase(sorted[0].food_name);
+      const itemName = titleCase(sorted[0].item_name);
       return {
-        recipeKey: `${RECIPE_DISH_BEST_PREFIX}${sorted[0].food_id}`,
+        recipeKey: `${RECIPE_DISH_BEST_PREFIX}${sorted[0].item_id}`,
         scope: 'global' as const,
         ownerUserId: null,
         listType: 'dish' as const,
-        title: `Best ${foodName} in ${city.name} — ${monthLabel(now)}`,
-        subtitle: `Where ${city.name} eats its ${foodName.toLowerCase()} this month`,
+        title: `Best ${itemName} in ${city.name} — ${monthLabel(now)}`,
+        subtitle: `Where ${city.name} eats its ${itemName.toLowerCase()} this month`,
         iconKey: ICON_DISH,
         rotationKey: monthlyRotationKey(now),
         items: sorted.map((row) => ({
-          entityId: row.food_id,
-          restaurantId: row.restaurant_id,
+          entityId: row.item_id,
+          placeId: row.place_id,
           connectionId: row.connection_id,
         })),
       };
@@ -398,11 +396,11 @@ export class CuratedListBuilderService {
    */
   private buildTrendingList(
     city: LiveCity,
-    restaurants: CityRestaurantRow[],
+    places: CityPlaceRow[],
     now: Date,
     skips: GlobalRecipeSkips,
   ): ListDraft[] {
-    const rising = restaurants
+    const rising = places
       .filter((row) => row.rising !== null && row.rising > 0)
       // F3806/F1902: unique tiebreak under the truncation.
       .sort(
@@ -427,7 +425,7 @@ export class CuratedListBuilderService {
         rotationKey: dailyRotationKey(now),
         items: rising.map((row) => ({
           entityId: row.entity_id,
-          restaurantId: null,
+          placeId: null,
           connectionId: null,
         })),
       },
@@ -446,11 +444,11 @@ export class CuratedListBuilderService {
    */
   private buildHiddenGemsList(
     city: LiveCity,
-    restaurants: CityRestaurantRow[],
+    places: CityPlaceRow[],
     now: Date,
     skips: GlobalRecipeSkips,
   ): ListDraft[] {
-    const credible = restaurants.filter(
+    const credible = places.filter(
       (row) => row.mention_volume >= HIDDEN_GEMS_EVIDENCE_FLOOR,
     );
     const median = medianOf(credible.map((row) => row.mention_volume));
@@ -484,7 +482,7 @@ export class CuratedListBuilderService {
         rotationKey: dailyRotationKey(now),
         items: gems.map((row) => ({
           entityId: row.entity_id,
-          restaurantId: null,
+          placeId: null,
           connectionId: null,
         })),
       },
@@ -499,7 +497,7 @@ export class CuratedListBuilderService {
    */
   private buildContextLists(
     city: LiveCity,
-    restaurants: CityRestaurantRow[],
+    places: CityPlaceRow[],
     attributeNames: Map<string, { name: string; aliases: string[] }>,
     now: Date,
     skips: GlobalRecipeSkips,
@@ -524,7 +522,7 @@ export class CuratedListBuilderService {
         skips.contextNoMatchingAttributes += 1;
         continue;
       }
-      const members = restaurants.filter((row) =>
+      const members = places.filter((row) =>
         row.restaurant_attributes.some((attrId) => matchingAttrIds.has(attrId)),
       );
       if (members.length < MIN_VIABLE_LIST_ITEMS) {
@@ -614,7 +612,7 @@ export class CuratedListBuilderService {
     );
 
     const dishCacheByCity = new Map<string, CityDishRow[]>();
-    const restaurantCacheByCity = new Map<string, CityRestaurantRow[]>();
+    const placeCacheByCity = new Map<string, CityPlaceRow[]>();
     // F695: attributeNameMap depends only on `restaurants` (city-scoped), yet
     // used to be re-fetched from the DB for EVERY user in this loop even
     // though restaurants themselves are cached per city. Cache it alongside
@@ -650,19 +648,19 @@ export class CuratedListBuilderService {
         skips.noPreferredCuisines += 1;
         continue;
       }
-      let restaurants = restaurantCacheByCity.get(city.placeId);
-      if (!restaurants) {
-        restaurants = await this.cityRestaurants(city.placeId);
-        restaurantCacheByCity.set(city.placeId, restaurants);
+      let places = placeCacheByCity.get(city.placeId);
+      if (!places) {
+        places = await this.cityPlaces(city.placeId);
+        placeCacheByCity.set(city.placeId, places);
       }
       let dishes = dishCacheByCity.get(city.placeId);
       if (!dishes) {
-        dishes = await this.cityDishes(restaurants.map((row) => row.entity_id));
+        dishes = await this.cityDishes(places.map((row) => row.entity_id));
         dishCacheByCity.set(city.placeId, dishes);
       }
       let attributeNames = attributeNamesCacheByCity.get(city.placeId);
       if (!attributeNames) {
-        attributeNames = await this.attributeNameMap(restaurants);
+        attributeNames = await this.attributeNameMap(places);
         attributeNamesCacheByCity.set(city.placeId, attributeNames);
       }
       const preferredNames = new Set(
@@ -691,8 +689,8 @@ export class CuratedListBuilderService {
         skips.noMatchingAttributes += 1;
         continue;
       }
-      const preferredRestaurantIds = new Set(
-        restaurants
+      const preferredPlaceIds = new Set(
+        places
           .filter((row) =>
             row.restaurant_attributes.some((attrId) =>
               preferredAttrIds.has(attrId),
@@ -701,7 +699,7 @@ export class CuratedListBuilderService {
           .map((row) => row.entity_id),
       );
       const candidates = dishes.filter((row) =>
-        preferredRestaurantIds.has(row.restaurant_id),
+        preferredPlaceIds.has(row.place_id),
       );
       if (candidates.length < MIN_VIABLE_LIST_ITEMS) {
         skips.tooFewCandidates += 1;
@@ -710,15 +708,15 @@ export class CuratedListBuilderService {
       const engaged = await this.engagedSubjectIds(
         user.userId,
         candidates.flatMap((row) => [
-          row.food_id,
-          row.restaurant_id,
+          row.item_id,
+          row.place_id,
           row.connection_id,
         ]),
       );
       const untried = candidates.filter(
         (row) =>
-          !engaged.has(row.food_id) &&
-          !engaged.has(row.restaurant_id) &&
+          !engaged.has(row.item_id) &&
+          !engaged.has(row.place_id) &&
           !engaged.has(row.connection_id),
       );
       if (untried.length < MIN_VIABLE_LIST_ITEMS) {
@@ -745,8 +743,8 @@ export class CuratedListBuilderService {
           iconKey: ICON_WEEKLY_TASTING,
           rotationKey: weekKey,
           items: sorted.map((row) => ({
-            entityId: row.food_id,
-            restaurantId: row.restaurant_id,
+            entityId: row.item_id,
+            placeId: row.place_id,
             connectionId: row.connection_id,
           })),
         },
@@ -813,8 +811,8 @@ export class CuratedListBuilderService {
    * groundless row — so this is a pure simplification, and the ground was
    * always the real judge.
    */
-  private cityRestaurants(cityPlaceId: string): Promise<CityRestaurantRow[]> {
-    return this.prisma.$queryRaw<CityRestaurantRow[]>(Prisma.sql`
+  private cityPlaces(cityPlaceId: string): Promise<CityPlaceRow[]> {
+    return this.prisma.$queryRaw<CityPlaceRow[]>(Prisma.sql`
       /*curated:city_restaurants*/
       SELECT e.entity_id,
              e.name,
@@ -823,7 +821,7 @@ export class CuratedListBuilderService {
                 mention_count sums were the first cut and produced a city
                 MEDIAN OF ZERO (most restaurants carry mentions as events,
                 not item rows) — structurally emptying hidden_gems. */
-             ${Prisma.raw(activeRestaurantEventCountSql('e.entity_id'))} AS mention_volume,
+             ${Prisma.raw(activePlaceEventCountSql('e.entity_id'))} AS mention_volume,
              pes.display_score::float8 AS display_score,
              pes.percentile_rank::float8 AS percentile_rank,
              pes.rising::float8 AS rising
@@ -831,7 +829,7 @@ export class CuratedListBuilderService {
       JOIN core_public_entity_scores pes
         ON pes.subject_type = 'restaurant' AND pes.subject_id = e.entity_id
       JOIN place_geometries pg ON pg.place_id = ${cityPlaceId}::uuid
-      WHERE e.type = 'restaurant'
+      WHERE e.type = 'place'
         AND e.status = 'active'
         AND e.latitude IS NOT NULL
         AND e.longitude IS NOT NULL
@@ -851,16 +849,16 @@ export class CuratedListBuilderService {
   }
 
   /** Scored dish connections of the given restaurants. */
-  private async cityDishes(restaurantIds: string[]): Promise<CityDishRow[]> {
-    if (!restaurantIds.length) {
+  private async cityDishes(placeIds: string[]): Promise<CityDishRow[]> {
+    if (!placeIds.length) {
       return [];
     }
     return this.prisma.$queryRaw<CityDishRow[]>(Prisma.sql`
       /*curated:city_dishes*/
       SELECT c.connection_id,
-             c.food_id,
-             f.name AS food_name,
-             c.restaurant_id,
+             c.food_id AS item_id,
+             f.name AS item_name,
+             c.restaurant_id AS place_id,
              c.mention_count,
              pes.display_score::float8 AS display_score,
              pes.percentile_rank::float8 AS percentile_rank
@@ -868,7 +866,7 @@ export class CuratedListBuilderService {
       JOIN core_entities f ON f.entity_id = c.food_id AND f.status = 'active'
       JOIN core_public_entity_scores pes
         ON pes.subject_type = 'connection' AND pes.subject_id = c.connection_id
-      WHERE c.restaurant_id = ANY(${restaurantIds}::uuid[])
+      WHERE c.restaurant_id = ANY(${placeIds}::uuid[])
         -- STARVED anchors never become curated picks (product red team F2):
         -- 115 curated dish rows pointed at zeroed connections and the
         -- mobile adapter rendered them as Crave Score 0 — a fabricated
@@ -897,7 +895,7 @@ export class CuratedListBuilderService {
                  restaurant_metadata->'cuisineExtraction'->'attributeIds'
                ) AS attribute_id
         FROM core_entities
-        WHERE type = 'restaurant'
+        WHERE type = 'place'
           AND jsonb_typeof(
                 restaurant_metadata->'cuisineExtraction'->'attributeIds'
               ) = 'array'
@@ -908,10 +906,10 @@ export class CuratedListBuilderService {
 
   /** Names + aliases for every attribute id present on the candidate set. */
   private async attributeNameMap(
-    restaurants: CityRestaurantRow[],
+    places: CityPlaceRow[],
   ): Promise<Map<string, { name: string; aliases: string[] }>> {
     const attrIds = [
-      ...new Set(restaurants.flatMap((row) => row.restaurant_attributes)),
+      ...new Set(places.flatMap((row) => row.restaurant_attributes)),
     ];
     if (!attrIds.length) {
       return new Map();
@@ -941,7 +939,7 @@ export class CuratedListBuilderService {
                  AND ${recallScope('en', 's')}) AS forms
         FROM core_entities e
        WHERE e.entity_id = ANY(${attrIds}::uuid[])
-         AND e.type = 'restaurant_attribute'
+         AND e.type = 'place_attribute'
          AND e.status = 'active'`);
     return new Map(
       rows.map((row) => [
@@ -992,12 +990,9 @@ export class CuratedListBuilderService {
       this.prisma.userListItem.findMany({
         where: {
           list: { ownerUserId: userId },
-          OR: [
-            { connectionId: { in: unique } },
-            { restaurantId: { in: unique } },
-          ],
+          OR: [{ connectionId: { in: unique } }, { placeId: { in: unique } }],
         },
-        select: { connectionId: true, restaurantId: true },
+        select: { connectionId: true, placeId: true },
       }),
     ]);
     const engaged = new Set(signalRows.map((row) => row.subject_id));
@@ -1005,8 +1000,8 @@ export class CuratedListBuilderService {
       if (item.connectionId) {
         engaged.add(item.connectionId);
       }
-      if (item.restaurantId) {
-        engaged.add(item.restaurantId);
+      if (item.placeId) {
+        engaged.add(item.placeId);
       }
     }
     return engaged;
@@ -1050,7 +1045,7 @@ export class CuratedListBuilderService {
             create: items.map((item, index) => ({
               rank: index + 1,
               entityId: item.entityId,
-              restaurantId: item.restaurantId,
+              placeId: item.placeId,
               connectionId: item.connectionId,
             })),
           },
@@ -1060,8 +1055,8 @@ export class CuratedListBuilderService {
   }
 
   private rankByScore(
-    members: CityRestaurantRow[],
-  ): Array<{ entityId: string; restaurantId: null; connectionId: null }> {
+    members: CityPlaceRow[],
+  ): Array<{ entityId: string; placeId: null; connectionId: null }> {
     return [...members]
       .sort(
         (a, b) =>
@@ -1073,7 +1068,7 @@ export class CuratedListBuilderService {
       .slice(0, MAX_LIST_ITEMS)
       .map((row) => ({
         entityId: row.entity_id,
-        restaurantId: null,
+        placeId: null,
         connectionId: null,
       }));
   }

@@ -16,26 +16,24 @@ import type { SearchMountedResultsCoverageEntry } from './search-mounted-results
 /** Project the base page-1 response down to open rows. Null when the base isn't usable
  *  (no rows to filter — the caller falls through to the slice fetch). */
 export const projectOpenNowResponseSlice = (base: SearchResponse): SearchResponse | null => {
-  const restaurants = (base.restaurants ?? []).filter(
+  const places = (base.places ?? []).filter(
     (restaurant) => restaurant.operatingStatus?.isOpen === true
   );
-  const dishes = (base.dishes ?? []).filter(
-    (dish) => dish.restaurantOperatingStatus?.isOpen === true
-  );
-  if (restaurants.length === 0 && dishes.length === 0) {
+  const dishes = (base.dishes ?? []).filter((dish) => dish.placeOperatingStatus?.isOpen === true);
+  if (places.length === 0 && dishes.length === 0) {
     return null;
   }
   return {
     ...base,
-    restaurants,
+    places,
     dishes,
     metadata: {
       ...base.metadata,
       // PROVISIONAL totals: the projected page-1 counts. The settling slice fetch brings
       // the real totals (and any backfill rows); until then pagination is off by
       // construction.
-      totalRestaurantResults: restaurants.length,
-      totalFoodResults: dishes.length,
+      totalPlaceResults: places.length,
+      totalItemResults: dishes.length,
     },
   };
 };

@@ -27,8 +27,8 @@
  * It FAILS LOUDLY without one rather than skipping.
  */
 import { PrismaClient } from '@prisma/client';
-import { RestaurantJanitorService } from './restaurant-janitor.service';
-import type { RestaurantLocationEnrichmentService } from './restaurant-location-enrichment.service';
+import { PlaceJanitorService } from './restaurant-janitor.service';
+import type { PlaceLocationEnrichmentService } from './restaurant-location-enrichment.service';
 
 const TEST_TAG = 'itest-janitor-policy';
 
@@ -43,19 +43,19 @@ const logger = {
 } as never;
 
 const enrichment = {
-  enrichRestaurantById: () => {
+  enrichPlaceById: () => {
     throw new Error('a dry janitor pass must never enrich (Places spend)');
   },
   refreshStaleLocations: () => {
     throw new Error('a dry janitor pass must never refresh (Places spend)');
   },
-} as unknown as RestaurantLocationEnrichmentService;
+} as unknown as PlaceLocationEnrichmentService;
 
 /** The lifecycle settings have ONE home now (F365); this spec passes explicit
  *  options for every knob, so the config layer only has to exist. */
 const config = { get: () => undefined } as never;
 
-const janitor = new RestaurantJanitorService(
+const janitor = new PlaceJanitorService(
   prisma as never,
   enrichment,
   config,
@@ -75,10 +75,10 @@ type SeedOpts = {
 /** entity_id → label, so assertions read in labels. */
 const labelById = new Map<string, string>();
 
-async function seedRestaurant(opts: SeedOpts): Promise<void> {
+async function seedPlace(opts: SeedOpts): Promise<void> {
   const [row] = await prisma.$queryRawUnsafe<Array<{ entity_id: string }>>(
     `INSERT INTO core_entities (name, type, status, enrichment_failure_count)
-     VALUES ($1, 'restaurant', 'active', $2)
+     VALUES ($1, 'place', 'active', $2)
      RETURNING entity_id`,
     `${TEST_TAG}:${opts.label}`,
     opts.failureCount ?? 0,
@@ -116,8 +116,8 @@ async function cleanup(): Promise<void> {
   );
 }
 
-let summary: Awaited<ReturnType<RestaurantJanitorService['run']>>;
-let selected: Awaited<ReturnType<RestaurantJanitorService['run']>>['selected'];
+let summary: Awaited<ReturnType<PlaceJanitorService['run']>>;
+let selected: Awaited<ReturnType<PlaceJanitorService['run']>>['selected'];
 
 beforeAll(async () => {
   if (!process.env.DATABASE_URL) {
@@ -129,7 +129,7 @@ beforeAll(async () => {
 
   // ── The closed arm's axes ──────────────────────────────────────────────
   // ALL locations confirmed closed → the only archivable shape.
-  await seedRestaurant({
+  await seedPlace({
     label: 'all-closed',
     locations: [
       { businessStatus: 'CLOSED_PERMANENTLY', grounded: true },
@@ -137,7 +137,7 @@ beforeAll(async () => {
     ],
   });
   // One branch still open → the restaurant lives.
-  await seedRestaurant({
+  await seedPlace({
     label: 'one-branch-open',
     locations: [
       { businessStatus: 'CLOSED_PERMANENTLY', grounded: true },
@@ -145,7 +145,7 @@ beforeAll(async () => {
     ],
   });
   // Unknown status is NOT closed — never archive on absence of evidence.
-  await seedRestaurant({
+  await seedPlace({
     label: 'status-unknown',
     locations: [{ businessStatus: null, grounded: true }],
   });
@@ -153,18 +153,18 @@ beforeAll(async () => {
   // ungrounded arms deleted, the janitor must not touch it AT ALL — however
   // high the count. (Mutation fixture: resurrecting the old archive arm
   // turns this red.)
-  await seedRestaurant({
+  await seedPlace({
     label: 'ungrounded-many-failures',
     failureCount: 99,
     locations: [{ businessStatus: null, grounded: false }],
   });
-  await seedRestaurant({
+  await seedPlace({
     label: 'open',
     locations: [{ businessStatus: 'OPERATIONAL', grounded: true }],
   });
 
   // ── The moved arm ──────────────────────────────────────────────────────
-  await seedRestaurant({
+  await seedPlace({
     label: 'moved',
     locations: [{ businessStatus: 'OPERATIONAL', grounded: true }],
     movedPlaceId: `${TEST_TAG}-moved-target`,

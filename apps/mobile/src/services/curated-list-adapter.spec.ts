@@ -27,7 +27,7 @@ const item = (
 ): CuratedListDetailResponse['items'][number] => ({
   rank: 1,
   entityId: 'food-1',
-  restaurantId: 'rest-1',
+  placeId: 'rest-1',
   connectionId: null,
   label: 'Breakfast Taco',
   subLabel: 'Taco Haus',

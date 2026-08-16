@@ -7,7 +7,7 @@ import styles from '../styles';
 
 type PreMeasureItem = {
   connectionId: string;
-  foodName: string;
+  itemName: string;
 };
 
 type TopFoodPreMeasureProps = {
@@ -100,7 +100,7 @@ const TopFoodPreMeasure: React.FC<TopFoodPreMeasureProps> = ({ items, moreCounts
           </Text>
           <Text variant="body" weight="regular" style={styles.topFoodNameInline}>
             {' '}
-            {item.foodName}
+            {item.itemName}
           </Text>
           {TOP_FOOD_INLINE_GAP}
         </Text>

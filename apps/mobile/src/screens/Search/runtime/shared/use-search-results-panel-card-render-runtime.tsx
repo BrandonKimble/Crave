@@ -76,13 +76,13 @@ export const useSearchResultsPanelCardRenderRuntime = ({
       restaurantQualityColorById: new Map(),
       dishQualityColorByConnectionId: new Map(),
     };
-    mountedResultsSnapshot.results?.restaurants?.forEach((restaurant) => {
-      nextMetrics.restaurantsById.set(restaurant.restaurantId, restaurant);
+    mountedResultsSnapshot.results?.places?.forEach((restaurant) => {
+      nextMetrics.restaurantsById.set(restaurant.placeId, restaurant);
       if (typeof restaurant.rank === 'number' && Number.isFinite(restaurant.rank)) {
-        nextMetrics.canonicalRestaurantRankById.set(restaurant.restaurantId, restaurant.rank);
+        nextMetrics.canonicalRestaurantRankById.set(restaurant.placeId, restaurant.rank);
       }
       nextMetrics.restaurantQualityColorById.set(
-        restaurant.restaurantId,
+        restaurant.placeId,
         getMarkerColorForRestaurant(restaurant)
       );
     });
@@ -99,8 +99,8 @@ export const useSearchResultsPanelCardRenderRuntime = ({
     (item: FoodResult, index: number) => {
       const mountedMetrics = getMountedMetrics();
       const restaurantForDish =
-        restaurantCardMetricsRuntime.restaurantsById.get(item.restaurantId) ??
-        mountedMetrics.restaurantsById.get(item.restaurantId);
+        restaurantCardMetricsRuntime.restaurantsById.get(item.placeId) ??
+        mountedMetrics.restaurantsById.get(item.placeId);
       const qualityColor =
         dishCardMetricsRuntime.dishQualityColorByConnectionId.get(item.connectionId) ??
         mountedMetrics.dishQualityColorByConnectionId.get(item.connectionId) ??
@@ -111,7 +111,7 @@ export const useSearchResultsPanelCardRenderRuntime = ({
           index={index}
           qualityColor={qualityColor}
           restaurantForDish={restaurantForDish}
-          onSavePress={getDishSaveHandler(item.connectionId, item.restaurantLocationId ?? null)}
+          onSavePress={getDishSaveHandler(item.connectionId, item.placeLocationId ?? null)}
           openRestaurantProfile={stableOpenRestaurantProfileFromResults}
           openScoreInfo={openScoreInfo}
         />
@@ -135,29 +135,27 @@ export const useSearchResultsPanelCardRenderRuntime = ({
     ) => {
       const preparedDescriptor =
         rowPreparedDescriptor ??
-        getSearchMountedResultsRowsSnapshot().restaurantCardDescriptorsById.get(
-          restaurant.restaurantId
-        );
+        getSearchMountedResultsRowsSnapshot().restaurantCardDescriptorsById.get(restaurant.placeId);
       let rank =
         preparedDescriptor?.rank ??
-        restaurantCardMetricsRuntime.canonicalRestaurantRankById.get(restaurant.restaurantId);
+        restaurantCardMetricsRuntime.canonicalRestaurantRankById.get(restaurant.placeId);
       if (typeof rank !== 'number') {
-        rank = getMountedMetrics().canonicalRestaurantRankById.get(restaurant.restaurantId);
+        rank = getMountedMetrics().canonicalRestaurantRankById.get(restaurant.placeId);
       }
       if (typeof rank !== 'number') {
         return null;
       }
       const qualityColor =
         preparedDescriptor?.qualityColor ??
-        restaurantCardMetricsRuntime.restaurantQualityColorById.get(restaurant.restaurantId) ??
-        getMountedMetrics().restaurantQualityColorById.get(restaurant.restaurantId) ??
+        restaurantCardMetricsRuntime.restaurantQualityColorById.get(restaurant.placeId) ??
+        getMountedMetrics().restaurantQualityColorById.get(restaurant.placeId) ??
         getMarkerColorForRestaurant(restaurant);
       const mountedResultsMetadata =
         preparedDescriptor == null ? getSearchMountedResultsDataSnapshot().results?.metadata : null;
-      const primaryFoodTerm =
-        cardMetadataRuntime.primaryFoodTerm ??
-        preparedDescriptor?.primaryFoodTerm ??
-        mountedResultsMetadata?.primaryFoodTerm ??
+      const primaryItemTerm =
+        cardMetadataRuntime.primaryItemTerm ??
+        preparedDescriptor?.primaryItemTerm ??
+        mountedResultsMetadata?.primaryItemTerm ??
         null;
       return (
         <RestaurantResultCard
@@ -167,17 +165,17 @@ export const useSearchResultsPanelCardRenderRuntime = ({
           qualityColor={qualityColor}
           preparedDescriptor={preparedDescriptor}
           onSavePress={getRestaurantSaveHandler(
-            restaurant.restaurantId,
-            restaurant.restaurantLocationId ?? restaurant.displayLocation?.locationId ?? null
+            restaurant.placeId,
+            restaurant.placeLocationId ?? restaurant.displayLocation?.locationId ?? null
           )}
           openRestaurantProfile={stableOpenRestaurantProfileFromResults}
           openScoreInfo={openScoreInfo}
-          primaryFoodTerm={primaryFoodTerm}
+          primaryItemTerm={primaryItemTerm}
         />
       );
     },
     [
-      cardMetadataRuntime.primaryFoodTerm,
+      cardMetadataRuntime.primaryItemTerm,
       getRestaurantSaveHandler,
       getMountedMetrics,
       openScoreInfo,

@@ -103,7 +103,7 @@ Interpret ask/response patterns to set intent; do not modify `resolvedRestaurant
   - If the reply ties a dish to a restaurant, intent is positive for that link.
   - If the reply names a restaurant without tying a dish, intent is positive for the named restaurant; do not force itemhood.
 - Accept indirect recommendation verbs ("worth the trip", "take them to \_\_\_") and concise quality adjectives ("amazing", "favorite spot") as firsthand endorsement even without explicit first-person framing. A reply qualifies only when the speaker vouches for the place from experience or reports a clear consensus; curiosity, desire, or secondhand rumor ("want to try", "never been but interested", "I hear it's good") does not.
-- When a reply only names the restaurant — and ONLY then; a reply that restates the ask's dish in its own words is handled by Step 5's normal itemhood assessment, not this reuse — and satisfies the quality criteria above, Steps 5-6 will reuse the ask's target category as `food`/`food_categories` with `is_menu_item: false`; Step 1 still refrains from emitting from the ask itself.
+- When a reply only names the restaurant — and ONLY then; a reply that restates the ask's dish in its own words is handled by Step 5's normal itemhood assessment, not this reuse — and satisfies the quality criteria above, Steps 5-6 will reuse the ask's target category as `item`/`item_categories` with `is_menu_item: false`; Step 1 still refrains from emitting from the ask itself.
 
 Quality signal (canonical definition, reused wherever this guide refers to a quality/recommendation signal) means the text conveys — explicitly or by clear implication — a firsthand or consensus verdict that the place is good, worth visiting, or positively distinctive. Direct praise, strong recommendations, consensus statements, and bare restaurant lists qualify. When the text compares options, the signal attaches to the choice it endorses, never the one set aside. Neutral context, scheduling, price talk, curiosity, and secondhand hearsay do not qualify.
 
@@ -141,7 +141,7 @@ Timeliness cues to watch:
 Scope & Goal
 
 - Scope: Normalize and unify the restaurant names resolved in Step 1 for this input. Do not perform reference resolution or eligibility checks.
-- Goal: Choose a single canonical `restaurant` per establishment (from observed variants only). The API will assign deterministic IDs downstream.
+- Goal: Choose a single canonical `place` per establishment (from observed variants only). The API will assign deterministic IDs downstream.
 
 Inputs & Dependencies
 
@@ -158,7 +158,7 @@ Outputs
 2. Unify aliases/short forms only when safe (equal after normalization, or strict superset with no subset collisions)
 3. Choose the canonical from observed variants only; never synthesize new tokens
 4. Include branch/location only when needed to disambiguate within this input
-5. Maintain the chosen canonical `restaurant` consistently across the input.
+5. Maintain the chosen canonical `place` consistently across the input.
 
 ### 2.1 Inputs & Constraints
 
@@ -216,7 +216,7 @@ When multiple observed variants exist for the same establishment in this input, 
   - Generic-suffix trimming: when two observed variants share the same leading brand tokens and one only differs by appending a generic cuisine/service term (e.g., `korean bbq`, `hot pot`, `ramen`, `bbq`, `steakhouse`, `cafe`, `bakery`, `diner`). **This list exists ONLY for name-trimming. The dish-type words in it (`ramen`, `hot pot`, `korean bbq`) are FOOD terms per 3.4 and must NEVER appear in any attributes array — a praise-only mention of a ramen shop earns venue-style/cuisine attributes like `japanese`, never `ramen`-as-attribute.**, prefer the tighter brand-only form as long as that shorter variant also appears in this input. If the shorter form never appears, keep the longer one intact.
   - Specificity over brevity: prefer the more informative name if unambiguous in context.
   - Tie-breakers: higher frequency in this input's text; if still tied, prefer the longer informative token set.
-- Canonical output: For all mentions of the same place within the same post object, emit `restaurant` as the chosen canonical and stick with it (canonical selection is per post object; different post objects choose independently). Avoid emitting multiple normalized names that are token-subsets of one another for the same establishment.
+- Canonical output: For all mentions of the same place within the same post object, emit `place` as the chosen canonical and stick with it (canonical selection is per post object; different post objects choose independently). Avoid emitting multiple normalized names that are token-subsets of one another for the same establishment.
 
 ### 2.6 Examples
 
@@ -235,7 +235,7 @@ When multiple observed variants exist for the same establishment in this input, 
 
 Scope & Goal
 
-- Scope: Identify entity types in the current comment and classify modifiers as `restaurant_attributes` and `food_attributes`. Do not compose `food` or decide item/category/emission here.
+- Scope: Identify entity types in the current comment and classify modifiers as `place_attributes` and `item_attributes`. Do not compose `item` or decide item/category/emission here.
 - Goal: Produce normalized attribute arrays and a clean set of food substance tokens for composition.
 
 Inputs & Dependencies
@@ -245,9 +245,9 @@ Inputs & Dependencies
 
 Outputs
 
-- `classifiedAttributes: { restaurant_attributes: string[] | null, food_attributes: string[] | null }` - normalized, comment-scoped attribute arrays for reuse across mentions.
+- `classifiedAttributes: { place_attributes: string[] | null, item_attributes: string[] | null }` - normalized, comment-scoped attribute arrays for reuse across mentions.
 - `foodTokensClean: string[]` - food substance tokens (attributes removed) to be used as inputs to Step 4 composition.
-- `attributeLinks: Array<{ restaurant: string, food: string | null, restaurant_attributes: string[], food_attributes: string[] }>` - mention-level linkage objects that point each attribute to the restaurant->food pair(s) it modifies.
+- `attributeLinks: Array<{ restaurant: string, food: string | null, place_attributes: string[], item_attributes: string[] }>` - mention-level linkage objects that point each attribute to the restaurant->food pair(s) it modifies.
 
 ### Execution order summary (apply after reading 3.1-3.7)
 
@@ -262,18 +262,18 @@ Outputs
 
 Every food-related word in the comment answers to one question — **"Could you say this word to a server as the thing you want to ORDER?"**
 
-- **YES → it is FOOD.** The single most specific orderable order-name is `food` (e.g. "chicken tikka masala", "fried chicken sandwich"). The broader **edible nouns it rolls up into** are `food_categories` (e.g. "curry", "sandwich", "dessert") — parents of the dish, never properties of it. Food and categories are the same kind of thing at different altitudes: both name something you could order.
-- **NO → it is a `food_attribute`.** A property telling you what the food is LIKE, or what tradition or occasion it belongs to: sensory/diet ("spicy", "crispy", "vegan"), **cuisines** ("indian", "peruvian"), and **styles / meal-periods** ("comfort food", "street food", "breakfast").
+- **YES → it is FOOD.** The single most specific orderable order-name is `item` (e.g. "chicken tikka masala", "fried chicken sandwich"). The broader **edible nouns it rolls up into** are `item_categories` (e.g. "curry", "sandwich", "dessert") — parents of the dish, never properties of it. Food and categories are the same kind of thing at different altitudes: both name something you could order.
+- **NO → it is a `item_attribute`.** A property telling you what the food is LIKE, or what tradition or occasion it belongs to: sensory/diet ("spicy", "crispy", "vegan"), **cuisines** ("indian", "peruvian"), and **styles / meal-periods** ("comfort food", "street food", "breakfast").
 
-**The tell:** `food` and `food_categories` answer _"what did you order?"_; a `food_attribute` answers _"what is it like / what tradition or occasion does it belong to?"_ "Indian" is never what you ordered — you ordered "chicken tikka masala", which _is_ indian.
+**The tell:** `item` and `item_categories` answer _"what did you order?"_; a `item_attribute` answers _"what is it like / what tradition or occasion does it belong to?"_ "Indian" is never what you ordered — you ordered "chicken tikka masala", which _is_ indian.
 
 This single distinction governs everything in Step 3 and Step 4. The corollaries below follow from it directly:
 
-- **(a) A cuisine attaches on BOTH sides, always.** A cuisine is a property of the dish (`food_attribute`) AND a property of the place (`restaurant_attribute`). It is never an either/or — emit it in both arrays.
+- **(a) A cuisine attaches on BOTH sides, always.** A cuisine is a property of the dish (`item_attribute`) AND a property of the place (`place_attribute`). It is never an either/or — emit it in both arrays.
 - **(b) Infer the cuisine from the dish's identity even when unstated.** A named dish carries its tradition with it: "tikka masala" → "indian", "lomo saltado" → "peruvian", "banh mi" → "vietnamese". Attach the inferred cuisine on both sides even when the comment never says the cuisine word.
-- **(c) A dish exists only when an orderable item is named.** If the comment names no orderable item, `food` and `food_categories` are null and the mention is restaurant-only — the cuisine/style still lands as an attribute (and a bare style with no dish is kept whole on `restaurant_attributes`; see 3.5).
+- **(c) A dish exists only when an orderable item is named.** If the comment names no orderable item, `item` and `item_categories` are null and the mention is restaurant-only — the cuisine/style still lands as an attribute (and a bare style with no dish is kept whole on `place_attributes`; see 3.5).
 - **(d) Praise is an INDEPENDENT axis.** Composing a dish neither creates nor suppresses `general_praise`, and endorsing a place neither creates nor suppresses a dish. Quality lives on its own axis (Step 6); food language lives here.
-- **(e) Modifiers that change WHICH item you receive belong in `food`; modifiers that only describe it peel off as attributes.** Same test as everywhere else — **would two diners each ordering "the X" be handed the same thing?** "fried chicken sandwich" is the whole order-name → it all stays in `food`. "grilled burger" is the same order as "burger" → "grilled" peels off. But "bordier butter sardines" is NOT the same can as "sardines" at a shop stocking many tins, and "carbonara udon" is not the same bowl as "udon" → the distinguishing word STAYS in `food`, because dropping it would leave the diner needing to specify again. Peel a modifier only when the order is unchanged without it.
+- **(e) Modifiers that change WHICH item you receive belong in `item`; modifiers that only describe it peel off as attributes.** Same test as everywhere else — **would two diners each ordering "the X" be handed the same thing?** "fried chicken sandwich" is the whole order-name → it all stays in `item`. "grilled burger" is the same order as "burger" → "grilled" peels off. But "bordier butter sardines" is NOT the same can as "sardines" at a shop stocking many tins, and "carbonara udon" is not the same bowl as "udon" → the distinguishing word STAYS in `item`, because dropping it would leave the diner needing to specify again. Peel a modifier only when the order is unchanged without it.
 
 ### 3.1 Candidate harvesting
 
@@ -288,7 +288,7 @@ Before handing tokens to composition, peel away modifiers that are attributes (p
 - **Peel off properties**: sensory and texture terms ("spicy", "crispy", "smoky"), dietary labels ("vegan", "gluten free"), cuisines ("indian", "thai" — these become attributes on both sides per 3.0(a)), styles and serving periods ("comfort food", "street food", "breakfast"), and standalone preparation words whose dish is the same order without them ("grilled" from "grilled burger"). Each of these answers "what is it like / what tradition does it belong to?", so each belongs in an attribute array, not with the food tokens.
 - **Keep the order-name whole**: retain every word that is part of what the diner would say to order — proteins, dish types, and preparation words that name the order ("fried chicken sandwich" stays whole; "carnitas taco" keeps "carnitas"). If removing the word would change what you ordered, it stays with the food tokens.
 - Keep a multi-word modifier together ONLY when the whole phrase is a generic, ingredient-free property ("house-made", "very spicy", "gluten free"). When a modifier is tied to a specific ingredient or component ("brown butter sauce", "rich broth", "toasted garlic"), peel off only the generic property word if any ("rich", "toasted") and leave the ingredient/component with the dish tokens — the ingredient names part of the dish, so it composes in Step 4 rather than becoming an attribute.
-- Treat generic filler nouns ("food", "foods", "meal", "dish", "the food", "restaurant", "place", "spot") as noise — they name nothing orderable and describe no property, so drop them from foods, food_categories, and attributes alike.
+- Treat generic filler nouns ("item", "foods", "meal", "dish", "the food", "place", "place", "spot") as noise — they name nothing orderable and describe no property, so drop them from foods, item_categories, and attributes alike.
 
 Examples:
 
@@ -302,11 +302,11 @@ Examples:
 
 ### 3.3 Entity types
 
-- `restaurant`: named establishments (e.g., "hui", "franklin bbq", "joe's pizza").
-- `food`: the single most specific **order-name** — the exact thing a diner would say to a server to order it (e.g., "ramen", "sesame noodles", "duck carnitas tacos", "chicken tikka masala"). One `food` per restaurant→food connection.
-- `food_categories`: the broader **edible nouns the `food` rolls up into** — parents of the dish, themselves orderable (e.g., "curry", "sandwich", "dessert"). Same kind of thing as `food`, at a higher altitude; never properties.
-- `food_attribute`: a **property of the food** — what it is like or what tradition/occasion it belongs to (sensory, diet, preparation-as-property, cuisine, style, meal-period). Connection-scoped.
-- `restaurant_attribute`: a **property of the restaurant** — what the place is like (setting, ambiance, service, price, cuisine, style). Restaurant-scoped.
+- `place`: named establishments (e.g., "hui", "franklin bbq", "joe's pizza").
+- `item`: the single most specific **order-name** — the exact thing a diner would say to a server to order it (e.g., "ramen", "sesame noodles", "duck carnitas tacos", "chicken tikka masala"). One `item` per restaurant→food connection.
+- `item_categories`: the broader **edible nouns the `item` rolls up into** — parents of the dish, themselves orderable (e.g., "curry", "sandwich", "dessert"). Same kind of thing as `item`, at a higher altitude; never properties.
+- `item_attribute`: a **property of the food** — what it is like or what tradition/occasion it belongs to (sensory, diet, preparation-as-property, cuisine, style, meal-period). Connection-scoped.
+- `place_attribute`: a **property of the restaurant** — what the place is like (setting, ambiance, service, price, cuisine, style). Restaurant-scoped.
 
 ### 3.4 What Qualifies as an Attribute (the bar)
 
@@ -317,7 +317,7 @@ An attribute is a **filterable property** (per 3.0, an answer to "what is it lik
 - `spicy`, `crispy`, `smoky`, `grilled`, `vegan`, `cozy`, `outdoor seating`, `indian`, `comfort food` → describe properties or traditions → attributes.
 - `delicious`, `tasty`, `amazing`, `incredible`, `insane`, `bonkers good`, `solid`, `best`, `elite`, `top notch`, `quality`, `high quality`, `specialty`, `favorite`, `well crafted`, `standout` → judge how good → **NOT attributes. Drop them.**
 - Accolades and recommendation language judge worth, not properties — also drop: "award winning", "worth the trip", "must-try", "hidden gem", "iconic", "famous", "world class".
-- Watch for this: the very praise that made this comment eligible in Step 1 ("the brisket is _delicious_") is what feeds `general_praise` (Step 6) — it must NOT also become a food_attribute. Extract the description ("smoky", "tender"), never the verdict ("delicious", "the best").
+- Watch for this: the very praise that made this comment eligible in Step 1 ("the brisket is _delicious_") is what feeds `general_praise` (Step 6) — it must NOT also become a item_attribute. Extract the description ("smoky", "tender"), never the verdict ("delicious", "the best").
 - When in doubt, ask: could the same word describe a _bad_ dish? "spicy" yes (a dish can be badly spicy) → attribute. "delicious"/"amazing" no (they only mean good) → praise, drop.
 
 Other non-attributes:
@@ -330,23 +330,23 @@ Other non-attributes:
 
 **Cuisines and dish/format types split by the 3.0 test:**
 
-- **Cuisines** ("thai", "turkish", "afro-caribbean", "indian") answer "what tradition does it belong to?" → they are **attributes**. A cuisine attaches on BOTH sides (a `food_attribute` on each dish it names AND a `restaurant_attribute`), inferred from the dish's identity even when unstated (per 3.0(a)–(b)).
+- **Cuisines** ("thai", "turkish", "afro-caribbean", "indian") answer "what tradition does it belong to?" → they are **attributes**. A cuisine attaches on BOTH sides (a `item_attribute` on each dish it names AND a `place_attribute`), inferred from the dish's identity even when unstated (per 3.0(a)–(b)).
 - **Dish / format types** ("dim sum", "hot pot", "kbbq") name an orderable thing — you could say them to a server as what you want to order → they are **FOOD**. Keep them in the food tokens and send them to Step 4 composition; do not emit them as attributes.
 
 ### 3.5 Scope Determination Principle
 
 Most properties describe **either** the dish **or** the place, and scope follows what the property describes, not where the word sits in the sentence. Cuisines and styles are the exception — they can attach to both sides at once.
 
-- **Dish property → `food_attribute`**: anything that could appear in a menu-item description — preparation-as-property ("grilled", "house-made"), texture ("crispy", "creamy"), flavor ("spicy", "smoky"), temperature, portion ("generous portions", "shareable"), dietary ("vegan", "gluten free").
-- **Place property → `restaurant_attribute`**: anything that would stay true if the menu changed — setting/physical ("patio", "rooftop", "view"), ambiance ("romantic", "cozy", "lively"), service model ("counter service", "fine dining"), operational ("BYOB", "reservations required", "takeout friendly"), group fit ("family-friendly", "date night spot"), **price/value ("cheap", "good value", "expensive", "mid-tier")**, and **accessibility**. Price talk about a specific dish is still a place-level signal — scope it to the restaurant.
-- **Dietary lifestyle claims are NEVER dropped** (owner ruling 2026-07-30): whenever a comment asserts vegan / vegetarian / gluten free / halal / kosher about a dish or a venue — including softer phrasings ("celiac-friendly", "plant-based", "GF options") — normalize to the canonical lifestyle term and emit it on the appropriate side(s). These attributes power hard search toggles whose entire coverage comes from these claims, so a missed mention is a permanently invisible restaurant to the user who needs it most. When the claim is venue-level ("great GF options"), it is a `restaurant_attribute`; when dish-level ("the vegan ramen"), it is a `food_attribute` on that dish AND a `restaurant_attribute`.
-- **Cuisines attach on BOTH sides, always.** A cuisine is a property of the dish AND of the place, so it goes in `food_attributes` on every dish it names AND in `restaurant_attributes` — never an either/or. Infer it from the dish's identity even when unstated: "chicken tikka masala" → `food_attributes: ["indian"]` on that dish AND `restaurant_attributes: ["indian"]`. This holds even when the dish's inferred cuisine differs from the venue's stated cuisine: tacos ordered at a Korean spot give the dish `food_attributes: ["mexican"]` and add "mexican" to `restaurant_attributes` **in addition to** "korean".
-- **Styles and pure occasions are attributes — but an occasion word that PREDICTS THE FOOD is not.** Styles ("comfort food", "street food", "home-style") and occasions that tell you only WHEN ("lunch", "dinner", "late-night", "happy hour") are properties: when tied to a dish they are `food_attributes`, so those variants collapse onto one dish (`food: "prix fixe"`, `food_attributes: ["lunch"]`).
-  "breakfast" and "brunch" are different, because breakfast food is a recognizable KIND (eggs, pancakes, breakfast tacos) — apply 4.3's what-does-it-predict test, not a meal-period reflex. So NEVER peel them off a dish they help name: "breakfast taco" is a different order from "a taco", so the word stays in `food` and rides the normal 4.3 cascade (`food: "breakfast taco"` → `food_categories: ["breakfast taco", "taco", "breakfast"]`). Peeling it produced `food: "taco"` + `food_attributes: ["breakfast"]` 44 times in real data — the fusion violation 5.2.3 forbids, which also destroyed the distinction between a breakfast taco and a taco. When they describe the place ("great happy hour", "open late") they are `restaurant_attributes`. **A style named with no dish** ("great comfort food here", no orderable item) lands whole on `restaurant_attributes` (`["comfort food"]`) so the place stays searchable — keep the phrase intact.
+- **Dish property → `item_attribute`**: anything that could appear in a menu-item description — preparation-as-property ("grilled", "house-made"), texture ("crispy", "creamy"), flavor ("spicy", "smoky"), temperature, portion ("generous portions", "shareable"), dietary ("vegan", "gluten free").
+- **Place property → `place_attribute`**: anything that would stay true if the menu changed — setting/physical ("patio", "rooftop", "view"), ambiance ("romantic", "cozy", "lively"), service model ("counter service", "fine dining"), operational ("BYOB", "reservations required", "takeout friendly"), group fit ("family-friendly", "date night spot"), **price/value ("cheap", "good value", "expensive", "mid-tier")**, and **accessibility**. Price talk about a specific dish is still a place-level signal — scope it to the restaurant.
+- **Dietary lifestyle claims are NEVER dropped** (owner ruling 2026-07-30): whenever a comment asserts vegan / vegetarian / gluten free / halal / kosher about a dish or a venue — including softer phrasings ("celiac-friendly", "plant-based", "GF options") — normalize to the canonical lifestyle term and emit it on the appropriate side(s). These attributes power hard search toggles whose entire coverage comes from these claims, so a missed mention is a permanently invisible restaurant to the user who needs it most. When the claim is venue-level ("great GF options"), it is a `place_attribute`; when dish-level ("the vegan ramen"), it is a `item_attribute` on that dish AND a `place_attribute`.
+- **Cuisines attach on BOTH sides, always.** A cuisine is a property of the dish AND of the place, so it goes in `item_attributes` on every dish it names AND in `place_attributes` — never an either/or. Infer it from the dish's identity even when unstated: "chicken tikka masala" → `item_attributes: ["indian"]` on that dish AND `place_attributes: ["indian"]`. This holds even when the dish's inferred cuisine differs from the venue's stated cuisine: tacos ordered at a Korean spot give the dish `item_attributes: ["mexican"]` and add "mexican" to `place_attributes` **in addition to** "korean".
+- **Styles and pure occasions are attributes — but an occasion word that PREDICTS THE FOOD is not.** Styles ("comfort food", "street food", "home-style") and occasions that tell you only WHEN ("lunch", "dinner", "late-night", "happy hour") are properties: when tied to a dish they are `item_attributes`, so those variants collapse onto one dish (`food: "prix fixe"`, `item_attributes: ["lunch"]`).
+  "breakfast" and "brunch" are different, because breakfast food is a recognizable KIND (eggs, pancakes, breakfast tacos) — apply 4.3's what-does-it-predict test, not a meal-period reflex. So NEVER peel them off a dish they help name: "breakfast taco" is a different order from "a taco", so the word stays in `item` and rides the normal 4.3 cascade (`food: "breakfast taco"` → `item_categories: ["breakfast taco", "taco", "breakfast"]`). Peeling it produced `food: "taco"` + `item_attributes: ["breakfast"]` 44 times in real data — the fusion violation 5.2.3 forbids, which also destroyed the distinction between a breakfast taco and a taco. When they describe the place ("great happy hour", "open late") they are `place_attributes`. **A style named with no dish** ("great comfort food here", no orderable item) lands whole on `place_attributes` (`["comfort food"]`) so the place stays searchable — keep the phrase intact.
 
 ### 3.6 Attribute Emission Gate
 
-Before placing ANY term in `food_attributes` or `restaurant_attributes`, run the 3.4
+Before placing ANY term in `item_attributes` or `place_attributes`, run the 3.4
 describes-vs-judges test on it one more time. If the term judges how good something is
 (praise/evaluation), or is a bare ingredient or vague filler, **drop it** —
 do not emit it on either side. This gate overrides harvesting: it is correct to emit an empty
@@ -374,33 +374,33 @@ is FOOD (3.4), so it never reaches an attribute array in the first place.
 ```json
 [
   {
-    "restaurant": "nixta",
-    "food": "duck carnitas tacos",
-    "restaurant_attributes": [],
-    "food_attributes": ["rich"]
+    "place": "nixta",
+    "item": "duck carnitas tacos",
+    "place_attributes": [],
+    "item_attributes": ["rich"]
   },
   {
-    "restaurant": "suerte",
-    "food": "duck carnitas tacos",
-    "restaurant_attributes": [],
-    "food_attributes": ["smoky"]
+    "place": "suerte",
+    "item": "duck carnitas tacos",
+    "place_attributes": [],
+    "item_attributes": ["smoky"]
   },
   {
-    "restaurant": "nixta",
-    "food": null,
-    "restaurant_attributes": ["patio"],
-    "food_attributes": []
+    "place": "nixta",
+    "item": null,
+    "place_attributes": ["patio"],
+    "item_attributes": []
   }
 ]
 ```
 
-Step 6 will merge the matching entry (same canonical `restaurant` + `food`) with any restaurant-level entry before populating mentions, keeping the normalized strings intact.
+Step 6 will merge the matching entry (same canonical `place` + `item`) with any restaurant-level entry before populating mentions, keeping the normalized strings intact.
 
 ## Step 4: Food Term Composition
 
 Scope & Goal
 
-- Scope: From the current comment's food language, compose a dish for each restaurant->food connection (`food` + `food_categories`) without ingredient fan-out. Do not decide item vs category or emission.
+- Scope: From the current comment's food language, compose a dish for each restaurant->food connection (`item` + `item_categories`) without ingredient fan-out. Do not decide item vs category or emission.
 - Goal: Produce stable food terms for Step 5. When food/attribute references are implicit (definites/pronouns/deictics), resolve them to nearby food/attribute anchors using the Global Principle's depth-aware order.
 
 Inputs & Dependencies
@@ -410,28 +410,28 @@ Inputs & Dependencies
 
 Outputs
 
-- `composedFoods: Array<{ restaurant: string, food: string, food_categories: string[] }>` - one or more composed dish objects (each tied to a canonical restaurant) for Steps 5-6.
+- `composedFoods: Array<{ restaurant: string, food: string, item_categories: string[] }>` - one or more composed dish objects (each tied to a canonical restaurant) for Steps 5-6.
 
 ### Execution order summary (apply after reading 4.1-4.5)
 
-1. Start from `foodTokensClean` (Step 3) and confirm the dish is tied to the correct canonical `restaurant` when context is implicit.
-2. Compose a single `food` using the head food noun plus identity-changing specifiers; avoid ingredient fan-out.
-3. Build concise `food_categories` (orderable parent dish classes ONLY — never ingredients, flavors, or serving formats), deduped and singular where natural.
-4. Validate invariants (readable name, aligned categories) and emit `composedFoods` entries, each carrying the linked `restaurant`, for Steps 5-6.
-   Outcome: structured `food` with complementary `food_categories` for use in Steps 5-6
+1. Start from `foodTokensClean` (Step 3) and confirm the dish is tied to the correct canonical `place` when context is implicit.
+2. Compose a single `item` using the head food noun plus identity-changing specifiers; avoid ingredient fan-out.
+3. Build concise `item_categories` (orderable parent dish classes ONLY — never ingredients, flavors, or serving formats), deduped and singular where natural.
+4. Validate invariants (readable name, aligned categories) and emit `composedFoods` entries, each carrying the linked `place`, for Steps 5-6.
+   Outcome: structured `item` with complementary `item_categories` for use in Steps 5-6
 
 ### 4.1 Connection-Level Composition Principle
 
 Represent each restaurant->food connection as one composed dish. Do not emit separate mentions for component ingredients or related nouns — a dish is ONE mention. Component ingredients are not categories either: they are dropped unless they independently name an orderable dish class (4.3).
 
-- Carry forward the canonical `restaurant`; the backend maps names to deterministic IDs.
+- Carry forward the canonical `place`; the backend maps names to deterministic IDs.
 
-### 4.2 `food` Construction Algorithm
+### 4.2 `item` Construction Algorithm
 
 Run this procedure for each composed dish after Step 3 cleansing:
 
 0. Confirm an orderable order-name exists (base case).
-   - Ask the 3.0 question of the remaining food tokens: "Could you say this to a server as the thing you want to order?" If nothing does — the comment named a cuisine, a style, a property, or filler but no orderable item — there is **no dish**: leave `food` and `food_categories` null and let the cuisine/style land as an attribute (3.5). Do not manufacture a `food` from a cuisine or style word.
+   - Ask the 3.0 question of the remaining food tokens: "Could you say this to a server as the thing you want to order?" If nothing does — the comment named a cuisine, a style, a property, or filler but no orderable item — there is **no dish**: leave `item` and `item_categories` null and let the cuisine/style land as an attribute (3.5). Do not manufacture a `item` from a cuisine or style word.
 
 1. Anchor the head dish noun phrase.
    - Identify the noun chunk the diner would speak when ordering.
@@ -439,14 +439,14 @@ Run this procedure for each composed dish after Step 3 cleansing:
    - When the specifier trails the head (e.g., "pho tai", "ramen abura soba"), keep the head noun inside the phrase — never drop it in pursuit of a shorter form.
 
 2. Attach only identity-defining specifiers.
-   - Retain proteins, broths, or preparation words that **name the order** and change the dish identity ("duck carnitas taco", "tonkotsu ramen", "fried chicken sandwich"). A preparation word stays in `food` when it is part of what you would say to order; it becomes an attribute (Step 3) only when the dish is the same order without it ("grilled burger" → `food: "burger"`, attribute "grilled").
-   - Do not reattach modifiers already exported to `food_attributes` in Step 3.
-   - For additive clauses introduced by "with/and", keep the core dish as `food` and DROP the additive list items — they are components of this dish, not categories (4.3).
+   - Retain proteins, broths, or preparation words that **name the order** and change the dish identity ("duck carnitas taco", "tonkotsu ramen", "fried chicken sandwich"). A preparation word stays in `item` when it is part of what you would say to order; it becomes an attribute (Step 3) only when the dish is the same order without it ("grilled burger" → `food: "burger"`, attribute "grilled").
+   - Do not reattach modifiers already exported to `item_attributes` in Step 3.
+   - For additive clauses introduced by "with/and", keep the core dish as `item` and DROP the additive list items — they are components of this dish, not categories (4.3).
 
 3. Sanity-check the phrase.
    - Ask: "Would this exact wording appear on a menu?" If not, peel a modifier until it does while keeping the head noun intact.
    - **"special" / "deal" / "menu" heads must still predict the food** (the 4.3 test applied to the head itself): "chicken special" and "nigiri special" predict what arrives and are real orders; "tuesday special", "lunch deal", "happy hour tasting menu" predict only WHEN or HOW MUCH — what arrives is unknown, so there is NO dish. Real data minted "tuesday special" and "lunch deal" as food entities; a head whose only food-content is special/deal/menu fails this check.
-   - Confirm the remaining phrase is still an orderable dish rather than a single ingredient. If you end up with a lone ingredient, keep the broader dish for `food` and drop the ingredient — a lone ingredient is neither a dish nor a category.
+   - Confirm the remaining phrase is still an orderable dish rather than a single ingredient. If you end up with a lone ingredient, keep the broader dish for `item` and drop the ingredient — a lone ingredient is neither a dish nor a category.
 
 4. Normalize.
    - Lowercase, singularize where natural (avoid awkward singulars that reduce clarity), and keep punctuation minimal.
@@ -456,18 +456,18 @@ Self-check examples:
 - Good: "tuna melt sandwich" → `food: "tuna melt sandwich"` (guests order it verbatim).
 - Good: "fried chicken sandwich" → `food: "fried chicken sandwich"` (the preparation word names the order; no "fried" attribute).
 - Avoid: "melt sandwich" (dropped the anchor noun) or "spicy tuna" (attributes crept back in).
-- Good: "south indian filter coffee" → `food: "filter coffee"` with `food_attributes: ["south indian"]`.
+- Good: "south indian filter coffee" → `food: "filter coffee"` with `item_attributes: ["south indian"]`.
 - Good: "pho tai" → `food: "pho tai"` (head-first phrasing keeps the base noun).
-- No dish: "great Indian place" → `food: null`, `food_categories: null`; "indian" lands as an attribute on both sides (3.5), the mention is restaurant-only (3.0(c)).
+- No dish: "great Indian place" → `food: null`, `item_categories: null`; "indian" lands as an attribute on both sides (3.5), the mention is restaurant-only (3.0(c)).
 
-### 4.3 `food_categories` Hierarchy Algorithm
+### 4.3 `item_categories` Hierarchy Algorithm
 
-Produce a cascading, high-signal list of categories after locking the `food` phrase. Every entry must pass a STRICTER test than 3.0: it must name a dish class someone could order **by that name alone** as a complete order ("tuna roll", "roll", "soup").
+Produce a cascading, high-signal list of categories after locking the `item` phrase. Every entry must pass a STRICTER test than 3.0: it must name a dish class someone could order **by that name alone** as a complete order ("tuna roll", "roll", "soup").
 
-**A category must PREDICT WHAT IS HANDED TO YOU.** This is the discriminator the order test alone cannot give you, because occasion words are perfectly sayable to a server ("I'll have the breakfast"). Ask: if a diner names only this word, do you already know something about the food that arrives? "dessert" yes (something sweet); "appetizer", "side", "snack" yes (a small dish of known shape); "coffee", "beer", "pastry" yes — **all are categories, even though several also name a course or a time**. "dinner", "lunch", "happy hour" NO — dinner is any food at all, happy hour is a price and an hour; they constrain WHEN, never WHAT. "tasting menu", "buffet", "omakase" NO — a format says how food is delivered, and what arrives is many different dishes. A word may reference a time AND still name a food class: "breakfast" and "brunch" do, because breakfast food is a recognizable kind (eggs, pancakes, breakfast tacos). Judge by the food the word predicts, not by whether a clock is involved. Cuisines, styles, meal-periods, and other properties are attributes, never categories — and **ingredients, flavor descriptors, and serving formats are never CATEGORIES** (a format may still be a restaurant attribute when it characterizes the place — "tasting menu", "buffet", "omakase" describe how a venue serves, which is a property of the venue, not a dish class): "balsamic", "gruyere", "pecan", "ranch", "pepperoni", "sweet and spicy", "buffet", "combo plate" must never appear in `food_categories`. The tell: "I'll have the gruyere" is not a complete order; "I'll have the popover" is. Each category becomes a searchable dish entity downstream — emit only words a diner would search as a dish.
+**A category must PREDICT WHAT IS HANDED TO YOU.** This is the discriminator the order test alone cannot give you, because occasion words are perfectly sayable to a server ("I'll have the breakfast"). Ask: if a diner names only this word, do you already know something about the food that arrives? "dessert" yes (something sweet); "appetizer", "side", "snack" yes (a small dish of known shape); "coffee", "beer", "pastry" yes — **all are categories, even though several also name a course or a time**. "dinner", "lunch", "happy hour" NO — dinner is any food at all, happy hour is a price and an hour; they constrain WHEN, never WHAT. "tasting menu", "buffet", "omakase" NO — a format says how food is delivered, and what arrives is many different dishes. A word may reference a time AND still name a food class: "breakfast" and "brunch" do, because breakfast food is a recognizable kind (eggs, pancakes, breakfast tacos). Judge by the food the word predicts, not by whether a clock is involved. Cuisines, styles, meal-periods, and other properties are attributes, never categories — and **ingredients, flavor descriptors, and serving formats are never CATEGORIES** (a format may still be a restaurant attribute when it characterizes the place — "tasting menu", "buffet", "omakase" describe how a venue serves, which is a property of the venue, not a dish class): "balsamic", "gruyere", "pecan", "ranch", "pepperoni", "sweet and spicy", "buffet", "combo plate" must never appear in `item_categories`. The tell: "I'll have the gruyere" is not a complete order; "I'll have the popover" is. Each category becomes a searchable dish entity downstream — emit only words a diner would search as a dish.
 
 1. Seed with the most specific dish noun.
-   - Start with the `food` phrase unless it still includes attribute words; otherwise use the first attribute-free variant (e.g., "tuna roll" instead of "spicy tuna roll").
+   - Start with the `item` phrase unless it still includes attribute words; otherwise use the first attribute-free variant (e.g., "tuna roll" instead of "spicy tuna roll").
    - If no shorter variant exists, keep the single item as the seed.
 
 2. Derive progressive fallbacks.
@@ -524,26 +524,26 @@ Apply these inferences conservatively so categories stay focused and high-signal
 ### 4.5 Examples
 
 - "house-made carnitas taco" ->
-  - `food`: "carnitas taco"
-  - `food_categories`: ["taco", "carnitas"]
+  - `item`: "carnitas taco"
+  - `item_categories`: ["taco", "carnitas"]
   - attributes: ["house-made"]
 - "spicy ramen" ->
-  - `food`: "ramen"
-  - `food_categories`: ["ramen"]
+  - `item`: "ramen"
+  - `item_categories`: ["ramen"]
   - attributes: ["spicy"]
 - "spicy tuna roll" ->
-  - `food`: "spicy tuna roll"
-  - `food_categories`: ["tuna roll", "roll"]
+  - `item`: "spicy tuna roll"
+  - `item_categories`: ["tuna roll", "roll"]
   - attributes: ["spicy"]
 - "pasta with burrata, chanterelle mushrooms, and pesto" ->
-  - `food`: "pasta"
-  - `food_categories`: ["pasta"]
+  - `item`: "pasta"
+  - `item_categories`: ["pasta"]
   - One mention only; the "with" ingredients (burrata, chanterelles, pesto) are components of this dish — dropped, never categories.
 - "chicken caesar salad wrap" ->
-  - `food`: "chicken caesar salad wrap"
-  - `food_categories`: ["chicken caesar salad wrap", "caesar salad wrap", "salad wrap", "wrap", "caesar salad"]
+  - `item`: "chicken caesar salad wrap"
+  - `item_categories`: ["chicken caesar salad wrap", "caesar salad wrap", "salad wrap", "wrap", "caesar salad"]
   - attributes: [] ("chicken" alone is a bare ingredient here, not a dish class)
-- Two restaurants, same dish: "Get the carnitas tacos at Nixta and at Suerte." -> emit two `composedFoods` entries with identical `food`/`food_categories` but distinct `restaurant` values so later steps can keep the pairs separate.
+- Two restaurants, same dish: "Get the carnitas tacos at Nixta and at Suerte." -> emit two `composedFoods` entries with identical `item`/`item_categories` but distinct `place` values so later steps can keep the pairs separate.
 
 ### 4.6 Source Ingredients (`ingredients`)
 
@@ -580,12 +580,12 @@ Inputs & Dependencies
 
 Outputs
 
-- `itemDecisions: Array<{ restaurant: string, food: string | null, food_categories: string[] | null, is_menu_item: boolean }>` for use in Step 6. For true restaurant-only recommendations (no dish mention and no inherited ask category), set both `food` and `food_categories` to null with `is_menu_item: false`. For item-specific replies that only name the restaurant, follow the Ask Handling guidance below. Remember: cuisines/dietary flags belong in attributes, not in `food_categories`.
+- `itemDecisions: Array<{ restaurant: string, food: string | null, item_categories: string[] | null, is_menu_item: boolean }>` for use in Step 6. For true restaurant-only recommendations (no dish mention and no inherited ask category), set both `item` and `item_categories` to null with `is_menu_item: false`. For item-specific replies that only name the restaurant, follow the Ask Handling guidance below. Remember: cuisines/dietary flags belong in attributes, not in `item_categories`.
 
 ### Execution order summary (apply after reading 5.1-5.4)
 
 1. Aggregate context (local tie, specificity, coherence)
-2. Align each decision with the correct `composedFood` entry (matching the canonical `restaurant` and `food` when present) or, for item-specific asks without a dish mention, inherit the ask's target category.
+2. Align each decision with the correct `composedFood` entry (matching the canonical `place` and `item` when present) or, for item-specific asks without a dish mention, inherit the ask's target category.
 3. Set `is_menu_item: true` only with strong evidence; else category/restaurant-only
 4. Respect Step 4.1 (Single-Mention Composition): reuse the composed dish as emitted
    Outcome: decide `is_menu_item` (true/false) or restaurant-only when no clear dish applies
@@ -595,8 +595,8 @@ Outputs
 - Context scope: Use all in-scope text - post title, post body, the current comment, and any earlier text included in this same input/chunk.
 - No placeholders: Never emit fabricated or placeholder restaurant names. If the restaurant cannot be resolved with high confidence, skip the mention instead of inventing a name.
 - Sentiment alignment: Step 1 ensures there is a positive or recommendatory intent before you reach this step, and Step 6 performs the final positive-only gate. Step 5 should remain neutral - do not override the pipeline with additional sentiment heuristics here, but avoid forwarding obviously negative dish mentions.
-- Canonicalization alignment: Within the same post object, use the single canonical `restaurant` chosen in Step 2. Short forms must align with that canonical name; do not produce multiple variants for the same establishment.
-- Food linking: Match `food` and canonical `restaurant` to one of the `composedFoods` produced in Step 4 so downstream steps can merge decisions without guessing.
+- Canonicalization alignment: Within the same post object, use the single canonical `place` chosen in Step 2. Short forms must align with that canonical name; do not produce multiple variants for the same establishment.
+- Food linking: Match `item` and canonical `place` to one of the `composedFoods` produced in Step 4 so downstream steps can merge decisions without guessing.
 - Respect Step 4.1: Reuse the composed dish as emitted; do not re-split dishes or ingredients already locked in.
 
 ### 5.2 Decision Framework (apply in order)
@@ -606,9 +606,9 @@ Outputs
 
 2. Confirm composed dish terms (from Step 4)
 
-- Use the `food`/`food_categories` produced by Step 4 as-is (per Step 4.1); do not re-split or re-compose here.
-- **Standalone cuisine or style with no orderable noun** ("great Indian place", "the spot for comfort food"): Step 4 produced no dish (`food` null per 4.2 base case). This is **restaurant-only** — set `food` and `food_categories` to null with `is_menu_item: false`; the cuisine/style rides as an attribute (3.5).
-- When Step 4 has no composed dish because the reply only names the restaurant in answer to an **item-specific** ask, inherit the ask's target category as `food` and set `food_categories` to a minimal list (e.g., `["burger"]`), with `is_menu_item: false` (see Ask Handling). This inheritance applies to an item-specific dish ask, not to a cuisine/style ask-target (5.4). **CHECK the precondition before applying this branch: it fires ONLY when the reply itself contains no dish language.** When the reply restates the dish in its own words ("I've had carbonara udon at...", "their carbonara udon is...") — even while listing several restaurants — Step 4 HAS a composed dish: skip this branch entirely and run the normal itemhood assessment below for EVERY restaurant the reply ties to that dish. A reply that names one dish and lists N restaurants as places it was had yields N itemhood decisions, not one inherited category.
+- Use the `item`/`item_categories` produced by Step 4 as-is (per Step 4.1); do not re-split or re-compose here.
+- **Standalone cuisine or style with no orderable noun** ("great Indian place", "the spot for comfort food"): Step 4 produced no dish (`item` null per 4.2 base case). This is **restaurant-only** — set `item` and `item_categories` to null with `is_menu_item: false`; the cuisine/style rides as an attribute (3.5).
+- When Step 4 has no composed dish because the reply only names the restaurant in answer to an **item-specific** ask, inherit the ask's target category as `item` and set `item_categories` to a minimal list (e.g., `["burger"]`), with `is_menu_item: false` (see Ask Handling). This inheritance applies to an item-specific dish ask, not to a cuisine/style ask-target (5.4). **CHECK the precondition before applying this branch: it fires ONLY when the reply itself contains no dish language.** When the reply restates the dish in its own words ("I've had carbonara udon at...", "their carbonara udon is...") — even while listing several restaurants — Step 4 HAS a composed dish: skip this branch entirely and run the normal itemhood assessment below for EVERY restaurant the reply ties to that dish. A reply that names one dish and lists N restaurants as places it was had yields N itemhood decisions, not one inherited category.
 
 3. Assess itemhood evidence (aggregate; do not rely on a single cue)
    - Local tie: Dish and restaurant are linked in the same clause/sentence or an immediately adjacent reference (e.g., "at [restaurant]", "from here", "their/this/that [dish]", clear ordering verbs like "got/ordered/had/tried"). A clear combination suffices; not all signals are required.
@@ -619,27 +619,27 @@ Outputs
 4. Decide outcome (be conservative when uncertain)
    - `is_menu_item: true` when itemhood evidence is sufficiently strong (as above) in the local context.
    - `is_menu_item: false` when the food reference reads as a category or when evidence is weak/ambiguous after aggregating context.
-   - Restaurant-only (`food` and `food_categories` null) when the reply lists restaurants without a clear dish, or when the only food language is a standalone cuisine/style.
+   - Restaurant-only (`item` and `item_categories` null) when the reply lists restaurants without a clear dish, or when the only food language is a standalone cuisine/style.
    - When the source endorses the place **as a whole** (a verdict about the place with no dish object), record that a single restaurant-level connection (`food: null`) is owed for this `(source, restaurant)` — the one mention that will carry the holistic verdict in Step 6. This is one restaurant-level connection regardless of how many dishes the source also names, and it is **not** owed when the recommendation points at a specific dish ("go here for the burger" credits the burger connection, not the place).
 
 ### 5.3 Examples
 
 - Specific prepared item (`is_menu_item: true`)
-  - "Duck carnitas tacos at Nixta were insane." -> `restaurant`: "nixta"; `food`: "duck carnitas tacos".
-  - "Their sesame noodles are fantastic." (thread already about that restaurant) -> `food`: "sesame noodles".
+  - "Duck carnitas tacos at Nixta were insane." -> `place`: "nixta"; `item`: "duck carnitas tacos".
+  - "Their sesame noodles are fantastic." (thread already about that restaurant) -> `item`: "sesame noodles".
 - One item vs a family (the specificity test in action)
   - "I do enjoy Bread's babka." -> `is_menu_item: true` — a babka is one thing you walk out with; the bare name IS the order-name.
   - "I spent $500 for two at Corima for the tasting menu." -> `is_menu_item: true` — one fixed offering, ordered and eaten.
   - "Levain cookies!" / "Lady M cakes" -> `is_menu_item: false` — the shop makes many cookies and many cakes; the family name alone was never narrowed.
   - "Raku has really delicious udon." -> `is_menu_item: false` (a udon-ya serves many udon); "the three places I've had carbonara udon" -> `is_menu_item: true` (one named variant).
-  - "Their breakfast tacos are the best" -> `is_menu_item: true`, `food`: "breakfast taco" — a fused compound naming its own dish, not a taco eaten early. Contrast "great for a late-night slice" -> the pizza family, "late-night" peels to an attribute.
+  - "Their breakfast tacos are the best" -> `is_menu_item: true`, `item`: "breakfast taco" — a fused compound naming its own dish, not a taco eaten early. Contrast "great for a late-night slice" -> the pizza family, "late-night" peels to an attribute.
 - Category or skip (`is_menu_item: false` or no dish mention)
   - "The sushi roll was pretty good." (no clear restaurant tie in local context) -> either skip, or treat as category if the restaurant is otherwise clearly in scope but the dish remains generic.
   - "Mixed shawarma platter. Maybe add falafel." (no restaurant tie, generic discussion) -> skip.
 - Standalone cuisine/style (restaurant-only)
-  - "Ravi Kabab is the best Indian in the area." -> `food`: null, `food_categories`: null, `is_menu_item: false`; "indian" rides as an attribute on both sides.
-  - "Go here for great comfort food." (no dish named) -> `food`: null, `food_categories`: null, `is_menu_item: false`; "comfort food" lands on `restaurant_attributes`.
-  - Sentence SHAPE never decides — the term does. "Clinton St for pancakes" -> `food`: "pancakes" (one item; two diners ordering "the pancakes" get the same plate). "Saravanaa Bhavan remains goated for breakfast" -> `food`: null, `food_categories`: null ("breakfast" is a meal-period, not an order-name; it rides on `restaurant_attributes`). Same template, opposite outcomes — and neither line's categories may absorb the other's meal-period (4.3).
+  - "Ravi Kabab is the best Indian in the area." -> `item`: null, `item_categories`: null, `is_menu_item: false`; "indian" rides as an attribute on both sides.
+  - "Go here for great comfort food." (no dish named) -> `item`: null, `item_categories`: null, `is_menu_item: false`; "comfort food" lands on `place_attributes`.
+  - Sentence SHAPE never decides — the term does. "Clinton St for pancakes" -> `item`: "pancakes" (one item; two diners ordering "the pancakes" get the same plate). "Saravanaa Bhavan remains goated for breakfast" -> `item`: null, `item_categories`: null ("breakfast" is a meal-period, not an order-name; it rides on `place_attributes`). Same template, opposite outcomes — and neither line's categories may absorb the other's meal-period (4.3).
 - Mixed sentiment (emit only positive dish)
   - "PSA: the ribs suck. The brisket is good." -> emit "brisket" (positive); do not emit "ribs".
 - Inherited itemhood in concise follow-ups (when unambiguous)
@@ -649,19 +649,19 @@ Outputs
 
 ### 5.4 Notes
 
-- When producing pure restaurant-only recommendations (e.g., "Great patio at X", "best Indian around", "the spot for comfort food"), set both `food` and `food_categories` to null with `is_menu_item: false` so Step 6 can emit a restaurant-only mention while still attaching attributes.
-- When inheriting an **item-specific dish** ask's target category, supply that term as `food`, keep `food_categories` minimal, and leave `is_menu_item: false`.
-- **Cuisine/style ask-target guard.** The ask-inheritance above applies only to an orderable dish ask ("best burger?" → inherit "burger"). When the ask targets a **cuisine or style** ("best Indian?", "where for comfort food?") and the reply only names the restaurant, do NOT inherit it as `food` — a cuisine/style is not an order-name. Leave `food`/`food_categories` null (attribute side only) and emit restaurant-only.
-- When multiple dishes tie to the same restaurant in one source, emit one `itemDecisions` entry per distinct `food`.
-- A holistic endorsement of the place is carried by a single restaurant-level connection (`food` and `food_categories` null) per source. When the source names dishes and also endorses the place overall, keep each dish as its own decision and add exactly one restaurant-level entry to hold the holistic verdict; do not multiply it across the dishes. A dish-directed recommendation ("go here for the X") is not a holistic endorsement — it credits the X connection and adds no restaurant-level entry.
+- When producing pure restaurant-only recommendations (e.g., "Great patio at X", "best Indian around", "the spot for comfort food"), set both `item` and `item_categories` to null with `is_menu_item: false` so Step 6 can emit a restaurant-only mention while still attaching attributes.
+- When inheriting an **item-specific dish** ask's target category, supply that term as `item`, keep `item_categories` minimal, and leave `is_menu_item: false`.
+- **Cuisine/style ask-target guard.** The ask-inheritance above applies only to an orderable dish ask ("best burger?" → inherit "burger"). When the ask targets a **cuisine or style** ("best Indian?", "where for comfort food?") and the reply only names the restaurant, do NOT inherit it as `item` — a cuisine/style is not an order-name. Leave `item`/`item_categories` null (attribute side only) and emit restaurant-only.
+- When multiple dishes tie to the same restaurant in one source, emit one `itemDecisions` entry per distinct `item`.
+- A holistic endorsement of the place is carried by a single restaurant-level connection (`item` and `item_categories` null) per source. When the source names dishes and also endorses the place overall, keep each dish as its own decision and add exactly one restaurant-level entry to hold the holistic verdict; do not multiply it across the dishes. A dish-directed recommendation ("go here for the X") is not a holistic endorsement — it credits the X connection and adds no restaurant-level entry.
 
 ### Ask Handling (item-specific replies)
 
 - Trigger when Step 1.3 identifies that the current source replies to an item-specific **dish** ask (the ask targets an orderable order-name, e.g. "best burger?") and the reply itself does not supply a dish mention.
-- Step 5: create an `itemDecisions` entry tied to the restaurant with `food` set to the ask's target category, a minimal `food_categories` list (e.g., `["burger"]`), and `is_menu_item: false`. This preserves the category context without fabricating a dish.
+- Step 5: create an `itemDecisions` entry tied to the restaurant with `item` set to the ask's target category, a minimal `item_categories` list (e.g., `["burger"]`), and `is_menu_item: false`. This preserves the category context without fabricating a dish.
 - Step 6: emit the mention as a restaurant→food connection using that inherited category, `general_praise: false`. When the reply **also** endorses the place holistically (a verdict about the place itself, not the dish), that verdict rides the single restaurant-level (`food: null`) connection per 6.1 — not the inherited dish connection. Keep the food fields populated (do not null them out).
 - Only apply this inheritance when the reply itself contains a positive quality/recommendation cue per 1.3; otherwise skip the source.
-- **Cuisine/style asks do not inherit.** When the ask targets a cuisine or style ("best Indian?", "where for comfort food?") rather than an orderable dish, do not inherit it as `food` — it is a property, not an order-name. Emit restaurant-only with `food`/`food_categories` null; the cuisine/style rides on the attribute side (3.5).
+- **Cuisine/style asks do not inherit.** When the ask targets a cuisine or style ("best Indian?", "where for comfort food?") rather than an orderable dish, do not inherit it as `item` — it is a property, not an order-name. Emit restaurant-only with `item`/`item_categories` null; the cuisine/style rides on the attribute side (3.5).
 
 ## Step 6: Sentiment & Output Assembly
 
@@ -682,7 +682,7 @@ Outputs
 ### Execution order summary (apply after reading 6.1-6.4)
 
 1. Confirm `general_praise` using 6.1 and ensure the positivity rules are satisfied
-2. Assemble one mention per valid connection with: canonical `restaurant` (Step 2); attribute arrays from Step 3; composed `food`/`food_categories` (Step 4); `is_menu_item` (Step 5); and required source fields
+2. Assemble one mention per valid connection with: canonical `place` (Step 2); attribute arrays from Step 3; composed `item`/`item_categories` (Step 4); `is_menu_item` (Step 5); and required source fields
    Outcome: one consolidated, high-quality mention per valid connection, ready for downstream processing
 
 ### 6.1 General Praise & Emission Rules
@@ -703,20 +703,20 @@ Outputs
 For every mention, populate fields as follows:
 
 - Restaurant
-  - `restaurant`: canonicalized per Step 2.
+  - `place`: canonicalized per Step 2.
   - `restaurant_surface`: the exact string observed in the source before canonicalization.
-  - `restaurant_attributes`: array of restaurant-scoped attributes (or omit/null if none).
-  - `restaurant_attribute_surfaces`: array aligned with `restaurant_attributes`, preserving the original attribute tokens before normalization.
+  - `place_attributes`: array of restaurant-scoped attributes (or omit/null if none).
+  - `restaurant_attribute_surfaces`: array aligned with `place_attributes`, preserving the original attribute tokens before normalization.
 - Food (optional)
-  - If a food is present: set `food` from the aligned `composedFood` (Step 4) or, when inheriting an ask's target, from the category supplied in Step 5. Pair it with `food_categories` from the same source (Step 4 or the inherited list in Step 5)—these must stay orderable dish nouns—and apply the `is_menu_item` decision from Step 5.
+  - If a food is present: set `item` from the aligned `composedFood` (Step 4) or, when inheriting an ask's target, from the category supplied in Step 5. Pair it with `item_categories` from the same source (Step 4 or the inherited list in Step 5)—these must stay orderable dish nouns—and apply the `is_menu_item` decision from Step 5.
   - `food_surface`: exact source string for the composed dish/item.
-  - `food_category_surfaces`: array aligned index-for-index with `food_categories`, preserving the surface tokens.
+  - `food_category_surfaces`: array aligned index-for-index with `item_categories`, preserving the surface tokens.
   - `ingredients`: source-named ingredient nouns for this dish per 4.6 (empty for most mentions).
-  - If no food (and no inherited ask category): set `food`, `food_categories`, and `is_menu_item` to null (or omit when allowed by schema). Item-specific asks that only yield a restaurant still count as having food data via the inherited category, so do not null them out.
+  - If no food (and no inherited ask category): set `item`, `item_categories`, and `is_menu_item` to null (or omit when allowed by schema). Item-specific asks that only yield a restaurant still count as having food data via the inherited category, so do not null them out.
 - Attributes
-  - Populate `food_attributes` with the array from the matching `attributeLinks` entry in Step 3 (same canonical `restaurant` and `food` null vs populated). Omit or set to null when none.
+  - Populate `item_attributes` with the array from the matching `attributeLinks` entry in Step 3 (same canonical `place` and `item` null vs populated). Omit or set to null when none.
   - The strings must stay identical to the normalized values in `classifiedAttributes`.
-  - Emit `food_attribute_surfaces` aligned with `food_attributes`, capturing the original modifiers.
+  - Emit `food_attribute_surfaces` aligned with `item_attributes`, capturing the original modifiers.
   - Do not broadcast restaurant-level attributes to every mention. Only merge the `food: null` entry when this specific mention was linked to it in Step 3. If the resulting mention has no food fields, no attributes, and `general_praise` remains false, skip emitting it.
 - Core flags
   - `general_praise`: boolean per 6.1 — `true` only on the single restaurant-level (`food: null`) connection that carries the holistic verdict, `false` on every dish connection.
@@ -747,32 +747,32 @@ Source text: "Nixta's duck carnitas tacos are incredibly rich, Suerte's version 
 {
 "mentions": [
 {
-"restaurant": "nixta",
-"food": "duck carnitas tacos",
-"food_categories": ["tacos", "carnitas"],
+"place": "nixta",
+"item": "duck carnitas tacos",
+"item_categories": ["tacos", "carnitas"],
 "is_menu_item": true,
-"food_attributes": ["rich"],
-"restaurant_attributes": null,
+"item_attributes": ["rich"],
+"place_attributes": null,
 "general_praise": false,
 "source_id": "SRC004"
 },
 {
-"restaurant": "suerte",
-"food": "duck carnitas tacos",
-"food_categories": ["tacos", "carnitas"],
+"place": "suerte",
+"item": "duck carnitas tacos",
+"item_categories": ["tacos", "carnitas"],
 "is_menu_item": true,
-"food_attributes": ["smoky"],
-"restaurant_attributes": null,
+"item_attributes": ["smoky"],
+"place_attributes": null,
 "general_praise": false,
 "source_id": "SRC004"
 },
 {
-"restaurant": "nixta",
-"food": null,
-"food_categories": null,
+"place": "nixta",
+"item": null,
+"item_categories": null,
 "is_menu_item": null,
-"food_attributes": null,
-"restaurant_attributes": ["patio"],
+"item_attributes": null,
+"place_attributes": ["patio"],
 "general_praise": true,
 "source_id": "SRC004"
 }

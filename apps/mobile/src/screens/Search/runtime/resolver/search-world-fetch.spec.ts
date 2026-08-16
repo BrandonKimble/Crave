@@ -33,7 +33,7 @@ const CURATED_DETAIL: CuratedListDetailResponse = {
     {
       rank: 1,
       entityId: 'r-1',
-      restaurantId: null,
+      placeId: null,
       connectionId: null,
       label: 'Quiet Corner',
       subLabel: 'Austin',
@@ -46,7 +46,7 @@ const CURATED_DETAIL: CuratedListDetailResponse = {
     {
       rank: 2,
       entityId: 'r-2',
-      restaurantId: null,
+      placeId: null,
       connectionId: null,
       label: 'Second Spot',
       subLabel: 'Austin',
@@ -138,7 +138,7 @@ describe('search-world-fetch — the ONE list-world lane, source-routed fetch se
     // …and the fitAll members derive from committedResponse rows — identical
     // coordinates in, identical camera session input out.
     const membersOf = (value: { committedResponse: typeof RESPONSE }) =>
-      (value.committedResponse.restaurants ?? []).map((row) => [row.latitude, row.longitude]);
+      (value.committedResponse.places ?? []).map((row) => [row.latitude, row.longitude]);
     expect(membersOf(curated.value)).toEqual(membersOf(favorites.value));
     expect(membersOf(curated.value)).toHaveLength(2);
     // Neither lane collapses to the single-restaurant profile (lists keep the
@@ -175,7 +175,7 @@ describe('search-world-fetch — an aborted request is an outcome, not a sentenc
 // MUTATION PROOF: restore either constant (`submissionSource: 'autocomplete'`, or the
 // `?? identity.displayName` typedPrefix fallthrough) and the matching spec goes RED.
 describe('search-world-fetch — entity provenance is declared, never assumed', () => {
-  const entityTuple = (entityType: 'restaurant' | 'food'): SearchDesiredTuple => ({
+  const entityTuple = (entityType: 'place' | 'item'): SearchDesiredTuple => ({
     ...listTuple(null),
     queryIdentity: {
       kind: 'entity',
@@ -186,7 +186,7 @@ describe('search-world-fetch — entity provenance is declared, never assumed', 
   });
 
   const captureEntityPayload = async (
-    entityType: 'restaurant' | 'food',
+    entityType: 'place' | 'item',
     requestDecoration?: { submissionSource?: string; submissionContext?: Record<string, unknown> }
   ) => {
     const env = createEnv();
@@ -208,7 +208,7 @@ describe('search-world-fetch — entity provenance is declared, never assumed', 
   };
 
   it('a recent-submit tap reaches the structured wire as recent, with the real typed prefix', async () => {
-    const payload = await captureEntityPayload('restaurant', {
+    const payload = await captureEntityPayload('place', {
       submissionSource: 'recent',
       submissionContext: { typedPrefix: 'thai' },
     });
@@ -219,7 +219,7 @@ describe('search-world-fetch — entity provenance is declared, never assumed', 
   });
 
   it('carries the same declared provenance on the food/attribute (natural) entity arm', async () => {
-    const payload = await captureEntityPayload('food', {
+    const payload = await captureEntityPayload('item', {
       submissionSource: 'recent',
       submissionContext: { typedPrefix: 'pad see ew' },
     });
@@ -228,7 +228,7 @@ describe('search-world-fetch — entity provenance is declared, never assumed', 
   });
 
   it('an autocomplete tap still declares autocomplete — the constant was not the only truth', async () => {
-    const payload = await captureEntityPayload('restaurant', {
+    const payload = await captureEntityPayload('place', {
       submissionSource: 'autocomplete',
       submissionContext: { typedPrefix: 'thai f' },
     });
@@ -237,7 +237,7 @@ describe('search-world-fetch — entity provenance is declared, never assumed', 
   });
 
   it('omits typedPrefix entirely when no trigger declared one (never the display name)', async () => {
-    const payload = await captureEntityPayload('restaurant', { submissionSource: 'recent' });
+    const payload = await captureEntityPayload('place', { submissionSource: 'recent' });
     expect(payload.submissionContext).not.toHaveProperty('typedPrefix');
   });
 });

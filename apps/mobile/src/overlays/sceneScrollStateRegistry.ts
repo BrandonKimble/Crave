@@ -128,7 +128,7 @@ export const projectSceneBoundaryFacts = (sceneKey: string | null): void => {
 
 // ─── THE RECORD STORE IS A BOUNDED CACHE, NOT A LEDGER (F912) ────────────────────────
 // The key here is a CONTENT identity, not the bounded scene-key space — RestaurantPanel
-// passes `restaurant:${restaurantId}`, the list surfaces pass per-list identities. So
+// passes `restaurant:${placeId}`, the list surfaces pass per-list identities. So
 // this Map used to grow by one permanent record for every restaurant / list / DM the
 // user ever opened in a session, with no removal path at all: the leak class in its
 // registry variant. A scroll memory is a CACHE with a policy, so it has one now.

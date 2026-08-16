@@ -68,13 +68,11 @@ export class FullProjectionRebuildRunner implements OnApplicationBootstrap {
     `;
     const ids = rows.map((row) => row.id);
     this.logger.info('FULL PROJECTION REBUILD starting', {
-      restaurants: ids.length,
+      places: ids.length,
     });
     const BATCH = 50;
     for (let i = 0; i < ids.length; i += BATCH) {
-      await this.projectionRebuild.rebuildForRestaurants(
-        ids.slice(i, i + BATCH),
-      );
+      await this.projectionRebuild.rebuildForPlaces(ids.slice(i, i + BATCH));
       if ((i / BATCH) % 20 === 0) {
         this.logger.info('FULL PROJECTION REBUILD progress', {
           done: Math.min(i + BATCH, ids.length),
@@ -83,7 +81,7 @@ export class FullProjectionRebuildRunner implements OnApplicationBootstrap {
       }
     }
     this.logger.info('FULL PROJECTION REBUILD DONE', {
-      restaurants: ids.length,
+      places: ids.length,
       note: 'Run scripts/rebuild-crave-scores.ts next; remove RUN_FULL_PROJECTION_REBUILD.',
     });
   }

@@ -26,7 +26,7 @@ import { SaveableEntityResolver } from './saveable-entity.resolver';
 const LIVE = 'live-restaurant';
 const ARCHIVED = 'archived-restaurant';
 const PENDING = 'pending-restaurant';
-const FOOD = 'a-food';
+const ITEM = 'a-food';
 const MERGED_AWAY = 'merge-loser';
 
 const ROWS: Record<
@@ -36,22 +36,22 @@ const ROWS: Record<
   [LIVE]: {
     entityId: LIVE,
     name: 'Live Room',
-    type: 'restaurant',
+    type: 'place',
     status: 'active',
   },
   [ARCHIVED]: {
     entityId: ARCHIVED,
     name: 'Gone',
-    type: 'restaurant',
+    type: 'place',
     status: 'archived',
   },
   [PENDING]: {
     entityId: PENDING,
     name: 'Maybe',
-    type: 'restaurant',
+    type: 'place',
     status: 'pending',
   },
-  [FOOD]: { entityId: FOOD, name: 'Taco', type: 'food', status: 'active' },
+  [ITEM]: { entityId: ITEM, name: 'Taco', type: 'item', status: 'active' },
 };
 
 const REDIRECTS: Record<string, string> = { [MERGED_AWAY]: LIVE };
@@ -107,34 +107,34 @@ function makeResolver() {
 describe('the saveable-entity law: redirect → type → active', () => {
   it('a live restaurant resolves to itself', async () => {
     await expect(
-      makeResolver().resolveSaveableRestaurant(LIVE),
+      makeResolver().resolveSaveablePlace(LIVE),
     ).resolves.toMatchObject({ entityId: LIVE });
   });
 
   it('a MERGED-AWAY id resolves to its survivor (one hop) — the F661 over-refusal', async () => {
     await expect(
-      makeResolver().resolveSaveableRestaurant(MERGED_AWAY),
+      makeResolver().resolveSaveablePlace(MERGED_AWAY),
     ).resolves.toMatchObject({ entityId: LIVE });
   });
 
   it('an ARCHIVED restaurant is refused — the F602/F621/F682 leak', async () => {
     await expect(
-      makeResolver().resolveSaveableRestaurant(ARCHIVED),
+      makeResolver().resolveSaveablePlace(ARCHIVED),
     ).resolves.toBeNull();
   });
 
   it('a PENDING restaurant is refused too (the share resolver\'s semantics, not "not archived")', async () => {
     await expect(
-      makeResolver().resolveSaveableRestaurant(PENDING),
+      makeResolver().resolveSaveablePlace(PENDING),
     ).resolves.toBeNull();
   });
 
   it('a FOOD id passed as a restaurant is refused, and vice versa', async () => {
     const resolver = makeResolver();
-    await expect(resolver.resolveSaveableRestaurant(FOOD)).resolves.toBeNull();
-    await expect(resolver.resolveSaveableFood(LIVE)).resolves.toBeNull();
-    await expect(resolver.resolveSaveableFood(FOOD)).resolves.toMatchObject({
-      entityId: FOOD,
+    await expect(resolver.resolveSaveablePlace(ITEM)).resolves.toBeNull();
+    await expect(resolver.resolveSaveableItem(LIVE)).resolves.toBeNull();
+    await expect(resolver.resolveSaveableItem(ITEM)).resolves.toMatchObject({
+      entityId: ITEM,
     });
   });
 

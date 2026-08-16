@@ -3,10 +3,10 @@ import type { User } from '@prisma/client';
 import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
 import { CurrentUser } from '../../shared';
 import { HistoryService } from './history.service';
-import { RecordRestaurantViewDto } from './dto/record-restaurant-view.dto';
-import { RecordFoodViewDto } from './dto/record-food-view.dto';
-import { ListRestaurantViewsDto } from './dto/list-restaurant-views.dto';
-import { ListFoodViewsDto } from './dto/list-food-views.dto';
+import { RecordPlaceViewDto } from './dto/record-restaurant-view.dto';
+import { RecordItemViewDto } from './dto/record-food-view.dto';
+import { ListPlaceViewsDto } from './dto/list-restaurant-views.dto';
+import { ListItemViewsDto } from './dto/list-food-views.dto';
 import { RecordsSignal } from '../signals/records-signal.decorator';
 
 @Controller('history')
@@ -14,29 +14,29 @@ import { RecordsSignal } from '../signals/records-signal.decorator';
 export class HistoryController {
   constructor(private readonly historyService: HistoryService) {}
 
-  @Post('restaurants/viewed')
+  @Post('places/viewed')
   @RecordsSignal('entity_view')
-  async recordRestaurantView(
-    @Body() dto: RecordRestaurantViewDto,
+  async recordPlaceView(
+    @Body() dto: RecordPlaceViewDto,
     @CurrentUser() user: User,
   ): Promise<{ status: 'ok' }> {
-    await this.historyService.recordRestaurantView(user.userId, dto);
+    await this.historyService.recordPlaceView(user.userId, dto);
     return { status: 'ok' };
   }
 
-  @Post('foods/viewed')
+  @Post('items/viewed')
   @RecordsSignal('entity_view')
-  async recordFoodView(
-    @Body() dto: RecordFoodViewDto,
+  async recordItemView(
+    @Body() dto: RecordItemViewDto,
     @CurrentUser() user: User,
   ): Promise<{ status: 'ok' }> {
-    await this.historyService.recordFoodView(user.userId, dto);
+    await this.historyService.recordItemView(user.userId, dto);
     return { status: 'ok' };
   }
 
-  @Get('restaurants/viewed')
-  listRecentlyViewedRestaurants(
-    @Query() query: ListRestaurantViewsDto,
+  @Get('places/viewed')
+  listRecentlyViewedPlaces(
+    @Query() query: ListPlaceViewsDto,
     @CurrentUser() user: User,
     // F843 (2026-08-03): the return type DEFERS to the service instead of restating it.
     // Three hand-maintained mirrors of this one row shape existed — this controller, the
@@ -47,22 +47,19 @@ export class HistoryController {
     // STILL OWED (the finding's full fix): the row belongs in `packages/shared`, imported by
     // both sides, so the CLIENT copy cannot drift either — that is a cross-package move and
     // wants the same pass that does F842's request-DTO generation.
-  ): ReturnType<HistoryService['listRecentlyViewedRestaurants']> {
-    return this.historyService.listRecentlyViewedRestaurants(
-      user.userId,
-      query,
-    );
+  ): ReturnType<HistoryService['listRecentlyViewedPlaces']> {
+    return this.historyService.listRecentlyViewedPlaces(user.userId, query);
   }
 
   // F680 (2026-08-04): same drift as F843 above, same fix — the inline
   // return type here omitted `locationId`/`locationAddress` (the earned-
   // address suggestion), which the service returns and mobile consumes.
   // Deferring to the service's own type means there is only one truth.
-  @Get('foods/viewed')
-  listRecentlyViewedFoods(
-    @Query() query: ListFoodViewsDto,
+  @Get('items/viewed')
+  listRecentlyViewedItems(
+    @Query() query: ListItemViewsDto,
     @CurrentUser() user: User,
-  ): ReturnType<HistoryService['listRecentlyViewedFoods']> {
-    return this.historyService.listRecentlyViewedFoods(user.userId, query);
+  ): ReturnType<HistoryService['listRecentlyViewedItems']> {
+    return this.historyService.listRecentlyViewedItems(user.userId, query);
   }
 }

@@ -1,23 +1,23 @@
 import { Injectable } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
-import { RestaurantCuisineExtractionJobData } from './restaurant-cuisine-extraction.types';
+import { PlaceCuisineExtractionJobData } from './restaurant-cuisine-extraction.types';
 
 const QUEUE_NAME = 'restaurant-cuisine-extraction';
 const JOB_NAME = 'extract-restaurant-cuisine';
 
 @Injectable()
-export class RestaurantCuisineExtractionQueueService {
+export class PlaceCuisineExtractionQueueService {
   constructor(
     @InjectQueue(QUEUE_NAME)
-    private readonly queue: Queue<RestaurantCuisineExtractionJobData>,
+    private readonly queue: Queue<PlaceCuisineExtractionJobData>,
   ) {}
 
   async queueExtraction(
-    restaurantId: string,
+    placeId: string,
     options: { source?: string } = {},
   ): Promise<string | null> {
-    const normalized = restaurantId?.trim();
+    const normalized = placeId?.trim();
     if (!normalized) {
       return null;
     }
@@ -33,7 +33,7 @@ export class RestaurantCuisineExtractionQueueService {
     const job = await this.queue.add(
       JOB_NAME,
       {
-        restaurantId: normalized,
+        placeId: normalized,
         requestedAt: new Date().toISOString(),
         source: options.source,
       },
@@ -52,7 +52,7 @@ export class RestaurantCuisineExtractionQueueService {
     return String(job.id ?? jobId);
   }
 
-  private buildJobId(restaurantId: string): string {
-    return `${QUEUE_NAME}:${restaurantId}`;
+  private buildJobId(placeId: string): string {
+    return `${QUEUE_NAME}:${placeId}`;
   }
 }

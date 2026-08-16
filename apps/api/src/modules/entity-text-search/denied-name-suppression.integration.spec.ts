@@ -31,10 +31,10 @@ import { EntityTextSearchService } from './entity-text-search.service';
 import { DeniedNameRegistryService } from './denied-name-registry.service';
 import { canonicalFold } from '../content-processing/entity-resolver/entity-identity';
 import { deletionVariants, editBudgetForToken } from './entity-lexicon';
-import { RESTAURANT_NAME_RULE_VERSION } from '../content-processing/entity-resolver/restaurant-name-rule';
+import { PLACE_NAME_RULE_VERSION } from '../content-processing/entity-resolver/restaurant-name-rule';
 import {
-  RESTAURANT_NAME_LANE,
-  restaurantNameLane,
+  PLACE_NAME_LANE,
+  placeNameLane,
 } from '../content-processing/entity-resolver/restaurant-name-lane';
 
 // A synthetic generic-word ghost no real corpus row can collide with.
@@ -80,7 +80,7 @@ async function cleanup() {
   await prisma.entityWordDelete.deleteMany({ where: { entityId: ENTITY_ID } });
   await prisma.$executeRaw`
     DELETE FROM claim_verdicts
-     WHERE lane = ${RESTAURANT_NAME_LANE}
+     WHERE lane = ${PLACE_NAME_LANE}
        AND claim_key = ${`${ENTITY_ID}|${DENIED_FOLD}`}`;
   await prisma.entitySurface.deleteMany({ where: { entityId: ENTITY_ID } });
   await prisma.entity.deleteMany({ where: { entityId: ENTITY_ID } });
@@ -99,7 +99,7 @@ beforeAll(async () => {
       name: DENIED_NAME,
       identityKey: DENIED_FOLD,
       identityKeySorted: DENIED_FOLD,
-      type: 'restaurant',
+      type: 'place',
     },
   });
   await prisma.entitySurface.create({
@@ -117,10 +117,10 @@ beforeAll(async () => {
   // what this spec pins — a stale-version denial must NOT suppress).
   await prisma.claimVerdict.create({
     data: {
-      lane: RESTAURANT_NAME_LANE,
+      lane: PLACE_NAME_LANE,
       claimKey: `${ENTITY_ID}|${DENIED_FOLD}`,
-      ruleVersion: RESTAURANT_NAME_RULE_VERSION,
-      foldVersion: restaurantNameLane.keyFoldVersion,
+      ruleVersion: PLACE_NAME_RULE_VERSION,
+      foldVersion: placeNameLane.keyFoldVersion,
       outcome: 'notAName',
       reason: 'spec seed: synthetic denied ghost name',
       subject: {},
@@ -135,7 +135,7 @@ beforeAll(async () => {
         deleteKey: variant,
         word: DENIED_FOLD,
         entityId: ENTITY_ID,
-        entityType: 'restaurant' as const,
+        entityType: 'place' as const,
         isAlias: false,
       }),
     ),
@@ -151,18 +151,14 @@ afterAll(async () => {
 
 describe('a live notAName verdict suppresses the name arms', () => {
   it('the FTS/trgm lattice no longer serves the denied name (autocomplete exact/prefix path)', async () => {
-    const matches = await service.searchEntities(
-      DENIED_FOLD,
-      ['restaurant'],
-      20,
-    );
+    const matches = await service.searchEntities(DENIED_FOLD, ['place'], 20);
     expect(matches.map((m) => m.entityId)).not.toContain(ENTITY_ID);
   });
 
   it('MUTATION: the identical query with the exclusion dropped serves it exact-top — the anti-join is the mechanism', async () => {
     const matches = await unguardedService.searchEntities(
       DENIED_FOLD,
-      ['restaurant'],
+      ['place'],
       20,
     );
     const hit = matches.find((m) => m.entityId === ENTITY_ID);
@@ -172,7 +168,7 @@ describe('a live notAName verdict suppresses the name arms', () => {
   it('the gazetteer scan emits no span for the denied name', async () => {
     const groups = await service.scanForKnownEntityGroups(
       `best ${DENIED_FOLD} tacos`,
-      ['restaurant'],
+      ['place'],
     );
     const ids = groups.flatMap((g) => g.entities.map((e) => e.entityId));
     expect(ids).not.toContain(ENTITY_ID);
@@ -181,7 +177,7 @@ describe('a live notAName verdict suppresses the name arms', () => {
   it('MUTATION: the gazetteer with the exclusion dropped still grounds it', async () => {
     const groups = await unguardedService.scanForKnownEntityGroups(
       `best ${DENIED_FOLD} tacos`,
-      ['restaurant'],
+      ['place'],
     );
     const ids = groups.flatMap((g) => g.entities.map((e) => e.entityId));
     expect(ids).toContain(ENTITY_ID);
@@ -190,17 +186,13 @@ describe('a live notAName verdict suppresses the name arms', () => {
   it('the edit lane no longer reaches the denied name through a typo', async () => {
     // One deletion inside the word — the delete-dictionary lane's territory.
     const typo = DENIED_FOLD.slice(0, 4) + DENIED_FOLD.slice(5);
-    const matches = await service.searchEntities(typo, ['restaurant'], 20);
+    const matches = await service.searchEntities(typo, ['place'], 20);
     expect(matches.map((m) => m.entityId)).not.toContain(ENTITY_ID);
   });
 
   it('MUTATION: the typo query with the exclusion dropped reaches it (fuzzy/edit lanes) — the gate is the mechanism', async () => {
     const typo = DENIED_FOLD.slice(0, 4) + DENIED_FOLD.slice(5);
-    const matches = await unguardedService.searchEntities(
-      typo,
-      ['restaurant'],
-      20,
-    );
+    const matches = await unguardedService.searchEntities(typo, ['place'], 20);
     expect(matches.map((m) => m.entityId)).toContain(ENTITY_ID);
   });
 });
@@ -208,7 +200,7 @@ describe('a live notAName verdict suppresses the name arms', () => {
 describe('the denial takes ONLY the name — nothing else', () => {
   it('the entity stays reachable through its surviving adjudicated alias', async () => {
     const groups = await service.scanForKnownEntityGroups(SURVIVING_ALIAS, [
-      'restaurant',
+      'place',
     ]);
     const ids = groups.flatMap((g) => g.entities.map((e) => e.entityId));
     expect(ids).toContain(ENTITY_ID);
@@ -216,23 +208,19 @@ describe('the denial takes ONLY the name — nothing else', () => {
 
   it('a denial at a SUPERSEDED rule version suppresses nothing (the ledger `=` discipline)', async () => {
     await prisma.$executeRaw`
-      UPDATE claim_verdicts SET rule_version = ${RESTAURANT_NAME_RULE_VERSION - 1}
-       WHERE lane = ${RESTAURANT_NAME_LANE}
+      UPDATE claim_verdicts SET rule_version = ${PLACE_NAME_RULE_VERSION - 1}
+       WHERE lane = ${PLACE_NAME_LANE}
          AND claim_key = ${`${ENTITY_ID}|${DENIED_FOLD}`}`;
     registry.invalidate();
     try {
       // limit 21 ≠ 20 on purpose: the service's 30s term cache would
       // otherwise replay the suppressed result from the first test.
-      const matches = await service.searchEntities(
-        DENIED_FOLD,
-        ['restaurant'],
-        21,
-      );
+      const matches = await service.searchEntities(DENIED_FOLD, ['place'], 21);
       expect(matches.map((m) => m.entityId)).toContain(ENTITY_ID);
     } finally {
       await prisma.$executeRaw`
-        UPDATE claim_verdicts SET rule_version = ${RESTAURANT_NAME_RULE_VERSION}
-         WHERE lane = ${RESTAURANT_NAME_LANE}
+        UPDATE claim_verdicts SET rule_version = ${PLACE_NAME_RULE_VERSION}
+         WHERE lane = ${PLACE_NAME_LANE}
            AND claim_key = ${`${ENTITY_ID}|${DENIED_FOLD}`}`;
       registry.invalidate();
     }

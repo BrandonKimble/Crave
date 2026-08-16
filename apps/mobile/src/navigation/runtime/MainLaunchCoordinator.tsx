@@ -815,7 +815,7 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
     const startupLocation = resolveSemanticUserLocation(startupLocationSnapshot);
     if (launchIntent.type === 'entityAction' && launchIntent.action.kind === 'restaurantWorld') {
       // Leg 2 (geo-demand rebuild §7): the profile is restaurant-scoped — no market slice.
-      void searchService.restaurantProfile(launchIntent.action.restaurantId).catch(() => undefined);
+      void searchService.restaurantProfile(launchIntent.action.placeId).catch(() => undefined);
       return;
     }
 
@@ -829,11 +829,11 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
       if (!trimmedQuery) {
         return;
       }
-      if (intent.entry.selectedEntityType === 'restaurant' && intent.entry.selectedEntityId) {
+      if (intent.entry.selectedEntityType === 'place' && intent.entry.selectedEntityId) {
         void searchService
           .structuredSearch({
             entities: {
-              restaurants: [
+              places: [
                 {
                   normalizedName: trimmedQuery,
                   entityIds: [intent.entry.selectedEntityId],
@@ -866,38 +866,36 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
       return;
     }
 
-    const restaurantId =
-      intent.type === 'recentlyViewed' ? intent.restaurant.restaurantId : intent.food.restaurantId;
-    const restaurantName =
+    const placeId =
+      intent.type === 'recentlyViewed' ? intent.restaurant.placeId : intent.food.placeId;
+    const placeName =
       intent.type === 'recentlyViewed'
-        ? intent.restaurant.restaurantName.trim()
-        : intent.food.restaurantName.trim();
+        ? intent.restaurant.placeName.trim()
+        : intent.food.placeName.trim();
     const typedPrefix =
-      intent.type === 'recentlyViewed'
-        ? restaurantName
-        : intent.food.foodName.trim() || restaurantName;
-    if (!restaurantId || !restaurantName) {
+      intent.type === 'recentlyViewed' ? placeName : intent.food.itemName.trim() || placeName;
+    if (!placeId || !placeName) {
       return;
     }
     void searchService
       .structuredSearch({
         entities: {
-          restaurants: [
+          places: [
             {
-              normalizedName: restaurantName,
-              entityIds: [restaurantId],
-              originalText: restaurantName,
+              normalizedName: placeName,
+              entityIds: [placeId],
+              originalText: placeName,
             },
           ],
         },
         bounds: startupPollBounds ?? undefined,
         userLocation: startupLocation ?? undefined,
-        sourceQuery: restaurantName,
+        sourceQuery: placeName,
         submissionSource: 'recent',
         submissionContext: {
           typedPrefix,
           matchType: 'entity',
-          selectedEntityId: restaurantId,
+          selectedEntityId: placeId,
           selectedEntityType: 'restaurant',
         },
       })

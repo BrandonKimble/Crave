@@ -31,7 +31,7 @@ export const resolveProfilePresentationModel = ({
   const isOverlayVisible = hasRestaurantRouteEntry;
   const isPresentationActive = hasRestaurantRouteEntry || restaurantPanelSnapshot != null;
   const activeOpenRestaurantId = isOverlayVisible
-    ? (restaurantPanelSnapshot?.restaurant.restaurantId ?? null)
+    ? (restaurantPanelSnapshot?.restaurant.placeId ?? null)
     : null;
 
   return {

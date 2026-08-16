@@ -45,7 +45,7 @@ function createLogger() {
   return logger;
 }
 
-interface RestaurantFixture {
+interface PlaceFixture {
   entity_id: string;
   name: string;
   restaurant_attributes: string[];
@@ -57,9 +57,9 @@ interface RestaurantFixture {
 
 interface DishFixture {
   connection_id: string;
-  food_id: string;
-  food_name: string;
-  restaurant_id: string;
+  item_id: string;
+  item_name: string;
+  place_id: string;
   mention_count: number;
   display_score: number;
   percentile_rank: number;
@@ -75,11 +75,11 @@ interface StoredList {
   title: string;
   rotationKey: string;
   itemCount: number;
-  items: Array<{ rank: number; entityId: string; restaurantId: string | null }>;
+  items: Array<{ rank: number; entityId: string; placeId: string | null }>;
 }
 
 function createHarness(options: {
-  restaurants: RestaurantFixture[];
+  places: PlaceFixture[];
   dishes?: DishFixture[];
   cuisineAttributeIds?: string[];
   attributeEntities?: Array<{
@@ -99,7 +99,7 @@ function createHarness(options: {
   behavioralAttributeIds?: string[];
   engagedFavoriteItems?: Array<{
     connectionId: string | null;
-    restaurantId: string | null;
+    placeId: string | null;
   }>;
   preexistingLists?: StoredList[];
 }) {
@@ -153,7 +153,7 @@ function createHarness(options: {
             create: Array<{
               rank: number;
               entityId: string;
-              restaurantId: string | null;
+              placeId: string | null;
             }>;
           };
         };
@@ -200,13 +200,13 @@ function createHarness(options: {
         return Promise.resolve([{ place_id: CITY, name: 'Austin' }]);
       }
       if (sql.includes('/*curated:city_restaurants*/')) {
-        return Promise.resolve(options.restaurants);
+        return Promise.resolve(options.places);
       }
       if (sql.includes('/*curated:city_dishes*/')) {
-        const restaurantIds = values[0] as string[];
+        const placeIds = values[0] as string[];
         return Promise.resolve(
           (options.dishes ?? []).filter((row) =>
-            restaurantIds.includes(row.restaurant_id),
+            placeIds.includes(row.place_id),
           ),
         );
       }
@@ -303,22 +303,19 @@ function createHarness(options: {
 
 /** Five viable dishes at one restaurant — the minimum a list can be built
  *  from (MIN_VIABLE_LIST_ITEMS). */
-function dishesAt(restaurantId: string): DishFixture[] {
+function dishesAt(placeId: string): DishFixture[] {
   return Array.from({ length: MIN_VIABLE_LIST_ITEMS }, (_unused, i) => ({
     connection_id: uuid(700 + i),
-    food_id: uuid(800 + i),
-    food_name: `Dish ${i}`,
-    restaurant_id: restaurantId,
+    item_id: uuid(800 + i),
+    item_name: `Dish ${i}`,
+    place_id: placeId,
     mention_count: 5,
     display_score: 8,
     percentile_rank: 0.9 - i * 0.01,
   }));
 }
 
-function restaurant(
-  n: number,
-  overrides: Partial<RestaurantFixture> = {},
-): RestaurantFixture {
+function place(n: number, overrides: Partial<PlaceFixture> = {}): PlaceFixture {
   return {
     entity_id: uuid(n),
     name: `Restaurant ${n}`,
@@ -336,16 +333,16 @@ const NOW = new Date('2026-07-26T12:00:00Z');
 describe('CuratedListBuilderService — recipe laws', () => {
   it('MIN-VIABLE GATE is red-provable: 1 fewer than the gate builds NO list; at the gate the list materializes', async () => {
     const below = createHarness({
-      restaurants: Array.from({ length: MIN_VIABLE_LIST_ITEMS - 1 }, (_, i) =>
-        restaurant(i + 1, { rising: 1 + i }),
+      places: Array.from({ length: MIN_VIABLE_LIST_ITEMS - 1 }, (_, i) =>
+        place(i + 1, { rising: 1 + i }),
       ),
     });
     await below.service.buildAll(NOW);
     expect(below.store).toHaveLength(0);
 
     const atGate = createHarness({
-      restaurants: Array.from({ length: MIN_VIABLE_LIST_ITEMS }, (_, i) =>
-        restaurant(i + 1, { rising: 1 + i }),
+      places: Array.from({ length: MIN_VIABLE_LIST_ITEMS }, (_, i) =>
+        place(i + 1, { rising: 1 + i }),
       ),
     });
     await atGate.service.buildAll(NOW);
@@ -366,11 +363,11 @@ describe('CuratedListBuilderService — recipe laws', () => {
     const attrIds = Array.from({ length: cuisineCount }, (_, c) =>
       uuid(900 + c),
     );
-    const restaurants: RestaurantFixture[] = [];
+    const places: PlaceFixture[] = [];
     attrIds.forEach((attrId, c) => {
       for (let m = 0; m < MIN_VIABLE_LIST_ITEMS; m += 1) {
-        restaurants.push(
-          restaurant(100 + c * 10 + m, {
+        places.push(
+          place(100 + c * 10 + m, {
             restaurant_attributes: [attrId],
             // Distinct volumes so cuisine ranking (and the old cap's cut
             // point) is deterministic: cuisine 0 loudest, cuisine 8 quietest.
@@ -380,7 +377,7 @@ describe('CuratedListBuilderService — recipe laws', () => {
       }
     });
     const { service, store } = createHarness({
-      restaurants,
+      places,
       cuisineAttributeIds: attrIds,
       attributeEntities: attrIds.map((entityId, c) => ({
         entityId,
@@ -405,13 +402,13 @@ describe('CuratedListBuilderService — recipe laws', () => {
     // = volume < 7.5 AND >= floor(3): exactly {3,4,5,6,7}. The volume-2 row
     // is below the evidence floor; every 50 is above the median.
     const lows = [2, 3, 4, 5, 6, 7, 8].map((volume, i) =>
-      restaurant(i + 1, { mention_volume: volume, display_score: 9 - i * 0.1 }),
+      place(i + 1, { mention_volume: volume, display_score: 9 - i * 0.1 }),
     );
     const highs = [50, 50, 50, 50, 50].map((volume, i) =>
-      restaurant(i + 20, { mention_volume: volume, display_score: 9.9 }),
+      place(i + 20, { mention_volume: volume, display_score: 9.9 }),
     );
     const { service, store } = createHarness({
-      restaurants: [...lows, ...highs],
+      places: [...lows, ...highs],
     });
     await service.buildAll(NOW);
     const gems = store.filter((row) => row.recipeKey === RECIPE_HIDDEN_GEMS);
@@ -434,16 +431,16 @@ describe('CuratedListBuilderService — recipe laws', () => {
     // {3,3,4,4,5,50,50,50,50,50} → median 27.5 → qualifying {3,3,4,4,5},
     // exactly the min-viable gate.
     const tail = Array.from({ length: 40 }, (_, i) =>
-      restaurant(i + 100, { mention_volume: 1, display_score: 5 }),
+      place(i + 100, { mention_volume: 1, display_score: 5 }),
     );
     const credibleLows = [3, 3, 4, 4, 5].map((volume, i) =>
-      restaurant(i + 1, { mention_volume: volume, display_score: 9 - i * 0.1 }),
+      place(i + 1, { mention_volume: volume, display_score: 9 - i * 0.1 }),
     );
     const loud = [50, 50, 50, 50, 50].map((volume, i) =>
-      restaurant(i + 20, { mention_volume: volume, display_score: 9.9 }),
+      place(i + 20, { mention_volume: volume, display_score: 9.9 }),
     );
     const { service, store } = createHarness({
-      restaurants: [...tail, ...credibleLows, ...loud],
+      places: [...tail, ...credibleLows, ...loud],
     });
     await service.buildAll(NOW);
     const gems = store.filter((row) => row.recipeKey === RECIPE_HIDDEN_GEMS);
@@ -470,8 +467,8 @@ describe('CuratedListBuilderService — recipe laws', () => {
       items: [],
     };
     const { service, store, txAtomicity } = createHarness({
-      restaurants: Array.from({ length: 6 }, (_, i) =>
-        restaurant(i + 1, { rising: 1 + i }),
+      places: Array.from({ length: 6 }, (_, i) =>
+        place(i + 1, { rising: 1 + i }),
       ),
       preexistingLists: [stale],
     });
@@ -488,18 +485,18 @@ describe('CuratedListBuilderService — recipe laws', () => {
   });
 
   it("WEEKLY PERSONAL rotator: untried proxy excludes engaged dishes; builds only from the user's preferred cuisines; skips users already built this week", async () => {
-    const mexRestaurants = Array.from({ length: 3 }, (_, i) =>
-      restaurant(i + 1, { restaurant_attributes: [MEX_ATTR] }),
+    const mexPlaces = Array.from({ length: 3 }, (_, i) =>
+      place(i + 1, { restaurant_attributes: [MEX_ATTR] }),
     );
-    const otherRestaurant = restaurant(9); // no preferred cuisine
+    const otherPlace = place(9); // no preferred cuisine
     const dishes: DishFixture[] = [];
     // 7 candidate dishes at mexican restaurants.
     for (let i = 0; i < 7; i += 1) {
       dishes.push({
         connection_id: uuid(100 + i),
-        food_id: uuid(200 + i),
-        food_name: `Dish ${i}`,
-        restaurant_id: mexRestaurants[i % 3].entity_id,
+        item_id: uuid(200 + i),
+        item_name: `Dish ${i}`,
+        place_id: mexPlaces[i % 3].entity_id,
         mention_count: 5,
         display_score: 8,
         percentile_rank: 0.9 - i * 0.05,
@@ -508,15 +505,15 @@ describe('CuratedListBuilderService — recipe laws', () => {
     // A dish at the non-preferred restaurant must never enter the pool.
     dishes.push({
       connection_id: uuid(180),
-      food_id: uuid(280),
-      food_name: 'Off-cuisine dish',
-      restaurant_id: otherRestaurant.entity_id,
+      item_id: uuid(280),
+      item_name: 'Off-cuisine dish',
+      place_id: otherPlace.entity_id,
       mention_count: 50,
       display_score: 9.9,
       percentile_rank: 0.99,
     });
     const harness = createHarness({
-      restaurants: [...mexRestaurants, otherRestaurant],
+      places: [...mexPlaces, otherPlace],
       dishes,
       attributeEntities: [{ entityId: MEX_ATTR, name: 'Mexican', aliases: [] }],
       users: [
@@ -529,7 +526,7 @@ describe('CuratedListBuilderService — recipe laws', () => {
       // Engagement: one via signals (the food entity), one via a favorite
       // save (the connection) — both must drop out of "untried".
       engagedSignalSubjects: [uuid(200)],
-      engagedFavoriteItems: [{ connectionId: uuid(101), restaurantId: null }],
+      engagedFavoriteItems: [{ connectionId: uuid(101), placeId: null }],
     });
     await harness.service.buildAll(NOW);
     const weekly = harness.store.filter(
@@ -540,11 +537,11 @@ describe('CuratedListBuilderService — recipe laws', () => {
     expect(weekly[0].ownerUserId).toBe(USER);
     expect(weekly[0].listType).toBe('dish');
     expect(weekly[0].rotationKey).toBe(weeklyRotationKey(NOW));
-    const foods = weekly[0].items.map((item) => item.entityId);
-    expect(foods).toHaveLength(5); // 7 candidates − 2 engaged
-    expect(foods).not.toContain(uuid(200)); // signal-engaged food
-    expect(foods).not.toContain(uuid(201)); // connection uuid(101)'s food
-    expect(foods).not.toContain(uuid(280)); // off-cuisine dish never enters
+    const items = weekly[0].items.map((item) => item.entityId);
+    expect(items).toHaveLength(5); // 7 candidates − 2 engaged
+    expect(items).not.toContain(uuid(200)); // signal-engaged food
+    expect(items).not.toContain(uuid(201)); // connection uuid(101)'s food
+    expect(items).not.toContain(uuid(280)); // off-cuisine dish never enters
 
     // Re-run inside the same ISO week: idempotent, no rebuild churn.
     const before = harness.store.length;
@@ -561,7 +558,7 @@ describe('CuratedListBuilderService — recipe laws', () => {
     // D40: "not a live city" is now the ABSENCE OF A KEY, resolved once at
     // write time — not a lower(name) join that could also miss for a rename.
     const { service, store } = createHarness({
-      restaurants: [restaurant(1, { restaurant_attributes: [MEX_ATTR] })],
+      places: [place(1, { restaurant_attributes: [MEX_ATTR] })],
       attributeEntities: [{ entityId: MEX_ATTR, name: 'Mexican', aliases: [] }],
       users: [
         {
@@ -587,7 +584,7 @@ describe('CuratedListBuilderService — recipe laws', () => {
    */
   it('an answer document whose option ids are NOT in the shared vocabulary builds nothing — and the drop is not silent', async () => {
     const { service, store } = createHarness({
-      restaurants: [restaurant(1, { restaurant_attributes: [MEX_ATTR] })],
+      places: [place(1, { restaurant_attributes: [MEX_ATTR] })],
       dishes: dishesAt(uuid(1)),
       attributeEntities: [{ entityId: MEX_ATTR, name: 'Mexican', aliases: [] }],
       users: [
@@ -619,7 +616,7 @@ describe('CuratedListBuilderService — recipe laws', () => {
    */
   it('the BEHAVIORAL half alone can build a list the onboarding answers never named', async () => {
     const { service, store } = createHarness({
-      restaurants: [restaurant(1, { restaurant_attributes: [MEX_ATTR] })],
+      places: [place(1, { restaurant_attributes: [MEX_ATTR] })],
       dishes: dishesAt(uuid(1)),
       attributeEntities: [{ entityId: MEX_ATTR, name: 'Mexican', aliases: [] }],
       behavioralAttributeIds: [MEX_ATTR],
@@ -651,10 +648,8 @@ describe('CuratedListBuilderService — determinism and named skips (F3806)', ()
    * buildTrendingList (or the equivalent tail from rankByScore) and the
    * reversed-fixture case goes RED — the emitted order follows the fixture.
    */
-  async function trendingOrderFor(
-    fixtures: RestaurantFixture[],
-  ): Promise<string[]> {
-    const { service, store } = createHarness({ restaurants: fixtures });
+  async function trendingOrderFor(fixtures: PlaceFixture[]): Promise<string[]> {
+    const { service, store } = createHarness({ places: fixtures });
     await service.buildAll(NOW);
     const trending = store.filter((row) => row.recipeKey === RECIPE_TRENDING);
     expect(trending).toHaveLength(1);
@@ -664,7 +659,7 @@ describe('CuratedListBuilderService — determinism and named skips (F3806)', ()
   it('fully-tied candidates emit the SAME order regardless of fixture order', async () => {
     // Identical `rising` on every row: tied on the only key the sort reads.
     const tied = Array.from({ length: MIN_VIABLE_LIST_ITEMS }, (_unused, i) =>
-      restaurant(i + 1, { rising: 5 }),
+      place(i + 1, { rising: 5 }),
     );
 
     const forward = await trendingOrderFor(tied);
@@ -679,8 +674,8 @@ describe('CuratedListBuilderService — determinism and named skips (F3806)', ()
     // The attribute entity is absent from `attributeEntities` (the map filters
     // status:'active'), which DELETES the whole cuisine shelf. Silent before.
     const { service, logger } = createHarness({
-      restaurants: Array.from({ length: MIN_VIABLE_LIST_ITEMS }, (_unused, i) =>
-        restaurant(i + 1, { restaurant_attributes: [MEX_ATTR] }),
+      places: Array.from({ length: MIN_VIABLE_LIST_ITEMS }, (_unused, i) =>
+        place(i + 1, { restaurant_attributes: [MEX_ATTR] }),
       ),
       cuisineAttributeIds: [MEX_ATTR],
       attributeEntities: [],
@@ -704,8 +699,8 @@ describe('CuratedListBuilderService — determinism and named skips (F3806)', ()
 
   it('reports ZERO skips on a healthy build (the counter can show green too)', async () => {
     const { service, logger } = createHarness({
-      restaurants: Array.from({ length: MIN_VIABLE_LIST_ITEMS }, (_unused, i) =>
-        restaurant(i + 1, { rising: 1 + i }),
+      places: Array.from({ length: MIN_VIABLE_LIST_ITEMS }, (_unused, i) =>
+        place(i + 1, { rising: 1 + i }),
       ),
     });
 

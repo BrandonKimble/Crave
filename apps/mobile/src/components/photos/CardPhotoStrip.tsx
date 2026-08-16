@@ -20,7 +20,7 @@ import { useCardPhotoStrip } from './use-card-photo-strip';
 // pass it here and taps start opening photos with zero other changes.
 
 export interface CardPhotoStripProps {
-  restaurantId: string;
+  placeId: string;
   /** Present = dish card (dish-linked photos only); absent = restaurant card. */
   connectionId?: string;
   height: number;
@@ -83,7 +83,7 @@ export const openPhotoReportModal = (photoId: string): void => {
 };
 
 export const CardPhotoStrip: React.FC<CardPhotoStripProps> = ({
-  restaurantId,
+  placeId,
   connectionId,
   height,
   tileAspect,
@@ -92,7 +92,7 @@ export const CardPhotoStrip: React.FC<CardPhotoStripProps> = ({
   onAddPress,
   onPhotoOpen,
 }) => {
-  const stripQuery = useCardPhotoStrip({ restaurantId, connectionId });
+  const stripQuery = useCardPhotoStrip({ placeId, connectionId });
   const items = React.useMemo(() => stripQuery.data?.photos ?? [], [stripQuery.data]);
 
   // Impressions: once per photo PER SCREEN MOUNT (this component's lifetime).

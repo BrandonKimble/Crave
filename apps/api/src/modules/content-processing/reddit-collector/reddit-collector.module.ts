@@ -33,8 +33,9 @@ import { CollectorPacerService } from './collector-pacer.service';
 import { CollectorSourceRegistryService } from './collector-source-registry.service';
 import { ExtractionScopeService } from './extraction-scope.service';
 import { ProjectionRebuildService } from './projection-rebuild.service';
+import { RehearsalGenerationService } from './rehearsal-generation.service';
 import { ReplayService } from './replay.service';
-import { RestaurantEnrichmentModule } from '../../restaurant-enrichment/restaurant-enrichment.module';
+import { PlaceEnrichmentModule } from '../../restaurant-enrichment/restaurant-enrichment.module';
 import { AnalyticsModule } from '../../analytics/analytics.module';
 import { SignalsModule } from '../../signals/signals.module';
 import { AttributeOntologyModule } from '../../attribute-ontology/attribute-ontology.module';
@@ -47,6 +48,7 @@ const redditCollectorCoreProviders = [
   ExtractionPipelineService,
   RelevanceGateService,
   ProjectionRebuildService,
+  RehearsalGenerationService,
   ReplayService,
   UnifiedProcessingService,
   // CORE, not worker (Railway cutover 2026-07-24): the markets-extermination
@@ -163,7 +165,7 @@ const redditCollectorWorkerProviders = isWorkerRuntime()
     BullModule.registerQueue({
       name: 'archive-collection',
     }),
-    forwardRef(() => RestaurantEnrichmentModule),
+    forwardRef(() => PlaceEnrichmentModule),
     AnalyticsModule,
     SignalsModule, // §11/C3: collector demand reads the signals substrate
   ],

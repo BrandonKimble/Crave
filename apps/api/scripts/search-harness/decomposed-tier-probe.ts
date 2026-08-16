@@ -24,9 +24,9 @@ import { bootstrap, out } from './_shared';
 import { SearchQueryInterpretationService } from '../../src/modules/search/search-query-interpretation.service';
 
 interface Bucketed {
-  food?: Array<{ normalizedName: string; decomposed?: boolean }>;
-  foodAttributes?: Array<{ normalizedName: string; decomposed?: boolean }>;
-  restaurantAttributes?: Array<{
+  item?: Array<{ normalizedName: string; decomposed?: boolean }>;
+  itemAttributes?: Array<{ normalizedName: string; decomposed?: boolean }>;
+  placeAttributes?: Array<{
     normalizedName: string;
     decomposed?: boolean;
   }>;
@@ -51,7 +51,7 @@ async function main(): Promise<void> {
       const e = r.structuredRequest.entities;
       out(`\n"${query}"`);
       for (const [bucket, items] of Object.entries(e)) {
-        for (const item of (items as Bucketed['food']) ?? []) {
+        for (const item of (items as Bucketed['item']) ?? []) {
           out(
             `  ${bucket}: ${item.normalizedName}${item.decomposed ? '  [decomposed]' : ''}`,
           );
@@ -61,24 +61,24 @@ async function main(): Promise<void> {
     };
 
     const t = await parse('tacos veganos');
-    const compoundPrimary = (t.food ?? []).some(
+    const compoundPrimary = (t.item ?? []).some(
       (f) => !f.decomposed && f.normalizedName.includes('vegano'),
     );
-    const partIsFood = (t.food ?? []).some((f) => f.decomposed);
+    const partIsItem = (t.item ?? []).some((f) => f.decomposed);
     const veganAsAttr = [
-      ...(t.foodAttributes ?? []),
-      ...(t.restaurantAttributes ?? []),
+      ...(t.itemAttributes ?? []),
+      ...(t.placeAttributes ?? []),
     ].some((a) => a.normalizedName.startsWith('vegan'));
-    const veganAsFood = (t.food ?? []).some(
+    const veganAsItem = (t.item ?? []).some(
       (f) => f.decomposed && f.normalizedName.startsWith('vegan'),
     );
-    if (!compoundPrimary || !partIsFood || veganAsFood) failures += 1;
+    if (!compoundPrimary || !partIsItem || veganAsItem) failures += 1;
     out(
-      `  ✓compound primary=${compoundPrimary} part-as-food=${partIsFood} vegan-as-attr=${veganAsAttr} vegan-as-food(RED)=${veganAsFood}`,
+      `  ✓compound primary=${compoundPrimary} part-as-food=${partIsItem} vegan-as-attr=${veganAsAttr} vegan-as-food(RED)=${veganAsItem}`,
     );
 
     const a = await parse('arroz con pollo');
-    const compound2 = (a.food ?? []).some((f) => !f.decomposed);
+    const compound2 = (a.item ?? []).some((f) => !f.decomposed);
     const ingredientParts = (a.ingredients ?? []).filter(
       (i) => i.decomposed,
     ).length;

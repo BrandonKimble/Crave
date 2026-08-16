@@ -81,9 +81,9 @@ describe('dispatchSaveForRow (heart route vs generic add-item)', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('the Favorites row dispatches the heart route, never the generic add-item', async () => {
-    await dispatchSaveForRow(FAVORITES_ROW_ID, { restaurantId: 'r-1', locationId: 'l-1' });
+    await dispatchSaveForRow(FAVORITES_ROW_ID, { placeId: 'r-1', locationId: 'l-1' });
     expect(userListsService.addFavoriteItem).toHaveBeenCalledWith({
-      restaurantId: 'r-1',
+      placeId: 'r-1',
       locationId: 'l-1',
     });
     expect(userListsService.addItem).not.toHaveBeenCalled();
@@ -105,11 +105,11 @@ describe('runHeartToggle (one-tap heart verb)', () => {
   it('heart on an unhearted restaurant POSTs the favorites heart route only', async () => {
     const result = await runHeartToggle({
       isFavorite: false,
-      target: { restaurantId: 'r-1', locationId: 'l-1' },
+      target: { placeId: 'r-1', locationId: 'l-1' },
     });
     expect(result).toBe('added');
     expect(userListsService.addFavoriteItem).toHaveBeenCalledWith({
-      restaurantId: 'r-1',
+      placeId: 'r-1',
       locationId: 'l-1',
     });
     expect(userListsService.addItem).not.toHaveBeenCalled();
@@ -119,10 +119,10 @@ describe('runHeartToggle (one-tap heart verb)', () => {
   it('unheart DELETEs via the favorites heart route with the bare selector', async () => {
     const result = await runHeartToggle({
       isFavorite: true,
-      target: { restaurantId: 'r-1', locationId: 'l-1' },
+      target: { placeId: 'r-1', locationId: 'l-1' },
     });
     expect(result).toBe('removed');
-    expect(userListsService.removeFavoriteItem).toHaveBeenCalledWith({ restaurantId: 'r-1' });
+    expect(userListsService.removeFavoriteItem).toHaveBeenCalledWith({ placeId: 'r-1' });
     expect(userListsService.addFavoriteItem).not.toHaveBeenCalled();
   });
 

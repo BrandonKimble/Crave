@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { buildRestaurantPlaceChooserPrompt } from '../external-integrations/llm/prompts/restaurant-place-chooser.prompt';
+import { buildPlaceChooserPrompt } from '../external-integrations/llm/prompts/restaurant-place-chooser.prompt';
 
 /**
  * THE PLACE CHOOSER'S RULE, AND ITS VERSION — derived from the rule TEXT,
@@ -7,7 +7,7 @@ import { buildRestaurantPlaceChooserPrompt } from '../external-integrations/llm/
  * entity-dedupe-rule.ts and concept-satisfies-rule.ts are the sibling
  * instances; this file is the place-grounding lane's, 2026-08-13).
  *
- * The grounding judge is `chooseRestaurantPlaceCandidate`, and its rule is
+ * The grounding judge is `choosePlaceCandidate`, and its rule is
  * `buildRestaurantPlaceChooserPrompt` — a template, like the satisfies rule.
  * What is fingerprinted is the template rendered with fixed placeholder
  * inputs and no candidates: everything that states the RULE (the error
@@ -31,7 +31,7 @@ import { buildRestaurantPlaceChooserPrompt } from '../external-integrations/llm/
  */
 
 /** The rule as fingerprinted: the template with placeholder data. */
-export const PLACE_GROUNDING_RULE_TEXT = buildRestaurantPlaceChooserPrompt({
+export const PLACE_GROUNDING_RULE_TEXT = buildPlaceChooserPrompt({
   query: '<QUERY>',
   sourceText: '<SOURCE_TEXT>',
   sourceLocale: { city: '<CITY>', region: '<REGION>' },

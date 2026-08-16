@@ -53,7 +53,7 @@ leaderboard, while a discussion poll is always a safe thread.
 
 The axis is what the leaderboard ranks. Fill it from the question:
 
-- **`target_type`** — `dish` (ranking dishes/menu items) or `restaurant` (ranking places).
+- **`target_type`** — `dish` (ranking dishes/menu items) or `place` (ranking places).
   - "best breakfast sandwich" → `dish`. "best Italian", "best patio", "what to order at Joe's" →
     the thing ranked is restaurants OR dishes-at-a-place: "best Italian"/"best patio" rank
     **restaurants**; "what to order at Joe's" ranks **dishes**.
@@ -61,10 +61,10 @@ The axis is what the leaderboard ranks. Fill it from the question:
   - `category` — a dish/food category: "breakfast sandwich", "ramen", "tacos".
   - `cuisine` — "italian", "thai", "korean".
   - `dish_attribute` — a property of the dish: "spicy", "vegan", "crispy".
-  - `restaurant_attribute` — a property of the place: "patio", "outdoor seating", "good for groups".
+  - `place_attribute` — a property of the place: "patio", "outdoor seating", "good for groups".
   - Use the most specific single constraint the question states; `null` if none.
   - "best spicy ramen" → category `ramen` is the stronger anchor; pick `category: ramen` (the
-    "spicy" nuance is secondary). "best patio" → `restaurant_attribute: patio`. "best Italian" →
+    "spicy" nuance is secondary). "best patio" → `place_attribute: patio`. "best Italian" →
     `cuisine: italian`.
 - **`anchor`** — a specific named restaurant the question is about ("what to order at **Joe's**" →
   `anchor: "Joe's"`); otherwise `null`.
@@ -85,4 +85,4 @@ usually call `discussion` anyway).
 JSON only, matching the enforced output schema (`mode`, `confidence`, `axis`;
 a short `reason` only if the schema requests it).
 The axis object is
-`{ "target_type": "dish"|"restaurant", "constraint": {"kind": "...","value": "..."}|null, "anchor": <string|null>, "market_hint": <string|null> }`.
+`{ "target_type": "dish"|"place", "constraint": {"kind": "...","value": "..."}|null, "anchor": <string|null>, "market_hint": <string|null> }`.

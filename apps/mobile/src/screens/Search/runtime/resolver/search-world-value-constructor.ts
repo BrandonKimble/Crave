@@ -97,33 +97,33 @@ export const constructSearchWorldValue = (args: {
       ? merged
       : { ...merged, metadata: { ...merged.metadata, page, searchRequestId } };
   const dishes = committedResponse.dishes ?? [];
-  const restaurants = committedResponse.restaurants ?? [];
-  const totalFoodResults =
-    typeof committedResponse.metadata?.totalFoodResults === 'number'
-      ? committedResponse.metadata.totalFoodResults
+  const places = committedResponse.places ?? [];
+  const totalItemResults =
+    typeof committedResponse.metadata?.totalItemResults === 'number'
+      ? committedResponse.metadata.totalItemResults
       : 'na';
-  const totalRestaurantResults =
-    typeof committedResponse.metadata?.totalRestaurantResults === 'number'
-      ? committedResponse.metadata.totalRestaurantResults
+  const totalPlaceResults =
+    typeof committedResponse.metadata?.totalPlaceResults === 'number'
+      ? committedResponse.metadata.totalPlaceResults
       : 'na';
   const resultsIdentityKey = buildResultsIdentityKey({
     searchRequestId,
     page,
     dishCount: dishes.length,
-    restaurantCount: restaurants.length,
-    totalFoodResults,
-    totalRestaurantResults,
+    restaurantCount: places.length,
+    totalItemResults,
+    totalPlaceResults,
   });
 
   const computeProjectionForTab = (
     tab: ResultsActiveTab
   ): SearchMountedResultsMarkerProjection | null => {
-    const axisIsEmpty = tab === 'dishes' ? dishes.length === 0 : restaurants.length === 0;
+    const axisIsEmpty = tab === 'dishes' ? dishes.length === 0 : places.length === 0;
     if (axisIsEmpty && tab !== activeTab) {
       // Response lacks this axis (entity/restaurant-only searches): no sibling precompute.
       return null;
     }
-    const restaurantKey = restaurants
+    const restaurantKey = places
       .map((restaurant) => {
         const locationList = Array.isArray(restaurant.locations) ? restaurant.locations : [];
         const displayLocation =
@@ -133,7 +133,7 @@ export const constructSearchWorldValue = (args: {
               typeof location.latitude === 'number' && typeof location.longitude === 'number'
           );
         return [
-          restaurant.restaurantId,
+          restaurant.placeId,
           restaurant.rank ?? 'na',
           restaurant.craveScore ?? 'na',
           buildLocationCacheKey(displayLocation),
@@ -143,13 +143,13 @@ export const constructSearchWorldValue = (args: {
     const dishKey = dishes
       .map((dish) =>
         [
-          dish.foodId,
-          dish.restaurantId,
+          dish.itemId,
+          dish.placeId,
           dish.craveScore ?? 'na',
-          dish.restaurantCraveScore ?? 'na',
+          dish.placeCraveScore ?? 'na',
           buildLocationCacheKey({
-            latitude: dish.restaurantLatitude,
-            longitude: dish.restaurantLongitude,
+            latitude: dish.placeLatitude,
+            longitude: dish.placeLongitude,
           }),
         ].join(':')
       )
@@ -158,7 +158,7 @@ export const constructSearchWorldValue = (args: {
       `tab:${tab}`,
       `bounds:${buildLocationCacheKey(bounds?.northEast)}:${buildLocationCacheKey(bounds?.southWest)}`,
       `user:${buildLocationCacheKey(userLocation)}`,
-      `restaurants:${restaurants.length}:${restaurantKey}`,
+      `places:${places.length}:${restaurantKey}`,
       `dishes:${dishes.length}:${dishKey}`,
     ].join('::');
     const cached = markerPipelineCache.get(cacheKey) ?? null;
@@ -166,7 +166,7 @@ export const constructSearchWorldValue = (args: {
       cached != null
         ? { ...cached, resultsKey: searchRequestId }
         : computeMarkerPipeline({
-            restaurants,
+            restaurants: places,
             dishes,
             activeTab: tab,
             selectedRestaurantId: null,
@@ -192,18 +192,18 @@ export const constructSearchWorldValue = (args: {
     restaurants: computeProjectionForTab('restaurants'),
   };
 
-  const totalFood = committedResponse.metadata.totalFoodResults ?? dishes.length;
-  const totalRestaurants = committedResponse.metadata.totalRestaurantResults ?? restaurants.length;
+  const totalFood = committedResponse.metadata.totalItemResults ?? dishes.length;
+  const totalRestaurants = committedResponse.metadata.totalPlaceResults ?? places.length;
   const hasMoreFood = dishes.length < totalFood;
   const hasMoreRestaurants =
-    committedResponse.format === 'dual_list' ? restaurants.length < totalRestaurants : false;
+    committedResponse.format === 'dual_list' ? places.length < totalRestaurants : false;
   // Append exhaustion (the response-owner rule): exhausted when the page grew nothing
   // or both axes report drained — sticky across appends.
   const prevFoodCount = appendTo?.baseResponse.dishes?.length ?? 0;
-  const prevRestaurantCount = appendTo?.baseResponse.restaurants?.length ?? 0;
+  const prevRestaurantCount = appendTo?.baseResponse.places?.length ?? 0;
   const appendExhausted =
     isAppend &&
-    (!(dishes.length > prevFoodCount || restaurants.length > prevRestaurantCount) ||
+    (!(dishes.length > prevFoodCount || places.length > prevRestaurantCount) ||
       (!hasMoreFood && !hasMoreRestaurants));
   const isPaginationExhausted = isAppend
     ? appendExhausted || (appendTo?.prevIsPaginationExhausted ?? false)
@@ -218,7 +218,7 @@ export const constructSearchWorldValue = (args: {
     rootBusResultsPatch: {
       resultsIdentityCandidateKey: resultsIdentityKey,
       resultsDishCount: dishes.length,
-      resultsRestaurantCount: restaurants.length,
+      resultsRestaurantCount: places.length,
       ...(preserveRouteIdentity ? { resultsRequestKey: searchRequestId, resultsPage: page } : {}),
     },
     paginationMeta: {
@@ -227,8 +227,8 @@ export const constructSearchWorldValue = (args: {
       hasMoreRestaurants,
       isPaginationExhausted,
       canLoadMore: !isPaginationExhausted && (hasMoreFood || hasMoreRestaurants),
-      totalRestaurantResults: totalRestaurants,
-      totalFoodResults: totalFood,
+      totalPlaceResults: totalRestaurants,
+      totalItemResults: totalFood,
     },
     coverageByTab: {},
   };

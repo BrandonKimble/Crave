@@ -12,8 +12,8 @@ export const useSearchResultsPanelCardMetadataRuntime = ({
     return typeof candidate === 'string' && candidate.trim().length > 0 ? candidate : null;
   }, [resolvedResults?.metadata?.searchRequestId]);
 
-  const primaryFoodTerm = React.useMemo(() => {
-    const term = resolvedResults?.metadata?.primaryFoodTerm;
+  const primaryItemTerm = React.useMemo(() => {
+    const term = resolvedResults?.metadata?.primaryItemTerm;
     if (typeof term === 'string') {
       const normalized = term.trim();
       if (normalized.length) {
@@ -21,13 +21,13 @@ export const useSearchResultsPanelCardMetadataRuntime = ({
       }
     }
     return null;
-  }, [resolvedResults?.metadata?.primaryFoodTerm]);
+  }, [resolvedResults?.metadata?.primaryItemTerm]);
 
   return React.useMemo(
     () => ({
-      primaryFoodTerm,
+      primaryItemTerm,
       searchRequestId,
     }),
-    [primaryFoodTerm, searchRequestId]
+    [primaryItemTerm, searchRequestId]
   );
 };

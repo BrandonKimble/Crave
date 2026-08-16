@@ -55,7 +55,7 @@ async function main() {
     placeIds,
     windowDays: 30,
     limit: 50,
-    entityTypes: ['restaurant', 'food'],
+    entityTypes: ['place', 'item'],
   });
 
   console.log(

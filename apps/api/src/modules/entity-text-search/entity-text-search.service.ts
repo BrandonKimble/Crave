@@ -240,7 +240,7 @@ export class EntityTextSearchService {
     const typeArray = Prisma.sql`ARRAY[${Prisma.join(
       entityTypes.map((t) => Prisma.sql`${t}::entity_type`),
     )}]`;
-    const territoryFilter = await this.buildRestaurantEngineTerritoryFilter(
+    const territoryFilter = await this.buildPlaceEngineTerritoryFilter(
       'e',
       options.engineId ?? null,
     );
@@ -887,8 +887,8 @@ export class EntityTextSearchService {
 
   private isAttributeType(entityType: EntityType): boolean {
     return (
-      entityType === EntityType.food_attribute ||
-      entityType === EntityType.restaurant_attribute
+      entityType === EntityType.item_attribute ||
+      entityType === EntityType.place_attribute
     );
   }
 
@@ -1011,7 +1011,7 @@ export class EntityTextSearchService {
     const entityTypeArray = Prisma.sql`ARRAY[${Prisma.join(
       options.entityTypes.map((type) => Prisma.sql`${type}::entity_type`),
     )}]`;
-    const territoryFilter = await this.buildRestaurantEngineTerritoryFilter(
+    const territoryFilter = await this.buildPlaceEngineTerritoryFilter(
       'e',
       options.engineId,
     );
@@ -1144,7 +1144,7 @@ export class EntityTextSearchService {
     const typeArray = Prisma.sql`ARRAY[${Prisma.join(
       options.entityTypes.map((t) => Prisma.sql`${t}::entity_type`),
     )}]`;
-    const territoryFilter = await this.buildRestaurantEngineTerritoryFilter(
+    const territoryFilter = await this.buildPlaceEngineTerritoryFilter(
       'e',
       options.engineId,
     );
@@ -1229,7 +1229,7 @@ export class EntityTextSearchService {
     const entityTypeArray = Prisma.sql`ARRAY[${Prisma.join(
       options.entityTypes.map((type) => Prisma.sql`${type}::entity_type`),
     )}]`;
-    const territoryFilter = await this.buildRestaurantEngineTerritoryFilter(
+    const territoryFilter = await this.buildPlaceEngineTerritoryFilter(
       'e',
       options.engineId,
     );
@@ -1584,7 +1584,7 @@ export class EntityTextSearchService {
     const typeArray = Prisma.sql`ARRAY[${Prisma.join(
       entityTypes.map((t) => Prisma.sql`${t}::entity_type`),
     )}]`;
-    const territoryFilter = await this.buildRestaurantEngineTerritoryFilter(
+    const territoryFilter = await this.buildPlaceEngineTerritoryFilter(
       'e',
       options.engineId ?? null,
     );
@@ -2120,7 +2120,7 @@ export class EntityTextSearchService {
    * place_geometries ground per §2.6). No engine / empty territory ⇒ no
    * filter (identity is global; the scope is only a retrieval prior).
    */
-  private async buildRestaurantEngineTerritoryFilter(
+  private async buildPlaceEngineTerritoryFilter(
     entitySurface: string,
     engineId: string | null,
   ): Promise<Prisma.Sql> {
@@ -2133,7 +2133,7 @@ export class EntityTextSearchService {
     const entityReference = Prisma.raw(entitySurface);
     return Prisma.sql`
       AND (
-        ${entityReference}.type != 'restaurant'
+        ${entityReference}.type != 'place'
         OR EXISTS (
           SELECT 1
           FROM core_restaurant_locations rl

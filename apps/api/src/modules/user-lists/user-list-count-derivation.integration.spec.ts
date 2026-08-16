@@ -60,7 +60,7 @@ const service = new UserListsService(
   {
     record: () => undefined,
     bboxFromPoint: () => null,
-    bboxFromRestaurantLocation: () => Promise.resolve(null),
+    bboxFromPlaceLocation: () => Promise.resolve(null),
   } as never,
   new UserBlockService(prisma as never) as never,
   new SaveableEntityResolver(prisma as never),
@@ -109,7 +109,7 @@ beforeAll(async () => {
     const entity = await prisma.entity.create({
       data: {
         name: `${TEST_TAG}-${label}`,
-        type: 'restaurant',
+        type: 'place',
         status: 'active',
       },
     });
@@ -128,7 +128,7 @@ afterAll(async () => {
 describe('the served list item count is a derivation of the rows (F600)', () => {
   it('tracks a service DELETE and a raw MERGE-FOLD delete alike', async () => {
     for (const entityId of entityIds) {
-      await service.addItem(userId, listId, { restaurantId: entityId });
+      await service.addItem(userId, listId, { placeId: entityId });
     }
     expect(await servedCount()).toBe(3);
     expect(await servedCount()).toBe(await actualRows());

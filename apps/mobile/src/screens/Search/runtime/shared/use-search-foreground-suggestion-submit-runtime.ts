@@ -128,18 +128,18 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
       // panel closed, so it holds the suggestion list open across that animation.
       tearDownSuggestionSurfaceForCommit(true);
       setQuery(nextQuery);
-      // "See locations" chip (multi-location restaurants): a committed
+      // "See locations" chip (multi-location places): a committed
       // see-locations search — the server's lean variant returns the
       // restaurant's IN-VIEW locations as pins, the single-restaurant collapse
       // opens the profile panel (its all-locations rows), and the pending-
       // selection ref primes the warm auto-open — the same committed-entity
       // lane the recently-viewed tap uses, with the mode discriminator.
-      if (options?.seeLocations && match.entityType === 'restaurant' && match.entityId) {
-        pendingRestaurantSelectionRef.current = { restaurantId: match.entityId };
+      if (options?.seeLocations && match.entityType === 'place' && match.entityId) {
+        pendingRestaurantSelectionRef.current = { placeId: match.entityId };
         openRestaurantProfilePreview(match.entityId, match.name);
         void runRestaurantEntitySearch({
-          restaurantId: match.entityId,
-          restaurantName: nextQuery,
+          placeId: match.entityId,
+          placeName: nextQuery,
           submissionSource: 'autocomplete',
           typedPrefix,
           seeLocations: true,
@@ -150,7 +150,7 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
       // skip the results search entirely. Profile content comes from hydration; the map pin comes
       // from the seeded marker source published on hydration. No results sheet ever mounts — the
       // "never a results-list-first" guarantee is structural, not a race.
-      if (match.entityType === 'restaurant' && match.entityId) {
+      if (match.entityType === 'place' && match.entityId) {
         pendingRestaurantSelectionRef.current = null;
         openRestaurantProfilePreview(match.entityId, match.name);
         return;
@@ -163,9 +163,9 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
       const isTypedEntitySelection =
         matchType === 'entity' &&
         Boolean(match.entityId) &&
-        (match.entityType === 'food' ||
-          match.entityType === 'food_attribute' ||
-          match.entityType === 'restaurant_attribute' ||
+        (match.entityType === 'item' ||
+          match.entityType === 'item_attribute' ||
+          match.entityType === 'place_attribute' ||
           match.entityType === 'ingredient');
       void submitSearch(
         {
@@ -174,9 +174,9 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
                 selectedEntity: {
                   entityId: match.entityId,
                   entityType: match.entityType as
-                    | 'food'
-                    | 'food_attribute'
-                    | 'restaurant_attribute'
+                    | 'item'
+                    | 'item_attribute'
+                    | 'place_attribute'
                     | 'ingredient',
                 },
               }

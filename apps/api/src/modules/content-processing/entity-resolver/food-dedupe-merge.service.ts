@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { EntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { foodNameVariants, isSameFoodUpToNumber } from './food-lemma';
+import { itemNameVariants, isSameItemUpToNumber } from './food-lemma';
 import {
   accentsAgreeUnbanked,
   canonicalFold,
@@ -49,7 +49,7 @@ export interface DedupeMergeSummary {
  * never a recomputation: the corpus may have moved since the ruling, and the
  * effect must obey the decision that was actually made.
  */
-export interface FoodMergePlan {
+export interface ItemMergePlan {
   winnerId: string;
   winnerName: string;
   loserId: string;
@@ -64,7 +64,7 @@ export interface DedupeVerdictSubject {
   bName: string;
   via: 'token-multiset+judge' | 'similarity+judge';
   /** Present on 'merge' verdicts only; a 'hold' orders nothing. */
-  plan: FoodMergePlan | null;
+  plan: ItemMergePlan | null;
 }
 
 const STOPWORDS = new Set(['and', 'with', 'the', 'a', 'of', 'de', 'y']);
@@ -83,7 +83,7 @@ const STOPWORDS = new Set(['and', 'with', 'the', 'a', 'of', 'de', 'y']);
  * ties break to the shorter name (more canonical).
  */
 @Injectable()
-export class FoodDedupeMergeService {
+export class ItemDedupeMergeService {
   private readonly logger: LoggerService;
 
   constructor(
@@ -172,7 +172,7 @@ export class FoodDedupeMergeService {
   ): Promise<void> {
     const cutoff = new Date(
       Date.now() -
-        FoodDedupeMergeService.IDENTITY_HEAL_LOOKBACK_DAYS * 24 * 3600 * 1000,
+        ItemDedupeMergeService.IDENTITY_HEAL_LOOKBACK_DAYS * 24 * 3600 * 1000,
     );
     const rows = options.full
       ? await this.prisma.$queryRaw<
@@ -273,12 +273,12 @@ export class FoodDedupeMergeService {
     // candidate that might be discarded — which `discard` cannot undo.
     // "Has a connection" IS "has active support": the projection rebuild
     // only writes connections from the document's ACTIVE run.
-    const activeFoods = await this.prisma.$queryRaw<
+    const activeItems = await this.prisma.$queryRaw<
       Array<{ entityId: string; name: string }>
     >(Prisma.sql`
       SELECT e.entity_id AS "entityId", e.name
       FROM core_entities e
-      WHERE e.type = 'food' AND e.status = 'active'
+      WHERE e.type = 'item' AND e.status = 'active'
         AND ${Prisma.raw(activeSupportExistsSql('e.entity_id'))}`);
     const seenNumberPair = new Set<string>();
     const numberVariantPairs: {
@@ -288,19 +288,19 @@ export class FoodDedupeMergeService {
       b_name: string;
     }[] = [];
     const byLowerName = new Map(
-      activeFoods.map((f) => [f.name.toLowerCase().trim(), f]),
+      activeItems.map((f) => [f.name.toLowerCase().trim(), f]),
     );
-    for (const food of activeFoods) {
-      for (const variant of foodNameVariants(food.name)) {
+    for (const item of activeItems) {
+      for (const variant of itemNameVariants(item.name)) {
         const other = byLowerName.get(variant);
-        if (!other || other.entityId === food.entityId) continue;
-        if (!isSameFoodUpToNumber(food.name, other.name)) continue;
-        const key = [food.entityId, other.entityId].sort().join(':');
+        if (!other || other.entityId === item.entityId) continue;
+        if (!isSameItemUpToNumber(item.name, other.name)) continue;
+        const key = [item.entityId, other.entityId].sort().join(':');
         if (seenNumberPair.has(key)) continue;
         seenNumberPair.add(key);
         numberVariantPairs.push({
-          a_id: food.entityId,
-          a_name: food.name,
+          a_id: item.entityId,
+          a_name: item.name,
           b_id: other.entityId,
           b_name: other.name,
         });
@@ -327,7 +327,7 @@ export class FoodDedupeMergeService {
           via: 'number',
         });
       } else {
-        await this.mergeFoodPair(pair.a_id, pair.b_id);
+        await this.mergeItemPair(pair.a_id, pair.b_id);
         consumedByNumberLane.add(pair.a_id);
         consumedByNumberLane.add(pair.b_id);
       }
@@ -352,7 +352,7 @@ export class FoodDedupeMergeService {
       SELECT a.entity_id a_id, a.name a_name, b.entity_id b_id, b.name b_name
       FROM core_entities a
       JOIN core_entities b ON a.entity_id < b.entity_id
-      WHERE a.type = 'food' AND b.type = 'food'
+      WHERE a.type = 'item' AND b.type = 'item'
         AND a.status = 'active' AND b.status = 'active'
         AND (
           EXISTS (SELECT 1 FROM core_restaurant_items ca
@@ -399,7 +399,7 @@ export class FoodDedupeMergeService {
       SELECT a.entity_id a_id, a.name a_name, b.entity_id b_id, b.name b_name
       FROM core_entities a
       JOIN core_entities b ON a.entity_id < b.entity_id
-      WHERE a.type = 'food' AND b.type = 'food'
+      WHERE a.type = 'item' AND b.type = 'item'
         AND a.status = 'active' AND b.status = 'active'
         -- active-support only (D5): never merge shadow-minted vocabulary.
         -- The predicate is the scope service's ONE definition, imported.
@@ -454,7 +454,7 @@ export class FoodDedupeMergeService {
           via: 'auto',
         });
       } else {
-        await this.mergeFoodPair(pair.a_id, pair.b_id);
+        await this.mergeItemPair(pair.a_id, pair.b_id);
         // Same stale-snapshot guard as the number lane (R4): an id this
         // merge consumed must not reach the judge lane below.
         consumedByNumberLane.add(pair.a_id);
@@ -491,24 +491,24 @@ export class FoodDedupeMergeService {
    *  name+surfaces on the winner, archive the loser. The deterministic lanes'
    *  entry point; the judge lane goes through settleDedupeVerdict so the plan
    *  is stored BEFORE the effect runs. */
-  private async mergeFoodPair(idA: string, idB: string): Promise<void> {
+  private async mergeItemPair(idA: string, idB: string): Promise<void> {
     if (idA === idB) {
       return; // self-merge annihilates the ledger (round-11 D1)
     }
-    await this.executeFoodMergePlan(await this.planFoodMerge(idA, idB));
+    await this.executeItemMergePlan(await this.planItemMerge(idA, idB));
   }
 
   /** Winner selection — more connections wins (more evidence behind its
    *  name); ties break to the shorter name (more canonical). Pure planning,
    *  no mutation: the judge lane persists this as the verdict's subject
    *  before any effect runs. */
-  private async planFoodMerge(
+  private async planItemMerge(
     idA: string,
     idB: string,
-  ): Promise<FoodMergePlan> {
+  ): Promise<ItemMergePlan> {
     const [connectionsA, connectionsB] = await Promise.all([
-      this.prisma.connection.count({ where: { foodId: idA } }),
-      this.prisma.connection.count({ where: { foodId: idB } }),
+      this.prisma.connection.count({ where: { itemId: idA } }),
+      this.prisma.connection.count({ where: { itemId: idB } }),
     ]);
     const [entityA, entityB] = await Promise.all([
       this.prisma.entity.findUniqueOrThrow({
@@ -543,7 +543,7 @@ export class FoodDedupeMergeService {
    * been executed (a crash between the merge commit and markExecuted replays
    * here), so it completes as a no-op rather than double-folding evidence.
    */
-  protected async executeFoodMergePlan(plan: FoodMergePlan): Promise<void> {
+  protected async executeItemMergePlan(plan: ItemMergePlan): Promise<void> {
     const loserRows = await this.prisma.$queryRaw<Array<{ status: string }>>`
       SELECT status::text FROM core_entities
        WHERE entity_id = ${plan.loserId}::uuid`;
@@ -560,19 +560,19 @@ export class FoodDedupeMergeService {
     await this.prisma.$transaction(
       async (tx) => {
         await acquireIdentityMergeLocks(tx, 'food', [
-          entityLockKey(winner.name, EntityType.food),
-          entityLockKey(loser.name, EntityType.food),
+          entityLockKey(winner.name, EntityType.item),
+          entityLockKey(loser.name, EntityType.item),
         ]);
         // Fold colliding connections (same restaurant has both variants).
         const loserConnections = await tx.connection.findMany({
-          where: { foodId: loser.entityId },
+          where: { itemId: loser.entityId },
         });
         for (const connection of loserConnections) {
           const surviving = await tx.connection.findUnique({
             where: {
-              restaurantId_foodId: {
-                restaurantId: connection.restaurantId,
-                foodId: winner.entityId,
+              placeId_itemId: {
+                placeId: connection.placeId,
+                itemId: winner.entityId,
               },
             },
             select: { connectionId: true, lastMentionedAt: true },
@@ -580,7 +580,7 @@ export class FoodDedupeMergeService {
           if (!surviving) {
             await tx.connection.update({
               where: { connectionId: connection.connectionId },
-              data: { foodId: winner.entityId },
+              data: { itemId: winner.entityId },
             });
             continue;
           }
@@ -592,7 +592,7 @@ export class FoodDedupeMergeService {
           // the mention grain exactly the double count this merge exists to
           // kill. A loser mention whose (document, kind) already exists on
           // the survivor is dropped, mirroring mergeFoodEntityEvents.
-          const survivorMentions = await tx.restaurantItemMention.findMany({
+          const survivorMentions = await tx.placeItemMention.findMany({
             where: { connectionId: surviving.connectionId },
             select: { sourceDocumentId: true, kind: true },
           });
@@ -601,7 +601,7 @@ export class FoodDedupeMergeService {
               (mention) => `${mention.sourceDocumentId ?? ''}:${mention.kind}`,
             ),
           );
-          const loserMentions = await tx.restaurantItemMention.findMany({
+          const loserMentions = await tx.placeItemMention.findMany({
             where: { connectionId: connection.connectionId },
             select: {
               id: true,
@@ -623,7 +623,7 @@ export class FoodDedupeMergeService {
           for (const mention of loserMentions) {
             const key = `${mention.sourceDocumentId ?? ''}:${mention.kind}`;
             if (mention.sourceDocumentId && survivorKeys.has(key)) {
-              await tx.restaurantItemMention.delete({
+              await tx.placeItemMention.delete({
                 where: { id: mention.id },
               });
               if (mention.kind === 'direct') {
@@ -634,7 +634,7 @@ export class FoodDedupeMergeService {
                 deletedSupportUpvotes += mention.sourceUpvotes;
               }
             } else {
-              await tx.restaurantItemMention.update({
+              await tx.placeItemMention.update({
                 where: { id: mention.id },
                 data: { connectionId: surviving.connectionId },
               });
@@ -804,7 +804,7 @@ export class FoodDedupeMergeService {
     if (!due.length) return;
 
     const verdicts = await this.llmService.matchEntitiesBatch({
-      kind: 'food',
+      kind: 'item',
       items: due.map((pair) => ({
         term: pair.a_name,
         candidates: [{ id: 1, name: pair.b_name }],
@@ -832,7 +832,7 @@ export class FoodDedupeMergeService {
         b: pair.b_name,
         via,
       });
-      const plan = await this.planFoodMerge(pair.a_id, pair.b_id);
+      const plan = await this.planItemMerge(pair.a_id, pair.b_id);
       await this.settleDedupeVerdict(pair, via, 'merge', reason, plan);
       consumed.add(pair.a_id);
       consumed.add(pair.b_id);
@@ -846,7 +846,7 @@ export class FoodDedupeMergeService {
     via: DedupeVerdictSubject['via'],
     outcome: 'merge' | 'hold',
     reason: string,
-    plan: FoodMergePlan | null,
+    plan: ItemMergePlan | null,
   ): Promise<void> {
     const claimKey = entityDedupeLane.canonicalClaimKey({
       entityId: pair.a_id,
@@ -889,7 +889,7 @@ export class FoodDedupeMergeService {
     subject: DedupeVerdictSubject,
   ): Promise<void> {
     if (subject.plan) {
-      await this.executeFoodMergePlan(subject.plan);
+      await this.executeItemMergePlan(subject.plan);
     }
   }
 

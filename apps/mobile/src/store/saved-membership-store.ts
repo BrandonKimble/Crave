@@ -88,15 +88,15 @@ const FLUSH_DELAY_MS = 50;
 
 const flush = (): void => {
   flushTimer = null;
-  const restaurantIds = [...pending.restaurant];
+  const placeIds = [...pending.restaurant];
   const connectionIds = [...pending.connection];
   pending.restaurant.clear();
   pending.connection.clear();
-  if (!restaurantIds.length && !connectionIds.length) {
+  if (!placeIds.length && !connectionIds.length) {
     return;
   }
   void userListsService
-    .batchMemberships({ restaurantIds, connectionIds })
+    .batchMemberships({ placeIds, connectionIds })
     .then((result) => useSavedMembershipStore.getState().absorb(result))
     .catch((error) => {
       // F838 (2026-08-03): PARTIALLY ADDRESSED — the failure now reaches the crash seam.
@@ -113,7 +113,7 @@ const flush = (): void => {
       // The un-request below is genuinely right and stays: dropping these ids from
       // `requested` means the next surface that needs them asks again.
       captureHandledError(error, { seam: 'saved-membership:batch' });
-      for (const id of restaurantIds) {
+      for (const id of placeIds) {
         requested.restaurant.delete(id);
       }
       for (const id of connectionIds) {

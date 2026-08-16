@@ -1,14 +1,12 @@
 import type { QueryPlan, RestaurantResult, SearchResponse } from '../../../types';
 
-const extractTargetRestaurantId = (
-  restaurantFilters?: QueryPlan['restaurantFilters']
-): string | null => {
-  if (!restaurantFilters?.length) {
+const extractTargetRestaurantId = (placeFilters?: QueryPlan['placeFilters']): string | null => {
+  if (!placeFilters?.length) {
     return null;
   }
   const ids = new Set<string>();
-  for (const filter of restaurantFilters) {
-    if (filter.entityType !== 'restaurant') {
+  for (const filter of placeFilters) {
+    if (filter.entityType !== 'place') {
       continue;
     }
     for (const id of filter.entityIds || []) {
@@ -23,18 +21,18 @@ const extractTargetRestaurantId = (
 export const resolveSingleRestaurantCandidate = (
   response: SearchResponse | null
 ): RestaurantResult | null => {
-  if (!response?.restaurants?.length) {
+  if (!response?.places?.length) {
     return null;
   }
-  const targetedId = extractTargetRestaurantId(response.plan?.restaurantFilters);
+  const targetedId = extractTargetRestaurantId(response.plan?.placeFilters);
   if (targetedId) {
-    const match = response.restaurants.find((restaurant) => restaurant.restaurantId === targetedId);
+    const match = response.places.find((restaurant) => restaurant.placeId === targetedId);
     if (match) {
       return match;
     }
   }
-  if (response.format === 'single_list' && response.restaurants.length === 1) {
-    return response.restaurants[0];
+  if (response.format === 'single_list' && response.places.length === 1) {
+    return response.places[0];
   }
   return null;
 };

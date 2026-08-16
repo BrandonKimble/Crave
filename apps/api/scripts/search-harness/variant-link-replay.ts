@@ -54,7 +54,7 @@ const MAX_ALIAS_PAIRS = Number(process.env.MAX_ALIAS ?? 0); // 0 = all
 // excluded by default (matches the audit's ~32-pair restaurant count). Set
 // CONTAINMENT_TYPES=restaurant,food to widen.
 const CONTAINMENT_TYPES = new Set<string>(
-  (process.env.CONTAINMENT_TYPES ?? 'restaurant')
+  (process.env.CONTAINMENT_TYPES ?? 'place')
     .split(',')
     .map((t) => t.trim())
     .filter(Boolean),

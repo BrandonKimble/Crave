@@ -31,7 +31,7 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
-import { FoodDedupeMergeService } from './food-dedupe-merge.service';
+import { ItemDedupeMergeService } from './food-dedupe-merge.service';
 import { EntityAnchorRehomeService } from './entity-anchor-rehome.service';
 import { canonicalFold } from './entity-identity';
 import { LLMService } from '../../external-integrations/llm/llm.service';
@@ -63,7 +63,7 @@ function unusedLlm(): LLMService {
   } as unknown as LLMService;
 }
 
-async function seedEntity(label: string, type: 'food' | 'restaurant') {
+async function seedEntity(label: string, type: 'item' | 'place') {
   const name = `${TEST_TAG}-${label}`;
   // foldSurfacesFromMerge only banks the loser's name if identity_key is
   // populated (it reads the STORED fold, not a computed one — see the
@@ -78,8 +78,8 @@ async function seedEntity(label: string, type: 'food' | 'restaurant') {
 }
 
 async function seedConnection(params: {
-  restaurantId: string;
-  foodId: string;
+  placeId: string;
+  itemId: string;
   mentionCount: number;
   totalUpvotes: number;
   supportMentionCount: number;
@@ -88,8 +88,8 @@ async function seedConnection(params: {
 }) {
   return prisma.connection.create({
     data: {
-      restaurantId: params.restaurantId,
-      foodId: params.foodId,
+      placeId: params.placeId,
+      itemId: params.itemId,
       mentionCount: params.mentionCount,
       totalUpvotes: params.totalUpvotes,
       supportMentionCount: params.supportMentionCount,
@@ -113,7 +113,7 @@ afterAll(async () => {
   });
   await prisma.connection.deleteMany({
     where: {
-      OR: [{ foodId: { in: entityIds } }, { restaurantId: { in: entityIds } }],
+      OR: [{ itemId: { in: entityIds } }, { placeId: { in: entityIds } }],
     },
   });
   await prisma.entity.deleteMany({ where: { entityId: { in: entityIds } } });
@@ -122,22 +122,19 @@ afterAll(async () => {
 
 describe('FoodDedupeMergeService.mergeFoodPair — connection fold, mention-collision dedupe, counter rebase (F1870)', () => {
   it('folds colliding connections, drops duplicate mentions, rebases counters, and archives the loser', async () => {
-    const restaurantShared = await seedEntity('r-shared', 'restaurant');
-    const restaurantWinnerOnly = await seedEntity(
-      'r-winner-only',
-      'restaurant',
-    );
+    const placeShared = await seedEntity('r-shared', 'place');
+    const placeWinnerOnly = await seedEntity('r-winner-only', 'place');
 
     // Winner has TWO connections (more evidence) — the evidence rule
     // (`connectionsA > connectionsB`) must pick it regardless of name
     // length, so this also proves winner-selection is by connection COUNT,
     // not name-length (the tie-break only fires on an equal count).
-    const winnerFood = await seedEntity('winner-food-longer-name', 'food');
-    const loserFood = await seedEntity('loser', 'food');
+    const winnerItem = await seedEntity('winner-food-longer-name', 'item');
+    const loserItem = await seedEntity('loser', 'item');
 
     const winnerSharedConn = await seedConnection({
-      restaurantId: restaurantShared,
-      foodId: winnerFood,
+      placeId: placeShared,
+      itemId: winnerItem,
       mentionCount: 10,
       totalUpvotes: 50,
       supportMentionCount: 2,
@@ -145,8 +142,8 @@ describe('FoodDedupeMergeService.mergeFoodPair — connection fold, mention-coll
       lastMentionedAt: new Date('2024-01-01T00:00:00Z'),
     });
     const winnerOnlyConn = await seedConnection({
-      restaurantId: restaurantWinnerOnly,
-      foodId: winnerFood,
+      placeId: placeWinnerOnly,
+      itemId: winnerItem,
       mentionCount: 1,
       totalUpvotes: 1,
       supportMentionCount: 0,
@@ -154,8 +151,8 @@ describe('FoodDedupeMergeService.mergeFoodPair — connection fold, mention-coll
       lastMentionedAt: new Date('2023-01-01T00:00:00Z'),
     });
     const loserSharedConn = await seedConnection({
-      restaurantId: restaurantShared,
-      foodId: loserFood,
+      placeId: placeShared,
+      itemId: loserItem,
       mentionCount: 5,
       totalUpvotes: 20,
       supportMentionCount: 1,
@@ -171,7 +168,7 @@ describe('FoodDedupeMergeService.mergeFoodPair — connection fold, mention-coll
     const uniqueSupportDoc = '22222222-2222-2222-2222-222222222222';
     const uniqueDirectDoc = '33333333-3333-3333-3333-333333333333';
 
-    await prisma.restaurantItemMention.create({
+    await prisma.placeItemMention.create({
       data: {
         connectionId: winnerSharedConn.connectionId,
         kind: 'direct',
@@ -184,7 +181,7 @@ describe('FoodDedupeMergeService.mergeFoodPair — connection fold, mention-coll
     // mention above. Must be DELETED, not moved, and its count/upvotes must
     // be subtracted out of the loser's counters before they roll onto the
     // survivor (otherwise the dish's mention_count/total_upvotes double it).
-    await prisma.restaurantItemMention.create({
+    await prisma.placeItemMention.create({
       data: {
         connectionId: loserSharedConn.connectionId,
         kind: 'direct',
@@ -195,7 +192,7 @@ describe('FoodDedupeMergeService.mergeFoodPair — connection fold, mention-coll
     });
     // Non-colliding loser mentions — must be RE-POINTED onto the survivor
     // connection, not dropped.
-    await prisma.restaurantItemMention.create({
+    await prisma.placeItemMention.create({
       data: {
         connectionId: loserSharedConn.connectionId,
         kind: 'support',
@@ -204,7 +201,7 @@ describe('FoodDedupeMergeService.mergeFoodPair — connection fold, mention-coll
         sourceDocumentId: uniqueSupportDoc,
       },
     });
-    await prisma.restaurantItemMention.create({
+    await prisma.placeItemMention.create({
       data: {
         connectionId: loserSharedConn.connectionId,
         kind: 'direct',
@@ -214,7 +211,7 @@ describe('FoodDedupeMergeService.mergeFoodPair — connection fold, mention-coll
       },
     });
 
-    const service = new FoodDedupeMergeService(
+    const service = new ItemDedupeMergeService(
       prisma as any,
       unusedLlm(),
       new EntityAnchorRehomeService(noopLogger()),
@@ -222,21 +219,21 @@ describe('FoodDedupeMergeService.mergeFoodPair — connection fold, mention-coll
       noopLogger(),
     );
 
-    await (service as any).mergeFoodPair(winnerFood, loserFood);
+    await (service as any).mergeItemPair(winnerItem, loserItem);
 
     // --- Winner survives, loser archived ---
     const [winnerEntity, loserEntity] = await Promise.all([
-      prisma.entity.findUniqueOrThrow({ where: { entityId: winnerFood } }),
-      prisma.entity.findUniqueOrThrow({ where: { entityId: loserFood } }),
+      prisma.entity.findUniqueOrThrow({ where: { entityId: winnerItem } }),
+      prisma.entity.findUniqueOrThrow({ where: { entityId: loserItem } }),
     ]);
     expect(winnerEntity.status).toBe('active');
     expect(loserEntity.status).toBe('archived');
 
     // --- Redirect: loser -> winner ---
     const redirect = await prisma.entityRedirect.findUnique({
-      where: { fromEntityId: loserFood },
+      where: { fromEntityId: loserItem },
     });
-    expect(redirect?.toEntityId).toBe(winnerFood);
+    expect(redirect?.toEntityId).toBe(winnerItem);
 
     // --- Loser's connection at the shared restaurant is gone (folded, not
     //     merely orphaned) ---
@@ -263,11 +260,11 @@ describe('FoodDedupeMergeService.mergeFoodPair — connection fold, mention-coll
       where: { connectionId: winnerOnlyConn.connectionId },
     });
     expect(winnerOnlyAfter.mentionCount).toBe(1);
-    expect(winnerOnlyAfter.foodId).toBe(winnerFood);
+    expect(winnerOnlyAfter.itemId).toBe(winnerItem);
 
     // --- Mentions: the colliding one is GONE, the two unique ones moved
     //     onto the survivor connection, with no duplicate (document, kind) ---
-    const mentionsAfter = await prisma.restaurantItemMention.findMany({
+    const mentionsAfter = await prisma.placeItemMention.findMany({
       where: { connectionId: winnerSharedConn.connectionId },
       select: { sourceDocumentId: true, kind: true },
     });
@@ -284,7 +281,7 @@ describe('FoodDedupeMergeService.mergeFoodPair — connection fold, mention-coll
     );
     // The colliding loser mention row itself must be truly deleted, not
     // merely re-pointed and shadowed.
-    const staleMention = await prisma.restaurantItemMention.findFirst({
+    const staleMention = await prisma.placeItemMention.findFirst({
       where: { sourceDocumentId: collideDoc, sourceUpvotes: 3 },
     });
     expect(staleMention).toBeNull();

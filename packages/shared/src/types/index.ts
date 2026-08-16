@@ -11,7 +11,7 @@
  * Restaurant Metadata structure
  * PRD 4.1.1: Complex/infrequent Google Places data in JSONB format
  */
-export interface RestaurantMetadata {
+export interface PlaceMetadata {
   phone?: string;
   hours?: Record<string, string>;
   last_places_update?: string;
@@ -28,10 +28,10 @@ export interface RestaurantMetadata {
  * PRD 4.2: All food-related entities stored in single table differentiated by type
  */
 export enum EntityType {
-  RESTAURANT = 'restaurant',
-  FOOD = 'food',
-  FOOD_ATTRIBUTE = 'food_attribute',
-  RESTAURANT_ATTRIBUTE = 'restaurant_attribute',
+  PLACE = 'restaurant',
+  ITEM = 'food',
+  ITEM_ATTRIBUTE = 'item_attribute',
+  PLACE_ATTRIBUTE = 'place_attribute',
 }
 
 /**
@@ -42,12 +42,12 @@ export interface Entity {
   entityId: string;
   name: string;
   type: EntityType;
-  restaurantAttributes: string[];
+  placeAttributes: string[];
   latitude?: number;
   longitude?: number;
   address?: string;
   googlePlaceId?: string;
-  restaurantMetadata: RestaurantMetadata;
+  placeMetadata: PlaceMetadata;
   city?: string;
   region?: string;
   country?: string;
@@ -66,10 +66,10 @@ export interface Entity {
  */
 export interface Connection {
   connectionId: string;
-  restaurantId: string;
-  foodId: string;
+  placeId: string;
+  itemId: string;
   categories: string[];
-  foodAttributes: string[];
+  itemAttributes: string[];
   mentionCount: number;
   totalUpvotes: number;
   supportMentionCount?: number;

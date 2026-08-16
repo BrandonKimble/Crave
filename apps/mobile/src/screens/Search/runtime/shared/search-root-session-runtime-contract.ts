@@ -80,7 +80,7 @@ export type SearchRootResultsArrivalState = {
   canLoadMore: boolean;
   currentPage: number;
   isPaginationExhausted: boolean;
-  restaurantResults: SearchResponse['restaurants'] | null;
+  restaurantResults: SearchResponse['places'] | null;
   resultsRequestKey: string | null;
   submittedQuery: string;
   resultsPage: number | null;

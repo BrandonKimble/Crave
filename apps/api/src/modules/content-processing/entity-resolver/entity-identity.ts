@@ -1,5 +1,5 @@
 import { EntityType } from '@prisma/client';
-import { foodNameVariants } from './food-lemma';
+import { itemNameVariants } from './food-lemma';
 
 /**
  * ENTITY IDENTITY KEY (async-integrity step 2, Law 1: identity is content,
@@ -312,7 +312,7 @@ export function entityIdentityKey(
   if (!base) {
     return null;
   }
-  if (type === EntityType.food || type === EntityType.ingredient) {
+  if (type === EntityType.item || type === EntityType.ingredient) {
     // PER-TOKEN fold, then sort (round-3 empirical red team: folding the
     // whole name stems only the LAST word — head-final — so the key
     // depended on token order and 41.8% of real multi-word names,
@@ -337,11 +337,11 @@ export function entityIdentityKey(
  *  forms end in 's' and cannot grow again (proven round 3, ≤3 iterations
  *  on real data). */
 function tokenFold(token: string): string {
-  const closure = new Set<string>(foodNameVariants(token));
+  const closure = new Set<string>(itemNameVariants(token));
   for (let size = -1; size !== closure.size; ) {
     size = closure.size;
     for (const variant of Array.from(closure)) {
-      for (const next of foodNameVariants(variant)) {
+      for (const next of itemNameVariants(variant)) {
         closure.add(next);
       }
     }
@@ -397,8 +397,8 @@ export function identityInsertData(
  * the DB query can't strip punctuation without a stored key column).
  */
 export function identityProbeNames(name: string, type: EntityType): string[] {
-  if (type === EntityType.food || type === EntityType.ingredient) {
-    return foodNameVariants(name.toLowerCase().replace(/\s+/g, ' ').trim());
+  if (type === EntityType.item || type === EntityType.ingredient) {
+    return itemNameVariants(name.toLowerCase().replace(/\s+/g, ' ').trim());
   }
   return [name];
 }
