@@ -274,6 +274,24 @@ response-contract seat (distinct nameSuggestions band); ratify-or-replace
 the fuzzy-tier accident as an explicit dish-prefix band; prefix
 never-links ratification.
 
+## R14 EXECUTED (7dc77f8d9, 2026-08-16; verified: enum renamed, facet
+1,964 rows stamped cuisine 154/venue_kind 111/amenity 1,699, tsc 0,
+invariants 38/72, resolution 65/66 baseline-exact, jest 2175/0).
+DECISION AS BUILT: enum VALUES physical (data), columns/tables @map-only
+(measured: 208 raw-SQL files/~1,700 literals — physical rename bought
+nothing). Google vocabulary + persisted contracts (verdict subjects,
+signals meta, history rows) frozen by design. Two real bugs found+fixed
+at the google-place-id sense collision. Fleet-break mid-campaign
+(migration applied pre-sweep) — resolved via rollback/re-apply pair
+(153000/200000); process lesson: MIGRATIONS APPLY AT CODE-COMMIT TIME,
+now explicit. ⭐04 pinged: their review-and-correct → P6 acceptance 4/4 →
+one pre-shadow cert. Residue for their pass: prompt prose wording; two
+rule-version bumps need re-hear estimates; es/vi gold + serve-count
+gates deferred to the cert (shared DB mid connection-rebuild).
+Analytics discontinuity: aliases.restaurant_name_judge →
+aliases.place_name_judge at the rename date. Mobile internal naming
+bounded to search/profile/runtime cluster deliberately.
+
 ## SEQUENCING
 Types-promotion backfill + invariant: post-v13-activation window (rides
 with reground/dedupe). Consumable facet + X-food ontology drain: with the
