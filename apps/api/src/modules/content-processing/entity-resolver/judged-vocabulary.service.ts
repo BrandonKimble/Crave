@@ -283,13 +283,13 @@ export class JudgedVocabularyService implements OnModuleInit {
     // is HELD (its caller skips it) and the word stays queued, and the next
     // drain makes the same ask recordable. Nothing is guessed and nothing is
     // lost permanently — the ask recurs, and by then the word is judged.
-    const table = this.verdicts.get(WORD_GENERICNESS_LANE);
-    let heldUnjudged = false;
-    for (const claim of claims) {
-      if (table?.has(wordGenericnessLane.canonicalClaimKey(claim))) continue;
-      this.queue(WORD_GENERICNESS_LANE, claim);
-      heldUnjudged = true;
-    }
+    //
+    // ONE HOLD LAW (foundation red team #3, 2026-08-16): the test is
+    // `holdsUnjudged`, the SAME predicate the deferred demand door applies —
+    // genericness AND word-role, both demand-hygiene facets. This used to
+    // check genericness only, so a term whose role facet the hearing failed
+    // to answer slipped through one door and was held at the other.
+    const heldUnjudged = this.holdsUnjudged(text, claimLocale);
     return { ...this.stripGrammar(text, words, claimLocale), heldUnjudged };
   }
 
@@ -576,7 +576,15 @@ export class JudgedVocabularyService implements OnModuleInit {
    */
   private queue(lane: string, claim: WordVocabularyClaim): void {
     const locale = normalizeClaimLocale(claim.locale);
-    const claimKey = `${locale}|${surfaceClaimKey(claim.word)}`;
+    // THE LANE'S ADAPTER SPELLS THE KEY, never this method (foundation red
+    // team #4, 2026-08-16). A hand-built `${locale}|${form}` queued negation
+    // rows under per-locale keys, but negation's canonical key is
+    // `und|${form}` — so the drain's delete predicate (which asks the
+    // adapter) never matched, and an answered word sat in the queue forever.
+    const claimKey = vocabularyLaneAdapter(lane).canonicalClaimKey({
+      word: claim.word,
+      locale,
+    });
     const key = `${lane}|${claimKey}`;
     if (this.pending.has(key)) return;
     this.pending.set(key, { word: claim.word, locale });

@@ -26,6 +26,7 @@ import {
   DrainExceedsStandingCapError,
   hearingMeterFor,
 } from './claim-rehearing-budget.service';
+import { JudgedVocabularyService } from './judged-vocabulary.service';
 import { VOCABULARY_CLAIMS_PER_CALL } from './word-vocabulary-judge.service';
 
 /**
@@ -456,8 +457,9 @@ describe('the write door hears before it writes', () => {
     // used the window. Letting it escape cost the caller its ENTIRE batch —
     // one unheard word lost a whole page of demand signals.
     const vocab = judgedVocabularyDouble();
-    const judge = (vocab as unknown as { judge: { certify: unknown } }).judge;
-    judge.certify = () => {
+    const judge = (vocab as unknown as { judge: { certifyFacets: unknown } })
+      .judge;
+    judge.certifyFacets = () => {
       throw new DrainExceedsStandingCapError(
         {
           lane: WORD_GENERICNESS_LANE,
@@ -473,5 +475,86 @@ describe('the write door hears before it writes', () => {
     };
     await expect(vocab.judgeThenStrip('bulgogi', 'ko')).resolves.toBeDefined();
     expect(vocab.pendingHearings().map((c) => c.word)).toContain('bulgogi');
+  });
+});
+
+/**
+ * REAL-CLASS cases (foundation red team #3 + #4, 2026-08-16): these exercise
+ * the actual service internals the double overrides, because both findings
+ * lived in private paths — the hold predicate and the queue's key spelling.
+ */
+describe('one hold law, one key spelling (real class)', () => {
+  const bareService = () => {
+    const service = Object.create(
+      JudgedVocabularyService.prototype,
+    ) as JudgedVocabularyService;
+    const executeRaw = jest.fn().mockResolvedValue(0);
+    const internals = service as unknown as {
+      verdicts: Map<string, Map<string, string>>;
+      negatingForms: Set<string>;
+      pending: Map<string, unknown>;
+      loaded: boolean;
+      logger: { info: () => void; warn: () => void };
+      judge: { certifyFacets: (...args: unknown[]) => Promise<unknown> };
+      prisma: { $executeRaw: jest.Mock };
+    };
+    internals.verdicts = new Map([
+      [WORD_GENERICNESS_LANE, new Map<string, string>()],
+      [WORD_NEGATION_LANE, new Map<string, string>()],
+      [WORD_ROLE_LANE, new Map<string, string>()],
+    ]);
+    internals.negatingForms = new Set();
+    internals.pending = new Map();
+    internals.loaded = true;
+    internals.logger = { info: () => undefined, warn: () => undefined };
+    internals.judge = { certifyFacets: () => Promise.resolve(new Map()) };
+    internals.prisma = { $executeRaw: executeRaw };
+    return { service, internals, executeRaw };
+  };
+
+  it('judgeThenStrip holds on the SAME predicate as the demand door — role counts, not genericness alone (#3)', async () => {
+    const { service, internals } = bareService();
+    // Genericness IS judged; the word-role facet is not. The old
+    // genericness-only loop reported heldUnjudged=false here while
+    // holdsUnjudged said true — two doors, two laws.
+    internals.verdicts
+      .get(WORD_GENERICNESS_LANE)!
+      .set('es|best', CARRIES_CONCEPT);
+    const judged = await service.judgeThenStrip('best', 'es');
+    expect(judged.heldUnjudged).toBe(true);
+    expect(service.holdsUnjudged('best', 'es')).toBe(true);
+  });
+
+  it('a budget-refused negation hearing queues EXACTLY ONE row, under und|form (#4)', async () => {
+    const { service, internals, executeRaw } = bareService();
+    internals.judge.certifyFacets = () => {
+      throw new DrainExceedsStandingCapError(
+        {
+          lane: WORD_NEGATION_LANE,
+          ruleVersion: WORD_NEGATION_RULE_VERSION,
+          dueCount: 1,
+          microUsdPerHearing: 96,
+          estimateMicros: 96,
+          estimateHash: 'deadbeef',
+        },
+        200,
+        0,
+      );
+    };
+    // The same spelling met under two locales is ONE negation claim: the
+    // lane's canonical key is `und|form`. The old hand-built key queued
+    // per-locale rows the drain's delete predicate could never match.
+    await service.ensureJudged(
+      [
+        { word: 'nunca', locale: 'es' },
+        { word: 'nunca', locale: 'en' },
+      ],
+      [WORD_NEGATION_LANE],
+    );
+    expect(service.pendingHearings()).toHaveLength(1);
+    expect(executeRaw).toHaveBeenCalledTimes(1);
+    // $executeRaw is a tagged template: values follow the strings array.
+    expect(executeRaw.mock.calls[0]).toContain('und|nunca');
+    expect(executeRaw.mock.calls[0]).not.toContain('es|nunca');
   });
 });
