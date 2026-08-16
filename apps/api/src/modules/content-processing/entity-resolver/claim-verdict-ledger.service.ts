@@ -277,10 +277,8 @@ export class ClaimVerdictLedgerService {
    */
   async latestDecidedAt(lanes: readonly string[]): Promise<Date | null> {
     if (!lanes.length) return null;
-    const rows = await this.prisma.$queryRaw<
-      Array<{ latest: Date | null; verdicts: bigint }>
-    >`
-      SELECT max(decided_at) AS latest, count(*) AS verdicts
+    const rows = await this.prisma.$queryRaw<Array<{ latest: Date | null }>>`
+      SELECT max(decided_at) AS latest
         FROM claim_verdicts
        WHERE lane = ANY(${[...lanes]}::text[])`;
     return rows[0]?.latest ?? null;

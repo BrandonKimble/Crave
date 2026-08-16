@@ -595,7 +595,8 @@ export class SearchQueryInterpretationService {
         resolutionTier: 'exact',
         // A consumed group was replaced by a residue-join compound
         // ("brekfast tacos" → breakfast taco); its own reading is the
-        // decomposed one, sectioned tier 1 downstream.
+        // decomposed one, ranked in the one pooled list downstream (the
+        // sectioned tiers this note used to cite are gone).
         decomposed: consumedGroups.has(group) || undefined,
         matchedName: winner.name,
         originalInput: {
