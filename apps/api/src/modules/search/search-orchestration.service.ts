@@ -112,7 +112,16 @@ export class SearchOrchestrationService {
     const hasInterpretationTargets = this.hasStructuredSearchTargets(
       interpretation.structuredRequest.entities,
     );
-    if (!hasInterpretationTargets) {
+    // BROWSE SERVES (foundation red team #1): when the interpretation says
+    // browseMode, an empty entities object is not a failure to understand —
+    // it IS the query ("best", "food", "best food near me"). The serve is
+    // the ONE existing execution path: the same runQuery the All-chip's
+    // empty-structured submit already flows through (POST /search/run with
+    // entities = {}), which ranks the unfiltered page and reports coverage
+    // 'full' via calculateCoverageStatus's no-targets arm. The scold below
+    // stays ONLY for genuinely-unresolvable non-browse queries.
+    const browseMode = interpretation.queryAnalysis?.browseMode === true;
+    if (!hasInterpretationTargets && !browseMode) {
       const response = this.searchService.buildEmptyResponse(
         interpretation.structuredRequest,
         {
@@ -215,6 +224,11 @@ export class SearchOrchestrationService {
       }),
     );
     response.metadata.sourceQuery = originalQuery;
+    // F5 parity with the empty branch: the launch gate grades this field on
+    // SERVED responses too — a browse serve without it would be ungradable.
+    if (interpretation.queryAnalysis) {
+      response.metadata.queryAnalysis = interpretation.queryAnalysis;
+    }
     if (!request.compactResponse) {
       response.metadata.analysisMetadata = this.mergeAnalysisMetadata(
         response.metadata.analysisMetadata,

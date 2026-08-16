@@ -63,7 +63,10 @@ const QUERY_FOR_GROUP: Record<QueryEntityGroupKey, string> = {
   ingredients: 'burrata',
 };
 
-function createHarness(entities: QueryEntityGroupDto) {
+function createHarness(
+  entities: QueryEntityGroupDto,
+  queryAnalysis?: { browseMode: boolean },
+) {
   const structuredRequest = {
     entities,
     pagination: { page: 1, pageSize: 20 },
@@ -78,6 +81,7 @@ function createHarness(entities: QueryEntityGroupDto) {
         restaurantAttributes: [],
       },
       unresolved: [],
+      ...(queryAnalysis ? { queryAnalysis } : {}),
     }),
   };
   const searchService = {
@@ -148,6 +152,42 @@ describe('SearchOrchestrationService — group vocabulary reachability (F3800)',
       expect(response.metadata.resultCoverageStatus).toBe('unresolved');
     });
   }
+
+  it('SERVES a browse query with empty entities through the same runQuery the All-chip uses', async () => {
+    // Foundation red team #1: typed 'best'/'food'/'top' interprets to
+    // browseMode with entities = {} — the serve must be the ranked page,
+    // never the "adjust your search" scold, and it must reach it through
+    // the ONE runQuery chokepoint (no second serve path).
+    const { service, searchService } = createHarness({}, { browseMode: true });
+
+    const response = await service.runNaturalQuery({
+      query: 'best food near me',
+    } as never);
+
+    expect(searchService.buildEmptyResponse).not.toHaveBeenCalled();
+    expect(searchService.runQuery).toHaveBeenCalledTimes(1);
+    expect(
+      (
+        (searchService.runQuery.mock.calls as unknown[][])[0][0] as {
+          entities: unknown;
+        }
+      ).entities,
+    ).toEqual({});
+    // Honest metadata: nothing unresolved, coverage full, analysis attached.
+    expect(response.metadata.resultCoverageStatus).toBe('full');
+    expect(response.metadata.unresolvedEntities).toEqual([]);
+    expect(response.metadata.queryAnalysis).toEqual({ browseMode: true });
+    expect(response.metadata.emptyQueryMessage).toBeUndefined();
+  });
+
+  it('still scolds a NON-browse query with no targets (browseMode false)', async () => {
+    const { service, searchService } = createHarness({}, { browseMode: false });
+
+    await service.runNaturalQuery({ query: 'zorblatt quinlex' } as never);
+
+    expect(searchService.runQuery).not.toHaveBeenCalled();
+    expect(searchService.buildEmptyResponse).toHaveBeenCalledTimes(1);
+  });
 
   it('still falls to the empty response when NO group is populated', () => {
     // The gate must not become vacuously true — an empty entities object is

@@ -1,88 +1,179 @@
 /**
  * @script-class: probe
  *
- * BROWSE-MODE PROBE (word-role composition rule, 2026-08-15). Runs the gate
- * queries end-to-end — interpret() then runQuery() — against the live local
- * corpus and the certified word-role vocabulary. The before-state, measured
- * 2026-08-15 pre-build: 'food' EMPTY, 'top' → beer, 'best food near me' →
- * NOTHING (confident wrongness, not just emptiness).
+ * BROWSE-MODE PROBE (word-role composition rule, 2026-08-15; orchestration
+ * takeover, 2026-08-16). Runs the gate queries through the REAL serve path —
+ * SearchOrchestrationService.runNaturalQuery, the exact service the
+ * controller's POST /search/natural calls — against the live local corpus
+ * and the certified word-role vocabulary.
  *
- * What each case pins:
- *   food             → browse, full ranked page with results, coverage full
- *   top              → browse, NO beer, no probes
- *   best food near me → browse, no demand rows (frame words suppressed)
- *   restaurants      → browse (PROVISIONAL frame-equivalent, owner amendment)
- *   coffee shops     → today's behavior: grounds its attribute, no browse
- *   餐厅             → today's behavior (venue-category grounds where banked)
- *   tacos            → control, today's path unchanged
+ * WHY orchestration and not interpret()+runQuery(): the foundation red team
+ * (#1) caught this probe green while the app was red. The probe hand-stitched
+ * interpret() to runQuery() and so bypassed orchestration's empty-targets
+ * gate, which rejected every browse query with the "Adjust your search"
+ * scold before browseMode was ever consulted. Driving the full path makes
+ * that gap structurally impossible to reopen.
+ *
+ * What each case pins (assertions, not vibes — any miss exits 1):
+ *   food              → browse serve: ranked page WITH results, coverage full
+ *   top               → browse serve, NO beer
+ *   best              → browse serve (bank is not evidence against the frame)
+ *   best food near me → browse serve, no scold
+ *   restaurants       → browse (PROVISIONAL frame-equivalent, owner amendment)
+ *   coffee shops      → today's behavior: grounds its attribute, no browse
+ *   餐厅              → today's behavior (venue-category grounds where banked)
+ *   tacos             → control, today's path unchanged
  *   best birria near me → birria only, frames stripped, no 'me' probe
+ *   zorblatt quinlex  → NON-browse unresolvable: honest empty + scold stays
  */
 import { bootstrap, out } from './_shared';
-import { SearchQueryInterpretationService } from '../../src/modules/search/search-query-interpretation.service';
-import { SearchService } from '../../src/modules/search/search.service';
-import type { SearchQueryRequestDto } from '../../src/modules/search/dto/search-query.dto';
+import { SearchOrchestrationService } from '../../src/modules/search/search-orchestration.service';
 
 const BOUNDS = {
   northEast: { lat: 30.52, lng: -97.56 },
   southWest: { lat: 30.14, lng: -97.94 },
 };
 
-const CASES: Array<{ q: string; locale: string | null; note: string }> = [
-  { q: 'food', locale: null, note: 'bare domain word — frame by ruling' },
-  { q: 'top', locale: null, note: 'was: fuzzy-grounded beer' },
-  { q: 'best food near me', locale: null, note: 'was: NOTHING' },
-  { q: 'restaurants', locale: null, note: 'provisional bare-word browse' },
+type Case = {
+  q: string;
+  locale: string | null;
+  note: string;
+  expectBrowse: boolean;
+  /** Browse serves must be non-empty with coverage 'full' and no scold. */
+  expectServe: boolean;
+};
+
+const CASES: Case[] = [
+  {
+    q: 'food',
+    locale: null,
+    note: 'bare domain word — frame by ruling',
+    expectBrowse: true,
+    expectServe: true,
+  },
+  {
+    q: 'top',
+    locale: null,
+    note: 'was: fuzzy-grounded beer',
+    expectBrowse: true,
+    expectServe: true,
+  },
+  {
+    q: 'best',
+    locale: null,
+    note: 'banked ghost restaurant is not evidence',
+    expectBrowse: true,
+    expectServe: true,
+  },
+  {
+    q: 'best food near me',
+    locale: null,
+    note: 'was: NOTHING (the severity-1 hole)',
+    expectBrowse: true,
+    expectServe: true,
+  },
+  {
+    q: 'restaurants',
+    locale: null,
+    note: 'provisional bare-word browse',
+    expectBrowse: true,
+    expectServe: true,
+  },
   {
     q: 'coffee shops',
     locale: null,
     note: 'today: attribute grounding, no browse',
+    expectBrowse: false,
+    expectServe: true,
   },
-  { q: '餐厅', locale: 'zh-CN', note: 'zh venue-category — today, not browse' },
-  { q: 'tacos', locale: null, note: 'CONTROL — particular, unchanged' },
-  { q: 'best birria near me', locale: null, note: 'frames stripped, birria' },
+  {
+    q: '餐厅',
+    locale: 'zh-CN',
+    note: 'zh venue-category — today, not browse',
+    expectBrowse: false,
+    expectServe: true,
+  },
+  {
+    q: 'tacos',
+    locale: null,
+    note: 'CONTROL — particular, unchanged',
+    expectBrowse: false,
+    expectServe: true,
+  },
+  {
+    q: 'best birria near me',
+    locale: null,
+    note: 'frames stripped, birria',
+    expectBrowse: false,
+    expectServe: true,
+  },
+  {
+    q: 'zorblatt quinlex',
+    locale: null,
+    note: 'non-browse unresolvable — honest empty stays',
+    expectBrowse: false,
+    expectServe: false,
+  },
 ];
 
 async function main(): Promise<void> {
   const app = await bootstrap();
+  let failures = 0;
   try {
-    const interpretation = app.get(SearchQueryInterpretationService);
-    const search = app.get(SearchService);
+    const orchestration = app.get(SearchOrchestrationService);
     for (const c of CASES) {
-      const result = await interpretation.interpret({
+      const res = await orchestration.runNaturalQuery({
         query: c.q,
         locale: c.locale,
         bounds: BOUNDS,
+        pagination: { page: 1, pageSize: 10 },
       } as never);
-      const entities = result.structuredRequest.entities as Record<
-        string,
-        Array<{ normalizedName: string }> | undefined
-      >;
-      const grounded = Object.entries(entities)
-        .flatMap(([k, v]) => (v ?? []).map((e) => `${k}:${e.normalizedName}`))
-        .join(' ');
+      const meta = res.metadata as unknown as Record<string, unknown>;
+      const browseMode =
+        (meta.queryAnalysis as { browseMode?: boolean } | undefined)
+          ?.browseMode === true;
+      const dishes = res.dishes?.length ?? 0;
+      const restaurants = res.restaurants?.length ?? 0;
+      const total = dishes + restaurants;
+      const coverage = String(meta.resultCoverageStatus);
+      const scold = typeof meta.emptyQueryMessage === 'string';
+      const top = (
+        (res.dishes ?? []).slice(0, 3) as Array<{
+          name?: string;
+          foodName?: string;
+        }>
+      )
+        .map((d) => d.name ?? d.foodName ?? '?')
+        .join(' | ');
+
+      const problems: string[] = [];
+      if (browseMode !== c.expectBrowse) {
+        problems.push(`browseMode=${String(browseMode)}`);
+      }
+      if (c.expectServe && c.expectBrowse) {
+        if (total === 0) problems.push('EMPTY browse serve');
+        if (coverage !== 'full') problems.push(`coverage=${coverage}`);
+        if (scold) problems.push('scold on a browse serve');
+      }
+      if (!c.expectServe) {
+        if (total !== 0) problems.push(`served ${total} results`);
+        if (coverage !== 'unresolved') problems.push(`coverage=${coverage}`);
+        if (!scold) problems.push('missing honest empty message');
+      }
+      if (c.q === 'top' && top.toLowerCase().includes('beer')) {
+        problems.push('beer is back');
+      }
+      if (problems.length) failures += 1;
+
       out(`--- '${c.q}'  (${c.note})`);
       out(
-        `    browseMode=${String(result.queryAnalysis?.browseMode)} ` +
-          `entities=[${grounded || 'none'}] ` +
-          `unresolved=${JSON.stringify(result.unresolved)}`,
-      );
-      const res = await search.runQuery({
-        ...(result.structuredRequest as object),
-        bounds: BOUNDS,
-        pagination: { page: 1, pageSize: 10 },
-      } as unknown as SearchQueryRequestDto);
-      const meta = res.metadata as unknown as Record<string, unknown>;
-      const top = (res.dishes ?? []).slice(0, 3) as Array<{
-        name?: string;
-        foodName?: string;
-      }>;
-      out(
-        `    runQuery: dishes=${res.dishes?.length ?? 0} ` +
-          `restaurants=${res.restaurants?.length ?? 0} ` +
-          `coverage=${String(meta?.resultCoverageStatus)} ` +
-          `top=[${top.map((d) => d.name ?? d.foodName ?? '?').join(' | ')}]`,
+        `    browseMode=${String(browseMode)} dishes=${dishes} ` +
+          `restaurants=${restaurants} coverage=${coverage} ` +
+          `scold=${String(scold)} top=[${top}]` +
+          (problems.length ? `  RED: ${problems.join(', ')}` : '  ok'),
       );
     }
+
     // FIRST-SEARCH SYNC-HEARING LATENCY CEILING (foundation red team #7):
     // a query carrying a word NOBODY has judged pays at most the bounded
     // hearing (FIRST_SEARCH_HEARING_CEILING_MS = 1500ms) plus ordinary
@@ -96,18 +187,22 @@ async function main(): Promise<void> {
     const SLACK_MS = 1_500; // grounding probes + analyzer, generous
     const novelWord = `zzqx${Date.now().toString(36)}`;
     const t0 = performance.now();
-    await interpretation.interpret({
+    await orchestration.runNaturalQuery({
       query: `${novelWord} tacos`,
       locale: null,
       bounds: BOUNDS,
+      pagination: { page: 1, pageSize: 10 },
     } as never);
     const elapsed = Math.round(performance.now() - t0);
     const withinCeiling = elapsed <= CEILING_MS + SLACK_MS;
     out(
-      `--- novel-word latency: '${novelWord} tacos' interpret=${elapsed}ms ` +
+      `--- novel-word latency: '${novelWord} tacos' full-path=${elapsed}ms ` +
         `ceiling=${CEILING_MS}ms(+${SLACK_MS} slack) ${withinCeiling ? 'ok' : 'RED'}`,
     );
-    if (!withinCeiling) process.exitCode = 1;
+    if (!withinCeiling) failures += 1;
+
+    out(failures ? `PROBE RED: ${failures} failing case(s)` : 'PROBE GREEN');
+    if (failures) process.exitCode = 1;
   } finally {
     await app.close();
   }
