@@ -96,6 +96,14 @@ L3. **COVER-LINKER (locked 2026-08-10, owner delegated).** Whole-query span
    (bún bò huế) naturally reproduce the July always-on sibling feel.
    Alternative on the table: July's always-interleaved siblings on every
    search. Recommendation: the ladder.
+   **A1 LADDER-SESSION AGENDA (owners assigned, truth pass 2026-08-16 —
+   these ride the same session, explicitly, so they cannot drop again):**
+   - 13c squeeze-claim judge inheritance ('bo ne' claiming a genuinely-
+     English 'Bone' when sole owner) — vi-lane design question, decided
+     with the ladder/step work.
+   - 7b listwise neighborhood curation bench (+ 7c cousin-verdict grading,
+     subsumed if 7b wins) — benched against the union BEFORE any
+     corpus-wide ladder commitment, same 20 anchors.
 2. **Negation cue list — RE-PRESENTED 2026-08-12, recommendation KEEP.**
    Owner leaned delete based on my WRONG "dead machinery" description;
    corrected before acting: the list is live and load-bearing — it strips
@@ -124,9 +132,33 @@ L3. **COVER-LINKER (locked 2026-08-10, owner delegated).** Whole-query span
    the owner wants; run via /reextract (shadow replay → diff triage →
    activation). Iteration-phase compatible (local/staging corpus). Needs
    owner go because it's the corpus-wide prompt change + spend.
-5. **On-demand cleanup cron pair merge** (9:15/9:30 same-domain jobs → one
-   job, two steps). Trivial; owner said "go ahead" candidates welcome —
-   do with next cron touch.
+5. ~~**On-demand cleanup cron pair merge**~~ **DONE (f1595c93b,
+   2026-08-11)** — merged into one OnDemandCleanupService job with two
+   steps (`apps/api/src/modules/search/on-demand-cleanup.service.ts`);
+   struck in the 2026-08-16 truth pass.
+
+## A9. OWNERSHIP ASSIGNMENTS (truth pass 2026-08-16 — the dropped-silently items, each with a named home)
+
+A9a. **fold_version stamping in attribute-ontology + projection-rebuild
+   raw re-keys → MY QUEUE (this lane), concrete item.** The wave-1
+   residual (see the wave-1 LANDED note below) left two raw re-key paths
+   writing surface rows without stamping fold_version; until stamped,
+   the fold-drift detector reads them as unknown-provenance. Work: find
+   both raw re-key sites, stamp fold_version at write, prove with
+   check-surface-fold-drift.
+A9b. **12b usageCaller invariant completion + 12d worker-boot budget
+   refusal → MY QUEUE (this lane).** 12b: finish the every-LLM-call-
+   carries-usageCaller mutation-provable invariant (tag the 16k
+   flash-lite classifier + the gemini-3.5-flash caller while building
+   it). 12d: boot inspects spend-bearing queues and refuses/pauses
+   drains no active budget owns.
+A9c. **13c + 7b/7c → A1 ladder-session agenda** (added to A1 above,
+   explicitly).
+A9d. **Third word-role class → folds into the wave's R4/R6 decisions**
+   (the browse/word-role lane, see the GHOST-census block) — not a
+   standalone item; decided when those wave decisions are taken.
+A9e. **hg-01 'pan' red / shadow-isolation question → ⭐04's P6 docket**
+   (messaged to that lane; tracked there, not here).
 
 ## B. IN FLIGHT (agent running or committed-but-unverified)
 
@@ -244,12 +276,17 @@ L3. **COVER-LINKER (locked 2026-08-10, owner delegated).** Whole-query span
    Pattern-matching review is disqualified; both examples were invisible
    to it. Also: any fold-algorithm change requires
    refreshSortedIdentityKeys({full:true}) or stored keys drift (LAW).
-13e. **Resolution-gate fixture refresh**: ⭐04's deterministic tiers moved
-   12-13 fixtures from alias→exact attribution; current honest baseline
-   45/58. Fixture expectation updates belong to the convergence lane;
-   my agents told not to touch them.
+13e. **CLOSED (truth pass 2026-08-16)** — the 45/58 baseline was stale:
+   the live gate (`entity-resolution-gate.ts`, run this day) reports
+   65/66, the single red being acc-02 'bơ', the documented
+   refused-at-both-tiers residual the gate's own output narrates. The
+   fixture refresh this item asked for already happened in the
+   convergence lane; nothing left to do.
 
-13f. **DONE-PENDING-RUN (814257c9c)** — retraction machinery built and
+13f. **DONE-PENDING-RUN (814257c9c) — CORRECTLY SEQUENCED (truth pass
+   2026-08-16): the dry-run hold is deliberate, not drift** — the joint
+   sequencing with ⭐04 gates the live run behind post-v8 dedupe, so this
+   stays exactly where it is until v8 lands. Retraction machinery built and
    seeded-proven (retain hearings work single-claimant; circular-evidence
    bug found by execution and fixed — the claimant card listed the judged
    word as its own proof). feed-retraction-candidates.ts stays DRY-RUN
@@ -824,5 +861,6 @@ evidence sampling (unruled), CJK stored-side surfaces (zh rollout).
     grep/file — any grep-based audit or scanner invariant is silently
     blind there; use grep -a. (Candidate: strip the \0, or add a lint
     that fails on \0 in source.)
-16. Old-config sibling harness `sibling-mode-e2e.ts` is an orphan (drives a
-    deleted mode flag) — delete or repoint when the ladder lands (F1207).
+16. ~~Old-config sibling harness `sibling-mode-e2e.ts`~~ **DONE — deleted
+    in 225f0c567** (the same truth pass that fixed the FAILS list);
+    struck in the 2026-08-16 truth pass.
