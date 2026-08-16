@@ -757,7 +757,11 @@ SITE INSTEAD OF ONCE IN THE DATA MODEL. Two foundations wrong:
   surfaces backfilled; claim_judge_version dual-written w/ ledgered
   retirement note. REMAINING: ⭐04's dedupe + satisfies adapters (dedupe
   lane un-gates when theirs lands — notified with the consume-surface);
-  restaurant-name lane (C4a) later; both stub adapters compile.
+  restaurant-name lane (C4a) BUILT 2026-08-16 (89adb5919: lane
+  'restaurant_name', key entityId|surfaceClaimKey, rule v1 fp
+  698b51e88588, notAName=surface-only absolute effect, census-fed
+  hear() entry, 5 live-DB proofs incl. crash-seam byte-identical
+  replay; seeded dry-run: best/place denied, senza upheld).
 - H1 THE FOLD KEY: accents-are-evidence enforced at 6 sites, ALREADY
   DRIFTED ('phở bo' admits in search, refused at resolver — live recall
   loss; port in flight). Foundation fix = store diacritic key as COLUMN
