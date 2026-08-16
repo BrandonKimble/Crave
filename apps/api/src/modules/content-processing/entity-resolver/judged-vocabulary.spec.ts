@@ -91,9 +91,9 @@ describe('the rule is versioned by its own text', () => {
     // from verdicts a different rule decided. The fix is a release entry, not
     // a new expectation here.
     expect(WORD_GENERICNESS_RULE_FINGERPRINT).toBe('29ffa69caef9');
-    expect(WORD_NEGATION_RULE_FINGERPRINT).toBe('15a7de03c4f3');
+    expect(WORD_NEGATION_RULE_FINGERPRINT).toBe('85df3b80a180');
     expect(WORD_GENERICNESS_RULE_VERSION).toBe(2);
-    expect(WORD_NEGATION_RULE_VERSION).toBe(2);
+    expect(WORD_NEGATION_RULE_VERSION).toBe(3);
   });
 
   it('states its question as a principle and pins gold cases, per prompt canon', () => {

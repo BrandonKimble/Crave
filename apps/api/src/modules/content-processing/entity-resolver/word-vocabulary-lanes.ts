@@ -155,6 +155,11 @@ const NEGATION_RELEASES: readonly RuleRelease[] = [
     fingerprint: '15a7de03c4f3',
     note: "the not-a-word-of-this-language clause promoted to its own rule, matching the genericness lane's v2 correction; same answer as v1 intended, stated where the judge can see it",
   },
+  {
+    version: 3,
+    fingerprint: '85df3b80a180',
+    note: 'THE ABSENCE MUST BE OF SOMETHING ELSE — v2 ruled boneless/cheeseless/meatless/unsweetened/nonalcoholic/deshuesado/free/zero/hold/86 negators (72 of them across the corpus), which would have deleted the word `boneless` from "boneless wings"; a word whose absence is sealed inside it NAMES a food and is not a negator, and the false-YES cost (a deleted ask) is now stated as strictly worse than the false-NO cost (one word of context)',
+  },
 ];
 
 const genericnessRule = resolvePromptRule(
