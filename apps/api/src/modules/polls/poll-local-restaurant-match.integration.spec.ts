@@ -65,6 +65,10 @@ const seed = new PollEntitySeedService(
       },
     } as never,
     LOG,
+    {
+      deniedNamePairs: () => Promise.resolve([]),
+      isDeniedName: () => Promise.resolve(false),
+    } as never,
   ),
 );
 

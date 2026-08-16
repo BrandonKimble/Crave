@@ -9,6 +9,7 @@ import {
   diacriticFold,
 } from '../content-processing/entity-resolver/entity-identity';
 import { EmbeddingService } from '../external-integrations/llm/embedding.service';
+import { DeniedNameRegistryService } from './denied-name-registry.service';
 
 interface EntitySearchRow {
   term?: string;
@@ -166,8 +167,50 @@ export class EntityTextSearchService {
     private readonly prisma: PrismaService,
     private readonly embeddingService: EmbeddingService,
     loggerService: LoggerService,
+    private readonly deniedNames: DeniedNameRegistryService,
   ) {
     this.logger = loggerService.setContext('EntityTextSearchService');
+  }
+
+  /**
+   * THE COURT'S DENIALS REACH THE NAME ARMS (R15 defect 2, 2026-08-16).
+   *
+   * A `notAName` verdict deprecates the form's `entity_surface` rows, but the
+   * name arms in this service match `core_entities.name` / `identity_key`
+   * DIRECTLY — so a denied name stayed fully reachable through exact/prefix/
+   * FTS/fuzzy name evidence and the gazetteer's identity/name arms (probed:
+   * ghost-class names still served after their denial). The arms now anti-join
+   * the ledger's live denials.
+   *
+   * The denial is PER (entity, form): it suppresses only NAME-derived
+   * evidence where the entity's own name IS the denied form
+   * (`identity_key = deniedFormFolded`). Alias-derived evidence is untouched —
+   * surface deprecation already governs it, and an upheld name (`isName`,
+   * e.g. ghost 'Best') suppresses nothing.
+   *
+   * Returns a join fragment producing `dn.entity_id IS NOT NULL` exactly when
+   * the aliased entity's name is denied; with an empty denied set the join is
+   * a constant-empty relation, so the SQL shape never branches.
+   */
+  private async deniedNameJoinSql(entityAlias: string): Promise<Prisma.Sql> {
+    const pairs = await this.deniedNames.deniedNamePairs();
+    const e = Prisma.raw(entityAlias);
+    if (!pairs.length) {
+      return Prisma.sql`
+        LEFT JOIN (SELECT NULL::uuid AS entity_id, NULL::text AS form_folded
+                   WHERE false) dn
+          ON dn.entity_id = ${e}.entity_id
+         AND dn.form_folded = ${e}.identity_key`;
+    }
+    const values = Prisma.join(
+      pairs.map(
+        (pair) => Prisma.sql`(${pair.entityId}::uuid, ${pair.formFolded})`,
+      ),
+    );
+    return Prisma.sql`
+      LEFT JOIN (VALUES ${values}) dn(entity_id, form_folded)
+        ON dn.entity_id = ${e}.entity_id
+       AND dn.form_folded = ${e}.identity_key`;
   }
 
   /**
@@ -972,6 +1015,9 @@ export class EntityTextSearchService {
       'e',
       options.engineId,
     );
+    // This lane's ONLY match basis is the entity's name, so a denied name
+    // excludes the row outright (see deniedNameJoinSql).
+    const deniedJoin = await this.deniedNameJoinSql('e');
 
     return this.prisma.$queryRaw<EntitySearchRow[]>(Prisma.sql`
       SELECT
@@ -1037,10 +1083,13 @@ export class EntityTextSearchService {
             (SELECT pes.display_score FROM core_public_entity_scores pes WHERE pes.subject_id = e.entity_id AND pes.subject_type = 'restaurant'::crave_score_subject_type) AS "publicCraveScore",
             e.general_praise_upvotes AS "generalPraiseUpvotes"
           FROM core_entities e
+          ${deniedJoin}
           WHERE e.type = ANY(${entityTypeArray})
             AND e.status = 'active'::entity_status
             ${territoryFilter}
             AND lower(e.name) LIKE v.prefix_pattern
+            -- The court's notAName verdicts: a denied name cannot match here.
+            AND dn.entity_id IS NULL
         ) scored
         ORDER BY
           scored."exactHit" DESC,
@@ -1123,6 +1172,17 @@ export class EntityTextSearchService {
       const best = new Map<string, EntitySearchRow>();
       for (const row of rows) {
         if (!variants.has(row.deleteKey)) continue;
+        // The delete dictionary is built from names too — a DENIED name
+        // ('cosy'→'cozy') must not resurface through the edit lane. Same
+        // (entity, form) test as the lattice arms' dn join.
+        if (
+          await this.deniedNames.isDeniedName(
+            row.entityId,
+            canonicalFold(row.word),
+          )
+        ) {
+          continue;
+        }
         const distance = damerauLevenshtein(probe.term, row.word);
         if (distance > probe.budget || distance === 0) continue;
         const editScore =
@@ -1173,6 +1233,11 @@ export class EntityTextSearchService {
       'e',
       options.engineId,
     );
+    // The court's notAName verdicts gate every NAME-derived signal below —
+    // and ONLY those: an entity whose name is denied but which holds another
+    // active adjudicated surface stays reachable through the registry arms
+    // (see deniedNameJoinSql).
+    const deniedJoin = await this.deniedNameJoinSql('e');
 
     return this.prisma.$queryRaw<EntitySearchRow[]>(Prisma.sql`
       SELECT
@@ -1220,13 +1285,17 @@ export class EntityTextSearchService {
             CASE
               -- N1 fold symmetry: identity_key IS canonicalFold(name), so
               -- 'despana' exact-hits Despaña here the way search does.
-              WHEN lower(e.name) = v.term
-                OR e.identity_key = v.folded_term
+              -- Name/identity evidence is void when the name is DENIED
+              -- (dn join); alias-exact evidence is the registry's to give.
+              WHEN (dn.entity_id IS NULL
+                    AND (lower(e.name) = v.term
+                         OR e.identity_key = v.folded_term))
                 OR COALESCE(al.a_exact, 0) = 1
                 THEN 1
               ELSE 0
             END AS "exactHit",
             CASE
+              WHEN dn.entity_id IS NOT NULL THEN 0
               WHEN lower(e.name) = v.term THEN 1
               WHEN lower(e.name) LIKE v.prefix_pattern THEN 0.94
               -- Step 6: score by the BEST matching word, not the diluted whole
@@ -1248,19 +1317,21 @@ export class EntityTextSearchService {
             -- by the registry arms (exact/prefix on the full form + whole-
             -- word word_similarity per form) — the haystack tsv conflated
             -- every alias into one document and is retired with the array.
-            ts_rank_cd(
+            CASE WHEN dn.entity_id IS NOT NULL THEN 0 ELSE ts_rank_cd(
               to_tsvector('simple', lower(e.name)),
               websearch_to_tsquery('simple', v.term)
-            ) AS "ftsRank",
+            ) END AS "ftsRank",
             CASE
-              WHEN lower(e.name) LIKE v.prefix_pattern
-                OR e.identity_key LIKE v.folded_prefix
+              WHEN (dn.entity_id IS NULL
+                    AND (lower(e.name) LIKE v.prefix_pattern
+                         OR e.identity_key LIKE v.folded_prefix))
                 OR COALESCE(al.a_prefix, 0) = 1
                 THEN 1
               ELSE 0
             END AS "prefixHit",
             CASE
-              WHEN to_tsvector('simple', lower(e.name)) @@
+              WHEN dn.entity_id IS NULL
+                AND to_tsvector('simple', lower(e.name)) @@
                 websearch_to_tsquery('simple', v.term)
                 THEN 1
               ELSE 0
@@ -1273,7 +1344,8 @@ export class EntityTextSearchService {
               WHEN lower(e.name) <> v.term
                 AND COALESCE(al.a_exact, 0) = 0
                 AND (
-                  word_similarity(v.term, lower(e.name)) = 1
+                  (dn.entity_id IS NULL
+                   AND word_similarity(v.term, lower(e.name)) = 1)
                   OR COALESCE(al.a_ws1, 0) = 1
                 )
                 THEN 1
@@ -1282,7 +1354,8 @@ export class EntityTextSearchService {
             -- Honest coverage for containment: how much of the containing string
             -- the term accounts for (1.0 would be an exact match).
             GREATEST(
-              CASE WHEN word_similarity(v.term, lower(e.name)) = 1
+              CASE WHEN dn.entity_id IS NULL
+                     AND word_similarity(v.term, lower(e.name)) = 1
                 THEN length(v.term)::real / NULLIF(length(e.name), 0)
                 ELSE 0 END,
               CASE WHEN COALESCE(al.a_ws1, 0) = 1
@@ -1299,6 +1372,7 @@ export class EntityTextSearchService {
             (SELECT pes.display_score FROM core_public_entity_scores pes WHERE pes.subject_id = e.entity_id AND pes.subject_type = 'restaurant'::crave_score_subject_type) AS "publicCraveScore",
             e.general_praise_upvotes AS "generalPraiseUpvotes"
           FROM core_entities e
+          ${deniedJoin}
           -- THE REGISTRY LATERAL (AC-P1a): one aggregate over the entity's
           -- locale-chained alias rows supplies every alias-evidence signal.
           -- Per-form scoring, per-form locale — the one-blob haystack (which
@@ -1330,17 +1404,21 @@ export class EntityTextSearchService {
             AND e.status = 'active'::entity_status
             ${territoryFilter}
             AND (
-              lower(e.name) LIKE v.prefix_pattern
-              OR e.identity_key LIKE v.folded_prefix
-              OR to_tsvector('simple', lower(e.name)) @@
-                websearch_to_tsquery('simple', v.term)
-              OR (
-                lower(e.name) % v.term
-                AND similarity(lower(e.name), v.term) >= v.similarity_threshold
-              )
-              -- Step 6: word-level fuzzy admission (best matching word, not the
-              -- diluted whole string) — recovers typo'd/partial first words.
-              OR word_similarity(v.term, lower(e.name)) >= v.similarity_threshold
+              -- Name arms admit only while the name is not DENIED (dn join —
+              -- the court's notAName verdicts). Registry arms are untouched.
+              (dn.entity_id IS NULL AND (
+                lower(e.name) LIKE v.prefix_pattern
+                OR e.identity_key LIKE v.folded_prefix
+                OR to_tsvector('simple', lower(e.name)) @@
+                  websearch_to_tsquery('simple', v.term)
+                OR (
+                  lower(e.name) % v.term
+                  AND similarity(lower(e.name), v.term) >= v.similarity_threshold
+                )
+                -- Step 6: word-level fuzzy admission (best matching word, not the
+                -- diluted whole string) — recovers typo'd/partial first words.
+                OR word_similarity(v.term, lower(e.name)) >= v.similarity_threshold
+              ))
               -- Registry arms: exact/prefix/trigram/whole-word over the
               -- entity's own locale-chained forms.
               OR COALESCE(al.a_exact, 0) = 1
@@ -1888,9 +1966,23 @@ export class EntityTextSearchService {
     }> = [];
     for (const row of rows) {
       const matchedPhrases = new Set<string>();
-      if (candidateSet.has(row.normName)) matchedPhrases.add(row.normName);
-      if (row.foldedName && candidateSet.has(row.foldedName)) {
-        matchedPhrases.add(row.foldedName);
+      // THE COURT'S DENIALS REACH THE NAME ARMS (R15 defect 2): a live
+      // notAName verdict on (entity, fold(name)) voids the NAME as grounding
+      // evidence — the gazetteer's identity/name arms matched
+      // core_entities.name/identity_key directly and never read the ledger,
+      // so a denied ghost name ('Bistro', 'Cozy') kept annihilating every
+      // query containing its word. Alias phrases below are untouched: the
+      // verdict's surface deprecation already governs those, and an upheld
+      // name (isName, e.g. ghost 'Best') suppresses nothing.
+      const nameDenied = await this.deniedNames.isDeniedName(
+        row.entityId,
+        row.foldedName ?? canonicalFold(row.normName),
+      );
+      if (!nameDenied) {
+        if (candidateSet.has(row.normName)) matchedPhrases.add(row.normName);
+        if (row.foldedName && candidateSet.has(row.foldedName)) {
+          matchedPhrases.add(row.foldedName);
+        }
       }
       for (const alias of row.normAliases) {
         if (candidateSet.has(alias)) matchedPhrases.add(alias);

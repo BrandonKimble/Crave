@@ -9,10 +9,12 @@ import { EntityEmbeddingReconcilerService } from './entity-embedding-reconciler.
 import { NameContainmentEdgeBuilderService } from './name-containment-edge-builder.service';
 import { EntitySiblingEdgeBuilderService } from './entity-sibling-edge-builder.service';
 import { SurfaceLocaleIndexService } from './surface-locale-index.service';
+import { DeniedNameRegistryService } from './denied-name-registry.service';
 
 @Module({
   imports: [SharedModule, PrismaModule, LLMModule, SharedServicesModule],
   providers: [
+    DeniedNameRegistryService,
     EntityTextSearchService,
     EntityEmbeddingReconcilerService,
     EntitySiblingEdgeBuilderService,
@@ -21,6 +23,7 @@ import { SurfaceLocaleIndexService } from './surface-locale-index.service';
     SurfaceLocaleIndexService,
   ],
   exports: [
+    DeniedNameRegistryService,
     EntityTextSearchService,
     EntityEmbeddingReconcilerService,
     EntitySiblingEdgeBuilderService,

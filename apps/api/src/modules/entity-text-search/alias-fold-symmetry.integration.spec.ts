@@ -54,6 +54,10 @@ const service = new EntityTextSearchService(
   prisma as never,
   {} as never,
   logger,
+  {
+    deniedNamePairs: () => Promise.resolve([]),
+    isDeniedName: () => Promise.resolve(false),
+  } as never,
 );
 
 const ENTITY_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeee7600';

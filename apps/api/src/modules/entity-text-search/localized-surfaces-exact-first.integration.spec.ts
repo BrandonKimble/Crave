@@ -58,6 +58,10 @@ const service = new EntityTextSearchService(
   prisma as never,
   {} as never,
   logger,
+  {
+    deniedNamePairs: () => Promise.resolve([]),
+    isDeniedName: () => Promise.resolve(false),
+  } as never,
 );
 
 // The EXACT match sorts LAST by entity_id; every prefix match sorts before
