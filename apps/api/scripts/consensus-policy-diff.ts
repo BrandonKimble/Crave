@@ -98,15 +98,15 @@ async function main(): Promise<void> {
          SELECT event_id, source_upvotes FROM core_restaurant_events`,
     );
 
-    console.log('variant 1/4: baseline…');
+    console.log('variant 1/6: baseline…');
     await rebuild();
     results.baseline = await snapshot(prisma);
 
-    console.log('variant 2/4: praiseWeight 1.0 (same data)…');
+    console.log('variant 2/6: praiseWeight 1.0 (same data)…');
     await rebuild({ praiseWeight: 1.0 });
     results.praise1 = await snapshot(prisma);
 
-    console.log('variant 3/4: post-body claims floored to 1…');
+    console.log('variant 3/6: post-body claims floored to 1…');
     await prisma.$executeRawUnsafe(`
       UPDATE core_restaurant_item_mentions m
       SET source_upvotes = LEAST(m.source_upvotes, 1)
@@ -122,9 +122,17 @@ async function main(): Promise<void> {
     await rebuild();
     results.floorPosts = await snapshot(prisma);
 
-    console.log('variant 4/4: floor + praiseWeight 1.0…');
+    console.log('variant 4/6: floor + praiseWeight 1.0…');
     await rebuild({ praiseWeight: 1.0 });
     results.floorPraise1 = await snapshot(prisma);
+
+    console.log('variant 5/6: floor + fast decay (half-life 365→90d)…');
+    await rebuild({ endorsementHalfLifeDays: 90 });
+    results.floorDecay = await snapshot(prisma);
+
+    console.log('variant 6/6: floor + praiseWeight 1.0 + fast decay…');
+    await rebuild({ praiseWeight: 1.0, endorsementHalfLifeDays: 90 });
+    results.floorPraise1Decay = await snapshot(prisma);
   } finally {
     console.log('restoring upvote columns…');
     await prisma.$executeRawUnsafe(`

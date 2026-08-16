@@ -815,7 +815,7 @@ export class PublicCraveScoreService {
     const dishRows = await this.prisma.$queryRaw<DishRow[]>`
       SELECT
         c.connection_id,
-        c.restaurant_id,
+        c.restaurant_id AS place_id,
         src.source_id,
         src.platform,
         COALESCE(SUM(power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (now() - m.mentioned_at)))/86400.0/${halfLife})), 0)::numeric AS mentions,
@@ -857,7 +857,7 @@ export class PublicCraveScoreService {
         GROUP BY restaurant_id, mention_key
       )
       SELECT
-        e.entity_id AS restaurant_id,
+        e.entity_id AS place_id,
         src.source_id,
         src.platform,
         COALESCE(SUM(power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (now() - pd.mentioned_at)))/86400.0/${halfLife})), 0)::numeric AS praise_mentions,
