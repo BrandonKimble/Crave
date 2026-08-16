@@ -7,6 +7,7 @@ import { ConceptSatisfiesService } from './concept-satisfies.service';
 import { DishKnowledgeSynthesisService } from './dish-knowledge-synthesis.service';
 import { AliasManagementService } from './alias-management.service';
 import { WordClaimAdjudicatorService } from './word-claim-adjudicator.service';
+import { RestaurantNameHearingService } from './restaurant-name-hearing.service';
 import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
 import { ClaimRehearingBudgetService } from './claim-rehearing-budget.service';
 import { WordVocabularyJudgeService } from './word-vocabulary-judge.service';
@@ -34,6 +35,7 @@ import { EntityTextSearchModule } from '../../entity-text-search/entity-text-sea
     DishKnowledgeSynthesisService,
     AliasManagementService,
     WordClaimAdjudicatorService,
+    RestaurantNameHearingService,
     ClaimVerdictLedgerService,
     ClaimRehearingBudgetService,
     WordVocabularyJudgeService,
@@ -44,6 +46,7 @@ import { EntityTextSearchModule } from '../../entity-text-search/entity-text-sea
   exports: [
     ConceptSatisfiesService,
     WordClaimAdjudicatorService,
+    RestaurantNameHearingService,
     ClaimVerdictLedgerService,
     ClaimRehearingBudgetService,
     WordVocabularyJudgeService,
