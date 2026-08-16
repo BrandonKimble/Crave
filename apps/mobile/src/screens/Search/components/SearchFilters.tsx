@@ -127,7 +127,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
         value={activeTab}
         onChange={onTabChange}
         accentColor={accentColor}
-        accessibilityLabel="Toggle results between restaurants and dishes"
+        accessibilityLabel="Toggle results between Where to Go and What to Get"
         accessibilityHint="Tap to switch result type"
         testID="search-segment-toggle"
       />

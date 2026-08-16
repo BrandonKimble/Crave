@@ -134,8 +134,10 @@ export const CARD_VERTICAL_PADDING = 12;
 export const CARD_VERTICAL_PADDING_BALANCE = 2;
 export const SCORE_INFO_MAX_HEIGHT = SCREEN_HEIGHT * 0.25;
 export const SEGMENT_OPTIONS = [
-  { label: 'Restaurants', value: 'restaurants' as const },
-  { label: 'Dishes', value: 'dishes' as const },
+  // R1 (2026-08-16, owner-ratified): user-facing pane names. Internal values stay
+  // 'restaurants'/'dishes' (code rename is a separate undecided question, O3).
+  { label: 'Where to Go', value: 'restaurants' as const },
+  { label: 'What to Get', value: 'dishes' as const },
 ] as const;
 
 export type SegmentValue = (typeof SEGMENT_OPTIONS)[number]['value'];

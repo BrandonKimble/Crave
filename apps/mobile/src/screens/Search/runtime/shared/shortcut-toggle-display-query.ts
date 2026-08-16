@@ -6,9 +6,13 @@
 // and must never be mutated by a zero-network toggle. Typed/natural searches are untouched
 // (searchMode gate), and a shortcut whose label was replaced by a typed query falls through the
 // label match unchanged.
+// R2 (2026-08-16, owner-ratified): the two "Best …" shortcuts collapsed into ONE
+// "All" browse button, so both tabs share the single display label. The tab-flip
+// machinery below is retained (it degrades to a no-op while both labels match) for
+// the future horizontal-scroll shortcut overhaul.
 export const SHORTCUT_QUERY_LABEL_BY_TAB = {
-  restaurants: 'Best restaurants',
-  dishes: 'Best dishes',
+  restaurants: 'All',
+  dishes: 'All',
 } as const;
 
 const SHORTCUT_QUERY_LABELS: ReadonlySet<string> = new Set(

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, type LayoutRectangle, type StyleProp, type ViewStyle } from 'react-native';
 import Reanimated from 'react-native-reanimated';
-import { HandPlatter, Store } from 'lucide-react-native';
+import { Store } from 'lucide-react-native';
 
 import { Text } from '../../../components';
 import {
@@ -13,6 +13,13 @@ import styles from '../styles';
 
 const AnimatedPressable = Reanimated.createAnimatedComponent(Pressable);
 
+// R2 (2026-08-16, owner-ratified): the "Best restaurants" / "Best dishes" pair both ran
+// the SAME unfiltered browse — duplicates. Collapsed to ONE "All" chip wired to the
+// restaurants-tab browse submit (the browse result set is identical either way; the tab
+// only picks the landing pane). The two-chip prop surface (both press handlers + both
+// chip-layout callbacks) is deliberately retained so the row's layout machinery stays
+// intact for the future horizontal-scroll shortcut overhaul; the dishes callbacks are
+// simply unused while one chip renders.
 type SearchShortcutsRowProps = {
   containerAnimatedStyle: StyleProp<ViewStyle>;
   chipAnimatedStyle: StyleProp<ViewStyle>;
@@ -31,10 +38,8 @@ const SearchShortcutsRow = ({
   contentAnimatedStyle,
   interactionEnabledRef,
   onPressBestRestaurants,
-  onPressBestDishes,
   onRowLayout,
   onRestaurantsChipLayout,
-  onDishesChipLayout,
 }: SearchShortcutsRowProps) => {
   const activeScenarioConfig = usePerfScenarioRuntimeStore((state) => state.activeConfig);
   const logShortcutPress = React.useCallback(
@@ -52,7 +57,7 @@ const SearchShortcutsRow = ({
     },
     [activeScenarioConfig, interactionEnabledRef]
   );
-  const handleRestaurantsPress = React.useCallback(() => {
+  const handleAllPress = React.useCallback(() => {
     if (interactionEnabledRef.current) {
       logShortcutPress('restaurants', true);
       onPressBestRestaurants();
@@ -60,14 +65,6 @@ const SearchShortcutsRow = ({
     }
     logShortcutPress('restaurants', false);
   }, [interactionEnabledRef, logShortcutPress, onPressBestRestaurants]);
-  const handleDishesPress = React.useCallback(() => {
-    if (interactionEnabledRef.current) {
-      logShortcutPress('dishes', true);
-      onPressBestDishes();
-      return;
-    }
-    logShortcutPress('dishes', false);
-  }, [interactionEnabledRef, logShortcutPress, onPressBestDishes]);
 
   return (
     <Reanimated.View
@@ -78,10 +75,10 @@ const SearchShortcutsRow = ({
       }}
     >
       <AnimatedPressable
-        onPress={handleRestaurantsPress}
+        onPress={handleAllPress}
         style={[styles.searchShortcutChip, chipAnimatedStyle]}
         accessibilityRole="button"
-        accessibilityLabel="Show best restaurants here"
+        accessibilityLabel="Show all results here"
         hitSlop={8}
         onLayout={({ nativeEvent: { layout } }) => {
           onRestaurantsChipLayout(layout);
@@ -90,24 +87,7 @@ const SearchShortcutsRow = ({
         <Reanimated.View style={[styles.searchShortcutContent, contentAnimatedStyle]}>
           <Store size={16} color="#111827" strokeWidth={2} />
           <Text variant="caption" weight="semibold" style={styles.searchShortcutChipText}>
-            Best restaurants
-          </Text>
-        </Reanimated.View>
-      </AnimatedPressable>
-      <AnimatedPressable
-        onPress={handleDishesPress}
-        style={[styles.searchShortcutChip, chipAnimatedStyle]}
-        accessibilityRole="button"
-        accessibilityLabel="Show best dishes here"
-        hitSlop={8}
-        onLayout={({ nativeEvent: { layout } }) => {
-          onDishesChipLayout(layout);
-        }}
-      >
-        <Reanimated.View style={[styles.searchShortcutContent, contentAnimatedStyle]}>
-          <HandPlatter size={16} color="#111827" strokeWidth={2} />
-          <Text variant="caption" weight="semibold" style={styles.searchShortcutChipText}>
-            Best dishes
+            All
           </Text>
         </Reanimated.View>
       </AnimatedPressable>

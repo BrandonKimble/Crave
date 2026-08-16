@@ -47,7 +47,8 @@ export const useSearchRootSearchScenePanelSurfaceContentRuntime = ({
         </View>
       );
     }
-    const emptyTitle = activeTab === 'dishes' ? 'No dishes found.' : 'No restaurants found.';
+    const emptyTitle =
+      activeTab === 'dishes' ? 'No results in What to Get.' : 'No results in Where to Go.';
     const emptySubtitle =
       resultsMetadata.emptyQueryMessage ?? 'Try moving the map or adjusting your search.';
     return (

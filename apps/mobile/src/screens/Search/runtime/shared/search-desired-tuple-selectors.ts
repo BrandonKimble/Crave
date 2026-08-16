@@ -51,9 +51,8 @@ export const deriveSubmittedQueryFromIdentity = (identity: SearchQueryIdentity):
   identity.kind === 'natural'
     ? identity.query
     : identity.kind === 'shortcut'
-      ? identity.shortcutTab === 'restaurants'
-        ? 'Best restaurants'
-        : 'Best dishes'
+      ? // R2: the single "All" browse shortcut — one display label for either tab.
+        'All'
       : identity.kind === 'list'
         ? identity.displayTitle
         : identity.kind === 'entity'
