@@ -239,6 +239,41 @@ stamp food's dish|category|drink kind while the prompt reopens for v15;
 sweep raw table/column literals in invariant scripts + fixtures
 (resolution-gate fixture hand-mimics addSurfaces — drift risk).
 
+## R15 REDERIVATION VERDICT (2026-08-16; industry + code + live probes)
+INDUSTRY: autocomplete vs submitted search are separate ENGINES everywhere
+(Google/Yelp/Foursquare/Apple) — but that's a billion-row latency fact,
+not semantics; submitted generic/name queries are CLASSIFY-THEN-ROUTE
+(Yelp name-probability arm; DoorDash intent taxonomy). Nobody blends
+blindly.
+OUR SHAPE VERDICT: ONE recall engine + TWO policies is what we already
+have (EntityTextSearchService feeds both; autocomplete optimistic —
+prefix 0.9; linker conservative — admission floors) and it is CORRECT
+at our corpus size. Do not fork recall; do not merge policies.
+THE IDEAL: prefix = an evidence tier every consumer reads + ONE missing
+consumer policy — a NAME-INTENT arm in submitted flow at grounds-nothing
+∧ ¬browse ONLY: serve venues whose names carry prefix/edit evidence as a
+SUBORDINATE name-suggestion set (never competes with grounding; disjoint
+from dense — "same word unfinished" vs "different words same concept").
+'frankln barbecue' should show Franklin Barbecue, not generic barbecue +
+a futile demand probe. Two-pane for 'the': Where-to-Go = The-X venues by
+score; What-to-Get = empty-with-affordance, NEVER a concept guess.
+'brisk' mirror: dishes side carries brisket (today's accidental fuzzy
+behavior made deliberate). Prefix NEVER earns a link — suggestion only.
+BUILD-NOW DEFECTS (dispatch when browse-hole agent lands — file
+collision): (1) 'jo'→'jos' pluralization accident mints an EXACT alias
+link from a 2-char prefix (foodNameVariants must not pluralize sub-3-char
+residue into exact claims); (2) C4a DENIAL IS COSMETIC FOR AUTOCOMPLETE —
+name arms match core_entities.name/identity_key directly, bypassing
+surface deprecation; notAName verdicts must suppress the name arms for
+that (entity,form) — and note ghost 'Best' was NOT in census batch 1
+(autocomplete serves it exact-top today); (3) out-of-viewport exact-name
+grounding ('the alcove': 0 results, silent) needs its coverage message.
+(Browse-serve wire = already in the in-flight fix.)
+LADDER-GATED (A1 agenda additions): the name-suggestion arm's floor +
+response-contract seat (distinct nameSuggestions band); ratify-or-replace
+the fuzzy-tier accident as an explicit dish-prefix band; prefix
+never-links ratification.
+
 ## SEQUENCING
 Types-promotion backfill + invariant: post-v13-activation window (rides
 with reground/dedupe). Consumable facet + X-food ontology drain: with the
