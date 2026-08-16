@@ -126,6 +126,27 @@ future and lands with the ladder session.
   projection writer). Third layer verified NOT needed (search matches
   through surfaces).
 
+## CROSS-SESSION CONSENSUS (2026-08-16, both plans exchanged + hole-poked)
+- H1 (⭐04's catch, ACCEPTED): venue-axis SEMANTIC flip ('restaurants'
+  strict, venue buttons) activates only AFTER reground+survival resolves
+  ghosts to grounded-or-archived — else strict search silently excludes
+  real-but-ungrounded venues (food trucks worst). Data backfill may run
+  earlier as prep. T2 activation condition.
+- H2 ACCEPTED: types→kind mapping = ONE authority in
+  google-place-type-attributes.ts + kind-vs-noise classification + an
+  unmapped-types census invariant (Google adding a type = loud event).
+- H3 ACCEPTED: sync first-search hearing → budget-gated, fails closed to
+  degrade; timeout writes NO verdict (record-only-on-complete); hearing
+  drains OFF during shadow windows until ⭐04's P6 sandbox lands.
+- H4: entailment-vs-convention meal-timing boundary co-signed in
+  direction; formal co-sign at their design presentation.
+- MY POKES K1-K5 sent (Places spend cap on shorthand A/B; single
+  re-baseline at their scoring-epoch flip; joint shadow-write enumeration
+  incl. my doors; C4a name-lane = the court for their P5 census;
+  containment-reads-surfaces stays in wave scope).
+- START CONDITION (owner): both sessions begin execution only after ⭐04
+  acks K1-K5 → then report agreement to owner.
+
 ## SEQUENCING
 Types-promotion backfill + invariant: post-v13-activation window (rides
 with reground/dedupe). Consumable facet + X-food ontology drain: with the
