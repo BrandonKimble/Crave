@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-16T06:58:15.469Z",
+  "generatedAt": "2026-08-16T07:51:56.253Z",
   "pageSize": 25,
   "maxPages": 60,
   "mutation": null,
@@ -10,12 +10,12 @@
     "maxAnchors": 3
   },
   "corpus": {
-    "mustAppear": 2303,
+    "mustAppear": 2333,
     "missing": 33,
-    "served": 3666,
-    "leaks": 376,
-    "judgedRejectsServed": 3,
-    "coverage": 0.985670864090317,
+    "served": 3785,
+    "leaks": 372,
+    "judgedRejectsServed": 2,
+    "coverage": 0.9858551221603086,
     "unexplainedMisses": 0
   },
   "cases": [
@@ -26,24 +26,24 @@
       "grounded": ["chili", "cheese", "dog"],
       "groundingShattered": true,
       "anchors": 3,
-      "tier0Concepts": 90,
-      "ringConcepts": 182,
+      "tier0Concepts": 109,
+      "ringConcepts": 180,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
         "pages": 19,
         "exhausted": true,
-        "dishes": 426,
-        "restaurants": 309,
+        "dishes": 443,
+        "restaurants": 324,
         "reportedTotals": {
-          "dishes": 426,
-          "restaurants": 309
+          "dishes": 443,
+          "restaurants": 324
         }
       },
       "truth": {
-        "candidates": 420,
-        "mustAppear": 399,
-        "mayAppear": 21
+        "candidates": 436,
+        "mustAppear": 414,
+        "mayAppear": 22
       },
       "coverage": 1,
       "missing": 0,
@@ -103,24 +103,24 @@
       "grounded": ["chili", "cheese", "dog"],
       "groundingShattered": false,
       "anchors": 3,
-      "tier0Concepts": 90,
-      "ringConcepts": 182,
+      "tier0Concepts": 109,
+      "ringConcepts": 180,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
         "pages": 19,
         "exhausted": true,
-        "dishes": 426,
-        "restaurants": 309,
+        "dishes": 443,
+        "restaurants": 324,
         "reportedTotals": {
-          "dishes": 426,
-          "restaurants": 309
+          "dishes": 443,
+          "restaurants": 324
         }
       },
       "truth": {
-        "candidates": 420,
-        "mustAppear": 399,
-        "mayAppear": 21
+        "candidates": 436,
+        "mustAppear": 414,
+        "mayAppear": 22
       },
       "coverage": 1,
       "missing": 0,
@@ -229,26 +229,26 @@
       "viewport": "austin",
       "why": "variant-of a rich category",
       "grounded": ["birria tacos", "tacos", "birria"],
-      "groundingShattered": true,
+      "groundingShattered": false,
       "anchors": 1,
       "tier0Concepts": 3,
-      "ringConcepts": 251,
+      "ringConcepts": 24,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": true,
-        "pages": 2,
+        "pages": 3,
         "exhausted": true,
-        "dishes": 10,
+        "dishes": 34,
         "restaurants": 8,
         "reportedTotals": {
-          "dishes": 10,
+          "dishes": 34,
           "restaurants": 8
         }
       },
       "truth": {
-        "candidates": 526,
+        "candidates": 57,
         "mustAppear": 22,
-        "mayAppear": 504
+        "mayAppear": 35
       },
       "coverage": 0.0455,
       "missing": 21,
@@ -487,18 +487,18 @@
       "grounded": ["pho"],
       "groundingShattered": false,
       "anchors": 1,
-      "tier0Concepts": 10,
-      "ringConcepts": 16,
+      "tier0Concepts": 12,
+      "ringConcepts": 14,
       "dietaryWallActive": false,
       "served": {
-        "expansionFired": true,
+        "expansionFired": false,
         "pages": 2,
         "exhausted": true,
-        "dishes": 19,
-        "restaurants": 19,
+        "dishes": 15,
+        "restaurants": 15,
         "reportedTotals": {
-          "dishes": 19,
-          "restaurants": 19
+          "dishes": 15,
+          "restaurants": 15
         }
       },
       "truth": {
@@ -510,33 +510,9 @@
       "missing": 0,
       "missReasons": {},
       "missSamples": [],
-      "leaks": 4,
-      "leakReasons": {
-        "plan-expansion arm (lexical/attribute widening past the graph)": 3,
-        "lexical-expansion arm (name look-alike)": 1
-      },
-      "leakSamples": [
-        {
-          "connectionId": "23eedca9-b7d3-4d53-aefa-3a9c91192af9",
-          "food": "chicken tail skewer",
-          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
-        },
-        {
-          "connectionId": "4f81e0ae-80aa-46de-8233-cf971c80da90",
-          "food": "intestines",
-          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
-        },
-        {
-          "connectionId": "eb13e296-e277-4671-883b-b728bbdad57b",
-          "food": "phony negroni",
-          "reason": "lexical-expansion arm (name look-alike)"
-        },
-        {
-          "connectionId": "4a6268d0-1bed-4ce7-9180-0db79f93a1b8",
-          "food": "grilled intestines",
-          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
-        }
-      ],
+      "leaks": 0,
+      "leakReasons": {},
+      "leakSamples": [],
       "judgedRejectsServed": 0,
       "judgedRejectSamples": [],
       "expectEmpty": false,
@@ -837,23 +813,23 @@
       "groundingShattered": false,
       "anchors": 1,
       "tier0Concepts": 3,
-      "ringConcepts": 244,
+      "ringConcepts": 25,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": true,
-        "pages": 2,
+        "pages": 5,
         "exhausted": true,
-        "dishes": 18,
+        "dishes": 83,
         "restaurants": 11,
         "reportedTotals": {
-          "dishes": 18,
+          "dishes": 83,
           "restaurants": 11
         }
       },
       "truth": {
-        "candidates": 528,
+        "candidates": 98,
         "mustAppear": 15,
-        "mayAppear": 513
+        "mayAppear": 83
       },
       "coverage": 0.2667,
       "missing": 11,
@@ -895,8 +871,8 @@
       "leaks": 0,
       "leakReasons": {},
       "leakSamples": [],
-      "judgedRejectsServed": 1,
-      "judgedRejectSamples": ["taqueria"],
+      "judgedRejectsServed": 0,
+      "judgedRejectSamples": [],
       "expectEmpty": false,
       "honestEmptyHeld": null
     },
@@ -970,13 +946,13 @@
       "missSamples": [],
       "leaks": 1,
       "leakReasons": {
-        "lexical-expansion arm (name look-alike)": 1
+        "venue-attribute arm (whole menu of a matching restaurant)": 1
       },
       "leakSamples": [
         {
           "connectionId": "8d5647d2-86f6-4e47-9519-d30959da7e14",
           "food": "pizza",
-          "reason": "lexical-expansion arm (name look-alike)"
+          "reason": "venue-attribute arm (whole menu of a matching restaurant)"
         }
       ],
       "judgedRejectsServed": 0,
@@ -1618,13 +1594,13 @@
       "dietaryWallActive": true,
       "served": {
         "expansionFired": false,
-        "pages": 3,
+        "pages": 4,
         "exhausted": true,
         "dishes": 7,
-        "restaurants": 40,
+        "restaurants": 68,
         "reportedTotals": {
           "dishes": 7,
-          "restaurants": 40
+          "restaurants": 68
         }
       },
       "truth": {
