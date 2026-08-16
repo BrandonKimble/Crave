@@ -14,7 +14,6 @@ import { EntityType, KeywordAttemptOutcome } from '@prisma/client';
 import { BatchJob } from './batch-processing-queue.types';
 import { ConfigService } from '@nestjs/config';
 import { normalizeKeywordTerm } from './keyword-term-normalization';
-import { stripGenericTokens } from '../../../shared/utils/generic-token-handling';
 import {
   JudgedVocabularyService,
   tokenize as judgedVocabularyTokens,
@@ -1108,7 +1107,7 @@ export class KeywordSearchOrchestratorService {
         judged.isGenericOnly ||
         this.judgedVocabulary.holdsUnjudged(input.term, input.locale)
           ? { text: '', isGenericOnly: true }
-          : stripGenericTokens(judged.text, input.locale);
+          : this.judgedVocabulary.stripAskFrame(judged.text, input.locale);
       const term = stripped.text;
       const normalizedTerm = normalizeKeywordTerm(term);
       if (!normalizedTerm || stripped.isGenericOnly) {

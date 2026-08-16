@@ -64,7 +64,7 @@ import {
   analyzeQuery,
   type DetectedLocale,
 } from '../../src/modules/entity-text-search/query-analyzer';
-import { stripGenericTokens } from '../../src/shared/utils/generic-token-handling';
+import { JudgedVocabularyService } from '../../src/modules/content-processing/entity-resolver/judged-vocabulary.service';
 
 interface GoldEntry {
   id: string;
@@ -231,12 +231,16 @@ const GENERIC_CASES: Array<{
   {
     term: 'top',
     locale: 'vi',
-    must: 'survives (vi has no authored stop-list)',
+    must: "frame via the und verdict (word-role; the old list said 'survives')",
   },
-  { term: 'top', locale: 'en', must: 'generic-only' },
+  { term: 'top', locale: 'en', must: 'generic-only (frame)' },
   { term: 'best tacos', locale: 'en', must: "strips to 'tacos'" },
-  { term: 'best tacos', locale: null, must: "strips to 'tacos' (und => en)" },
-  { term: 'mejores tacos', locale: 'es', must: 'survives whole' },
+  { term: 'best tacos', locale: null, must: "strips to 'tacos' (und verdict)" },
+  {
+    term: 'mejores tacos',
+    locale: 'es',
+    must: "strips 'mejores' once the es word-role verdict rules it frame",
+  },
 ];
 
 async function main(): Promise<void> {
@@ -321,9 +325,10 @@ async function main(): Promise<void> {
     if (disagreements.length > 0) red += 1;
   }
 
-  console.log('\n=== F5 — stripGenericTokens is per-language ===');
+  console.log('\n=== F5 — the ask-shape strip is per-language (word-role) ===');
+  const judgedVocabulary = app.get(JudgedVocabularyService);
   for (const item of GENERIC_CASES) {
-    const stripped = stripGenericTokens(item.term, item.locale);
+    const stripped = judgedVocabulary.stripAskFrame(item.term, item.locale);
     console.log(
       `  '${item.term}' [${item.locale ?? 'und'}] -> text='${stripped.text}' genericOnly=${
         stripped.isGenericOnly

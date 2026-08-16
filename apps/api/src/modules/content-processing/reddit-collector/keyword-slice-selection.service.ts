@@ -53,7 +53,6 @@ import {
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { normalizeKeywordTerm } from './keyword-term-normalization';
-import { stripGenericTokens } from '../../../shared/utils/generic-token-handling';
 import {
   JudgedVocabularyService,
   tokenize as judgedVocabularyTokens,
@@ -584,7 +583,7 @@ export class KeywordSliceSelectionService {
         judged.isGenericOnly ||
         this.judgedVocabulary.holdsUnjudged(candidate.term, candidate.locale)
           ? { text: '', isGenericOnly: true }
-          : stripGenericTokens(judged.text, candidate.locale);
+          : this.judgedVocabulary.stripAskFrame(judged.text, candidate.locale);
       const term = stripped.text;
       if (!term.length || stripped.isGenericOnly) {
         stats.dropped.invalid += 1;
@@ -1224,7 +1223,7 @@ export class KeywordSliceSelectionService {
         // THE ASK'S OWN LANGUAGE, read back off the ledger row (F5). This
         // slice re-runs a term days after somebody asked for it, with no
         // request anywhere in scope, so this column is the ONLY thing that
-        // can tell `stripGenericTokens` which language to judge it in — and
+        // can tell the ask-shape strip which language to judge it in — and
         // judging a Vietnamese term by the English generic list DELETES it
         // from the cycle ('top'). Null means nobody recorded one, which
         // resolves to the stripper's default exactly as before.

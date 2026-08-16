@@ -25,8 +25,16 @@ import {
   denseAdmits,
   linkerAdmits,
 } from './evidence-admission';
-import { analyzeQuery } from '../entity-text-search/query-analyzer';
+import {
+  analyzeQuery,
+  segmentStripUnits,
+} from '../entity-text-search/query-analyzer';
 import { JudgedVocabularyService } from '../content-processing/entity-resolver/judged-vocabulary.service';
+import {
+  ROLE_FRAME,
+  ROLE_VENUE_CATEGORY,
+} from '../content-processing/entity-resolver/word-vocabulary-lanes';
+import { surfaceClaimKey } from '../content-processing/entity-resolver/entity-surface.service';
 export interface ResidueToken {
   text: string;
   start: number;
@@ -108,6 +116,10 @@ interface InterpretationResult {
     requestLocale: string | null;
     detectedLocale: { tag: string; confidence: number; source: string } | null;
     denseTierUsed: boolean;
+    /** Every word of the query read FRAME on the word-role facet (or the
+     *  provisional bare-'restaurants' case): nothing is named, so the
+     *  answer is the unfiltered ranked serve. */
+    browseMode: boolean;
   };
 }
 
@@ -234,6 +246,67 @@ export class SearchQueryInterpretationService {
     // prompt work + the retroactive junk sweep, not a non-exhaustive
     // stop-list here. TODO(post-cleanup): enable the pinned generic-query
     // cases in search-generic-queries.spec.ts once the graph is clean.
+    // THE WORD-ROLE FACET IS CONSULTED BEFORE GROUNDING (browse mode,
+    // 2026-08-15, narrowed by owner amendment same day) — and INDEPENDENT
+    // OF THE BANK. The corpus is contaminated ('best' is a banked
+    // ghost-restaurant surface, 'good taco' a live entity), so what a word
+    // DOES in an ask is a verdict about the word, never an inference from
+    // what the index happens to hold. The rulings that compose here:
+    //   - a FRAME word (best/top/near/me/最好, bare 'food' by owner ruling)
+    //     wraps the ask without naming anything. It is excluded from
+    //     grounding INPUT: a grounded span made ENTIRELY of frame words is
+    //     dropped (the Best-ghost class can no longer answer 'best'), and a
+    //     frame token never seeds a residue probe or a demand row ('me' can
+    //     never again be collected as an ingredient).
+    //   - BROWSE MODE triggers ONLY for frame-word-only queries ('best',
+    //     'top', 'near me'): nothing is named, so nothing filters — the
+    //     answer is the unfiltered ranked serve.
+    //   - a VENUE-CATEGORY word keeps TODAY's behavior by owner amendment
+    //     (2026-08-15): it grounds to its restaurant_attribute where one
+    //     exists and builds no browse scoping. Venue-taxonomy semantics
+    //     (Google-types promotion) land with the owner's taxonomy plan, not
+    //     here. The facet's three-way verdict stays certified; this
+    //     composition rule is what narrows.
+    //   - NAME MATCHING IS NEVER AFFECTED: the scan above already ran over
+    //     the full query, so a frame word INSIDE a multiword banked name
+    //     ('Best Quality Daughter') still grounds — only spans that are
+    //     nothing but frame are dropped, which is the No-Name-Burgers law
+    //     applied to this facet.
+    // An UNHEARD word blocks none of this conservatively: it reads as
+    // particular (today's path) and is queued for tonight's hearing.
+    const roleLocale = analysis.detectedLocale?.tag ?? request.locale ?? null;
+    const roleOfWord = (word: string): string | null =>
+      this.judgedVocabulary.roleOf(word, roleLocale);
+    const roleUnits = segmentStripUnits(request.query).map((unit) => ({
+      ...unit,
+      role: roleOfWord(unit.word),
+    }));
+    const unitsOf = (span: { start: number; end: number }) =>
+      roleUnits.filter((u) => u.start < span.end && u.end > span.start);
+    // PROVISIONAL (owner amendment 2026-08-15, pending the venue-taxonomy
+    // plan): a BARE 'restaurants' query is treated as frame-only-equivalent
+    // — it browses. 'food' needs no entry here because its word-role verdict
+    // is already frame by owner ruling. This is a deliberate, flagged
+    // stopgap word list, sanctioned as provisional; it dies when category
+    // semantics land with the taxonomy plan.
+    const bareProvisionalBrowse =
+      roleUnits.length === 1 &&
+      roleUnits[0].role === ROLE_VENUE_CATEGORY &&
+      ['restaurant', 'restaurants'].includes(
+        surfaceClaimKey(roleUnits[0].word),
+      );
+    const isBrowseUnit = (u: { role: string | null }) =>
+      u.role === ROLE_FRAME || bareProvisionalBrowse;
+    // Drop grounded spans that are NOTHING BUT browse words (frame spans —
+    // and, provisionally, the bare-'restaurants' span).
+    const roleFilteredGroups = rawGroups.filter((g) => {
+      const units = unitsOf(g);
+      return !units.length || units.some((u) => !isBrowseUnit(u));
+    });
+    // BROWSE MODE: every word of the query is a frame word (or the
+    // provisional bare venue word above). Nothing names anything, so there
+    // is no filter to build.
+    const browseMode = roleUnits.length > 0 && roleUnits.every(isBrowseUnit);
     // NEGATION V2 (owner ruling 2026-08-08, plan §12b): LITERAL IGNORE.
     // "tacos no cilantro" grounds cilantro as a positive mention — exactly
     // as if the user listed an ingredient. The old cue-span machinery
@@ -245,7 +318,10 @@ export class SearchQueryInterpretationService {
     // that CAN understand negation never gets the chance ("sin cerdo"
     // embeds as "cerdo" -> pork, positively; the vegan-ramen inversion
     // stays impossible). Dietary toggles are the only real exclusions.
-    const groups = rawGroups;
+    // In browse mode every browse-word span was already dropped above, so
+    // nothing remains to ground — the structured request carries no entity
+    // targets and the executor serves the unfiltered ranked page.
+    const groups = roleFilteredGroups;
     const gazetteerMs = performance.now() - gazetteerStart;
 
     // Residue = token runs no grounded span covers. Same 48-token cap as
@@ -274,7 +350,43 @@ export class SearchQueryInterpretationService {
     // dense-embed input below.
     const covered = (t: { start: number; end: number }) =>
       groups.some((g) => g.start <= t.start && g.end >= t.end);
-    const residueRuns = buildResidueRuns(tokens, covered);
+    // FRAME TOKENS NEVER SEED THE RESIDUE LANE (word-role, 2026-08-15): a
+    // frame word wraps the ask, so it neither probes the linker ('top' can
+    // no longer fuzzy-capture beer), nor stages for the splitter, nor
+    // records demand ('me' is not an ingredient to go collect). Treating it
+    // as covered ends a run exactly the way a grounded span does; in browse
+    // mode there is no residue lane at all — every word is already accounted
+    // for by the role facet.
+    // FRAME EXCLUSION AT SEGMENT-UNIT GRANULARITY (the A4 law again): a
+    // token is excluded only when a whole frame-ruled UNIT covers it. The
+    // per-token form re-created the character-strip defect in zh — 餐's own
+    // frame verdict split the unit 餐厅 and sent the amputated 厅 to the
+    // residue lane.
+    //
+    // ...AND ONLY WHEN SOMETHING ALREADY GROUNDED. A query that grounded
+    // nothing is a query whose words we do not yet understand, and a frame
+    // verdict under 'und' is a weak prior about a compound we failed to
+    // read — excluding a word from it can only split the one residue run
+    // that could reach the whole surface (the 'da' inside "cà phe sua da"
+    // class). When a span HAS grounded, the ask is known and the frame
+    // words around it are safely wrapping ('best birria near me' → birria,
+    // no 'me' probe); when nothing grounded, the whole run probes and the
+    // demand door still strips the frame from anything it records.
+    const frameUnitSpans =
+      groups.length > 0 ? roleUnits.filter((u) => u.role === ROLE_FRAME) : [];
+    const frameTokenStarts = new Set(
+      tokens
+        .filter((t) =>
+          frameUnitSpans.some((f) => f.start <= t.start && f.end >= t.end),
+        )
+        .map((t) => t.start),
+    );
+    const residueRuns = browseMode
+      ? []
+      : buildResidueRuns(
+          tokens,
+          (t) => covered(t) || frameTokenStarts.has(t.start),
+        );
 
     // RESIDUE-JOIN RULE: probe each run joined with its adjacent grounded
     // spans FIRST — "brekfast tacos" must reach the COMPOUND "breakfast
@@ -569,6 +681,7 @@ export class SearchQueryInterpretationService {
     }
 
     const allResults = [...placedResults, ...residueResults];
+    if (browseMode) unresolvedResidues.length = 0;
     const groupedEntities = this.groupResolvedEntities(allResults);
     const structuredRequest = this.buildSearchRequest(request, groupedEntities);
     structuredRequest.searchRequestId ??= uuid();
@@ -600,7 +713,12 @@ export class SearchQueryInterpretationService {
     // immediately; only 3+-token runs stage for the async LLM SPLITTER
     // (multi-entity residue like "khachapuri and adjika" genuinely needs
     // judgment — typing does not). Cap 3/request (red team R4-P6).
-    const cappedResidues = unresolvedResidues.slice(0, 3);
+    // NO DEMAND FROM BROWSE (owner amendment 2026-08-15, consensus
+    // reversal): a browse query records NO demand rows — frame words are
+    // not demand, and categories are NOT demand either. Demand recording is
+    // unchanged for particulars, which flow through the residue lane below
+    // and the search-attribution writer.
+    const cappedResidues = (browseMode ? [] : unresolvedResidues).slice(0, 3);
     if (cappedResidues.length) {
       const viewportEligible = this.isViewportEligibleForOnDemand(
         request.bounds,
@@ -707,6 +825,7 @@ export class SearchQueryInterpretationService {
         requestLocale: analysis.requestLocale,
         detectedLocale: analysis.detectedLocale,
         denseTierUsed,
+        browseMode,
       },
     };
   }

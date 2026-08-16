@@ -31,7 +31,11 @@ function buildService(): KeywordSliceSelectionService {
     {} as never,
     {} as never,
     { emit: jest.fn() } as never,
-    judgedVocabularyDouble(),
+    // The ask-shape strip reads WORD-ROLE verdicts now (2026-08-15): 'best'
+    // is certified frame in en — and, like the real certification, under
+    // 'und' too. 'top' carries NO vi verdict, which is the point of this
+    // file: an unheard word in a tagged language survives.
+    judgedVocabularyDouble({ frames: [['best', 'en']] }),
     logger as never,
   );
 }
@@ -87,17 +91,17 @@ describe('keyword candidates strip generic tokens IN THEIR OWN LANGUAGE', () => 
     ).toEqual(['mejores tacos']);
   });
 
-  it('an UNDECIDABLE language gets NO stop list — not the English one', async () => {
-    // Corrected 2026-08-13. A null locale used to read as English here. It is
-    // the same defect this file's other cases already guard in the tagged
-    // direction ('top' survives a vi ask), reached by the untagged path: the
-    // detector routinely cannot decide a one-worder's language, and under the
-    // old default that undecidable term was judged — and, when every token
-    // was English-generic, DISCARDED — on the strength of a word list it was
-    // never subject to. Undetermined now means unjudged.
+  it("an UNDECIDABLE language is judged under its OWN 'und' verdicts — never English's", async () => {
+    // Corrected twice. 2026-08-13: a null locale used to read as English —
+    // undetermined meant unjudged, and the term survived whole. 2026-08-15:
+    // 'und' now holds its OWN certified word-role verdicts (the
+    // certification buys every word under 'und', because most real asks
+    // arrive undetectable), so 'best' strips here by an und ruling — not by
+    // an English default. The vi case above is still the guard that a
+    // TAGGED language is never judged by another's list.
     expect(
       (await filter(unmet('best tacos', null))).map((c) => c.term),
-    ).toEqual(['best tacos']);
+    ).toEqual(['tacos']);
   });
 
   it('an undecidable one-worder that is English-generic SURVIVES the cycle', async () => {

@@ -2,7 +2,6 @@ import { Injectable, Inject } from '@nestjs/common';
 import { EntityType, OnDemandReason, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
-import { stripGenericTokens } from '../../shared/utils/generic-token-handling';
 import { JudgedVocabularyService } from '../content-processing/entity-resolver/judged-vocabulary.service';
 import { normalizeDetectedLocaleTag } from '../../shared/locale';
 import { SignalsService } from '../signals/signals.service';
@@ -345,8 +344,9 @@ export class OnDemandRequestService {
    * English — so a Spanish ask is judged in Spanish instead of escaping
    * judgement altogether.
    *
-   * The ask-SHAPE strip ("best … near me") runs after and is a separate law;
-   * see `generic-token-handling.ts` for why it could not become a verdict.
+   * The ask-SHAPE strip ("best … near me") runs after as its own law — from
+   * WORD-ROLE verdicts now, per-language, where the retired
+   * `generic-token-handling.ts` list was English-only.
    */
   private async sanitizeTerm(
     term: string,
@@ -359,7 +359,10 @@ export class OnDemandRequestService {
     // HELD counts as "no ask yet": an on-demand request sends the collector
     // out to spend, and it waits for the verdict rather than guessing.
     if (judged.isGenericOnly || judged.heldUnjudged) return '';
-    const stripped = stripGenericTokens(judged.text, detectedLocale);
+    const stripped = this.judgedVocabulary.stripAskFrame(
+      judged.text,
+      detectedLocale,
+    );
     return stripped.isGenericOnly ? '' : stripped.text;
   }
 

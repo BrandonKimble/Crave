@@ -13,7 +13,6 @@ import {
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService, TextSanitizerService } from '../../shared';
-import { stripGenericTokens } from '../../shared/utils/generic-token-handling';
 import { JudgedVocabularyService } from '../content-processing/entity-resolver/judged-vocabulary.service';
 import {
   EntityScope,
@@ -2417,17 +2416,10 @@ export class SearchService {
           // recorded on a guess.
           continue;
         }
-        // The ask-SHAPE strip is a separate law (rank/proximity framing, bare
-        // category) and still English-only; see generic-token-handling.ts.
-        const stripped = stripGenericTokens(
-          judged.text,
-          request.detectedLocale ?? null,
-        );
-        if (stripped.isGenericOnly) {
-          continue;
-        }
-
-        const term = stripped.text.trim();
+        // The ask-SHAPE strip now happens INSIDE demandTerm, from word-role
+        // verdicts — per-language, where the retired generic-token list was
+        // English-only.
+        const term = judged.text.trim();
         if (!term.length) {
           continue;
         }
