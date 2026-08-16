@@ -88,8 +88,37 @@ class WordGenericnessLaneAdapter extends WordVocabularyLaneAdapter {
   readonly lane = WORD_GENERICNESS_LANE;
 }
 
+/**
+ * NEGATION IS KEYED BY SPELLING ALONE — 'und', always (B-key, 2026-08-15).
+ *
+ * THE FINDING, executed: this lane bought one verdict per (spelling, locale)
+ * and its ONLY consumer reads `negatingForms`, a set of SPELLINGS with the
+ * locale thrown away — by ruling, not by accident (see JudgedVocabularyService:
+ * "ramen sin cerdo" typed on an en-US phone must still have `sin` withheld
+ * from the embedder, so a form ruled a negator in ANY language is withheld in
+ * every language). Every extra locale's hearing therefore bought an answer
+ * nobody could ever read: 38% of this lane's spend, measured against the
+ * certified corpus.
+ *
+ * So the claim unit becomes what the consumer actually asks: does THIS
+ * SPELLING negate anywhere? One hearing, 'und', asked of a judge that already
+ * reasons across languages. The any-language-yes semantics the set
+ * implemented in memory is now the semantics of the STORED verdict, which is
+ * where a rule belongs — a per-locale table re-deriving one boolean on every
+ * write was the same law expressed twice, and the second copy is deleted.
+ *
+ * GENERICNESS KEEPS ITS LOCALE, and the asymmetry is the point: whether a
+ * word does grammatical work is a fact ABOUT a language (`de` is glue in
+ * Spanish and a name fragment elsewhere), and its consumer strips in the
+ * ask's OWN language, so the locale is read. Two lanes, two claim kinds, two
+ * key shapes — which is exactly why they were never one lane.
+ */
 class WordNegationLaneAdapter extends WordVocabularyLaneAdapter {
   readonly lane = WORD_NEGATION_LANE;
+
+  override canonicalClaimKey(claim: WordVocabularyClaim): string {
+    return `und|${surfaceClaimKey(claim.word)}`;
+  }
 }
 
 export const wordGenericnessLane = new WordGenericnessLaneAdapter();

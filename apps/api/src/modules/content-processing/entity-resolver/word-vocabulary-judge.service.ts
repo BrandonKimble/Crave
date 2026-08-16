@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { LoggerService } from '../../../shared';
 import { LLMService } from '../../external-integrations/llm/llm.service';
-import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
+import {
+  ClaimVerdictLedgerService,
+  type HearingSource,
+} from './claim-verdict-ledger.service';
 import { ClaimRehearingBudgetService } from './claim-rehearing-budget.service';
 import {
   CARRIES_CONCEPT,
@@ -149,7 +152,15 @@ export class WordVocabularyJudgeService {
   async certify(
     lane: string,
     claims: readonly WordVocabularyClaim[],
-    options: { dryRun?: boolean; approvedHash?: string | null } = {},
+    options: {
+      dryRun?: boolean;
+      approvedHash?: string | null;
+      /** WHO IS BUYING (A3, 2026-08-15). Default 'steady' — the unattended
+       *  rail, whose spend the rolling allowance meters. An operator drain
+       *  says 'certification' and is exempt from that window, because it is
+       *  bounded by the approve-by-hash law instead. */
+      source?: HearingSource;
+    } = {},
   ): Promise<VocabularyCertificationSummary> {
     const wiring = laneWiring(lane);
     const summary: VocabularyCertificationSummary = {
@@ -257,6 +268,7 @@ export class WordVocabularyJudgeService {
             reason: answer.reason,
             ruleFingerprint: wiring.ruleFingerprint,
             subject: claim,
+            source: options.source ?? 'steady',
           });
           for (const listener of this.onVerdict) {
             listener(wiring.lane, key, outcome);

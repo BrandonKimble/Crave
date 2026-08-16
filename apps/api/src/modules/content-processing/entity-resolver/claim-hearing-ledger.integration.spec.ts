@@ -42,7 +42,7 @@ describe('the one hearing abstraction — live database', () => {
   const madeKeys: string[] = [];
 
   const ledger = new ClaimVerdictLedgerService(prisma as never);
-  const budget = new ClaimRehearingBudgetService(prisma as never);
+  const budget = new ClaimRehearingBudgetService(prisma as never, ledger);
 
   /**
    * The budget with its ROLLING WINDOW read as empty. Every proof except the
@@ -56,7 +56,10 @@ describe('the one hearing abstraction — live database', () => {
       return Promise.resolve(0);
     }
   }
-  const freshWindow = new UnspentWindowBudget(prisma as never);
+  const freshWindow = new UnspentWindowBudget(
+    prisma as never,
+    new ClaimVerdictLedgerService(prisma as never),
+  );
 
   const logger = () =>
     ({
@@ -567,7 +570,10 @@ describe('the one hearing abstraction — live database', () => {
         }
       }
       await expect(
-        new SpentWindowBudget(prisma as never).authorizeDrain({
+        new SpentWindowBudget(
+          prisma as never,
+          new ClaimVerdictLedgerService(prisma as never),
+        ).authorizeDrain({
           lane: WORD_CLAIM_LANE,
           ruleVersion: CLAIM_JUDGE_PROMPT_VERSION,
           dueCount: 10,
@@ -584,9 +590,44 @@ describe('the one hearing abstraction — live database', () => {
           })
         ).allowed,
       ).toBe(10);
-      // And the real meter counts real rows: the ledger row this proof
-      // inserted is one judge call's worth of hearings.
-      expect(await budget.hearingsSpentInWindow()).toBeGreaterThanOrEqual(10);
+      // AND THE REAL METER COUNTS WORDS JUDGED, NOT CALLS BILLED (A2/A3,
+      // 2026-08-15). It used to read `billed calls x the lane's nominal
+      // claimsPerCall`, which over-reported a partly-filled batch by up to
+      // 40x and could not tell a one-time operator certification from the
+      // nightly trickle — together, 97,400 phantom hearings in front of a cap
+      // of 200. One verdict row is one word judged, and only the UNATTENDED
+      // ones are charged to the standing allowance.
+      const meterKeys = [
+        `zzq-meter-steady-${randomUUID().slice(0, 8)}`,
+        `zzq-meter-cert-${randomUUID().slice(0, 8)}`,
+      ];
+      madeKeys.push(...meterKeys);
+      const before = await budget.hearingsSpentInWindow(WORD_CLAIM_LANE);
+      await ledger.record({
+        lane: WORD_CLAIM_LANE,
+        claimKey: meterKeys[0],
+        ruleVersion: CLAIM_JUDGE_PROMPT_VERSION,
+        foldVersion: 1,
+        outcome: 'bothUpheld',
+        reason: 'the steady rail bought this one',
+        subject: {},
+        source: 'steady',
+      });
+      await ledger.record({
+        lane: WORD_CLAIM_LANE,
+        claimKey: meterKeys[1],
+        ruleVersion: CLAIM_JUDGE_PROMPT_VERSION,
+        foldVersion: 1,
+        outcome: 'bothUpheld',
+        reason: 'an operator certification bought this one',
+        subject: {},
+        source: 'certification',
+      });
+      // Exactly ONE more: the steady hearing counts, the certification does
+      // not — and neither is inflated to a batch size nobody filled.
+      expect(await budget.hearingsSpentInWindow(WORD_CLAIM_LANE)).toBe(
+        before + 1,
+      );
     } finally {
       await prisma.$executeRawUnsafe(
         `DELETE FROM api_usage_ledger WHERE run_key = $1`,

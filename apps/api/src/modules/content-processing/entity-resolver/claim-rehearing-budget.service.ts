@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { pricedGeminiRow } from '../../external-integrations/shared/gemini-pricing';
+import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
 
 /**
  * THE RE-HEARING IS A QUERY; ITS DRAIN IS A SPEND EVENT (H5 amendment (b),
@@ -55,11 +56,25 @@ import { pricedGeminiRow } from '../../external-integrations/shared/gemini-prici
  * second invocation therefore sees the first one's cost, and a loop stops
  * itself.
  *
- * The number stays 200 hearings per window — the allowance already chosen and
- * shipped, sized to absorb ordinary drift rather than to work through a rule
- * bump. What changed is that it now means what it says.
+ * WHAT THE NUMBER HAS TO CLEAR, AND WHAT IT HAS TO REFUSE (re-derived
+ * 2026-08-15, A2/A3). It was 200, and 200 was not a budget for the trickle it
+ * was written for — it was smaller than one ordinary day of new words, so the
+ * only reason it never refused anything is that nothing ever drained.
+ *
+ *   - IT MUST ADMIT THE TRICKLE: new words arriving from real asks, which the
+ *     owner sizes at a few hundred a day. A cap under that turns the
+ *     self-healing door into a door that never heals.
+ *   - IT MUST REFUSE A MASS RE-HEAR: the population a rule-version bump
+ *     re-opens, MEASURED today at 32,379 words on the negation lane and
+ *     32,379 on genericness. That is the runaway, and it is the only one.
+ *
+ * 2,000 sits between them with room on both sides — roughly 4x the stated
+ * trickle ceiling, and 16x below the smallest measured bump population, so a
+ * bump still stops at the gate and prints its quote. It is not a measurement
+ * of demand (there is none yet: this corpus has zero recorded asks), and it
+ * is not defended as one; when demand exists, meter it and re-derive.
  */
-export const STANDING_REHEARING_CAP = 200;
+export const STANDING_REHEARING_CAP = 2_000;
 
 /** The window the standing allowance is spread over. A day, because the
  *  nightly is the rail this allowance exists to keep running. */
@@ -193,7 +208,10 @@ export class NoMeasuredHearingRateError extends Error {
 
 @Injectable()
 export class ClaimRehearingBudgetService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly ledger: ClaimVerdictLedgerService,
+  ) {}
 
   /**
    * What one hearing costs, from this lane's own metered spend. Micro-USD.
@@ -254,21 +272,33 @@ export class ClaimRehearingBudgetService {
    * HEARINGS ALREADY BOUGHT in the rolling window — what makes the allowance
    * a budget instead of a per-call speed bump.
    *
-   * COUNTED, not converted. Every metered row is one judge call and a judge
-   * call carries the lane meter's `claimsPerCall` hearings, so the window's own rows say how
-   * many hearings were bought — exactly, with no rate in the arithmetic.
-   * Dividing the window's dollars by a 30-day average rate would have been a
-   * worse number in both directions: it needs a rate to exist before the
-   * gate can work at all (the cold start has none), and it mis-states any
-   * window whose model mix differs from the average's — a day of
-   * pricier-model calls reads as more hearings than were actually bought, and
-   * the allowance shrinks for a reason nobody chose.
+   * COUNTED FROM THE VERDICTS THEMSELVES, and only the UNATTENDED ones (A2 +
+   * A3, 2026-08-15). Both halves of that sentence were wrong before and each
+   * broke the gate on its own:
+   *
+   *   - A2, THE 40x OVER-METER. It counted billed LLM calls and multiplied by
+   *     the lane's `claimsPerCall` — the batch's SIZE, not its FILL. A drain
+   *     hearing three new words is one call and reads as forty hearings, so
+   *     the steady trickle exhausted its own allowance thirteen times over
+   *     before buying anything. One verdict row is one word judged; counting
+   *     rows is the exact answer and needs no rate at all.
+   *   - A3, THE POISONED WINDOW. It could not tell a one-time operator
+   *     certification from the nightly trickle, so the 2026-08-13 bulk run
+   *     stood in front of the allowance and every subsequent hearing was
+   *     refused — 97,400 counted against a cap of 200. A certification is
+   *     ALREADY bounded, by the approve-by-hash law one method down; charging
+   *     it twice buys nothing and costs the rail its whole reason to exist.
+   *
+   * (The dollars-divided-by-a-rate shape this replaced the first time stays
+   * rejected for its original reason: it needs a rate to exist before the
+   * gate can work, and the cold start has none.)
    */
-  async hearingsSpentInWindow(
-    meter: HearingMeter = WORD_CLAIM_METER,
-  ): Promise<number> {
-    const { calls } = await this.meteredSpend(STANDING_WINDOW_HOURS, meter);
-    return calls * meter.claimsPerCall;
+  async hearingsSpentInWindow(lane: string): Promise<number> {
+    return this.ledger.hearingsBoughtSince(
+      lane,
+      'steady',
+      STANDING_WINDOW_HOURS,
+    );
   }
 
   /**
@@ -349,12 +379,13 @@ export class ClaimRehearingBudgetService {
   }): Promise<{ allowed: number; estimate: DrainEstimate | null }> {
     const requested = params.requested ?? params.dueCount;
     const wanted = Math.min(requested, params.dueCount);
+    // The lane must be METERED even when the allowance answers on its own —
+    // an unmetered lane is a lane whose spend nobody attributed, and that is
+    // a refusal, not a free pass.
+    hearingMeterFor(params.lane);
     const remaining = Math.max(
       0,
-      STANDING_REHEARING_CAP -
-        Math.round(
-          await this.hearingsSpentInWindow(hearingMeterFor(params.lane)),
-        ),
+      STANDING_REHEARING_CAP - (await this.hearingsSpentInWindow(params.lane)),
     );
     if (wanted <= remaining && !params.approvedHash) {
       return { allowed: wanted, estimate: null };

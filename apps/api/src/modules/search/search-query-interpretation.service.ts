@@ -400,7 +400,6 @@ export class SearchQueryInterpretationService {
       // the next hearing, so the miss self-heals once and never again.
       const denseCandidateText = this.judgedVocabulary.strippedForEmbedding(
         run.text,
-        analysis.detectedLocale?.tag ?? request.locale ?? null,
       );
       if (
         (!linked || (linkedWasWeak && analysis.isNonEnglish)) &&

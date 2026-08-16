@@ -86,10 +86,14 @@ export function judgedVocabularyDouble(
         GRAMMATICAL_WORK,
       );
   }
-  for (const [word, locale] of seed.negators ?? []) {
+  for (const [word] of seed.negators ?? []) {
+    // SPELLING ALONE (B-key, 2026-08-15): this lane's claim key carries no
+    // locale, so the fixture's locale column is population, not identity —
+    // it says which language the seed came FROM, never which one the verdict
+    // answers for.
     internals.verdicts
       .get(WORD_NEGATION_LANE)!
-      .set(`${normalizeClaimLocale(locale)}|${surfaceClaimKey(word)}`, NEGATES);
+      .set(`und|${surfaceClaimKey(word)}`, NEGATES);
     internals.negatingForms.add(surfaceClaimKey(word));
   }
   // THE VOCABULARY IS CERTIFIED unless the test says otherwise. `heldUnjudged`

@@ -59,12 +59,28 @@ describe('the claim unit: one word, one language, accents intact', () => {
     ).toBe(wordNegationLane.canonicalClaimKey({ word: 'sin', locale: 'es' }));
   });
 
-  it('keeps the language in the key — `no` in English is a different question from `no` in Spanish', () => {
+  it('keeps the language in the GENERICNESS key — `no` in English is a different question from `no` in Spanish', () => {
+    // Whether a word does grammatical work is a fact ABOUT a language, and
+    // this lane's consumer strips in the ask's own language, so it reads it.
+    expect(
+      wordGenericnessLane.canonicalClaimKey({ word: 'no', locale: 'en' }),
+    ).not.toBe(
+      wordGenericnessLane.canonicalClaimKey({ word: 'no', locale: 'es' }),
+    );
+  });
+
+  it('DROPS the language from the NEGATION key — its only consumer is locale-blind by ruling (B-key)', () => {
+    // A form ruled a negator in ANY language is withheld from the embedder in
+    // EVERY language ("ramen sin cerdo" typed on an en-US phone). So a
+    // per-locale hearing bought an answer nothing could ever read — 38% of
+    // this lane's spend, measured, and 12,177 of 32,379 keys on re-keying.
+    // Two lanes, two claim kinds, two key shapes: that is why they are two.
     expect(
       wordNegationLane.canonicalClaimKey({ word: 'no', locale: 'en' }),
-    ).not.toBe(
+    ).toBe(wordNegationLane.canonicalClaimKey({ word: 'no', locale: 'es' }));
+    expect(
       wordNegationLane.canonicalClaimKey({ word: 'no', locale: 'es' }),
-    );
+    ).toBe('und|no');
   });
 
   it('collapses a region to its language, and an absent tag to `und`', () => {
@@ -143,44 +159,96 @@ describe('negation hygiene: what the dense embedder is allowed to read', () => {
   const vocab = judgedVocabularyDouble({ negators: LEGACY_CUE_SEED });
 
   it('withholds the Spanish negator — the sin-cerdo→vegan inversion stays fixed', () => {
-    expect(vocab.strippedForEmbedding('sin cerdo', 'es')).toBe('cerdo');
+    expect(vocab.strippedForEmbedding('sin cerdo')).toBe('cerdo');
   });
 
   it('withholds it for an en-US phone too — the fused locale is a soft prior', () => {
     // Cross-language on purpose: "ramen sin cerdo" typed on an English phone
     // fuses to en, and the old cue scan read EVERY pack for exactly this.
-    expect(vocab.strippedForEmbedding('sin cerdo', 'en')).toBe('cerdo');
-    expect(vocab.strippedForEmbedding('senza glutine', 'en')).toBe('glutine');
+    expect(vocab.strippedForEmbedding('sin cerdo')).toBe('cerdo');
+    expect(vocab.strippedForEmbedding('senza glutine')).toBe('glutine');
   });
 
   it('empties an all-negator run so the dense tier is skipped', () => {
     // "phở không thịt" grounds phở and thịt lexically, leaving the run
     // "không". Embedding a bare negator linked it as if it were a dish.
-    expect(vocab.strippedForEmbedding('không', 'vi')).toBe('');
+    expect(vocab.strippedForEmbedding('không')).toBe('');
   });
 
   it('matches through accents — the folded compare that made vi hygiene a no-op', () => {
-    expect(vocab.strippedForEmbedding('KHÔNG thịt', 'vi')).toBe('thịt');
+    expect(vocab.strippedForEmbedding('KHÔNG thịt')).toBe('thịt');
   });
 
-  it('strips a Mandarin negator out of an UNSPACED run — the case the cue list could not reach', () => {
-    // The deleted cue-list comment said a zh pack "would either no-op or,
-    // once someone fixed it, delete a whole run", because the strip split on
-    // whitespace and 不要肉 has none. Segmenting is what makes it possible.
+  /**
+   * THE HAN WITNESS TABLE (A4, 2026-08-15) — the strip unit is the SEGMENT the
+   * analyzer produced, never the character inside it.
+   *
+   * The deleted cue-list comment predicted that a zh pack "would either no-op
+   * or, once someone fixed it, delete a whole run". Segmenting per character
+   * fixed the no-op and walked straight into the second half: a Han character
+   * is usually a BOUND MORPHEME, so a single-character verdict applied inside
+   * a run amputates real names and — worse — inverts sealed compounds. 无糖奶茶
+   * losing its 无 is the English negation-v3 defect ("boneless wings" minus
+   * "boneless") recurring in Chinese purely by construction, which is why it
+   * is pinned here rather than described.
+   *
+   * Every row below is seeded with 不/无/子 RULED — the verdicts that exist in
+   * the corpus today — so each case proves the SEGMENT rule and not a missing
+   * verdict.
+   */
+  it('never lets a single-character verdict cut into a multi-character Han segment', () => {
+    const zh = judgedVocabularyDouble({
+      negators: [
+        ['不', 'zh'],
+        ['无', 'zh'],
+        ['没', 'zh'],
+        ['子', 'zh'],
+      ],
+    });
+    for (const intact of [
+      '包子', // steamed bun — became 包, "bag"
+      '饺子', // dumpling — became 饺, not a word
+      '狮子头', // lion's head meatball — became 狮头
+      '椰子鸡', // coconut chicken — became 椰鸡
+      '无锡排骨', // Wuxi spare ribs, a PLACE NAME beginning 无
+      '无糖奶茶', // sugar-FREE milk tea — became 糖奶茶, SUGAR milk tea
+      '不辣的面', // not-spicy noodles — became 辣的面, SPICY noodles
+      '不要肉', // no meat — became 要肉, "want meat"
+      '珍珠奶茶', // never had a stripped character; stays the control
+    ]) {
+      expect(zh.strippedForEmbedding(intact)).toBe(intact);
+    }
+  });
+
+  it('applies a single-character verdict when the segment IS that character', () => {
     const zh = judgedVocabularyDouble({ negators: [['不', 'zh']] });
-    expect(zh.strippedForEmbedding('不要肉', 'zh')).toBe('要肉');
-    expect(zh.strippedForEmbedding('珍珠奶茶', 'zh')).toBe('珍珠奶茶');
+    // A one-character run is a one-character segment, so the verdict is about
+    // exactly the thing it deletes. Nothing about A4 disarms that.
+    expect(zh.strippedForEmbedding('不')).toBe('');
+    // ...and a sealed compound gets its OWN hearing at the level where the
+    // question has a true answer, which is what makes 无糖 answerable at all.
+    const sealed = judgedVocabularyDouble({ negators: [['无糖', 'zh']] });
+    expect(sealed.strippedForEmbedding('无糖')).toBe('');
+    expect(sealed.negates('无糖')).toBe(true);
+  });
+
+  it('queues the SEGMENT it would have to judge, not its characters', () => {
+    const zh = judgedVocabularyDouble();
+    zh.strippedForEmbedding('无糖奶茶');
+    const queued = zh.pendingHearings().map((c) => c.word);
+    expect(queued).toContain('无糖奶茶');
+    expect(queued).not.toContain('无');
   });
 
   it('keeps a word nobody has heard, and queues it', () => {
     const fresh = judgedVocabularyDouble({ negators: LEGACY_CUE_SEED });
-    expect(fresh.strippedForEmbedding('bulgogi', 'ko')).toBe('bulgogi');
+    expect(fresh.strippedForEmbedding('bulgogi')).toBe('bulgogi');
     expect(fresh.pendingHearings().map((c) => c.word)).toContain('bulgogi');
   });
 
   it('does not queue a word it already has an answer for', () => {
     const fresh = judgedVocabularyDouble({ negators: [['sin', 'es']] });
-    fresh.strippedForEmbedding('sin cerdo', 'es');
+    fresh.strippedForEmbedding('sin cerdo');
     expect(fresh.pendingHearings().map((c) => c.word)).not.toContain('sin');
   });
 });
@@ -228,18 +296,24 @@ describe('genericness: grammar comes out, content stays in', () => {
     ).toEqual({ text: 'tacos pastor', isGenericOnly: false });
   });
 
-  it('drops the Mandarin particle a demand signal must never carry', () => {
-    // The zh wave item: 的 and a stranded 不 polluted demand signals because
-    // no language pack existed for Mandarin at all.
+  it('judges a Mandarin run as the run it is, and a bare particle as itself', () => {
+    // THE COST OF A4, STATED RATHER THAN HIDDEN. 好吃的 used to lose its
+    // particle to 的's own verdict; it no longer does, because the same
+    // mechanism was amputating 包子 into 包 and turning 无糖奶茶 (sugar-FREE
+    // milk tea) into 糖奶茶 (SUGAR milk tea). A run is heard as itself and
+    // kept unless the judge rules the whole run glue — the conservative
+    // direction this door takes everywhere: an unstripped word costs one word
+    // of context, a wrongly stripped one deletes the ask.
     const vocab = judgedVocabularyDouble({
       grammatical: [
         ['的', 'zh'],
         ['不', 'zh'],
       ],
     });
-    expect(vocab.stripGrammar('好吃的', ['好吃', '的'], 'zh').text).toBe(
-      '好吃',
-    );
+    expect(vocab.stripGrammar('好吃的', ['好吃的'], 'zh').text).toBe('好吃的');
+    // A BARE particle is a one-character segment, so its verdict applies in
+    // full — which is the case a demand signal actually meets (a residue run
+    // that IS the particle).
     expect(vocab.stripGrammar('的', ['的'], 'zh')).toEqual({
       text: '',
       isGenericOnly: true,
@@ -271,7 +345,11 @@ describe('genericness: grammar comes out, content stays in', () => {
     expect(vocab.outcomeOf(WORD_GENERICNESS_LANE, 'de', 'es')).toBe(
       GRAMMATICAL_WORK,
     );
+    // NEGATION IS SPELLING-KEYED (B-key): the same answer whichever locale is
+    // asked, because there is only one verdict and its key carries no locale.
     expect(vocab.outcomeOf(WORD_NEGATION_LANE, 'sin', 'es')).toBe(NEGATES);
+    expect(vocab.outcomeOf(WORD_NEGATION_LANE, 'sin', 'en')).toBe(NEGATES);
+    expect(vocab.outcomeOf(WORD_NEGATION_LANE, 'sin', null)).toBe(NEGATES);
     expect(vocab.outcomeOf(WORD_GENERICNESS_LANE, 'birria', 'es')).toBeNull();
     expect(vocab.carriesConcept('birria', 'es')).toBe(false);
     expect(CARRIES_CONCEPT).not.toBe(GRAMMATICAL_WORK);

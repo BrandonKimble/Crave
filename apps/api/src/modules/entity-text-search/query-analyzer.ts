@@ -841,6 +841,67 @@ export function segmentWords(
 }
 
 /**
+ * THE UNITS A VERDICT MAY DELETE — `segmentWords` with every unspaced CJK run
+ * kept WHOLE (A4, 2026-08-15).
+ *
+ * `segmentWords` cuts an unspaced run per character, which is right for what
+ * it was built for: a character is the smallest thing that can HOLD a verdict,
+ * so 的 is askable at all. It is catastrophically wrong as the unit a verdict
+ * may DELETE, because a Han character is usually a bound morpheme rather than
+ * a word:
+ *
+ *   包子 (steamed bun) lost its 子 and became 包 — "bag".
+ *   饺子 (dumpling) became 饺, which is not a word.
+ *   无糖奶茶 (sugar-FREE milk tea) lost its 无 and became 糖奶茶 — SUGAR milk
+ *   tea, the exact meaning inversion negation v3 was written to make
+ *   impossible in English, recurring in Chinese purely by construction.
+ *
+ * The rule that fixes the whole class is one line: A MULTI-CHARACTER SEGMENT
+ * IS NEVER STRIPPED BY A SINGLE-CHARACTER VERDICT. The strip unit is the
+ * maximal unspaced run, it is looked up (and, on a miss, HEARD) as itself, and
+ * a single-character verdict only ever applies to a run that is one character
+ * long. A sealed compound — 无糖, 不辣 — is heard as the compound it is, which
+ * is the only level at which "does this negate?" has a true answer for it.
+ *
+ * THE COST, STATED HONESTLY: 好吃的 no longer loses its particle to 的's own
+ * verdict; it is heard as 好吃的 and kept unless the judge rules the whole run
+ * glue. That is the conservative direction this door chooses everywhere else
+ * — an unstripped word costs one word of context, a wrongly stripped one
+ * deletes the ask — and it is strictly better than the alternative, which was
+ * deleting morphemes out of real dish names.
+ *
+ * Latin, Cyrillic, Thai and every spaced script are untouched: their spans are
+ * already whole words and never adjacent without a gap.
+ */
+export function segmentStripUnits(
+  raw: string,
+): Array<{ word: string; start: number; end: number }> {
+  const units: Array<{ word: string; start: number; end: number }> = [];
+  for (const span of segmentWords(raw)) {
+    const last = units[units.length - 1];
+    // TOUCHING + BOTH CJK ⇒ one unit. Touching is the test because
+    // `segmentToken` only ever cuts with zero gap inside a matched token; a
+    // real word boundary (whitespace, punctuation) always leaves one.
+    if (
+      last &&
+      last.end === span.start &&
+      isCjkRun(last.word) &&
+      isCjkRun(span.word)
+    ) {
+      last.word += span.word;
+      last.end = span.end;
+      continue;
+    }
+    units.push({ ...span });
+  }
+  return units;
+}
+
+function isCjkRun(value: string): boolean {
+  return Array.from(value).every((ch) => CJK_RUN_SCRIPT(ch) !== null);
+}
+
+/**
  * IN A SCRIPT WITH NO SPACING CONVENTION, A TYPED SPACE IS NOT A WORD
  * BOUNDARY (2026-08-12, Mandarin battery defect 2).
  *

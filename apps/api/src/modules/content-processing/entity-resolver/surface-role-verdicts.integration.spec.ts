@@ -133,7 +133,10 @@ describe('surface role verdicts — proven against a live database', () => {
         error: jest.fn(),
       } as never,
       new ClaimVerdictLedgerService(prisma as never),
-      new UnspentWindowBudget(prisma as never),
+      new UnspentWindowBudget(
+        prisma as never,
+        new ClaimVerdictLedgerService(prisma as never),
+      ),
     );
 
     const summary = await adjudicator.adjudicate([

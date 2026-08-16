@@ -28,7 +28,25 @@ export interface ClaimVerdictInput<TSubject = unknown> {
   ruleFingerprint?: string | null;
   /** Everything the lane needs to RESUME the effect after a crash. */
   subject: TSubject;
+  /** WHO BOUGHT THE HEARING — see ClaimVerdict.source. Defaults to the
+   *  unattended rail, because that is the spend that must be metered; a lane
+   *  that forgets to say it is running a bulk drain gets charged, which is the
+   *  safe direction to be wrong in. */
+  source?: HearingSource;
 }
+
+/**
+ * The two ways a hearing gets bought, and the ONLY distinction the rolling
+ * allowance draws (A3, 2026-08-15).
+ *
+ * 'steady' is unattended: a maintenance drain nobody is watching, which is
+ * exactly what a standing budget exists to bound. 'certification' is an
+ * operator running a named drain, already bounded by the approve-by-hash law
+ * — charging it against the unattended window meant one bulk run left the
+ * trickle refused for as long as the window remembered it, which is how
+ * 97,400 hearings came to sit in front of a 200-hearing allowance.
+ */
+export type HearingSource = 'steady' | 'certification';
 
 export interface PendingVerdict<TSubject = unknown> {
   lane: string;
@@ -91,16 +109,18 @@ export class ClaimVerdictLedgerService {
     await client.$executeRaw`
       INSERT INTO claim_verdicts
         (lane, claim_key, rule_version, fold_version, outcome, reason,
-         rule_fingerprint, subject, decided_at, executed_at)
+         rule_fingerprint, subject, source, decided_at, executed_at)
       VALUES (${input.lane}, ${input.claimKey}, ${input.ruleVersion},
               ${input.foldVersion},
               ${input.outcome}, ${reason}, ${input.ruleFingerprint ?? null},
-              ${JSON.stringify(input.subject)}::jsonb, now(), NULL)
+              ${JSON.stringify(input.subject)}::jsonb,
+              ${input.source ?? 'steady'}, now(), NULL)
       ON CONFLICT (lane, claim_key, rule_version, fold_version) DO UPDATE
         SET outcome          = EXCLUDED.outcome,
             reason           = EXCLUDED.reason,
             rule_fingerprint = EXCLUDED.rule_fingerprint,
             subject          = EXCLUDED.subject,
+            source           = EXCLUDED.source,
             decided_at       = now(),
             executed_at      = NULL
       WHERE (claim_verdicts.outcome, claim_verdicts.reason,
@@ -225,6 +245,114 @@ export class ClaimVerdictLedgerService {
         { outcome: row.outcome, reason: row.reason },
       ]),
     );
+  }
+
+  /**
+   * HEARINGS ACTUALLY BOUGHT in a trailing window — one row is one word
+   * judged, counted (A2, 2026-08-15).
+   *
+   * This replaces "billed LLM calls x the lane's nominal claims-per-call",
+   * which was a rate-free number only in appearance: `claimsPerCall` is the
+   * batch SIZE, not the batch FILL, so a maintenance drain hearing three new
+   * words was metered as forty and the steady trickle over-reported itself
+   * 40x. The verdict rows are the exact answer and they cost nothing to count
+   * — the table already indexes (lane, source, decided_at) for it.
+   */
+  async hearingsBoughtSince(
+    lane: string,
+    source: HearingSource,
+    windowHours: number,
+  ): Promise<number> {
+    const rows = await this.prisma.$queryRaw<Array<{ hearings: bigint }>>`
+      SELECT count(*) AS hearings FROM claim_verdicts
+       WHERE lane = ${lane} AND source = ${source}
+         AND decided_at > now() - make_interval(hours => ${windowHours}::int)`;
+    return Number(rows[0]?.hearings ?? 0);
+  }
+
+  /**
+   * The newest decision timestamp across these lanes — the CHEAP VERSION
+   * STAMP a read cache polls to notice that another process ruled something
+   * (A6, 2026-08-15). Null when the lanes hold no verdicts at all.
+   */
+  async latestDecidedAt(lanes: readonly string[]): Promise<Date | null> {
+    if (!lanes.length) return null;
+    const rows = await this.prisma.$queryRaw<
+      Array<{ latest: Date | null; verdicts: bigint }>
+    >`
+      SELECT max(decided_at) AS latest, count(*) AS verdicts
+        FROM claim_verdicts
+       WHERE lane = ANY(${[...lanes]}::text[])`;
+    return rows[0]?.latest ?? null;
+  }
+
+  /**
+   * WHAT A RULE BUMP ACTUALLY FLIPPED (D4, 2026-08-15) — every claim decided
+   * under BOTH versions whose outcome differs, plus the counts on each side.
+   *
+   * A rule bump is one line in a source file and it re-decides a whole
+   * corpus; the v2→v3 negation bump flipped 24 words and nobody ever saw the
+   * list. A diff nobody is shown is a review that did not happen, so the
+   * certify script prints this as a mandatory artefact.
+   */
+  async outcomeDiff(
+    lane: string,
+    fromVersion: number,
+    toVersion: number,
+    foldVersion: number,
+  ): Promise<{
+    flipped: Array<{
+      claimKey: string;
+      from: string;
+      to: string;
+      reason: string;
+    }>;
+    comparedClaims: number;
+    onlyInTo: number;
+  }> {
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        claim_key: string;
+        from_outcome: string | null;
+        to_outcome: string;
+        reason: string;
+      }>
+    >`
+      SELECT n.claim_key,
+             o.outcome AS from_outcome,
+             n.outcome AS to_outcome,
+             n.reason
+        FROM claim_verdicts n
+        LEFT JOIN claim_verdicts o
+          ON o.lane = n.lane AND o.claim_key = n.claim_key
+         AND o.fold_version = n.fold_version
+         AND o.rule_version = ${fromVersion}
+       WHERE n.lane = ${lane} AND n.rule_version = ${toVersion}
+         AND n.fold_version = ${foldVersion}`;
+    const flipped: Array<{
+      claimKey: string;
+      from: string;
+      to: string;
+      reason: string;
+    }> = [];
+    let comparedClaims = 0;
+    let onlyInTo = 0;
+    for (const row of rows) {
+      if (row.from_outcome == null) {
+        onlyInTo += 1;
+        continue;
+      }
+      comparedClaims += 1;
+      if (row.from_outcome === row.to_outcome) continue;
+      flipped.push({
+        claimKey: row.claim_key,
+        from: row.from_outcome,
+        to: row.to_outcome,
+        reason: row.reason,
+      });
+    }
+    flipped.sort((a, b) => a.claimKey.localeCompare(b.claimKey));
+    return { flipped, comparedClaims, onlyInTo };
   }
 
   /** Every verdict this lane has recorded for one claim, newest rule first —

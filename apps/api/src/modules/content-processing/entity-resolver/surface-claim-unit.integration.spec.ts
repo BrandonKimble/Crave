@@ -90,7 +90,10 @@ describe('the claim unit is the FORM, not the fold', () => {
         error: jest.fn(),
       } as never,
       new ClaimVerdictLedgerService(prisma as never),
-      new UnspentWindowBudget(prisma as never),
+      new UnspentWindowBudget(
+        prisma as never,
+        new ClaimVerdictLedgerService(prisma as never),
+      ),
     );
 
   afterAll(async () => {

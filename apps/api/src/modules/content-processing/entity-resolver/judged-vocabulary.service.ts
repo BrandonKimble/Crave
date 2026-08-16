@@ -2,13 +2,14 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { WordVocabularyJudgeService } from './word-vocabulary-judge.service';
+import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
 import {
   DrainExceedsStandingCapError,
   NoMeasuredHearingRateError,
   StaleDrainApprovalError,
 } from './claim-rehearing-budget.service';
 import { surfaceClaimKey } from './entity-surface.service';
-import { segmentWords } from '../../entity-text-search/query-analyzer';
+import { segmentStripUnits } from '../../entity-text-search/query-analyzer';
 import {
   CARRIES_CONCEPT,
   GRAMMATICAL_WORK,
@@ -95,10 +96,15 @@ export class JudgedVocabularyService implements OnModuleInit {
 
   private loaded = false;
 
+  /** max(decided_at) as of the last load — the version stamp `refreshIfChanged`
+   *  compares against so another process's verdicts become visible. */
+  private loadedStamp = 0;
+
   constructor(
     private readonly prisma: PrismaService,
     loggerService: LoggerService,
     private readonly judge: WordVocabularyJudgeService,
+    private readonly ledger: ClaimVerdictLedgerService,
   ) {
     this.logger = loggerService.setContext('JudgedVocabularyService');
     this.judge.subscribe((lane, key, outcome) =>
@@ -132,6 +138,13 @@ export class JudgedVocabularyService implements OnModuleInit {
       this.remember(row.lane, row.claim_key, row.outcome);
     }
     this.loaded = true;
+    this.loadedStamp =
+      (
+        await this.ledger.latestDecidedAt([
+          WORD_GENERICNESS_LANE,
+          WORD_NEGATION_LANE,
+        ])
+      )?.getTime() ?? 0;
     this.logger.info('Judged vocabulary loaded', {
       genericness: this.verdicts.get(WORD_GENERICNESS_LANE)?.size ?? 0,
       negation: this.verdicts.get(WORD_NEGATION_LANE)?.size ?? 0,
@@ -177,42 +190,49 @@ export class JudgedVocabularyService implements OnModuleInit {
    * exactly — it is a fact about negation semantics, which is why it lives on
    * this lane and not on genericness.
    */
-  strippedForEmbedding(text: string, locale: string | null): string {
+  /**
+   * NO LOCALE PARAMETER, and its absence is the point (B-key, 2026-08-15).
+   * This door reads the negation lane, whose claim unit is now the spelling
+   * alone — a form ruled a negator anywhere is withheld everywhere, which is
+   * what the cue lists did and what the ruling upheld. Taking a locale it
+   * cannot consult would be a signature that lies about the decision.
+   */
+  strippedForEmbedding(text: string): string {
     // SEGMENTED, NOT SPLIT ON WHITESPACE. The cue list could only ever see
     // whitespace-delimited words, which is why its own comment ruled out a
     // Mandarin pack as machinery that could not do its job: 不要肉 carries no
     // space to split on. Cutting at the analyzer's word boundaries is what
     // makes the zh half of this lane real rather than a no-op.
-    const spans = segmentWords(text);
-    if (!spans.length) return text;
+    // THE STRIP UNIT IS THE SEGMENT, NOT THE CHARACTER (A4) — see
+    // `segmentStripUnits`. 无糖奶茶 is ONE unit here, so 无's own verdict can
+    // never turn sugar-free milk tea into sugar milk tea.
+    const units = segmentStripUnits(text);
+    if (!units.length) return text;
     let out = '';
     let cursor = 0;
     let survivors = 0;
-    for (const span of spans) {
-      out += text.slice(cursor, span.start);
-      cursor = span.end;
-      const form = surfaceClaimKey(span.word);
+    for (const unit of units) {
+      out += text.slice(cursor, unit.start);
+      cursor = unit.end;
+      const form = surfaceClaimKey(unit.word);
       if (form && this.negatingForms.has(form)) continue;
-      if (form && !this.hasNegationVerdict(form, locale)) {
-        this.queue(WORD_NEGATION_LANE, {
-          word: span.word,
-          locale: locale ?? 'und',
-        });
+      if (form && !this.hasNegationVerdict(form)) {
+        // The hearing is bought for the UNIT, which is the thing a verdict
+        // would delete. A sealed compound (无糖, 不辣) gets its own question,
+        // asked at the only level where it has a true answer.
+        this.queue(WORD_NEGATION_LANE, { word: unit.word, locale: 'und' });
       }
-      out += span.word;
+      out += unit.word;
       survivors += 1;
     }
     out += text.slice(cursor);
     return survivors ? out.replace(/\s+/g, ' ').trim() : '';
   }
 
-  private hasNegationVerdict(form: string, locale: string | null): boolean {
-    const table = this.verdicts.get(WORD_NEGATION_LANE);
-    if (!table) return false;
-    return (
-      table.has(`${normalizeClaimLocale(locale)}|${form}`) ||
-      table.has(`und|${form}`)
-    );
+  /** SPELLING ALONE (B-key): this lane's claim unit carries no locale, because
+   *  its one consumer never reads one. */
+  private hasNegationVerdict(form: string): boolean {
+    return this.verdicts.get(WORD_NEGATION_LANE)?.has(`und|${form}`) ?? false;
   }
 
   /* --------------------------------------------------------- the write door */
@@ -280,24 +300,26 @@ export class JudgedVocabularyService implements OnModuleInit {
     claimLocale: string,
   ): { text: string; isGenericOnly: boolean } {
     const table = this.verdicts.get(WORD_GENERICNESS_LANE);
-    const spans = segmentWords(text);
-    if (!spans.length) return { text: '', isGenericOnly: true };
+    // SEGMENT UNITS, not characters (A4) — the same law the read door obeys.
+    // 包子 is one unit, so 子's verdict cannot amputate a dish name into 包.
+    const units = segmentStripUnits(text);
+    if (!units.length) return { text: '', isGenericOnly: true };
     let out = '';
     let cursor = 0;
     let survivors = 0;
-    for (const span of spans) {
+    for (const unit of units) {
       const grammar =
-        table?.get(`${claimLocale}|${surfaceClaimKey(span.word)}`) ===
+        table?.get(`${claimLocale}|${surfaceClaimKey(unit.word)}`) ===
         GRAMMATICAL_WORK;
-      out += text.slice(cursor, span.start);
+      out += text.slice(cursor, unit.start);
       if (!grammar) {
-        out += span.word;
+        out += unit.word;
         survivors += 1;
       }
       // A removed word is OMITTED, never replaced by a space: in an unspaced
       // script a substituted space is a word boundary the language does not
       // have, and it changes the string the embedder reads.
-      cursor = span.end;
+      cursor = unit.end;
     }
     out += text.slice(cursor);
     out = out.replace(/\s+/g, ' ').trim();
@@ -323,9 +345,12 @@ export class JudgedVocabularyService implements OnModuleInit {
 
   /** Hear every claim here that has no verdict, on BOTH lanes. Batched; the
    *  budget gate inside the judge bounds it. */
-  async ensureJudged(claims: readonly WordVocabularyClaim[]): Promise<void> {
+  async ensureJudged(
+    claims: readonly WordVocabularyClaim[],
+    lanes: readonly string[] = [WORD_GENERICNESS_LANE, WORD_NEGATION_LANE],
+  ): Promise<void> {
     if (!claims.length) return;
-    for (const lane of [WORD_GENERICNESS_LANE, WORD_NEGATION_LANE]) {
+    for (const lane of lanes) {
       const adapter =
         lane === WORD_GENERICNESS_LANE ? wordGenericnessLane : wordNegationLane;
       const table = this.verdicts.get(lane);
@@ -362,28 +387,180 @@ export class JudgedVocabularyService implements OnModuleInit {
 
   /* ----------------------------------------------------------- the backlog */
 
+  /**
+   * QUEUE A WORD — in memory for this process, and in the DATABASE so the
+   * question survives the process (A1, 2026-08-15).
+   *
+   * It was memory only, capped at 5,000, and NOTHING EVER DRAINED IT. Both
+   * halves mattered: a queued word died on the next deploy, so the door's
+   * "the miss self-heals, once, per word" promise could never come true, and
+   * the 5,001st word of a busy hour was dropped on the floor with no record
+   * that it had ever been asked about.
+   *
+   * The database write is FIRE-AND-FORGET, deliberately. This is called from
+   * `strippedForEmbedding`, the synchronous per-keystroke read door whose
+   * whole budget is microseconds; making the door await a write would put a
+   * round trip on the hot path to record a chore. A lost enqueue costs one
+   * more unstripped search, and the next search re-queues it.
+   */
   private queue(lane: string, claim: WordVocabularyClaim): void {
-    const key = `${lane}|${normalizeClaimLocale(claim.locale)}|${surfaceClaimKey(claim.word)}`;
-    if (this.pending.has(key) || this.pending.size >= 5_000) return;
-    this.pending.set(key, {
-      word: claim.word,
-      locale: normalizeClaimLocale(claim.locale),
-    });
+    const locale = normalizeClaimLocale(claim.locale);
+    const claimKey = `${locale}|${surfaceClaimKey(claim.word)}`;
+    const key = `${lane}|${claimKey}`;
+    if (this.pending.has(key)) return;
+    this.pending.set(key, { word: claim.word, locale });
+    void this.persistQueued(lane, claimKey, claim.word, locale).catch(
+      (error: unknown) => {
+        // The in-memory entry still stands and the next drain still offers it;
+        // what is lost is only its survival across a restart. A door that
+        // THREW here would turn a bookkeeping failure into a failed search.
+        this.logger.warn('Hearing enqueue failed (word stays in memory only)', {
+          lane,
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        });
+      },
+    );
   }
 
-  /** Words the read door met unjudged. Drained by the maintenance rail; the
-   *  hot path never pays for them. */
+  /** `async` so that even a synchronous failure — no database bound at all,
+   *  as in a unit test — arrives as a rejected promise the caller's `.catch`
+   *  can absorb, rather than escaping into the hot path. */
+  private async persistQueued(
+    lane: string,
+    claimKey: string,
+    word: string,
+    locale: string,
+  ): Promise<void> {
+    await this.prisma.$executeRaw`
+      INSERT INTO vocabulary_hearing_queue (lane, claim_key, word, locale)
+      VALUES (${lane}, ${claimKey}, ${word}, ${locale})
+      ON CONFLICT (lane, claim_key) DO NOTHING`;
+  }
+
+  /** Words this PROCESS met unjudged since boot. The durable backlog is the
+   *  table; this is what has not yet been written to it or drained from it. */
   pendingHearings(): WordVocabularyClaim[] {
     return [...this.pending.values()];
   }
 
-  /** Hear the backlog and forget it. Returns how many words were heard. */
-  async drainPending(): Promise<number> {
-    const claims = this.pendingHearings();
-    this.pending.clear();
-    if (!claims.length) return 0;
-    await this.ensureJudged(claims);
-    return claims.length;
+  /**
+   * HEAR THE BACKLOG — the maintenance rail's one job.
+   *
+   * Reads the DURABLE queue (not just this process's memory), hears what the
+   * budget allows, and deletes only what actually got a verdict. A word the
+   * budget refused stays queued, which is the difference between a backlog
+   * and a bin: nothing is dropped because the allowance ran out, it simply
+   * waits for tomorrow's window.
+   */
+  async drainPending(limit = 5_000): Promise<{
+    queued: number;
+    heard: number;
+    remaining: number;
+  }> {
+    const rows = await this.prisma.$queryRaw<
+      Array<{ lane: string; claim_key: string; word: string; locale: string }>
+    >`
+      SELECT lane, claim_key, word, locale
+        FROM vocabulary_hearing_queue
+       ORDER BY queued_at ASC
+       LIMIT ${limit}`;
+    // The in-memory set is a WRITE-BEHIND buffer for the table, so anything
+    // whose insert lost the race is offered here too rather than waiting a
+    // whole cycle for its next re-queue.
+    const byKey = new Map<
+      string,
+      { lane: string; claim: WordVocabularyClaim }
+    >();
+    for (const row of rows) {
+      byKey.set(`${row.lane}|${row.claim_key}`, {
+        lane: row.lane,
+        claim: { word: row.word, locale: row.locale },
+      });
+    }
+    for (const [key, claim] of this.pending) {
+      const lane = key.slice(0, key.indexOf('|'));
+      if (!byKey.has(key)) byKey.set(key, { lane, claim });
+    }
+    if (!byKey.size) return { queued: 0, heard: 0, remaining: 0 };
+
+    const byLane = new Map<string, WordVocabularyClaim[]>();
+    for (const { lane, claim } of byKey.values()) {
+      const bucket = byLane.get(lane) ?? [];
+      bucket.push(claim);
+      byLane.set(lane, bucket);
+    }
+    for (const [lane, claims] of byLane) {
+      await this.ensureJudged(claims, [lane]);
+    }
+
+    // DELETE WHAT WAS ANSWERED, KEEP WHAT WAS NOT. The verdict table is the
+    // authority on which it is — not the return value of the drain, which
+    // cannot see a batch that failed inside the judge.
+    let heard = 0;
+    const answeredKeys: Array<[string, string]> = [];
+    for (const [key, { lane, claim }] of byKey) {
+      const adapter =
+        lane === WORD_GENERICNESS_LANE ? wordGenericnessLane : wordNegationLane;
+      if (!this.verdicts.get(lane)?.has(adapter.canonicalClaimKey(claim))) {
+        continue;
+      }
+      heard += 1;
+      answeredKeys.push([lane, key.slice(key.indexOf('|') + 1)]);
+      this.pending.delete(key);
+    }
+    for (const [lane, claimKey] of answeredKeys) {
+      await this.prisma.$executeRaw`
+        DELETE FROM vocabulary_hearing_queue
+         WHERE lane = ${lane} AND claim_key = ${claimKey}`;
+    }
+    const remaining = byKey.size - heard;
+    this.logger.info('Vocabulary backlog drained', {
+      queued: byKey.size,
+      heard,
+      remaining,
+    });
+    return { queued: byKey.size, heard, remaining };
+  }
+
+  /** How many words are waiting, durably — the ops-dashboard read. */
+  async queuedHearingCount(): Promise<number> {
+    const rows = await this.prisma.$queryRaw<Array<{ queued: bigint }>>`
+      SELECT count(*) AS queued FROM vocabulary_hearing_queue`;
+    return Number(rows[0]?.queued ?? 0);
+  }
+
+  /* -------------------------------------------------- cross-process refresh */
+
+  /**
+   * NOTICE WHAT ANOTHER PROCESS RULED (A6, 2026-08-15).
+   *
+   * The cache is loaded once at boot and updated only by verdicts THIS
+   * process's judge reached. So an operator running `certify-vocabulary`
+   * bought 32,000 answers that the running API could not see until someone
+   * restarted it — and in prod, where the worker runs the maintenance rail
+   * and the api serves the door, the api NEVER saw them. A cache that cannot
+   * hear about a verdict is a consumer still behaving as though the word were
+   * unjudged, which is the exact unfinished effect this lane's
+   * verdict-before-effect ordering exists to forbid.
+   *
+   * The channel is a CHEAP VERSION CHECK, not LISTEN/NOTIFY: one indexed
+   * max(decided_at) per poll, and a full reload only when it moved. The
+   * repo's other cross-process coordination is polled or advisory-locked over
+   * the ordinary pool; a dedicated LISTEN connection held open for the life
+   * of the process would be the first of its kind here, for a table that
+   * changes a few times a day.
+   */
+  async refreshIfChanged(): Promise<boolean> {
+    const latest = await this.ledger.latestDecidedAt([
+      WORD_GENERICNESS_LANE,
+      WORD_NEGATION_LANE,
+    ]);
+    const stamp = latest?.getTime() ?? 0;
+    if (this.loaded && stamp === this.loadedStamp) return false;
+    await this.load();
+    return true;
   }
 
   /* ---------------------------------------------------------------- probes */
@@ -418,10 +595,11 @@ export class JudgedVocabularyService implements OnModuleInit {
   }
 }
 
-/** The words of a string, as the ANALYZER cuts them — per-character inside an
- *  unspaced CJK run, so a Mandarin particle is a word that can hold a verdict.
- *  Every caller of the door tokenizes through here, so the claim keys a
- *  hearing buys are exactly the ones the strip later looks up. */
+/** The words of a string AS THE DOOR JUDGES THEM — the analyzer's boundaries
+ *  with each unspaced CJK run kept whole (A4). Every caller of the door
+ *  tokenizes through here, so the claim keys a hearing buys are exactly the
+ *  ones the strip later looks up; buying per-character verdicts and then
+ *  looking up per-segment would leave the whole zh half permanently unheard. */
 export function tokenize(value: string): string[] {
-  return segmentWords(value).map((span) => span.word);
+  return segmentStripUnits(value).map((unit) => unit.word);
 }

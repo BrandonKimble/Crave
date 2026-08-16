@@ -72,7 +72,10 @@ describe('label sweep appeal tally — proven against a live database', () => {
       error: jest.fn(),
     } as never,
     new ClaimVerdictLedgerService(prisma as never),
-    new UnspentWindowBudget(prisma as never),
+    new UnspentWindowBudget(
+      prisma as never,
+      new ClaimVerdictLedgerService(prisma as never),
+    ),
   );
 
   afterAll(async () => {

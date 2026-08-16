@@ -3044,12 +3044,50 @@ model ClaimVerdict {
   /// nothing on the record to say why.
   foldVersion     Int       @default(1) @map("fold_version") @db.SmallInt
   subject         Json      @default("{}")
+  /// WHO BOUGHT THIS HEARING, and it is what makes the standing allowance a
+  /// budget rather than a number the last bulk run permanently exhausted
+  /// (A2/A3, 2026-08-15). 'steady' = the unattended maintenance rail, the only
+  /// spend the rolling allowance is there to bound. 'certification' = an
+  /// operator-run drain, already gated by the approve-by-hash law and
+  /// therefore never charged against the unattended trickle's window.
+  ///
+  /// It is also the EXACT hearing counter: one row is one word judged, so the
+  /// window's own rows say how many hearings were bought with no rate and no
+  /// claims-per-call divisor in the arithmetic — the 40x over-meter that made
+  /// the gate refuse everything came from multiplying calls by a nominal
+  /// batch size that a trickle call never fills.
+  source          String    @default("steady") @db.VarChar(16)
   decidedAt       DateTime  @default(now()) @map("decided_at") @db.Timestamptz(6)
   executedAt      DateTime? @map("executed_at") @db.Timestamptz(6)
 
   @@id([lane, claimKey, ruleVersion, foldVersion])
   @@index([lane, claimKey], map: "idx_claim_verdicts_lane_claim")
+  @@index([lane, source, decidedAt], map: "idx_claim_verdicts_lane_source_decided")
   @@map("claim_verdicts")
+}
+
+/// THE HEARING BACKLOG, DURABLE — a word the read door met unjudged.
+///
+/// It was an in-memory Map with a 5,000 entry cap and no caller (A1,
+/// 2026-08-15): every queued word died on the next restart, and nothing ever
+/// drained it, so the door's whole "the miss self-heals, once, per word"
+/// promise was prose. A queued word is a QUESTION THE APP OWES ITSELF, and a
+/// question that evaporates on deploy is one the next user asks again for the
+/// same nothing.
+///
+/// Keyed by (lane, claim_key) so the same word queued a thousand times is one
+/// row; `word` and `locale` are carried because the claim key is a FOLD and a
+/// hearing needs the spelling the user actually typed.
+model VocabularyHearingQueue {
+  lane     String   @db.VarChar(32)
+  claimKey String   @map("claim_key")
+  word     String
+  locale   String   @db.VarChar(16)
+  queuedAt DateTime @default(now()) @map("queued_at") @db.Timestamptz(6)
+
+  @@id([lane, claimKey])
+  @@index([queuedAt], map: "idx_vocabulary_hearing_queue_queued")
+  @@map("vocabulary_hearing_queue")
 }
 
 /// RUNG 2, MATERIALIZED (KL-D): head-final name containment on the FOLDED

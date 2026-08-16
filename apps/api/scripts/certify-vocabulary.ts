@@ -34,6 +34,7 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import {
   WordVocabularyJudgeService,
+  laneWiring,
   type VocabularyCertificationSummary,
 } from '../src/modules/content-processing/entity-resolver/word-vocabulary-judge.service';
 import {
@@ -51,6 +52,8 @@ import {
   NoMeasuredHearingRateError,
   StaleDrainApprovalError,
 } from '../src/modules/content-processing/entity-resolver/claim-rehearing-budget.service';
+import { ClaimVerdictLedgerService } from '../src/modules/content-processing/entity-resolver/claim-verdict-ledger.service';
+import { FOLD_ALGORITHM_VERSION } from '../src/modules/content-processing/entity-resolver/entity-identity';
 import { segmentWords } from '../src/modules/entity-text-search/query-analyzer';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
@@ -152,6 +155,50 @@ async function candidateWords(
   return [...byKey.values()];
 }
 
+/**
+ * THE DIFF IS A MANDATORY ARTEFACT (D4, 2026-08-15).
+ *
+ * A rule bump is one line in a source file and it re-decides a whole corpus.
+ * The negation v2→v3 bump flipped 24 words — the release note names the class,
+ * but the LIST was never printed and nobody ever reviewed which words actually
+ * changed sides. A review that produces no artefact did not happen.
+ *
+ * So every run that certifies at rule vN prints what vN decided differently
+ * from v(N-1), by name, with the judge's stated ground. Nothing here gates or
+ * refuses: the reviewer is the operator who just ran the drain, and the point
+ * is that they cannot avoid seeing it.
+ */
+async function printVerdictDiff(
+  ledger: ClaimVerdictLedgerService,
+  lane: string,
+  out: (m: string) => void,
+): Promise<void> {
+  const version =
+    lane === WORD_NEGATION_LANE
+      ? WORD_NEGATION_RULE_VERSION
+      : WORD_GENERICNESS_RULE_VERSION;
+  if (version <= 1) {
+    out(`${lane}: diff n/a (v1 — no prior rule to differ from)`);
+    return;
+  }
+  const diff = await ledger.outcomeDiff(
+    lane,
+    version - 1,
+    version,
+    FOLD_ALGORITHM_VERSION,
+  );
+  out(
+    `${lane}: DIFF v${version - 1}->v${version} flipped=${diff.flipped.length} ` +
+      `compared=${diff.comparedClaims} new-at-v${version}=${diff.onlyInTo}`,
+  );
+  for (const row of diff.flipped) {
+    out(`  ${row.claimKey}: ${row.from} -> ${row.to} :: ${row.reason}`);
+  }
+  if (!diff.flipped.length && diff.comparedClaims) {
+    out(`  (no claim decided under both rules changed sides)`);
+  }
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const flag = (name: string): string | null => {
@@ -189,9 +236,25 @@ async function main(): Promise<void> {
       const resumed = await judge.resumePendingEffects(lane);
       if (resumed) out(`${lane}: resumed=${resumed}`);
 
+      // COUNT IN THE LANE'S OWN KEY SPACE (2026-08-15). `words` is a list of
+      // (word, locale) claims, but a lane's claim KEY is whatever its adapter
+      // says — and negation's is now the spelling alone, so 32,379 claims are
+      // 20,202 questions. Subtracting `decided.size` from the raw claim count
+      // quoted 12,177 hearings that do not exist and would have asked an
+      // operator to approve ~60% more spend than the work is.
+      const laneKeys = new Set(
+        words.map((claim) => laneWiring(lane).adapter.canonicalClaimKey(claim)),
+      );
       const decided = await judge.decidedOutcomes(lane, words);
-      const due = words.length - decided.size;
-      out(`${lane}: decided=${decided.size} due=${due}`);
+      const due = laneKeys.size - decided.size;
+      out(
+        `${lane}: claims=${words.length} questions=${laneKeys.size} decided=${decided.size} due=${due}`,
+      );
+      // THE DIFF, ALWAYS AND FIRST (D4). Printed before anything is bought,
+      // and printed in count-only mode too, because the person deciding
+      // whether to pay for a re-hearing is exactly the person who needs to
+      // see what the last rule change already flipped.
+      await printVerdictDiff(app.get(ClaimVerdictLedgerService), lane, out);
       if (!due) continue;
 
       if (!apply) {
@@ -218,7 +281,14 @@ async function main(): Promise<void> {
 
       let summary: VocabularyCertificationSummary;
       try {
-        summary = await judge.certify(lane, words, { approvedHash });
+        summary = await judge.certify(lane, words, {
+          approvedHash,
+          // AN OPERATOR IS WATCHING (A3): this drain is bounded by the
+          // approve-by-hash law above, so it is not also charged against the
+          // unattended rail's rolling allowance — doing both is what left the
+          // steady trickle permanently refused behind the first bulk run.
+          source: 'certification',
+        });
       } catch (error) {
         if (
           error instanceof DrainExceedsStandingCapError ||

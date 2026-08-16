@@ -29,3 +29,20 @@ plans/** is ARCHAEOLOGY (F2504). Same corruption class as the ledger above:
 # a path that matches nothing. A formatter must not edit a record of the past,
 # and these files carry globs, identifiers and command lines throughout.
 plans/
+
+# A FINGERPRINTED PROMPT IS A RECORD, NOT PROSE (D5, 2026-08-15).
+#
+# Every rule in `prompt-rule-release.ts` derives its VERSION from a sha256 of
+# its own .md text, and an unlisted fingerprint fails the app's boot loudly by
+# design. Prettier reformatting one of these files therefore does not tidy it —
+# it BRICKS the process until someone appends a release entry for a "rule
+# change" that changed no word the judge reads. That already happened once:
+# word-vocabulary-lanes.ts still carries the note that both v2 entries had to be
+# re-pointed at the prettier-formatted text before their first commit, "the only
+# text that can be committed here", which is a formatter dictating the contents
+# of a ledger.
+#
+# The same reasoning as the ledgers above, one level down: the identity of these
+# files IS their bytes. Leave them alone, and the fingerprint means what it says
+# — the rule text as authored.
+apps/api/src/modules/external-integrations/llm/prompts/
