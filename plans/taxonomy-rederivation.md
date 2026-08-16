@@ -292,6 +292,23 @@ Analytics discontinuity: aliases.restaurant_name_judge →
 aliases.place_name_judge at the rename date. Mobile internal naming
 bounded to search/profile/runtime cluster deliberately.
 
+## POST-RENAME INCIDENT LEDGER (2026-08-16 evening; all resolved, 1b65344e3)
+- core_restaurant_locations EMPTIED by an unidentified statement in the
+  rollback window (perpetrator unrecoverable — pg log errors-only).
+  Restored 13,193 rows from sim snapshot; ~1,050 newest lost pending a
+  SURGICAL prod pull (never full refresh — would wipe iteration verdicts/
+  vocab). OPEN ITEM (mine): targeted locations pull script.
+- The empty table MASKED two real R14 residue bugs, both fixed: builder/
+  executor SQL emitted restaurant_* aliases vs TS place_* reads (serving
+  crashed once data returned); coverage-truth truth-SQL aliases vs mapper.
+- Coverage-truth VACUOUS-GREEN closed: empty truth set = instrument
+  failure exit 1. Back at true baseline 2,304/98.6%/0 unexplained.
+- CLASS FINDING → OPEN ITEM (mine): source tables have NO emptiness/
+  row-collapse alarm (only derived tables carry the DerivedIndexJob law);
+  a core-table row-count anomaly census (cheap, nightly, opsAlert) is the
+  structural answer. Third deferred/silent machine of the rollback window
+  (projections, connection scores, source loss).
+
 ## SEQUENCING
 Types-promotion backfill + invariant: post-v13-activation window (rides
 with reground/dedupe). Consumable facet + X-food ontology drain: with the
