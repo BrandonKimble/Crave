@@ -3643,6 +3643,10 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
           }, resolvedTimeoutMs);
         }
 
+        // MEASURED, PER PAID CALL: wall-clock of the vendor round trip,
+        // ledgered as duration_ms so latency budgets (e.g. the first-search
+        // sync-hearing cap) derive from real p50/p95s, never estimates.
+        const vendorCallStart = performance.now();
         const response = await (async () => {
           try {
             return await this.gemini.generateContent({
@@ -3692,6 +3696,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
           // "spend on thrown-away output" was unanswerable.
           outcome:
             finishReason === FinishReason.MAX_TOKENS ? 'truncated' : 'ok',
+          durationMs: Math.round(performance.now() - vendorCallStart),
           caller: options.usageCaller,
         });
         const tokenLimit =

@@ -32,6 +32,10 @@ export interface UsageEvent {
   /** Cache-storage events only: hours the cached content is held. Presence
    *  switches pricing from cached-READ to cache-STORAGE (token-hours). */
   durationHours?: number;
+  /** Wall-clock latency of the vendor call in ms — recorded by the
+   *  interactive generate site so latency budgets are measured, not
+   *  invented. Omit where the site does not measure. */
+  durationMs?: number;
   /** How the paid call ended (ok | truncated | aborted | failed). Omit for
    *  non-generation rows (cache lifecycle, Places, TomTom). */
   outcome?: 'ok' | 'truncated' | 'aborted' | 'failed';
@@ -258,6 +262,7 @@ export class UsageLedgerService implements OnModuleDestroy {
       cachedTokens: event.cachedTokens ?? null,
       requestCount: event.requestCount ?? 1,
       durationHours: event.durationHours ?? null,
+      durationMs: event.durationMs ?? null,
       outcome: event.outcome ?? null,
       caller: event.caller,
       // RUN ATTRIBUTION BY DEFAULT. runKey had exactly one producer (the

@@ -83,6 +83,27 @@ async function main(): Promise<void> {
           `top=[${top.map((d) => d.name ?? d.foodName ?? '?').join(' | ')}]`,
       );
     }
+    // FIRST-SEARCH SYNC-HEARING LATENCY CEILING (foundation red team #7):
+    // a query carrying a word NOBODY has judged pays at most the bounded
+    // hearing (FIRST_SEARCH_HEARING_CEILING_MS = 1500ms) plus ordinary
+    // interpret cost. A nonsense word is novel by construction; this case
+    // goes RED if the bounded await ever becomes unbounded.
+    const CEILING_MS = 1_500;
+    const SLACK_MS = 1_500; // grounding probes + analyzer, generous
+    const novelWord = `zzqx${Date.now().toString(36)}`;
+    const t0 = performance.now();
+    await interpretation.interpret({
+      query: `${novelWord} tacos`,
+      locale: null,
+      bounds: BOUNDS,
+    } as never);
+    const elapsed = Math.round(performance.now() - t0);
+    const withinCeiling = elapsed <= CEILING_MS + SLACK_MS;
+    out(
+      `--- novel-word latency: '${novelWord} tacos' interpret=${elapsed}ms ` +
+        `ceiling=${CEILING_MS}ms(+${SLACK_MS} slack) ${withinCeiling ? 'ok' : 'RED'}`,
+    );
+    if (!withinCeiling) process.exitCode = 1;
   } finally {
     await app.close();
   }

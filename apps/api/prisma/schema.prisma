@@ -491,6 +491,11 @@ model ApiUsageEvent {
   /// bills per token-hour, so it needs a dimension the token columns do not
   /// carry — kept separate rather than overloading cached_tokens.
   durationHours Float?   @map("duration_hours")
+  /// Wall-clock latency of the vendor call in milliseconds (interactive
+  /// generate rows; NULL where the site does not measure). Exists so a
+  /// latency budget — e.g. the first-search sync-hearing cap — is derived
+  /// from MEASURED p95s, never invented (no-fake-estimates law).
+  durationMs    Int?     @map("duration_ms")
   /// How the paid call ended: ok | truncated (MAX_TOKENS, response likely
   /// discarded by the parser) | aborted (timeout after send; token counts
   /// unknown) | failed (provider-failed batch). NULL = non-generation rows.

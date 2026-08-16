@@ -315,7 +315,7 @@ describe('verdicts never touch name matching ("No Name Burgers")', () => {
    * may await it — the synchronous `demandTerm` reads the in-memory table and
    * queues its misses for the maintenance drain.
    */
-  it('never awaits a hearing on a search path', () => {
+  it('never awaits a hearing on a search path — except the ONE bounded first-search hearing (#7)', () => {
     for (const file of [
       'search-query-interpretation.service.ts',
       'search.service.ts',
@@ -325,7 +325,18 @@ describe('verdicts never touch name matching ("No Name Burgers")', () => {
         file,
       );
       expect(text).not.toContain('judgeThenStrip');
-      expect(text).not.toMatch(/await\s+this\.judgedVocabulary\./);
+      if (file === 'search-query-interpretation.service.ts') {
+        // THE SANCTIONED EXCEPTION (foundation red team #7, owner-accepted):
+        // exactly one await, on the BOUNDED door only, and its budget is the
+        // owner-tunable ceiling — never an unbounded judge call.
+        const awaited = [
+          ...text.matchAll(/await\s+this\.judgedVocabulary\.(\w+)/g),
+        ].map((m) => m[1]);
+        expect(awaited).toEqual(['ensureJudgedWithin']);
+        expect(text).toContain('FIRST_SEARCH_HEARING_CEILING_MS');
+      } else {
+        expect(text).not.toMatch(/await\s+this\.judgedVocabulary\./);
+      }
     }
   });
 });
@@ -556,5 +567,106 @@ describe('one hold law, one key spelling (real class)', () => {
     // $executeRaw is a tagged template: values follow the strings array.
     expect(executeRaw.mock.calls[0]).toContain('und|nunca');
     expect(executeRaw.mock.calls[0]).not.toContain('es|nunca');
+  });
+});
+
+/**
+ * THE FIRST-SEARCH SYNC HEARING (foundation red team #7, 2026-08-16): one
+ * bounded chance for a novel word to be judged on the asking request's own
+ * clock. Real class — the race, the queue-on-timeout, and the zero-await
+ * fast path are all internals the double replaces.
+ */
+describe('the bounded first-search hearing (real class)', () => {
+  const bareService = () => {
+    const service = Object.create(
+      JudgedVocabularyService.prototype,
+    ) as JudgedVocabularyService;
+    const executeRaw = jest.fn().mockResolvedValue(0);
+    const certifyFacets = jest.fn();
+    const internals = service as unknown as {
+      verdicts: Map<string, Map<string, string>>;
+      negatingForms: Set<string>;
+      pending: Map<string, unknown>;
+      loaded: boolean;
+      logger: { info: () => void; warn: () => void };
+      judge: { certifyFacets: jest.Mock };
+      prisma: { $executeRaw: jest.Mock };
+    };
+    internals.verdicts = new Map([
+      [WORD_GENERICNESS_LANE, new Map<string, string>()],
+      [WORD_NEGATION_LANE, new Map<string, string>()],
+      [WORD_ROLE_LANE, new Map<string, string>()],
+    ]);
+    internals.negatingForms = new Set();
+    internals.pending = new Map();
+    internals.loaded = true;
+    internals.logger = { info: () => undefined, warn: () => undefined };
+    internals.judge = { certifyFacets };
+    internals.prisma = { $executeRaw: executeRaw };
+    return { service, internals, certifyFacets, executeRaw };
+  };
+
+  const seedAllLanes = (
+    internals: { verdicts: Map<string, Map<string, string>> },
+    word: string,
+    locale: string,
+  ) => {
+    internals.verdicts
+      .get(WORD_GENERICNESS_LANE)!
+      .set(`${locale}|${word}`, CARRIES_CONCEPT);
+    internals.verdicts.get(WORD_NEGATION_LANE)!.set(`und|${word}`, NEGATES);
+    internals.verdicts.get(WORD_ROLE_LANE)!.set(`${locale}|${word}`, 'frame');
+  };
+
+  it('novel word: ONE certifyFacets call, and the verdict is visible to the same request', async () => {
+    const { service, internals, certifyFacets } = bareService();
+    certifyFacets.mockImplementation(() => {
+      // The real judge writes the ledger and tells the cache via subscribe;
+      // the stub does the cache half, which is what same-request reads see.
+      seedAllLanes(internals, 'bulgogi', 'ko');
+      return Promise.resolve(new Map());
+    });
+    const outcome = await service.ensureJudgedWithin(
+      [{ word: 'bulgogi', locale: 'ko' }],
+      1_500,
+    );
+    expect(outcome).toBe('judged');
+    expect(certifyFacets).toHaveBeenCalledTimes(1);
+    expect(service.outcomeOf(WORD_GENERICNESS_LANE, 'bulgogi', 'ko')).toBe(
+      CARRIES_CONCEPT,
+    );
+  });
+
+  it("timeout: today's semantics — hearing not cancelled, words queued durably", async () => {
+    const { service, certifyFacets, executeRaw } = bareService();
+    let settleHearing: () => void = () => undefined;
+    certifyFacets.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          settleHearing = () => resolve(new Map());
+        }),
+    );
+    const outcome = await service.ensureJudgedWithin(
+      [{ word: 'bulgogi', locale: 'ko' }],
+      5,
+    );
+    expect(outcome).toBe('timeout');
+    // Queue rows exist for the drain (in memory AND the durable table)…
+    expect(service.pendingHearings().map((c) => c.word)).toContain('bulgogi');
+    expect(executeRaw).toHaveBeenCalled();
+    // …and the in-flight hearing was not cancelled.
+    expect(certifyFacets).toHaveBeenCalledTimes(1);
+    settleHearing();
+  });
+
+  it('fully-judged query: ZERO awaits — no hearing starts at all', async () => {
+    const { service, internals, certifyFacets } = bareService();
+    seedAllLanes(internals, 'tacos', 'es');
+    const outcome = await service.ensureJudgedWithin(
+      [{ word: 'tacos', locale: 'es' }],
+      1_500,
+    );
+    expect(outcome).toBe('none');
+    expect(certifyFacets).not.toHaveBeenCalled();
   });
 });

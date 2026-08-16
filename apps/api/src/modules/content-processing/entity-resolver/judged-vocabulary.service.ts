@@ -556,6 +556,88 @@ export class JudgedVocabularyService implements OnModuleInit {
     }
   }
 
+  /**
+   * THE FIRST-SEARCH SYNC HEARING (foundation red team #7, 2026-08-16;
+   * owner accepted first-search latency for correctness).
+   *
+   * The claims here that are missing a verdict on ANY due lane get ONE
+   * bounded chance to be heard on the asker's own clock: the hearing races a
+   * timeout, and whichever wins, the search proceeds.
+   *
+   *   - 'none': every word is already judged — ZERO awaits, the promise
+   *     resolves synchronously-fast with no hearing started. This is the
+   *     common case forever, because a hearing happens once per word.
+   *   - 'judged': the hearing settled inside the budget; the verdict is in
+   *     the in-memory table (the judge's subscribe hook) and the SAME
+   *     request's browse/demand reads see it.
+   *   - 'timeout': today's semantics. The hearing is NOT cancelled — the
+   *     verdict lands for the next search — and the words are queued
+   *     durably so a hearing that dies in flight is still owed to the
+   *     nightly drain.
+   *
+   * The timeout is the CALLER's number, because it is a latency-budget fact
+   * about the caller's surface, not about this service.
+   */
+  async ensureJudgedWithin(
+    claims: readonly WordVocabularyClaim[],
+    timeoutMs: number,
+  ): Promise<'none' | 'judged' | 'timeout'> {
+    const novel = this.unjudgedOnAnyLane(claims);
+    if (!novel.length) return 'none';
+    const hearing = this.ensureJudged(novel);
+    const outcome = await new Promise<'judged' | 'timeout'>((resolve) => {
+      const timer = setTimeout(() => resolve('timeout'), timeoutMs);
+      // A rejected hearing still resolves 'judged' here: it is SETTLED — the
+      // fallback below (holdsUnjudged / the read door) queues what stayed
+      // unheard, exactly as it always has.
+      hearing.then(
+        () => {
+          clearTimeout(timer);
+          resolve('judged');
+        },
+        () => {
+          clearTimeout(timer);
+          resolve('judged');
+        },
+      );
+    });
+    if (outcome === 'timeout') {
+      // Durable row now, in case the in-flight hearing dies with the
+      // process; a completed hearing simply leaves nothing for the drain.
+      for (const claim of novel) this.queueOnMissingLanes(claim);
+      void hearing.catch(() => undefined);
+    }
+    return outcome;
+  }
+
+  /** The claims here with no verdict in force on at least one vocabulary
+   *  lane — the dueness read `ensureJudgedWithin` gates its await on. */
+  private unjudgedOnAnyLane(
+    claims: readonly WordVocabularyClaim[],
+  ): WordVocabularyClaim[] {
+    const lanes = [WORD_GENERICNESS_LANE, WORD_NEGATION_LANE, WORD_ROLE_LANE];
+    return claims.filter((claim) =>
+      lanes.some((lane) => {
+        const adapter = vocabularyLaneAdapter(lane);
+        return !this.verdicts.get(lane)?.has(adapter.canonicalClaimKey(claim));
+      }),
+    );
+  }
+
+  /** Queue this claim for the drain on every lane still missing a verdict. */
+  private queueOnMissingLanes(claim: WordVocabularyClaim): void {
+    for (const lane of [
+      WORD_GENERICNESS_LANE,
+      WORD_NEGATION_LANE,
+      WORD_ROLE_LANE,
+    ]) {
+      const adapter = vocabularyLaneAdapter(lane);
+      if (!this.verdicts.get(lane)?.has(adapter.canonicalClaimKey(claim))) {
+        this.queue(lane, claim);
+      }
+    }
+  }
+
   /* ----------------------------------------------------------- the backlog */
 
   /**

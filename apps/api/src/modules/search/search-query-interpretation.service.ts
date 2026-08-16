@@ -98,6 +98,22 @@ import { EngineCoverageService } from './engine-coverage.service';
 import { SignalsService } from '../signals/signals.service';
 import { ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES } from './on-demand-tuning.constants';
 
+/**
+ * OWNER-TUNABLE — the first-search sync-hearing budget (foundation red team
+ * #7, 2026-08-16). How long ONE search may wait for a hearing on a word
+ * nobody has judged, before proceeding with today's unheard semantics.
+ *
+ * MEASURED, not invented (no-fake-estimates law): the 2026-08-16 drain of
+ * the standing backlog ledgered single-batch vocabulary.* judge latency of
+ * p50=4219ms / p95=7453ms / max=7812ms (duration_ms on api_usage_ledger,
+ * 3 batches, 140 words). The measured p95 exceeds the PROVISIONAL 1500ms
+ * ceiling the owner accepted as the first-search cost of correctness, so
+ * the ceiling binds: most first-meetings of a novel word will time out,
+ * queue durably, and be right on the SECOND search. Raising this buys
+ * same-request correctness at first-search latency — the owner's dial.
+ */
+const FIRST_SEARCH_HEARING_CEILING_MS = 1_500;
+
 interface InterpretationResult {
   structuredRequest: SearchQueryRequestDto;
   analysis: LLMSearchQueryAnalysis;
@@ -275,6 +291,28 @@ export class SearchQueryInterpretationService {
     // An UNHEARD word blocks none of this conservatively: it reads as
     // particular (today's path) and is queued for tonight's hearing.
     const roleLocale = analysis.detectedLocale?.tag ?? request.locale ?? null;
+    // THE FIRST-SEARCH SYNC HEARING (foundation red team #7, 2026-08-16;
+    // owner accepted first-search latency for correctness). A word nobody
+    // has heard gets ONE bounded chance to be judged on THIS request's
+    // clock: the residue words the grounding above could not claim, raced
+    // against FIRST_SEARCH_HEARING_CEILING_MS. Fully-judged queries — the
+    // steady state, because a hearing happens once per word forever — take
+    // ZERO awaits here ('none' returns before any hearing starts). On
+    // timeout the search proceeds with today's semantics, the hearing is
+    // not cancelled, and the verdict lands for the next identical search.
+    const groundedSpans = rawGroups.map((g) => ({
+      start: g.start,
+      end: g.end,
+    }));
+    const residueClaims = segmentStripUnits(request.query)
+      .filter(
+        (u) => !groundedSpans.some((s) => u.start >= s.start && u.end <= s.end),
+      )
+      .map((u) => ({ word: u.word, locale: roleLocale ?? 'und' }));
+    await this.judgedVocabulary.ensureJudgedWithin(
+      residueClaims,
+      FIRST_SEARCH_HEARING_CEILING_MS,
+    );
     const roleOfWord = (word: string): string | null =>
       this.judgedVocabulary.roleOf(word, roleLocale);
     const roleUnits = segmentStripUnits(request.query).map((unit) => ({
