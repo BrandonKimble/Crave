@@ -62,13 +62,84 @@ import { stopCronsForScript } from '../src/shared/utils/stop-crons';
  * byte-identical to the words the door will later look up. A Postgres
  * `regexp_split_to_table` would have cut 好吃的 as one word and quietly left
  * every Mandarin particle uncertified.
+ *
+ * PLUS the retired lists as a seed — see below.
  */
+
+/**
+ * THE RETIRED LISTS, AS POPULATION — never as verdicts.
+ *
+ * The brief that opened this work is explicit: the hand lists' entries become
+ * SEEDED HEARINGS, judged like any other word, and are not copied in as
+ * un-judged answers. This is that seed, and the distinction is the whole
+ * point — nothing here asserts that `without` negates or that `top` is glue.
+ * These are words the corpus does not happen to bank (`without` appears in no
+ * surface form), so the surface scan would never offer them, and the door
+ * would meet each one cold on the first real search that used it.
+ *
+ * Being a CANDIDATE GENERATOR is the honest job for a list: it decides which
+ * questions get asked early, and the judge decides every answer. The judge has
+ * already overruled several of these — `non` is not a negator in English (a
+ * prefix needing attachment) and means "young/tender" in Vietnamese, which the
+ * old cue list would have stripped out of a Vietnamese query.
+ */
+const RETIRED_LIST_SEED: ReadonlyArray<[string, string]> = [
+  ['no', 'en'],
+  ['without', 'en'],
+  ['not', 'en'],
+  ['non', 'en'],
+  ['sin', 'es'],
+  ['no', 'es'],
+  ['senza', 'it'],
+  ['non', 'it'],
+  ['ohne', 'de'],
+  ['kein', 'de'],
+  ['keine', 'de'],
+  ['nicht', 'de'],
+  ['sans', 'fr'],
+  ['pas', 'fr'],
+  ['sem', 'pt'],
+  ['không', 'vi'],
+  ['chẳng', 'vi'],
+  ['đừng', 'vi'],
+  ['miễn', 'vi'],
+  ['不', 'zh'],
+  ['没', 'zh'],
+  ['无', 'zh'],
+  ['的', 'zh'],
+  ['best', 'en'],
+  ['top', 'en'],
+  ['good', 'en'],
+  ['great', 'en'],
+  ['favorite', 'en'],
+  ['favourite', 'en'],
+  ['popular', 'en'],
+  ['near', 'en'],
+  ['nearby', 'en'],
+  ['around', 'en'],
+  ['closest', 'en'],
+  ['close', 'en'],
+  ['food', 'en'],
+  ['dish', 'en'],
+  ['dishes', 'en'],
+  ['restaurant', 'en'],
+  ['restaurants', 'en'],
+  ['place', 'en'],
+  ['places', 'en'],
+];
+
 async function candidateWords(
   prisma: PrismaService,
 ): Promise<WordVocabularyClaim[]> {
   const rows = await prisma.$queryRaw<Array<{ form: string; locale: string }>>`
     SELECT DISTINCT form, locale FROM entity_surface`;
   const byKey = new Map<string, WordVocabularyClaim>();
+  for (const [word, locale] of RETIRED_LIST_SEED) {
+    for (const tag of [locale, 'und']) {
+      const claim = { word, locale: tag };
+      byKey.set(wordGenericnessLane.canonicalClaimKey(claim), claim);
+    }
+  }
   for (const row of rows) {
     const locale = normalizeClaimLocale(row.locale);
     for (const span of segmentWords(row.form)) {
