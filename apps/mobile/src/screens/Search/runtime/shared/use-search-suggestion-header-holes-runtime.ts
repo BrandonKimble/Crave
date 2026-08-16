@@ -40,9 +40,6 @@ export const useSearchSuggestionHeaderHolesRuntime = ({
     if (suggestionHeaderShortcutHoles.restaurants) {
       holes.push(suggestionHeaderShortcutHoles.restaurants);
     }
-    if (suggestionHeaderShortcutHoles.dishes) {
-      holes.push(suggestionHeaderShortcutHoles.dishes);
-    }
     return holes;
   }, [shouldDriveSuggestionLayout, suggestionHeaderSearchHole, suggestionHeaderShortcutHoles]);
   const resolvedSuggestionHeaderHoles = React.useMemo(() => {

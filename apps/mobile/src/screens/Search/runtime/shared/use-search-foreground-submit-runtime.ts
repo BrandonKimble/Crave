@@ -109,7 +109,6 @@ export const useSearchForegroundSubmitRuntime = ({
   return React.useMemo<SearchForegroundInteractionSubmitHandlers>(
     () => ({
       handleSubmit: directSubmitRuntime.handleSubmit,
-      handleBestDishesHere: directSubmitRuntime.handleBestDishesHere,
       handleBestRestaurantsHere: directSubmitRuntime.handleBestRestaurantsHere,
       handleSearchThisArea: directSubmitRuntime.handleSearchThisArea,
       handleSuggestionPress: directSubmitRuntime.handleSuggestionPress,

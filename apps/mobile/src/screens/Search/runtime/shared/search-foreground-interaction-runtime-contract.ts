@@ -233,7 +233,6 @@ export type UseSearchForegroundTransientHandlersRuntimeArgs = Pick<
 export type SearchForegroundInteractionRuntime = {
   shouldRetrySearchOnReconnect: boolean;
   handleSubmit: () => void;
-  handleBestDishesHere: () => void;
   handleBestRestaurantsHere: () => void;
   handleSearchThisArea: () => void;
   handleSuggestionPress: (
@@ -260,7 +259,6 @@ export type SearchForegroundInteractionRuntime = {
 export type SearchForegroundInteractionSubmitHandlers = Pick<
   SearchForegroundInteractionRuntime,
   | 'handleSubmit'
-  | 'handleBestDishesHere'
   | 'handleBestRestaurantsHere'
   | 'handleSearchThisArea'
   | 'handleSuggestionPress'

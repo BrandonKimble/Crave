@@ -16,20 +16,18 @@ const AnimatedPressable = Reanimated.createAnimatedComponent(Pressable);
 // R2 (2026-08-16, owner-ratified): the "Best restaurants" / "Best dishes" pair both ran
 // the SAME unfiltered browse — duplicates. Collapsed to ONE "All" chip wired to the
 // restaurants-tab browse submit (the browse result set is identical either way; the tab
-// only picks the landing pane). The two-chip prop surface (both press handlers + both
-// chip-layout callbacks) is deliberately retained so the row's layout machinery stays
-// intact for the future horizontal-scroll shortcut overhaul; the dishes callbacks are
-// simply unused while one chip renders.
+// only picks the landing pane). The dishes-chip prop thread was then deleted end-to-end
+// (red-team lens A, same day): the R7 shortcut row replaces this shape wholesale, so the
+// retained plumbing preserved nothing reusable. The row's visual/layout machinery
+// (animated styles, row/chip layout callbacks) stays.
 type SearchShortcutsRowProps = {
   containerAnimatedStyle: StyleProp<ViewStyle>;
   chipAnimatedStyle: StyleProp<ViewStyle>;
   contentAnimatedStyle: StyleProp<ViewStyle>;
   interactionEnabledRef: React.RefObject<boolean>;
   onPressBestRestaurants: () => void;
-  onPressBestDishes: () => void;
   onRowLayout: (layout: LayoutRectangle) => void;
   onRestaurantsChipLayout: (layout: LayoutRectangle) => void;
-  onDishesChipLayout: (layout: LayoutRectangle) => void;
 };
 
 const SearchShortcutsRow = ({
@@ -43,7 +41,7 @@ const SearchShortcutsRow = ({
 }: SearchShortcutsRowProps) => {
   const activeScenarioConfig = usePerfScenarioRuntimeStore((state) => state.activeConfig);
   const logShortcutPress = React.useCallback(
-    (target: 'restaurants' | 'dishes', handled: boolean) => {
+    (target: 'restaurants', handled: boolean) => {
       if (!isPerfScenarioAttributionActive(activeScenarioConfig)) {
         return;
       }

@@ -64,7 +64,6 @@ export const useSearchSuggestionLayoutStateRuntime = ({
         searchSuggestionShortcutLayoutRuntime.handleSearchShortcutsRowLayout,
       handleRestaurantsShortcutLayout:
         searchSuggestionShortcutLayoutRuntime.handleRestaurantsShortcutLayout,
-      handleDishesShortcutLayout: searchSuggestionShortcutLayoutRuntime.handleDishesShortcutLayout,
       suggestionContentHeight: suggestionContentHeightRuntime.suggestionContentHeight,
       shouldFreezeSuggestionHeader:
         searchSuggestionLayoutResolutionRuntime.shouldFreezeSuggestionHeader,
@@ -90,7 +89,6 @@ export const useSearchSuggestionLayoutStateRuntime = ({
       searchSuggestionSearchLayoutRuntime.handleSearchHeaderLayout,
       searchSuggestionSearchLayoutRuntime.searchBarFrame,
       searchSuggestionSearchLayoutRuntime.searchLayout,
-      searchSuggestionShortcutLayoutRuntime.handleDishesShortcutLayout,
       searchSuggestionShortcutLayoutRuntime.handleRestaurantsShortcutLayout,
       searchSuggestionShortcutLayoutRuntime.handleSearchShortcutsRowLayout,
       shouldDriveSuggestionLayout,

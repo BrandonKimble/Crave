@@ -56,10 +56,8 @@ type SearchOverlayHeaderChromeProps = {
   >['contentAnimatedStyle'];
   shortcutsInteractionEnabledRef: React.RefObject<boolean>;
   handleBestRestaurantsHere: () => void;
-  handleBestDishesHere: () => void;
   handleSearchShortcutsRowLayout: (layout: LayoutRectangle) => void;
   handleRestaurantsShortcutLayout: (layout: LayoutRectangle) => void;
-  handleDishesShortcutLayout: (layout: LayoutRectangle) => void;
   shouldShowSearchThisArea: boolean;
   searchThisAreaTop: number;
   searchThisAreaAnimatedStyle: React.ComponentProps<typeof Reanimated.View>['style'];
@@ -89,10 +87,8 @@ const SearchOverlayHeaderChrome = ({
   searchShortcutContentAnimatedStyle,
   shortcutsInteractionEnabledRef,
   handleBestRestaurantsHere,
-  handleBestDishesHere,
   handleSearchShortcutsRowLayout,
   handleRestaurantsShortcutLayout,
-  handleDishesShortcutLayout,
   shouldShowSearchThisArea,
   searchThisAreaTop,
   searchThisAreaAnimatedStyle,
@@ -203,10 +199,8 @@ const SearchOverlayHeaderChrome = ({
         contentAnimatedStyle={searchShortcutContentAnimatedStyle}
         interactionEnabledRef={shortcutsInteractionEnabledRef}
         onPressBestRestaurants={handleBestRestaurantsHere}
-        onPressBestDishes={handleBestDishesHere}
         onRowLayout={handleSearchShortcutsRowLayout}
         onRestaurantsChipLayout={handleRestaurantsShortcutLayout}
-        onDishesChipLayout={handleDishesShortcutLayout}
       />
       <Reanimated.View
         pointerEvents={shouldShowSearchThisArea ? 'box-none' : 'none'}

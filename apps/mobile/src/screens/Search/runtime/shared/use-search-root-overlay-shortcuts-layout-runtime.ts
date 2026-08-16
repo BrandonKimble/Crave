@@ -13,10 +13,8 @@ export const useSearchRootOverlayShortcutsLayoutRuntime = ({
     () => ({
       handleSearchShortcutsRowLayout: suggestionRuntime.handleSearchShortcutsRowLayout,
       handleRestaurantsShortcutLayout: suggestionRuntime.handleRestaurantsShortcutLayout,
-      handleDishesShortcutLayout: suggestionRuntime.handleDishesShortcutLayout,
     }),
     [
-      suggestionRuntime.handleDishesShortcutLayout,
       suggestionRuntime.handleRestaurantsShortcutLayout,
       suggestionRuntime.handleSearchShortcutsRowLayout,
     ]

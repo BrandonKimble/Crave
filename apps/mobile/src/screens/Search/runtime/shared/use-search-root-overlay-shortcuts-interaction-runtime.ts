@@ -11,11 +11,6 @@ export const useSearchRootOverlayShortcutsInteractionRuntime = ({
     () => ({
       handleBestRestaurantsHere:
         foregroundInteractionControlLane.foregroundInteractionRuntime.handleBestRestaurantsHere,
-      handleBestDishesHere:
-        foregroundInteractionControlLane.foregroundInteractionRuntime.handleBestDishesHere,
     }),
-    [
-      foregroundInteractionControlLane.foregroundInteractionRuntime.handleBestDishesHere,
-      foregroundInteractionControlLane.foregroundInteractionRuntime.handleBestRestaurantsHere,
-    ]
+    [foregroundInteractionControlLane.foregroundInteractionRuntime.handleBestRestaurantsHere]
   );

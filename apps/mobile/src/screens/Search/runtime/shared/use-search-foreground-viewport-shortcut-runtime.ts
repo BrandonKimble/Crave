@@ -16,7 +16,7 @@ type UseSearchForegroundViewportShortcutRuntimeArgs = Pick<
 
 type SearchForegroundViewportShortcutRuntime = Pick<
   SearchForegroundInteractionSubmitHandlers,
-  'handleBestDishesHere' | 'handleBestRestaurantsHere'
+  'handleBestRestaurantsHere'
 >;
 
 export const useSearchForegroundViewportShortcutRuntime = ({
@@ -25,14 +25,6 @@ export const useSearchForegroundViewportShortcutRuntime = ({
   submitPreparationRuntime,
 }: UseSearchForegroundViewportShortcutRuntimeArgs): SearchForegroundViewportShortcutRuntime => {
   const { submitViewportShortcut } = submitRuntime;
-
-  const handleBestDishesHere = React.useCallback(() => {
-    submitPreparationRuntime.prepareSubmitChrome();
-    setQuery(SHORTCUT_QUERY_LABEL_BY_TAB.dishes);
-    void submitViewportShortcut('dishes', SHORTCUT_QUERY_LABEL_BY_TAB.dishes, {
-      forceFreshBounds: true,
-    });
-  }, [setQuery, submitPreparationRuntime, submitViewportShortcut]);
 
   const handleBestRestaurantsHere = React.useCallback(() => {
     submitPreparationRuntime.prepareSubmitChrome();
@@ -44,9 +36,8 @@ export const useSearchForegroundViewportShortcutRuntime = ({
 
   return React.useMemo(
     () => ({
-      handleBestDishesHere,
       handleBestRestaurantsHere,
     }),
-    [handleBestDishesHere, handleBestRestaurantsHere]
+    [handleBestRestaurantsHere]
   );
 };

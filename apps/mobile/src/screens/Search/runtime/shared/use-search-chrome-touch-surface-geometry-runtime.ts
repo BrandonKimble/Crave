@@ -106,17 +106,6 @@ export const useSearchChromeTouchSurfaceGeometryRuntime = ({
       suggestionRuntime.resolvedSearchShortcutsFrame,
     ]
   );
-  const dishesHitRegion = React.useMemo(
-    () =>
-      resolveShortcutHitRegion({
-        rowFrame: suggestionRuntime.resolvedSearchShortcutsFrame,
-        chipFrame: suggestionRuntime.resolvedSearchShortcutChipFrames.dishes ?? null,
-      }),
-    [
-      suggestionRuntime.resolvedSearchShortcutChipFrames,
-      suggestionRuntime.resolvedSearchShortcutsFrame,
-    ]
-  );
   const searchThisAreaHitRegion = React.useMemo(
     () =>
       resolveSearchThisAreaHitRegion({
@@ -136,13 +125,6 @@ export const useSearchChromeTouchSurfaceGeometryRuntime = ({
             shortcutsInputs.shouldEnableSearchShortcutsInteraction,
           onPress: shortcutsInputs.handleBestRestaurantsHere,
         },
-        dishes: {
-          hitRegion: shortcutsInputs.shouldMountSearchShortcuts ? dishesHitRegion : null,
-          enabled:
-            shortcutsInputs.shouldMountSearchShortcuts &&
-            shortcutsInputs.shouldEnableSearchShortcutsInteraction,
-          onPress: shortcutsInputs.handleBestDishesHere,
-        },
       },
       searchThisArea: {
         hitRegion: searchThisAreaInputs.shouldShowSearchThisArea ? searchThisAreaHitRegion : null,
@@ -152,13 +134,11 @@ export const useSearchChromeTouchSurfaceGeometryRuntime = ({
       handleSearchThisAreaButtonLayout,
     }),
     [
-      dishesHitRegion,
       handleSearchThisAreaButtonLayout,
       restaurantsHitRegion,
       searchThisAreaHitRegion,
       searchThisAreaInputs.handleSearchThisArea,
       searchThisAreaInputs.shouldShowSearchThisArea,
-      shortcutsInputs.handleBestDishesHere,
       shortcutsInputs.handleBestRestaurantsHere,
       shortcutsInputs.shouldEnableSearchShortcutsInteraction,
       shortcutsInputs.shouldMountSearchShortcuts,

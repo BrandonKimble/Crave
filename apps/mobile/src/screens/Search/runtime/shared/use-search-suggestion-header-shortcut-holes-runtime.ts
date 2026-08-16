@@ -9,7 +9,6 @@ import type { SearchSuggestionMaskedHole } from './search-suggestion-surface-run
 
 type SearchSuggestionShortcutHoleState = {
   restaurants: SearchSuggestionMaskedHole | null;
-  dishes: SearchSuggestionMaskedHole | null;
 };
 
 export const useSearchSuggestionHeaderShortcutHolesRuntime = ({
@@ -27,7 +26,6 @@ export const useSearchSuggestionHeaderShortcutHolesRuntime = ({
 }): SearchSuggestionShortcutHoleState => {
   const suggestionHeaderShortcutHolesRef = React.useRef<SearchSuggestionShortcutHoleState>({
     restaurants: null,
-    dishes: null,
   });
 
   const suggestionHeaderShortcutHoleCandidates =
@@ -37,17 +35,13 @@ export const useSearchSuggestionHeaderShortcutHolesRuntime = ({
         !shouldIncludeShortcutHoles ||
         !resolvedSearchShortcutsFrame
       ) {
-        return { restaurants: null, dishes: null };
+        return { restaurants: null };
       }
 
       return {
         restaurants: createSuggestionHeaderShortcutHole({
           resolvedSearchShortcutsFrame,
           chipFrame: resolvedSearchShortcutChipFrames.restaurants,
-        }),
-        dishes: createSuggestionHeaderShortcutHole({
-          resolvedSearchShortcutsFrame,
-          chipFrame: resolvedSearchShortcutChipFrames.dishes,
         }),
       };
     }, [
@@ -62,18 +56,15 @@ export const useSearchSuggestionHeaderShortcutHolesRuntime = ({
       return;
     }
 
-    const { restaurants, dishes } = suggestionHeaderShortcutHoleCandidates;
+    const { restaurants } = suggestionHeaderShortcutHoleCandidates;
     if (restaurants) {
       suggestionHeaderShortcutHolesRef.current.restaurants = cloneSuggestionMaskedHole(restaurants);
-    }
-    if (dishes) {
-      suggestionHeaderShortcutHolesRef.current.dishes = cloneSuggestionMaskedHole(dishes);
     }
   }, [shouldFreezeSuggestionHeader, suggestionHeaderShortcutHoleCandidates]);
 
   return React.useMemo(() => {
     if (!shouldIncludeShortcutHoles) {
-      return { restaurants: null, dishes: null };
+      return { restaurants: null };
     }
 
     const cached = suggestionHeaderShortcutHolesRef.current;
@@ -83,7 +74,6 @@ export const useSearchSuggestionHeaderShortcutHolesRuntime = ({
 
     return {
       restaurants: suggestionHeaderShortcutHoleCandidates.restaurants ?? cached.restaurants,
-      dishes: suggestionHeaderShortcutHoleCandidates.dishes ?? cached.dishes,
     };
   }, [
     shouldFreezeSuggestionHeader,

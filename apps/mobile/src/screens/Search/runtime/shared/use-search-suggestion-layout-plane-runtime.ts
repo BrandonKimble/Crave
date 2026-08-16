@@ -72,7 +72,6 @@ export const useSearchSuggestionLayoutPlaneRuntime = ({
       handleSearchContainerLayout: suggestionLayoutStateRuntime.handleSearchContainerLayout,
       handleSearchShortcutsRowLayout: suggestionLayoutStateRuntime.handleSearchShortcutsRowLayout,
       handleRestaurantsShortcutLayout: suggestionLayoutStateRuntime.handleRestaurantsShortcutLayout,
-      handleDishesShortcutLayout: suggestionLayoutStateRuntime.handleDishesShortcutLayout,
       resetSearchHeaderFocusProgress: suggestionLayoutVisualRuntime.resetSearchHeaderFocusProgress,
       searchHeaderFocusProgress: suggestionLayoutVisualRuntime.searchHeaderFocusProgress,
       suggestionHeaderHeightAnimatedStyle:
@@ -93,7 +92,6 @@ export const useSearchSuggestionLayoutPlaneRuntime = ({
       suggestionHeaderHolesRuntime.resolvedSuggestionHeaderHoles,
       suggestionLayoutStateRuntime.resolvedSearchShortcutChipFrames,
       suggestionLayoutStateRuntime.resolvedSearchShortcutsFrame,
-      suggestionLayoutStateRuntime.handleDishesShortcutLayout,
       suggestionLayoutStateRuntime.handleRestaurantsShortcutLayout,
       suggestionLayoutStateRuntime.handleSearchContainerLayout,
       suggestionLayoutStateRuntime.handleSearchHeaderLayout,

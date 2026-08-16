@@ -2,7 +2,7 @@ import type { LayoutRectangle } from 'react-native';
 
 export type SearchChromeTouchSurfaceHitRegion = LayoutRectangle;
 
-export type SearchChromeTouchSurfaceShortcutKey = 'restaurants' | 'dishes';
+export type SearchChromeTouchSurfaceShortcutKey = 'restaurants';
 
 export type SearchChromeTouchSurfaceTouchable = {
   hitRegion: SearchChromeTouchSurfaceHitRegion | null;

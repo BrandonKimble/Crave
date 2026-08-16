@@ -17,10 +17,7 @@ import {
 } from '../../../../perf/perf-scenario-attribution';
 import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
 
-export type SearchChromeNativeHitTargetId =
-  | 'shortcut_restaurants'
-  | 'shortcut_dishes'
-  | 'search_this_area';
+export type SearchChromeNativeHitTargetId = 'shortcut_restaurants' | 'search_this_area';
 
 export type SearchChromeNativeHitTargetRegion = {
   targetId: SearchChromeNativeHitTargetId;
@@ -108,7 +105,6 @@ export const searchChromeNativeHitTargetRegistry = {
   syncRuntime(runtime: SearchChromeTouchSurfaceRuntime): boolean {
     const regions = [
       mapTouchableToRegion('shortcut_restaurants', runtime.shortcuts.restaurants),
-      mapTouchableToRegion('shortcut_dishes', runtime.shortcuts.dishes),
       mapTouchableToRegion('search_this_area', runtime.searchThisArea),
     ].filter((region): region is SearchChromeNativeHitTargetRegion => region != null);
 

@@ -145,10 +145,8 @@ export const useSearchRootOverlayChromeHostRuntime = ({
       searchShortcutContentAnimatedStyle: shortcutsInputs.searchShortcutContentAnimatedStyle,
       shortcutsInteractionEnabledRef,
       handleBestRestaurantsHere: shortcutsInputs.handleBestRestaurantsHere,
-      handleBestDishesHere: shortcutsInputs.handleBestDishesHere,
       handleSearchShortcutsRowLayout: shortcutsInputs.handleSearchShortcutsRowLayout,
       handleRestaurantsShortcutLayout: shortcutsInputs.handleRestaurantsShortcutLayout,
-      handleDishesShortcutLayout: shortcutsInputs.handleDishesShortcutLayout,
     };
     const searchThisAreaInputs = {
       ...searchThisAreaVisualInputs,

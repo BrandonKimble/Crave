@@ -331,7 +331,6 @@ export type SearchSuggestionLayoutStateRuntime = {
   handleSearchContainerLayout: ({ nativeEvent }: LayoutChangeEvent) => void;
   handleSearchShortcutsRowLayout: (layout: LayoutRectangle) => void;
   handleRestaurantsShortcutLayout: (layout: LayoutRectangle) => void;
-  handleDishesShortcutLayout: (layout: LayoutRectangle) => void;
   suggestionContentHeight: number;
   shouldFreezeSuggestionHeader: boolean;
   shouldIncludeShortcutHoles: boolean;
@@ -390,7 +389,6 @@ export type SearchSuggestionLayoutRuntime = {
   handleSearchContainerLayout: ({ nativeEvent }: LayoutChangeEvent) => void;
   handleSearchShortcutsRowLayout: (layout: LayoutRectangle) => void;
   handleRestaurantsShortcutLayout: (layout: LayoutRectangle) => void;
-  handleDishesShortcutLayout: (layout: LayoutRectangle) => void;
   resetSearchHeaderFocusProgress: () => void;
   searchHeaderFocusProgress: ReturnType<typeof useSharedValue<number>>;
   suggestionHeaderHeightAnimatedStyle: ReturnType<typeof useAnimatedStyle>;

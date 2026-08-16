@@ -13,7 +13,6 @@ type SearchSuggestionShortcutLayoutRuntime = {
   cachedSearchShortcutChipFrames: Record<string, LayoutRectangle>;
   handleSearchShortcutsRowLayout: (layout: LayoutRectangle) => void;
   handleRestaurantsShortcutLayout: (layout: LayoutRectangle) => void;
-  handleDishesShortcutLayout: (layout: LayoutRectangle) => void;
 };
 
 const cloneSearchLayoutRectangle = (layout: LayoutRectangle): LayoutRectangle => ({
@@ -81,31 +80,6 @@ export const useSearchSuggestionShortcutLayoutRuntime =
       });
     }, []);
 
-    const handleDishesShortcutLayout = React.useCallback((layout: LayoutRectangle) => {
-      setSearchShortcutChipFrames((prev) => {
-        const nextLayout = cloneSearchLayoutRectangle(layout);
-        const prevLayout = prev.dishes;
-        if (
-          prevLayout &&
-          Math.abs(prevLayout.x - layout.x) < 0.5 &&
-          Math.abs(prevLayout.y - layout.y) < 0.5 &&
-          Math.abs(prevLayout.width - layout.width) < 0.5 &&
-          Math.abs(prevLayout.height - layout.height) < 0.5
-        ) {
-          return prev;
-        }
-        const next = { ...prev, dishes: nextLayout };
-        searchShortcutsLayoutCacheRef.current = {
-          ...searchShortcutsLayoutCacheRef.current,
-          chipFrames: {
-            ...searchShortcutsLayoutCacheRef.current.chipFrames,
-            dishes: nextLayout,
-          },
-        };
-        return next;
-      });
-    }, []);
-
     return React.useMemo(
       () => ({
         searchShortcutsFrame,
@@ -114,10 +88,8 @@ export const useSearchSuggestionShortcutLayoutRuntime =
         cachedSearchShortcutChipFrames: searchShortcutsLayoutCacheRef.current.chipFrames,
         handleSearchShortcutsRowLayout,
         handleRestaurantsShortcutLayout,
-        handleDishesShortcutLayout,
       }),
       [
-        handleDishesShortcutLayout,
         handleRestaurantsShortcutLayout,
         handleSearchShortcutsRowLayout,
         searchShortcutChipFrames,

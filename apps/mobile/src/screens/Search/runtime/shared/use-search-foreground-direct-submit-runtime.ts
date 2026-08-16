@@ -46,11 +46,7 @@ type UseSearchForegroundDirectSubmitRuntimeArgs = Pick<
 
 type SearchForegroundDirectSubmitRuntime = Pick<
   SearchForegroundInteractionSubmitHandlers,
-  | 'handleSubmit'
-  | 'handleBestDishesHere'
-  | 'handleBestRestaurantsHere'
-  | 'handleSearchThisArea'
-  | 'handleSuggestionPress'
+  'handleSubmit' | 'handleBestRestaurantsHere' | 'handleSearchThisArea' | 'handleSuggestionPress'
 >;
 
 export const useSearchForegroundDirectSubmitRuntime = ({
@@ -135,7 +131,6 @@ export const useSearchForegroundDirectSubmitRuntime = ({
   return React.useMemo(
     () => ({
       handleSubmit: querySubmitRuntime.handleSubmit,
-      handleBestDishesHere: viewportShortcutRuntime.handleBestDishesHere,
       handleBestRestaurantsHere: viewportShortcutRuntime.handleBestRestaurantsHere,
       handleSearchThisArea: searchAreaSubmitRuntime.handleSearchThisArea,
       handleSuggestionPress: suggestionSubmitRuntime.handleSuggestionPress,
@@ -144,7 +139,6 @@ export const useSearchForegroundDirectSubmitRuntime = ({
       querySubmitRuntime.handleSubmit,
       searchAreaSubmitRuntime.handleSearchThisArea,
       suggestionSubmitRuntime.handleSuggestionPress,
-      viewportShortcutRuntime.handleBestDishesHere,
       viewportShortcutRuntime.handleBestRestaurantsHere,
     ]
   );
