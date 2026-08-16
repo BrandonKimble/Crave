@@ -118,6 +118,12 @@ function makeService(pages: Array<() => Promise<unknown>>) {
     {} as never,
     { get: () => undefined } as never,
     opsAlerts as never,
+    {
+      decidedVerdicts: () => Promise.resolve(new Map()),
+      record: () => Promise.resolve(undefined),
+      markExecuted: () => Promise.resolve(undefined),
+      pendingExecution: () => Promise.resolve([]),
+    } as never,
     logger as never,
   );
 

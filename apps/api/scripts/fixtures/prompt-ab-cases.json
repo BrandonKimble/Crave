@@ -2152,5 +2152,177 @@
       "foods": ["fajitas"],
       "notFoods": ["enchilada"]
     }
+  },
+  {
+    "id": "V15a-m2-the-corner",
+    "why": "M2 leading-article strip manufactured ghost 'Corner' (entity d484043d): article-strip may never leave a bare generic — 'The Corner' keeps its article as a brand token.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Chinese near midtown east?",
+        "body": "Any recs for sit-down Chinese around midtown east?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "RIP Mee Noodle and Shun Lee's quality. The Corner is pretty good, or you can do Blue Willow/Tang Pavillion if they're up for something that borders on authentic (but still has great Americanized dishes)."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["the corner", "blue willow", "tang pavillion"]
+    }
+  },
+  {
+    "id": "V15b-m2-a-side",
+    "why": "M2: ghost 'Side' (entity db9a9a63) born by stripping 'A Side' (real pizza/pasta bar on 9th). The article is the brand.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Dinner before a show at the Sondheim?",
+        "body": "Looking for somewhere walkable before a Broadway show.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "It’s probably about a 15 min walk away from the Sondheim but I do l love A Side - it’s on 9th so not as touristy."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["a side"],
+      "notRestaurants": ["sondheim"]
+    }
+  },
+  {
+    "id": "V15c-m2-the-place-guilford",
+    "why": "M2: ghost 'Place' (entity e2dae478) — the venue's real name is THE PLACE (Guilford CT); article-strip left the bare generic.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Restaurants worth a drive out of the city?",
+        "body": "Happy to drive 1-2 hours for something special.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "If you want a drive go to the place in guilford CT - get off around New Haven and drive up the coast on route 1 - it’s an outdoor grill restaurant - BYO anything they don’t serve - bread, liqour et al. And it’s dog friendly"
+          },
+          {
+            "id": "SRC003",
+            "parent_id": "SRC002",
+            "body": "which place?"
+          },
+          {
+            "id": "SRC004",
+            "parent_id": "SRC003",
+            "body": "Sorry, typing with one hand. It’s called THE PLACE in Guilford, CT. Usually I’ll just google with someone’s suggestions that include descriptors."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["the place"]
+    }
+  },
+  {
+    "id": "V15d-anaphora-the-place",
+    "why": "Control vs V15c: 'The place is fantastic' as pure anaphora resolves to the parent's anchor and must never mint a venue containing 'place'.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Underrated old-school red sauce?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Don Peppe out by the airport. Baked clams and the linguine with white clam sauce."
+          },
+          {
+            "id": "SRC003",
+            "parent_id": "SRC002",
+            "body": "The place is fantastic! Thanks for reminding me of its existence. I should make a trip up before summer is out."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["don peppe"],
+      "notRestaurants": ["place"]
+    }
+  },
+  {
+    "id": "V15e-good-taco",
+    "why": "M5: live food entity 'good taco' — an evaluative word is never part of an order; peel to the dish, never a property.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Taco spots in Sunset Park?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Tacos El Bronco. They have really good tacos and the al pastor off the truck is even better."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["tacos el bronco"],
+      "foods": ["taco"],
+      "notFoods": ["good taco"],
+      "notAttributes": ["good"]
+    }
+  },
+  {
+    "id": "V15f-xfood-red-sauce",
+    "why": "X-FOOD law: '<cuisine> food' never mints a food entity — 'red sauce italian food' names a tradition; cuisine lands as attribute.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Craving red sauce italian food",
+        "body": "Where should I go for proper red sauce italian food? Old school vibes preferred.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Carmine’s if you want the big family-style version of red sauce italian food done right."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["carmines"],
+      "notFoods": ["italian food", "red sauce italian food", "food"],
+      "attributes": ["italian"]
+    }
+  },
+  {
+    "id": "V15g-comfort-food-attribute",
+    "why": "X-FOOD exception control: 'comfort food' is irreducible — carried whole to Step D as a style attribute, never decomposed, never a dish.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Cozy dinner ideas?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Jacob’s Pickles. Huge portions, great comfort food."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["jacobs pickles"],
+      "attributes": ["comfort food"],
+      "notFoods": ["comfort food"],
+      "somePraise": true
+    }
   }
 ]

@@ -62,6 +62,12 @@ function makeService(entity: Record<string, unknown>) {
           : undefined,
     } as never,
     { emit: jest.fn() } as never,
+    {
+      decidedVerdicts: () => Promise.resolve(new Map()),
+      record: () => Promise.resolve(undefined),
+      markExecuted: () => Promise.resolve(undefined),
+      pendingExecution: () => Promise.resolve([]),
+    } as never,
     logger as never,
   );
   return service;

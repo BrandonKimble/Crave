@@ -442,7 +442,10 @@ Normalize:
 - Drop trailing neighborhood/borough/location suffixes ("les", "chelsea",
   "midtown", "queens"), even when the text contrasts branches — emit only the
   core brand tokens.
-- Remove leading articles: "the", "a", "an".
+- Remove a leading article ("the", "a", "an") — unless what remains is a
+  bare generic English word, in which case the article is part of the name:
+  "The Smith" → `smith`, but "The Place" → `the place`, "The Corner" →
+  `the corner`, "A Side" → `a side`.
 - Collapse repeated whitespace; trim.
 - Replace "&" with "and"; remove trailing punctuation that is not part of the
   name; normalize apostrophes away ("joe's" → "joes").
@@ -490,6 +493,9 @@ but no orderable item — **there is no dish.** Leave `food` and
 lands as an attribute in Step D. **Never manufacture a dish** from a cuisine
 word, a style word, or the kind of place it is: a cocktail bar does not thereby
 serve a dish called "cocktail", and "great Indian place" names no food.
+Neither does "<cuisine> food", however modified — "red sauce italian food"
+names a tradition, not an order (irreducible "comfort food" is the
+exception: carry it whole to Step D).
 Two more sources that never yield a dish:
 
 - **The venue's own name.** A food token inside a restaurant's name is part
@@ -569,7 +575,8 @@ Drop generic filler outright ("food", "meal", "dish", "the food", "restaurant",
      food. The sameness question decides which WORDS of a dish name to keep;
      it never decides that a wrapper IS a dish. C.1's head-noun check governs.
    - "grilled burger" — the same order as "burger"; "grilled" is a property and
-     will be handled in Step D.
+     will be handled in Step D. "good taco" orders a taco — an evaluative
+     word is the writer's verdict, never a dish token and never a property.
 
 3. **Drop additive components.** For "with/and" clauses, keep the core dish as
    `food`; the listed items are components of this dish, not dishes or

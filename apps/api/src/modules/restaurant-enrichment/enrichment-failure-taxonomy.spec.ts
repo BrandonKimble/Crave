@@ -139,6 +139,12 @@ describe('the enrichment failure taxonomy (transient failures do not archive)', 
         {} as never,
         { get: () => undefined } as never,
         { emit: jest.fn() } as never,
+        {
+          decidedVerdicts: () => Promise.resolve(new Map()),
+          record: () => Promise.resolve(undefined),
+          markExecuted: () => Promise.resolve(undefined),
+          pendingExecution: () => Promise.resolve([]),
+        } as never,
         logger as never,
       );
       const asPrivate = service as unknown as {

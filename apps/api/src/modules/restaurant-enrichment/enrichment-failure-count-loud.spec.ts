@@ -55,6 +55,12 @@ describe('the enrichment attempt counters are not silent (F4907 + F5100)', () =>
       {} as never,
       { get: () => undefined } as never,
       opsAlerts as never,
+      {
+        decidedVerdicts: () => Promise.resolve(new Map()),
+        record: () => Promise.resolve(undefined),
+        markExecuted: () => Promise.resolve(undefined),
+        pendingExecution: () => Promise.resolve([]),
+      } as never,
       logger as never,
     );
     // The method is private by design (it is bookkeeping, not API), so the
