@@ -2324,5 +2324,41 @@
       "notFoods": ["comfort food"],
       "somePraise": true
     }
+  },
+  {
+    "id": "V15i-ask-inherit-crispy-fries",
+    "why": "Dish-level ask-inheritance test: bare pick answering 'crispy shoestring fries' ask — does the dish inherit, and should 'crispy' ride? Trust-layer control: Pterry's writer ANNOUNCES divergence ('ask them to fry them twice') and must NOT inherit crispy.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Desperate to find a place with good crispy shoestring fries!",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Clark's indeed"
+          },
+          {
+            "id": "SRC003",
+            "body": "Pterry's. Just ask them to fry them twice or well done. Hits the spot when I want fries."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["clarks", "pterrys"],
+      "perSource": [
+        {
+          "source": "SRC002",
+          "foods": ["shoestring fry"],
+          "attributes": ["crispy"]
+        },
+        {
+          "source": "SRC003",
+          "notAttributes": ["crispy"]
+        }
+      ]
+    }
   }
 ]

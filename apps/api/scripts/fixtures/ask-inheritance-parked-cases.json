@@ -1,0 +1,41 @@
+[
+  {
+    "id": "V15h-ask-inherit-romantic",
+    "why": "Ask-inheritance rederivation: unqualified pick answering a constrained judgment ask asserts FIT — inherits the ask's restaurant-level constraint (romantic).",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Romantic Ambiance Date Night Recommendation",
+        "body": "Looking for somewhere with truly romantic ambiance for an anniversary dinner.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Comedor"
+          },
+          {
+            "id": "SRC003",
+            "body": "J Carver is dimly lit and romantic"
+          },
+          {
+            "id": "SRC004",
+            "body": "It's not downtown the atmosphere is perfect at Bartletts."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "restaurants": ["comedor", "j carver", "bartletts"],
+      "perSource": [
+        {
+          "source": "SRC002",
+          "attributes": ["romantic"]
+        },
+        {
+          "source": "SRC003",
+          "attributes": ["romantic"]
+        }
+      ]
+    }
+  }
+]
