@@ -388,45 +388,56 @@ export class JudgedVocabularyService implements OnModuleInit {
     };
   }
 
-  /** Hear every claim here that has no verdict, on BOTH lanes. Batched; the
-   *  budget gate inside the judge bounds it. */
+  /**
+   * Hear every claim here that has no verdict, ON EVERY FACET AT ONCE.
+   *
+   * CO-DUE, NOT LOOPED (B-call, 2026-08-15). This used to call the judge once
+   * per lane, so the same forty words were sent to the same model twice —
+   * twice the tokens, twice the round trips, twice the ways to fail, for one
+   * lookup of one thing. `certifyFacets` asks both facets in one call and
+   * writes two independent verdict rows; the facets keep their own rule, own
+   * version and own key space, because they are genuinely two questions. What
+   * they share is the subject, which is exactly what a batch is.
+   */
   async ensureJudged(
     claims: readonly WordVocabularyClaim[],
     lanes: readonly string[] = [WORD_GENERICNESS_LANE, WORD_NEGATION_LANE],
   ): Promise<void> {
     if (!claims.length) return;
-    for (const lane of lanes) {
+    const due = lanes.filter((lane) => {
       const adapter =
         lane === WORD_GENERICNESS_LANE ? wordGenericnessLane : wordNegationLane;
       const table = this.verdicts.get(lane);
-      const unheard = claims.filter(
+      return claims.some(
         (claim) => !table?.has(adapter.canonicalClaimKey(claim)),
       );
-      if (!unheard.length) continue;
-      try {
-        await this.judge.certify(lane, unheard);
-      } catch (error) {
-        // A REFUSED DRAIN IS NOT A FAILED REQUEST. The budget gate exists to
-        // stop an unbounded spend, and it fires on the ordinary day when a
-        // large certification has already used the window. Letting it escape
-        // aborted the caller's ENTIRE batch — one unheard word cost a whole
-        // page of demand signals. The words go on the backlog and the caller
-        // holds the terms that needed them; the drain records the rest.
-        if (
-          error instanceof DrainExceedsStandingCapError ||
-          error instanceof StaleDrainApprovalError ||
-          error instanceof NoMeasuredHearingRateError
-        ) {
-          for (const claim of unheard) this.queue(lane, claim);
-          this.logger.warn('Vocabulary hearing deferred to the backlog', {
-            lane,
-            words: unheard.length,
-            reason: error.name,
-          });
-          continue;
+    });
+    if (!due.length) return;
+    try {
+      await this.judge.certifyFacets(due, claims);
+    } catch (error) {
+      // A REFUSED DRAIN IS NOT A FAILED REQUEST. The budget gate exists to
+      // stop an unbounded spend, and it fires on the ordinary day when a
+      // large certification has already used the window. Letting it escape
+      // aborted the caller's ENTIRE batch — one unheard word cost a whole
+      // page of demand signals. The words go on the backlog and the caller
+      // holds the terms that needed them; the drain records the rest.
+      if (
+        error instanceof DrainExceedsStandingCapError ||
+        error instanceof StaleDrainApprovalError ||
+        error instanceof NoMeasuredHearingRateError
+      ) {
+        for (const lane of due) {
+          for (const claim of claims) this.queue(lane, claim);
         }
-        throw error;
+        this.logger.warn('Vocabulary hearing deferred to the backlog', {
+          lanes: due,
+          words: claims.length,
+          reason: error.name,
+        });
+        return;
       }
+      throw error;
     }
   }
 

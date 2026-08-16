@@ -71,6 +71,24 @@ export const VOCABULARY_LANES: Readonly<Record<string, LaneWiring>> = {
   },
 };
 
+/** The options every drain takes, whether it asks one facet or all of them. */
+export interface CertifyOptions {
+  dryRun?: boolean;
+  approvedHash?: string | null;
+  /** WHO IS BUYING (A3, 2026-08-15). Default 'steady' — the unattended rail,
+   *  whose spend the rolling allowance meters. An operator drain says
+   *  'certification' and is exempt from that window, because it is bounded by
+   *  the approve-by-hash law instead. */
+  source?: HearingSource;
+}
+
+/** batch index (1-based) → lane → the ruling for that facet. A lane missing
+ *  from the inner map is a facet that gave no ground and stays due. */
+type FacetAnswers = Map<
+  number,
+  Map<string, { outcome: string; reason: string }>
+>;
+
 export interface VocabularyCertificationSummary {
   lane: string;
   /** Distinct (word, locale) pairs presented. */
@@ -152,66 +170,124 @@ export class WordVocabularyJudgeService {
   async certify(
     lane: string,
     claims: readonly WordVocabularyClaim[],
-    options: {
-      dryRun?: boolean;
-      approvedHash?: string | null;
-      /** WHO IS BUYING (A3, 2026-08-15). Default 'steady' — the unattended
-       *  rail, whose spend the rolling allowance meters. An operator drain
-       *  says 'certification' and is exempt from that window, because it is
-       *  bounded by the approve-by-hash law instead. */
-      source?: HearingSource;
-    } = {},
+    options: CertifyOptions = {},
   ): Promise<VocabularyCertificationSummary> {
-    const wiring = laneWiring(lane);
-    const summary: VocabularyCertificationSummary = {
-      lane: wiring.lane,
-      considered: 0,
-      alreadyDecided: 0,
-      judged: 0,
-      unjudged: 0,
-      failedBatches: 0,
-      outcomes: {},
-    };
+    const summaries = await this.certifyFacets([lane], claims, options);
+    return summaries.get(lane) as VocabularyCertificationSummary;
+  }
 
-    // One hearing per (word, locale), whatever the caller handed us.
-    const byKey = new Map<string, WordVocabularyClaim>();
+  /**
+   * ONE HEARING, EVERY FACET THAT IS DUE (B-call, 2026-08-15).
+   *
+   * A word is a word. Asking "does it carry a concept?" and "does it negate?"
+   * as two separate LLM calls about the SAME forty strings buys two calls'
+   * worth of tokens, two round trips and two failure modes for one lookup of
+   * one thing — and every caller looped the lanes, so that is what happened
+   * every time. The facets stay INDEPENDENT where independence matters (their
+   * own rule text, their own version, their own verdict row, their own
+   * key space — `chưa` is glue AND a negator, and folding the answers is the
+   * error that made a negation list get read as a genericness list); what
+   * they share is the QUESTION'S SUBJECT, and that is what a batch is.
+   *
+   * The saving is not marginal at the scale this runs: the certified
+   * vocabulary is ~32,000 words, two facets, forty per call — 1,620 calls
+   * become 810, and every facet added after this one is close to free, which
+   * is what makes a third facet a design option rather than a doubling.
+   *
+   * WHAT IS SENT: the words once, and the rule text of each DUE facet, each
+   * under its own heading, each answered in its own field with its own stated
+   * ground. A facet nobody is due for is not sent, so a drain that only needs
+   * negation costs exactly a negation call.
+   */
+  async certifyFacets(
+    lanes: readonly string[],
+    claims: readonly WordVocabularyClaim[],
+    options: CertifyOptions = {},
+  ): Promise<Map<string, VocabularyCertificationSummary>> {
+    const wirings = lanes.map((lane) => laneWiring(lane));
+    const summaries = new Map<string, VocabularyCertificationSummary>(
+      wirings.map((w) => [
+        w.lane,
+        {
+          lane: w.lane,
+          considered: 0,
+          alreadyDecided: 0,
+          judged: 0,
+          unjudged: 0,
+          failedBatches: 0,
+          outcomes: {},
+        },
+      ]),
+    );
+
+    // ONE NORMALIZED CLAIM LIST, shared by every facet. The claim KEY differs
+    // per lane (negation's carries no locale), so identity is per-lane below;
+    // the SUBJECT is common, which is exactly the thing being batched.
+    const normalized: WordVocabularyClaim[] = [];
+    const seenSubjects = new Set<string>();
     for (const raw of claims) {
       const claim: WordVocabularyClaim = {
         word: raw.word,
         locale: normalizeClaimLocale(raw.locale),
       };
       if (!claim.word.trim()) continue;
-      byKey.set(wiring.adapter.canonicalClaimKey(claim), claim);
+      const subjectKey = `${claim.locale}|${claim.word}`;
+      if (seenSubjects.has(subjectKey)) continue;
+      seenSubjects.add(subjectKey);
+      normalized.push(claim);
     }
-    summary.considered = byKey.size;
-    if (!byKey.size) return summary;
+    if (!normalized.length) return summaries;
 
-    const decided = await this.ledger.decidedKeys(
-      wiring.lane,
-      wiring.ruleVersion,
-      wiring.adapter.keyFoldVersion,
-      [...byKey.keys()],
+    /** lane → the claims it still owes a hearing, in its own key space. */
+    const dueByLane = new Map<string, Map<string, WordVocabularyClaim>>();
+    for (const wiring of wirings) {
+      const summary = summaries.get(wiring.lane)!;
+      const byKey = new Map<string, WordVocabularyClaim>();
+      for (const claim of normalized) {
+        byKey.set(wiring.adapter.canonicalClaimKey(claim), claim);
+      }
+      summary.considered = byKey.size;
+      const decided = await this.ledger.decidedKeys(
+        wiring.lane,
+        wiring.ruleVersion,
+        wiring.adapter.keyFoldVersion,
+        [...byKey.keys()],
+      );
+      summary.alreadyDecided = decided.size;
+      const due = new Map(
+        [...byKey.entries()].filter(([key]) => !decided.has(key)),
+      );
+      if (!due.size) continue;
+      const authorized = await this.budget.authorizeDrain({
+        lane: wiring.lane,
+        ruleVersion: wiring.ruleVersion,
+        dueCount: due.size,
+        approvedHash: options.approvedHash ?? null,
+      });
+      // EACH FACET IS BOUNDED BY ITS OWN ALLOWANCE. Sharing a call does not
+      // share a budget: a lane whose window is spent contributes no questions
+      // to the batch, and the other lane's drain proceeds without it.
+      dueByLane.set(
+        wiring.lane,
+        new Map([...due.entries()].slice(0, authorized.allowed)),
+      );
+    }
+    if (options.dryRun) return summaries;
+    if (!dueByLane.size) return summaries;
+
+    // THE BATCH IS OVER SUBJECTS: every word due on ANY facet, asked once.
+    const work = normalized.filter((claim) =>
+      wirings.some((w) =>
+        dueByLane.get(w.lane)?.has(w.adapter.canonicalClaimKey(claim)),
+      ),
     );
-    summary.alreadyDecided = decided.size;
-
-    const due = [...byKey.entries()].filter(([key]) => !decided.has(key));
-    if (!due.length) return summary;
-
-    const authorized = await this.budget.authorizeDrain({
-      lane: wiring.lane,
-      ruleVersion: wiring.ruleVersion,
-      dueCount: due.length,
-      approvedHash: options.approvedHash ?? null,
-    });
-    const work = due.slice(0, authorized.allowed);
-    if (options.dryRun) return summary;
 
     // BATCHES RUN IN PARALLEL, BOUNDED. Certifying the whole banked
-    // vocabulary is ~1,600 calls; serially that is hours, and an operator who
+    // vocabulary is ~810 calls; serially that is hours, and an operator who
     // has to babysit a run for hours runs it once and never again. The bound
     // is what keeps it a drain rather than a thundering herd — the gateway's
     // own rate limiter is the backstop, not the plan.
-    const batches: Array<Array<[string, WordVocabularyClaim]>> = [];
+    const batches: WordVocabularyClaim[][] = [];
     for (let i = 0; i < work.length; i += VOCABULARY_CLAIMS_PER_CALL) {
       batches.push(work.slice(i, i + VOCABULARY_CLAIMS_PER_CALL));
     }
@@ -229,17 +305,17 @@ export class WordVocabularyJudgeService {
         // buys), so the only thing an abort destroys is the OPERATOR'S
         // afternoon. An unanswered word is simply a word still due, which the
         // next run picks up for the price of the words it actually missed.
-        let answers: Map<number, { value: boolean; reason: string }>;
+        let answers: FacetAnswers;
         try {
-          answers = await this.hear(
-            wiring,
-            batch.map(([, c]) => c),
-          );
+          answers = await this.hearFacets(wirings, batch);
         } catch (error) {
-          summary.unjudged += batch.length;
-          summary.failedBatches += 1;
+          for (const wiring of wirings) {
+            const summary = summaries.get(wiring.lane)!;
+            summary.unjudged += batch.length;
+            summary.failedBatches += 1;
+          }
           this.logger.warn('Vocabulary hearing batch failed; words stay due', {
-            lane: wiring.lane,
+            lanes: wirings.map((w) => w.lane),
             words: batch.length,
             error: {
               message: error instanceof Error ? error.message : String(error),
@@ -248,39 +324,47 @@ export class WordVocabularyJudgeService {
           continue;
         }
         for (let n = 0; n < batch.length; n++) {
-          const answer = answers.get(n + 1);
-          if (!answer) {
-            // A ruling with no stated ground is not a ruling: the word stays
-            // unjudged and due, which is what an unanswered question deserves.
-            summary.unjudged += 1;
-            continue;
+          const claim = batch[n];
+          const perFacet = answers.get(n + 1);
+          for (const wiring of wirings) {
+            const key = wiring.adapter.canonicalClaimKey(claim);
+            // Only a facet this word was actually DUE for is recorded — the
+            // batch carries words another facet needed, and re-deciding an
+            // answered claim would rewrite a verdict nobody re-opened.
+            if (!dueByLane.get(wiring.lane)?.has(key)) continue;
+            const summary = summaries.get(wiring.lane)!;
+            const answer = perFacet?.get(wiring.lane);
+            if (!answer) {
+              // A ruling with no stated ground is not a ruling: the word stays
+              // unjudged and due, which is what an unanswered question
+              // deserves.
+              summary.unjudged += 1;
+              continue;
+            }
+            await this.ledger.record<WordVocabularyClaim>({
+              lane: wiring.lane,
+              claimKey: key,
+              ruleVersion: wiring.ruleVersion,
+              foldVersion: wiring.adapter.keyFoldVersion,
+              outcome: answer.outcome,
+              reason: answer.reason,
+              ruleFingerprint: wiring.ruleFingerprint,
+              subject: claim,
+              source: options.source ?? 'steady',
+            });
+            for (const listener of this.onVerdict) {
+              listener(wiring.lane, key, answer.outcome);
+            }
+            await this.ledger.markExecuted(
+              wiring.lane,
+              key,
+              wiring.ruleVersion,
+              wiring.adapter.keyFoldVersion,
+            );
+            summary.judged += 1;
+            summary.outcomes[answer.outcome] =
+              (summary.outcomes[answer.outcome] ?? 0) + 1;
           }
-          const [key, claim] = batch[n];
-          const outcome = answer.value
-            ? wiring.outcomeTrue
-            : wiring.outcomeFalse;
-          await this.ledger.record<WordVocabularyClaim>({
-            lane: wiring.lane,
-            claimKey: key,
-            ruleVersion: wiring.ruleVersion,
-            foldVersion: wiring.adapter.keyFoldVersion,
-            outcome,
-            reason: answer.reason,
-            ruleFingerprint: wiring.ruleFingerprint,
-            subject: claim,
-            source: options.source ?? 'steady',
-          });
-          for (const listener of this.onVerdict) {
-            listener(wiring.lane, key, outcome);
-          }
-          await this.ledger.markExecuted(
-            wiring.lane,
-            key,
-            wiring.ruleVersion,
-            wiring.adapter.keyFoldVersion,
-          );
-          summary.judged += 1;
-          summary.outcomes[outcome] = (summary.outcomes[outcome] ?? 0) + 1;
         }
       }
     };
@@ -291,8 +375,10 @@ export class WordVocabularyJudgeService {
       ),
     );
 
-    this.logger.info('Certified vocabulary claims', { ...summary });
-    return summary;
+    for (const summary of summaries.values()) {
+      this.logger.info('Certified vocabulary claims', { ...summary });
+    }
+    return summaries;
   }
 
   /**
@@ -321,11 +407,34 @@ export class WordVocabularyJudgeService {
     return pending.length;
   }
 
-  /** ONE LLM CALL. Overridable so a test can answer without paying. */
-  protected async hear(
-    wiring: LaneWiring,
+  /**
+   * ONE LLM CALL, EVERY DUE FACET. Overridable so a test can answer without
+   * paying.
+   *
+   * THE SYSTEM INSTRUCTION IS THE FACETS' OWN RULE TEXTS, each under its own
+   * heading and each answered in its own field. Concatenation is what lets a
+   * verdict keep naming the rule that decided it: the section a facet's answer
+   * came from is byte-identical to the .md its fingerprint is taken from, so
+   * `rule_fingerprint` remains a true statement about the text the judge read
+   * for that question. What the batch shares is the word list; what it never
+   * shares is an answer.
+   */
+  protected async hearFacets(
+    wirings: readonly LaneWiring[],
     claims: readonly WordVocabularyClaim[],
-  ): Promise<Map<number, { value: boolean; reason: string }>> {
+  ): Promise<FacetAnswers> {
+    const systemInstruction = wirings
+      .map(
+        (wiring) =>
+          `# FACET: ${wiring.lane} — answer in "${wiring.answerField}" with its ` +
+          `ground in "${wiring.answerField}_reason"\n\n${wiring.prompt}`,
+      )
+      .join(
+        '\n\n---\n\nThe facets above are INDEPENDENT questions about the same ' +
+          "words. Answer each on its own rule; one facet's answer is never " +
+          "evidence for another's.\n\n---\n\n",
+      );
+
     const prompt = claims
       .map(
         (claim, index) =>
@@ -333,9 +442,27 @@ export class WordVocabularyJudgeService {
       )
       .join('\n');
 
+    const properties: Record<string, unknown> = { n: { type: 'number' } };
+    const required: string[] = ['n'];
+    for (const wiring of wirings) {
+      properties[wiring.answerField] = { type: 'boolean' };
+      properties[`${wiring.answerField}_reason`] = {
+        type: 'string',
+        description:
+          "The stated ground for THIS facet's ruling — a ruling with no " +
+          'stated ground is not a ruling; a blank reason leaves the word ' +
+          'unjudged on this facet only',
+      };
+      required.push(wiring.answerField, `${wiring.answerField}_reason`);
+    }
+
     const text = await this.llm.generateForCaller({
-      caller: wiring.caller,
-      systemInstruction: wiring.prompt,
+      // The call bills to the FIRST due facet's caller. Every facet's meter
+      // names its own caller, and a shared call has one; attributing it to
+      // the facet that led the batch keeps the rate measurable rather than
+      // splitting one row across two meters it cannot be divided between.
+      caller: wirings[0].caller,
+      systemInstruction,
       prompt,
       generationConfig: {
         // ZERO, for the same measured reason every other verdict lane uses
@@ -348,19 +475,7 @@ export class WordVocabularyJudgeService {
           properties: {
             items: {
               type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  n: { type: 'number' },
-                  [wiring.answerField]: { type: 'boolean' },
-                  reason: {
-                    type: 'string',
-                    description:
-                      'The stated ground for the ruling — a ruling with no stated ground is not a ruling; a blank reason leaves the word unjudged',
-                  },
-                },
-                required: ['n', wiring.answerField, 'reason'],
-              },
+              items: { type: 'object', properties, required },
             },
           },
           required: ['items'],
@@ -374,12 +489,27 @@ export class WordVocabularyJudgeService {
     const parsed = JSON.parse(text.slice(start, end + 1)) as {
       items?: Array<Record<string, unknown>>;
     };
-    const out = new Map<number, { value: boolean; reason: string }>();
+    const out: FacetAnswers = new Map();
     for (const item of parsed.items ?? []) {
       const n = item.n;
-      const reason = typeof item.reason === 'string' ? item.reason.trim() : '';
-      if (typeof n !== 'number' || !reason) continue;
-      out.set(n, { value: item[wiring.answerField] === true, reason });
+      if (typeof n !== 'number') continue;
+      const perFacet = new Map<string, { outcome: string; reason: string }>();
+      for (const wiring of wirings) {
+        const raw = item[`${wiring.answerField}_reason`];
+        const reason = typeof raw === 'string' ? raw.trim() : '';
+        // A FACET IS UNJUDGED ON ITS OWN. A blank ground for negation leaves
+        // the word due on negation and answered on genericness — batching
+        // must not make one facet's silence cost the other its verdict.
+        if (!reason) continue;
+        perFacet.set(wiring.lane, {
+          outcome:
+            item[wiring.answerField] === true
+              ? wiring.outcomeTrue
+              : wiring.outcomeFalse,
+          reason,
+        });
+      }
+      out.set(n, perFacet);
     }
     return out;
   }

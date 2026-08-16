@@ -404,13 +404,23 @@ describe('genericness: grammar comes out, content stays in', () => {
 describe('the write door hears before it writes', () => {
   it('asks the judge about every unheard token of the ask, in its own language', async () => {
     const vocab = judgedVocabularyDouble({ grammatical: [['de', 'es']] });
-    const heard = (vocab as unknown as { heard: Array<{ words: string[] }> })
-      .heard;
+    const heard = (
+      vocab as unknown as { heard: Array<{ lane: string; words: string[] }> }
+    ).heard;
     await vocab.judgeThenStrip('tacos de birria', 'es-MX');
-    // `de` already has a genericness verdict, so only the two unheard words
-    // are bought on that lane — but the NEGATION lane has heard none of them.
-    expect(heard.length).toBeGreaterThan(0);
-    expect(heard[0].words.sort()).toEqual(['birria', 'tacos']);
+    // CO-DUE (B-call, 2026-08-15): the door hands the judge the ask's SUBJECTS
+    // and the judge decides dueness per facet, because the two facets disagree
+    // about which words are owed — `de` has a genericness verdict and no
+    // negation one. Sending each facet its own filtered list meant sending the
+    // same words twice, which is the whole cost this removes. Nothing extra is
+    // BOUGHT: `certifyFacets` records only the (word, facet) pairs that were
+    // actually due.
+    expect(heard.length).toBe(2);
+    expect(heard.map((h) => h.lane).sort()).toEqual([
+      WORD_GENERICNESS_LANE,
+      WORD_NEGATION_LANE,
+    ]);
+    expect(heard[0].words.sort()).toEqual(['birria', 'de', 'tacos']);
   });
 
   it('reports an ask made entirely of grammar as no ask at all', async () => {

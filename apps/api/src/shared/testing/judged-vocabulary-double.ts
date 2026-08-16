@@ -44,7 +44,13 @@ export function judgedVocabularyDouble(
     pending: Map<string, unknown>;
     loaded: boolean;
     logger: { info: () => void; warn: () => void };
-    judge: { certify: (lane: string, claims: unknown[]) => Promise<unknown> };
+    judge: {
+      certify: (lane: string, claims: unknown[]) => Promise<unknown>;
+      certifyFacets: (
+        lanes: readonly string[],
+        claims: unknown[],
+      ) => Promise<unknown>;
+    };
   };
   internals.verdicts = new Map([
     [WORD_GENERICNESS_LANE, new Map<string, string>()],
@@ -60,20 +66,32 @@ export function judgedVocabularyDouble(
   // is the state production must survive too. `heard` is the record, so a spec
   // can assert the door was actually consulted.
   const heard: Array<{ lane: string; words: string[] }> = [];
+  const summaryFor = (lane: string, claims: unknown[]) => ({
+    lane,
+    considered: claims.length,
+    alreadyDecided: 0,
+    judged: 0,
+    unjudged: claims.length,
+    failedBatches: 0,
+    outcomes: {},
+  });
   internals.judge = {
     certify: (lane, claims) => {
       heard.push({
         lane,
         words: (claims as Array<{ word: string }>).map((c) => c.word),
       });
-      return Promise.resolve({
-        lane,
-        considered: claims.length,
-        alreadyDecided: 0,
-        judged: 0,
-        unjudged: claims.length,
-        outcomes: {},
-      });
+      return Promise.resolve(summaryFor(lane, claims));
+    },
+    // CO-DUE (B-call): the door now asks every due facet in ONE call, so the
+    // double records one entry per facet — `heard` keeps meaning "the door was
+    // consulted about these words on this lane".
+    certifyFacets: (lanes, claims) => {
+      const words = (claims as Array<{ word: string }>).map((c) => c.word);
+      for (const lane of lanes) heard.push({ lane, words });
+      return Promise.resolve(
+        new Map(lanes.map((lane) => [lane, summaryFor(lane, claims)])),
+      );
     },
   };
   (service as unknown as { heard: typeof heard }).heard = heard;
