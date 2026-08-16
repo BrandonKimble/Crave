@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   GOOGLE_BOOLEAN_ATTRIBUTE_VOCAB,
+  GOOGLE_PLACE_TYPE_ATTRIBUTE_MAP,
+  GOOGLE_PLACE_TYPE_IGNORED_TYPES,
   RESTAURANT_ATTRIBUTE_ALIASES_BY_NAME,
   RESTAURANT_ATTRIBUTE_VOCAB,
 } from './google-place-type-attributes';
@@ -63,6 +65,28 @@ describe('the attribute vocabulary has ONE home', () => {
         expect(previous ?? entry.canonicalName).toBe(entry.canonicalName);
         owner.set(alias, entry.canonicalName);
       }
+    }
+  });
+
+  it('every mapped place type resolves to a vocabulary entry, and no type is both kind and noise (R11)', () => {
+    const canonicals = new Set(
+      RESTAURANT_ATTRIBUTE_VOCAB.map((e) => e.canonicalName),
+    );
+    for (const [type, canonical] of Object.entries(
+      GOOGLE_PLACE_TYPE_ATTRIBUTE_MAP,
+    )) {
+      expect({ type, known: canonicals.has(canonical) }).toEqual({
+        type,
+        known: true,
+      });
+      expect(GOOGLE_PLACE_TYPE_IGNORED_TYPES.has(type)).toBe(false);
+    }
+    // R12: the trust-Google star of the audit — `restaurant` is a mapped
+    // venue kind, and the owner-ruled ignores stay ignored.
+    expect(GOOGLE_PLACE_TYPE_ATTRIBUTE_MAP['restaurant']).toBe('restaurant');
+    for (const noise of ['establishment', 'point_of_interest', 'store']) {
+      expect(GOOGLE_PLACE_TYPE_IGNORED_TYPES.has(noise)).toBe(true);
+      expect(GOOGLE_PLACE_TYPE_ATTRIBUTE_MAP[noise]).toBeUndefined();
     }
   });
 

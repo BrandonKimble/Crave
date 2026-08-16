@@ -1260,6 +1260,53 @@ export const INVARIANTS: readonly Invariant[] = [
       },
     ],
   },
+  {
+    // THE UNMAPPED-TYPES CENSUS (R11, 2026-08-16). Google place types are
+    // stored raw on grounded restaurants, so a taxonomy change Google ships
+    // IS detectable — but only if something compares the corpus to the
+    // classification authority. The map file is exactly the kind of separate
+    // artifact the census says dies silently: nothing exercises its
+    // completeness, and a new Google type would simply never be promoted.
+    id: 'taxonomy.every-stored-place-type-is-classified',
+    statement:
+      'Every DISTINCT Google place type stored in core_entities.restaurant_metadata->googlePlaces->types is classified by google-place-type-attributes.ts as a kind (attribute map) or noise (ignore set) — a new/unknown Google type cannot sit in the corpus unclassified.',
+    incident:
+      'R11 audit (2026-08-16): 255 distinct types were stored on 5,233 grounded restaurants while the map covered 63 — taco_restaurant (148 venues), cocktail_bar (360), sports_bar (56) and ~90 other Food & Drink types were silently dropped on the floor, and nothing would ever have said so.',
+    level: 'behaviour',
+    mechanism:
+      'scripts/check-place-type-classification.ts — censuses distinct stored types against isClassifiedGooglePlaceType and exits 1 on any unclassified type. Runtime twin: PlaceTypeCensusService runs the same census as a nightly-convergence phase and raises deduped ops alerts (emailOnWarn).',
+    check: {
+      command: 'npx ts-node -T scripts/check-place-type-classification.ts',
+      reads: 'every distinct stored place type in a real database',
+    },
+    mutations: [
+      {
+        // The way it goes wrong: the corpus holds a type the map does not
+        // classify. Deleting a mapped, corpus-present type from the map is
+        // byte-identical to Google shipping a new type — the census must
+        // see it. taco_restaurant sits on ~148 local rows.
+        file: 'src/modules/restaurant-enrichment/google-place-type-attributes.ts',
+        find: "  taco_restaurant: 'tacos',\n",
+        replace: '',
+      },
+      {
+        // The other arm dies the same way: dropping a NOISE ruling must
+        // also go red (establishment sits on every stored row).
+        file: 'src/modules/restaurant-enrichment/google-place-type-attributes.ts',
+        find: "  'establishment',\n",
+        replace: '',
+      },
+    ],
+    legitimate: [
+      {
+        // Classifying a NEW type (kind or noise) must keep passing — the
+        // census rejects gaps, not additions.
+        file: 'src/modules/restaurant-enrichment/google-place-type-attributes.ts',
+        find: "  'point_of_interest',\n",
+        replace: "  'point_of_interest',\n  'zzz_probe_future_type',\n",
+      },
+    ],
+  },
 ];
 
 export const SCRATCH_FILE = SCRATCH;

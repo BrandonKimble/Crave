@@ -5,6 +5,7 @@ import { RescoreCoordinatorService } from '../content-processing/public-crave-sc
 import { ProjectionRebuildService } from '../content-processing/reddit-collector/projection-rebuild.service';
 import { LoggerService } from '../../shared';
 import { RestaurantEntityMergeService } from './restaurant-entity-merge.service';
+import { PlaceTypeCensusService } from './place-type-census.service';
 
 /**
  * THE NIGHTLY CONVERGENCE ORDER (round-12 architecture audit): the
@@ -27,6 +28,7 @@ export class NightlyConvergenceService {
     private readonly foodDedupe: FoodDedupeMergeService,
     private readonly projectionRebuild: ProjectionRebuildService,
     private readonly rescoreCoordinator: RescoreCoordinatorService,
+    private readonly placeTypeCensus: PlaceTypeCensusService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('NightlyConvergenceService');
@@ -56,6 +58,10 @@ export class NightlyConvergenceService {
         'mark-rescore-dirty',
         () => this.rescoreCoordinator.markDirty('nightly-convergence'),
       ],
+      // R11 census: a Google place type stored on a grounded restaurant that
+      // google-place-type-attributes.ts classifies as neither kind nor noise
+      // raises a deduped ops alert (Google shipped a taxonomy change).
+      ['place-type-census', () => this.placeTypeCensus.runNightly()],
     ];
     for (const [name, run] of phases) {
       const phaseStart = Date.now();

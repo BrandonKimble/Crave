@@ -1,27 +1,110 @@
 import { GooglePlacesV1Place } from '../external-integrations/google-places/google-places.service';
 
+/**
+ * THE ONE AUTHORITY FOR GOOGLE PLACE TYPES (R11 audit, 2026-08-16).
+ *
+ * Every Google place type ever observed on a grounded restaurant is
+ * classified here, exactly once, as one of:
+ *
+ *   - a KIND (an entry of GOOGLE_PLACE_TYPE_ATTRIBUTE_MAP): the type carries
+ *     real venue/cuisine information and is promoted to a
+ *     restaurant_attribute — POLICY (R12, owner-ruled): we TRUST Google's
+ *     tagging. `restaurant` itself is a mapped venue kind: a restaurant+bar
+ *     shows under "Restaurants"; a bar-only venue does not. Classification
+ *     rule: every type in the Food & Drink category of Google's published
+ *     Places type list (Table A) is a kind; everything else is noise. Two
+ *     deliberate exceptions ride the rule: `food_delivery` joins
+ *     `meal_delivery` on the existing 'delivery' attribute, and generic
+ *     `food` is noise (it asserts nothing a venue kind doesn't).
+ *
+ *   - NOISE (an entry of GOOGLE_PLACE_TYPE_IGNORED_TYPES): the type carries
+ *     no food-venue information for this app (owner rulings:
+ *     establishment/point_of_interest ignore; store and the store family
+ *     lean-no → ignore).
+ *
+ * Google changes types rarely; the owner re-audits manually on their next
+ * big release. Between releases the unmapped-types census invariant
+ * (scripts/check-place-type-classification.ts + the nightly census phase)
+ * alarms on any stored type this file does not classify.
+ */
 export const GOOGLE_PLACE_CUISINE_TYPE_MAP: Record<string, string> = {
   afghani_restaurant: 'afghani',
   african_restaurant: 'african',
   american_restaurant: 'american',
+  argentinian_restaurant: 'argentinian',
+  asian_fusion_restaurant: 'asian fusion',
   asian_restaurant: 'asian',
+  australian_restaurant: 'australian',
+  austrian_restaurant: 'austrian',
+  bangladeshi_restaurant: 'bangladeshi',
+  basque_restaurant: 'basque',
+  bavarian_restaurant: 'bavarian',
+  belgian_restaurant: 'belgian',
   brazilian_restaurant: 'brazilian',
+  british_restaurant: 'british',
+  burmese_restaurant: 'burmese',
+  cajun_restaurant: 'cajun',
+  californian_restaurant: 'californian',
+  cambodian_restaurant: 'cambodian',
+  cantonese_restaurant: 'cantonese',
+  caribbean_restaurant: 'caribbean',
+  chilean_restaurant: 'chilean',
   chinese_restaurant: 'chinese',
+  colombian_restaurant: 'colombian',
+  croatian_restaurant: 'croatian',
+  cuban_restaurant: 'cuban',
+  czech_restaurant: 'czech',
+  danish_restaurant: 'danish',
+  dutch_restaurant: 'dutch',
+  eastern_european_restaurant: 'eastern european',
+  ethiopian_restaurant: 'ethiopian',
+  european_restaurant: 'european',
+  filipino_restaurant: 'filipino',
   french_restaurant: 'french',
+  fusion_restaurant: 'fusion',
+  german_restaurant: 'german',
   greek_restaurant: 'greek',
+  halal_restaurant: 'halal',
+  hawaiian_restaurant: 'hawaiian',
+  hungarian_restaurant: 'hungarian',
   indian_restaurant: 'indian',
   indonesian_restaurant: 'indonesian',
+  irish_restaurant: 'irish',
+  israeli_restaurant: 'israeli',
   italian_restaurant: 'italian',
   japanese_restaurant: 'japanese',
   korean_restaurant: 'korean',
+  latin_american_restaurant: 'latin american',
   lebanese_restaurant: 'lebanese',
+  malaysian_restaurant: 'malaysian',
   mediterranean_restaurant: 'mediterranean',
   mexican_restaurant: 'mexican',
   middle_eastern_restaurant: 'middle eastern',
+  moroccan_restaurant: 'moroccan',
+  north_indian_restaurant: 'north indian',
+  pakistani_restaurant: 'pakistani',
+  persian_restaurant: 'persian',
+  peruvian_restaurant: 'peruvian',
+  polish_restaurant: 'polish',
+  portuguese_restaurant: 'portuguese',
+  romanian_restaurant: 'romanian',
+  russian_restaurant: 'russian',
+  scandinavian_restaurant: 'scandinavian',
+  soul_food_restaurant: 'soul food',
+  south_american_restaurant: 'south american',
+  south_indian_restaurant: 'south indian',
+  southwestern_us_restaurant: 'southwestern',
   spanish_restaurant: 'spanish',
+  sri_lankan_restaurant: 'sri lankan',
+  swiss_restaurant: 'swiss',
+  taiwanese_restaurant: 'taiwanese',
+  tex_mex_restaurant: 'tex-mex',
   thai_restaurant: 'thai',
+  tibetan_restaurant: 'tibetan',
   turkish_restaurant: 'turkish',
+  ukrainian_restaurant: 'ukrainian',
   vietnamese_restaurant: 'vietnamese',
+  western_restaurant: 'western',
 };
 
 export const GOOGLE_PLACE_NON_CUISINE_TYPE_MAP: Record<string, string> = {
@@ -31,43 +114,221 @@ export const GOOGLE_PLACE_NON_CUISINE_TYPE_MAP: Record<string, string> = {
   bar: 'bar',
   bar_and_grill: 'bar and grill',
   barbecue_restaurant: 'barbecue',
+  beer_garden: 'beer garden',
+  bistro: 'bistro',
   breakfast_restaurant: 'breakfast restaurant',
+  brewery: 'brewery',
+  brewpub: 'brewpub',
   brunch_restaurant: 'brunch restaurant',
   buffet_restaurant: 'buffet',
+  burrito_restaurant: 'burritos',
   cafe: 'cafe',
   cafeteria: 'cafeteria',
+  cake_shop: 'cake shop',
   candy_store: 'candy store',
   cat_cafe: 'cat cafe',
+  chicken_restaurant: 'chicken restaurant',
+  chicken_wings_restaurant: 'chicken wings',
+  chinese_noodle_restaurant: 'chinese noodles',
   chocolate_factory: 'chocolate factory',
   chocolate_shop: 'chocolate shop',
+  cocktail_bar: 'cocktail bar',
+  coffee_roastery: 'coffee roastery',
   coffee_shop: 'coffee shop',
+  coffee_stand: 'coffee stand',
   confectionery: 'confectionery',
   deli: 'deli',
   dessert_restaurant: 'dessert restaurant',
   dessert_shop: 'dessert shop',
+  dim_sum_restaurant: 'dim sum',
   diner: 'diner',
   dog_cafe: 'dog cafe',
   donut_shop: 'donut shop',
+  dumpling_restaurant: 'dumplings',
+  falafel_restaurant: 'falafel',
+  family_restaurant: 'family restaurant',
   fast_food_restaurant: 'fast food',
   fine_dining_restaurant: 'fine dining',
+  fish_and_chips_restaurant: 'fish and chips',
+  fondue_restaurant: 'fondue',
+  // The one deliberate rule exception: Google's newer `food_delivery` type
+  // asserts the same fact as `meal_delivery` — one canonical, two spellings.
+  food_delivery: 'delivery',
   food_court: 'food court',
+  gastropub: 'gastropub',
+  gyro_restaurant: 'gyros',
   hamburger_restaurant: 'burger',
+  hookah_bar: 'hookah bar',
+  hot_dog_restaurant: 'hot dogs',
+  hot_dog_stand: 'hot dog stand',
+  hot_pot_restaurant: 'hot pot',
   ice_cream_shop: 'ice cream shop',
+  irish_pub: 'irish pub',
+  japanese_curry_restaurant: 'japanese curry',
+  japanese_izakaya_restaurant: 'izakaya',
   juice_shop: 'juice shop',
+  kebab_shop: 'kebab shop',
+  korean_barbecue_restaurant: 'korean barbecue',
+  lounge_bar: 'lounge',
   meal_delivery: 'delivery',
   meal_takeaway: 'takeout',
+  mongolian_barbecue_restaurant: 'mongolian barbecue',
+  noodle_shop: 'noodle shop',
+  oyster_bar_restaurant: 'oyster bar',
+  pastry_shop: 'pastry shop',
+  pizza_delivery: 'pizza delivery',
   pizza_restaurant: 'pizza',
   pub: 'pub',
   ramen_restaurant: 'ramen',
+  // R12: `restaurant` is a real venue kind, not filler — 17% of grounded
+  // venues are NOT restaurants, and this tag is what separates them.
+  restaurant: 'restaurant',
+  salad_shop: 'salad shop',
   sandwich_shop: 'sandwich shop',
   seafood_restaurant: 'seafood',
+  shawarma_restaurant: 'shawarma',
+  snack_bar: 'snack bar',
+  soup_restaurant: 'soup',
+  sports_bar: 'sports bar',
   steak_house: 'steakhouse',
   sushi_restaurant: 'sushi',
+  taco_restaurant: 'tacos',
+  tapas_restaurant: 'tapas',
   tea_house: 'tea house',
+  tonkatsu_restaurant: 'tonkatsu',
   vegan_restaurant: 'vegan',
   vegetarian_restaurant: 'serves vegetarian food',
   wine_bar: 'wine bar',
+  winery: 'winery',
+  yakiniku_restaurant: 'yakiniku',
+  yakitori_restaurant: 'yakitori',
 };
+
+/**
+ * NOISE: observed place types that carry no food-venue information for this
+ * app. Owner rulings: `establishment`/`point_of_interest` ignore; `store`
+ * (and the whole retail-store family) lean-no → ignore. Everything outside
+ * Google's Food & Drink category lands here. A stored type in NEITHER this
+ * set NOR the attribute map is an unclassified new type — the census
+ * invariant goes red and the nightly census raises an ops alert.
+ */
+export const GOOGLE_PLACE_TYPE_IGNORED_TYPES: ReadonlySet<string> = new Set([
+  // the generic filler on every place
+  'establishment',
+  'point_of_interest',
+  'food',
+  // the store family (owner: lean no)
+  'store',
+  'food_store',
+  'grocery_store',
+  'asian_grocery_store',
+  'health_food_store',
+  'convenience_store',
+  'supermarket',
+  'hypermarket',
+  'general_store',
+  'department_store',
+  'liquor_store',
+  'tea_store',
+  'butcher_shop',
+  'gift_shop',
+  'book_store',
+  'clothing_store',
+  'cosmetics_store',
+  'drugstore',
+  'electronics_store',
+  'furniture_store',
+  'hardware_store',
+  'home_goods_store',
+  'home_improvement_store',
+  'building_materials_store',
+  'sporting_goods_store',
+  'bicycle_store',
+  'toy_store',
+  'farmers_market',
+  'market',
+  'florist',
+  'pharmacy',
+  // services / business generics
+  'service',
+  'catering_service',
+  'shipping_service',
+  'manufacturer',
+  'wholesaler',
+  'supplier',
+  'consultant',
+  'corporate_office',
+  'coworking_space',
+  'association_or_organization',
+  'finance',
+  'atm',
+  'gas_station',
+  'car_wash',
+  'health',
+  'medical_clinic',
+  'spa',
+  // venues / entertainment / culture (not food-and-drink kinds)
+  'event_venue',
+  'wedding_venue',
+  'banquet_hall',
+  'night_club',
+  'karaoke',
+  'dance_hall',
+  'comedy_club',
+  'live_music_venue',
+  'performing_arts_theater',
+  'movie_theater',
+  'video_arcade',
+  'amusement_center',
+  'bowling_alley',
+  'internet_cafe',
+  'art_gallery',
+  'museum',
+  'cultural_center',
+  'cultural_landmark',
+  'community_center',
+  'tourist_attraction',
+  'historical_landmark',
+  'historical_place',
+  // lodging
+  'lodging',
+  'hotel',
+  'inn',
+  'extended_stay_hotel',
+  // outdoors / sports / fitness
+  'park',
+  'garden',
+  'playground',
+  'farm',
+  'vineyard',
+  'barbecue_area',
+  'sports_activity_location',
+  'sports_complex',
+  'sports_club',
+  'sports_school',
+  'athletic_field',
+  'swimming_pool',
+  'gym',
+  'fitness_center',
+  'yoga_studio',
+  'go_karting_venue',
+  'race_course',
+  // institutions
+  'school',
+  'primary_school',
+  'educational_institution',
+  'place_of_worship',
+  'church',
+]);
+
+/** Is this stored Google place type classified (kind OR noise)? The census
+ *  invariant requires this to be true of every distinct stored type. */
+export function isClassifiedGooglePlaceType(type: string): boolean {
+  return (
+    type in GOOGLE_PLACE_TYPE_ATTRIBUTE_MAP ||
+    GOOGLE_PLACE_TYPE_IGNORED_TYPES.has(type)
+  );
+}
 
 export const GOOGLE_PLACE_TYPE_ATTRIBUTE_MAP: Record<string, string> = {
   ...GOOGLE_PLACE_CUISINE_TYPE_MAP,
@@ -110,6 +371,25 @@ export interface RestaurantAttributeVocabEntry {
    * a boolean field.
    */
   isEnabled?: (place: GooglePlacesV1Place) => boolean;
+}
+
+/** The standard alias template every plain cuisine entry follows ('thai',
+ *  'thai cuisine', 'thai food', 'thai restaurant'). R11 additions use it via
+ *  this helper; entries whose aliases deviate stay explicit. */
+function cuisineEntry(
+  canonicalName: string,
+  extraAliases: string[] = [],
+): RestaurantAttributeVocabEntry {
+  return {
+    canonicalName,
+    aliases: [
+      canonicalName,
+      `${canonicalName} cuisine`,
+      `${canonicalName} food`,
+      `${canonicalName} restaurant`,
+      ...extraAliases,
+    ],
+  };
 }
 
 export const RESTAURANT_ATTRIBUTE_VOCAB: RestaurantAttributeVocabEntry[] = [
@@ -192,7 +472,9 @@ export const RESTAURANT_ATTRIBUTE_VOCAB: RestaurantAttributeVocabEntry[] = [
       'games on tv',
       'sports tv',
       'sports viewing',
-      'sports bar',
+      // NOT 'sports bar' — that is a canonical attribute of its own now
+      // (Google's `sports_bar` place type), and an alias may never outrank
+      // a canonical name (the F363 'cafe' rule).
     ],
     isEnabled: (place) => place.goodForWatchingSports === true,
   },
@@ -239,7 +521,9 @@ export const RESTAURANT_ATTRIBUTE_VOCAB: RestaurantAttributeVocabEntry[] = [
   },
   {
     canonicalName: 'serves cocktails',
-    aliases: ['cocktails', 'mixed drinks', 'cocktail', 'cocktail bar'],
+    // NOT 'cocktail bar' — a canonical attribute of its own now (Google's
+    // `cocktail_bar` place type); the F363 'cafe' rule again.
+    aliases: ['cocktails', 'mixed drinks', 'cocktail'],
     isEnabled: (place) => place.servesCocktails === true,
   },
   {
@@ -558,7 +842,9 @@ export const RESTAURANT_ATTRIBUTE_VOCAB: RestaurantAttributeVocabEntry[] = [
   },
   {
     canonicalName: 'pub',
-    aliases: ['pub', 'public house', 'gastropub', 'alehouse'],
+    // NOT 'gastropub' — a canonical attribute of its own now (Google's
+    // `gastropub` place type); the F363 'cafe' rule again.
+    aliases: ['pub', 'public house', 'alehouse'],
   },
   {
     canonicalName: 'ramen',
@@ -627,6 +913,231 @@ export const RESTAURANT_ATTRIBUTE_VOCAB: RestaurantAttributeVocabEntry[] = [
   {
     canonicalName: 'wine bar',
     aliases: ['wine bar', 'wine-bar', 'wine lounge'],
+  },
+
+  // ------------------------------------------------------------------
+  // R11 additions (2026-08-16): the rest of Google's Food & Drink types.
+  // Cuisines first, on the standard template…
+  ...[
+    'argentinian',
+    'australian',
+    'austrian',
+    'bangladeshi',
+    'basque',
+    'bavarian',
+    'belgian',
+    'british',
+    'burmese',
+    'cajun',
+    'californian',
+    'cambodian',
+    'cantonese',
+    'caribbean',
+    'chilean',
+    'colombian',
+    'croatian',
+    'cuban',
+    'czech',
+    'danish',
+    'dutch',
+    'eastern european',
+    'ethiopian',
+    'european',
+    'filipino',
+    'fusion',
+    'german',
+    'halal',
+    'hawaiian',
+    'hungarian',
+    'irish',
+    'israeli',
+    'latin american',
+    'malaysian',
+    'moroccan',
+    'north indian',
+    'pakistani',
+    'persian',
+    'peruvian',
+    'polish',
+    'portuguese',
+    'romanian',
+    'russian',
+    'scandinavian',
+    'south american',
+    'south indian',
+    'southwestern',
+    'sri lankan',
+    'swiss',
+    'taiwanese',
+    'tibetan',
+    'ukrainian',
+    'western',
+  ].map((name) => cuisineEntry(name)),
+  cuisineEntry('asian fusion', ['asian-fusion']),
+  {
+    canonicalName: 'soul food',
+    aliases: ['soul food', 'soul food cuisine', 'soul food restaurant'],
+  },
+  {
+    canonicalName: 'tex-mex',
+    aliases: ['tex-mex', 'tex mex', 'tex-mex restaurant', 'tex mex food'],
+  },
+
+  // …then the venue kinds and food-item kinds.
+  {
+    // R12: THE venue kind. Google's restaurant tag means "serves food as a
+    // restaurant" — restaurant+bar shows under Restaurants; bar-only does not.
+    canonicalName: 'restaurant',
+    aliases: ['restaurant', 'restaurants'],
+  },
+  { canonicalName: 'beer garden', aliases: ['beer garden', 'biergarten'] },
+  { canonicalName: 'bistro', aliases: ['bistro'] },
+  {
+    canonicalName: 'brewery',
+    aliases: ['brewery', 'craft brewery', 'microbrewery'],
+  },
+  { canonicalName: 'brewpub', aliases: ['brewpub', 'brew pub'] },
+  {
+    canonicalName: 'burritos',
+    aliases: ['burrito', 'burrito restaurant', 'burrito shop'],
+  },
+  {
+    canonicalName: 'cake shop',
+    aliases: ['cake shop', 'cake store', 'cakery'],
+  },
+  {
+    canonicalName: 'chicken restaurant',
+    aliases: ['chicken restaurant', 'chicken spot', 'chicken place'],
+  },
+  {
+    canonicalName: 'chicken wings',
+    aliases: ['chicken wings', 'wings', 'wing spot', 'wing joint'],
+  },
+  {
+    canonicalName: 'chinese noodles',
+    aliases: ['chinese noodles', 'chinese noodle restaurant'],
+  },
+  {
+    canonicalName: 'cocktail bar',
+    aliases: ['cocktail bar', 'cocktail lounge'],
+  },
+  {
+    canonicalName: 'coffee roastery',
+    aliases: ['coffee roastery', 'coffee roaster', 'roastery'],
+  },
+  {
+    canonicalName: 'coffee stand',
+    aliases: ['coffee stand', 'coffee cart', 'coffee kiosk'],
+  },
+  {
+    canonicalName: 'dim sum',
+    aliases: ['dim sum', 'dim sum restaurant', 'dimsum'],
+  },
+  {
+    canonicalName: 'dumplings',
+    aliases: ['dumplings', 'dumpling restaurant', 'dumpling house'],
+  },
+  {
+    canonicalName: 'falafel',
+    aliases: ['falafel', 'falafel restaurant', 'falafel shop'],
+  },
+  {
+    canonicalName: 'family restaurant',
+    aliases: [
+      'family restaurant',
+      'family style restaurant',
+      'family-style restaurant',
+    ],
+  },
+  {
+    canonicalName: 'fish and chips',
+    aliases: ['fish and chips', 'fish & chips', 'chippy'],
+  },
+  { canonicalName: 'fondue', aliases: ['fondue', 'fondue restaurant'] },
+  { canonicalName: 'gastropub', aliases: ['gastropub', 'gastro pub'] },
+  {
+    canonicalName: 'gyros',
+    aliases: ['gyro', 'gyros', 'gyro restaurant', 'gyro shop'],
+  },
+  {
+    canonicalName: 'hookah bar',
+    aliases: ['hookah bar', 'hookah lounge', 'shisha bar', 'shisha lounge'],
+  },
+  {
+    canonicalName: 'hot dogs',
+    aliases: ['hot dog', 'hot dogs', 'hot dog restaurant', 'hot dog joint'],
+  },
+  {
+    canonicalName: 'hot dog stand',
+    aliases: ['hot dog stand', 'hot dog cart'],
+  },
+  {
+    canonicalName: 'hot pot',
+    aliases: ['hot pot', 'hotpot', 'hot pot restaurant'],
+  },
+  { canonicalName: 'irish pub', aliases: ['irish pub', 'irish bar'] },
+  {
+    canonicalName: 'izakaya',
+    aliases: ['izakaya', 'japanese izakaya', 'izakaya restaurant'],
+  },
+  {
+    canonicalName: 'japanese curry',
+    aliases: ['japanese curry', 'japanese curry restaurant'],
+  },
+  {
+    canonicalName: 'kebab shop',
+    aliases: ['kebab shop', 'kebab restaurant', 'kabob shop', 'kebab'],
+  },
+  {
+    canonicalName: 'korean barbecue',
+    aliases: ['korean barbecue', 'korean bbq', 'kbbq'],
+  },
+  { canonicalName: 'lounge', aliases: ['lounge', 'lounge bar'] },
+  {
+    canonicalName: 'mongolian barbecue',
+    aliases: ['mongolian barbecue', 'mongolian bbq', 'mongolian grill'],
+  },
+  {
+    canonicalName: 'noodle shop',
+    aliases: ['noodle shop', 'noodle house', 'noodle bar', 'noodles'],
+  },
+  {
+    canonicalName: 'oyster bar',
+    aliases: ['oyster bar', 'oyster house', 'oysters'],
+  },
+  {
+    canonicalName: 'pastry shop',
+    aliases: ['pastry shop', 'patisserie', 'pastry store'],
+  },
+  { canonicalName: 'pizza delivery', aliases: ['pizza delivery'] },
+  {
+    canonicalName: 'salad shop',
+    aliases: ['salad shop', 'salad bar', 'salad place'],
+  },
+  {
+    canonicalName: 'shawarma',
+    aliases: ['shawarma', 'shawarma restaurant', 'shawarma shop'],
+  },
+  { canonicalName: 'snack bar', aliases: ['snack bar', 'snack shop'] },
+  { canonicalName: 'soup', aliases: ['soup', 'soup restaurant'] },
+  { canonicalName: 'sports bar', aliases: ['sports bar', 'sport bar'] },
+  {
+    canonicalName: 'tacos',
+    aliases: ['taco', 'tacos', 'taco restaurant', 'taco shop', 'taqueria'],
+  },
+  {
+    canonicalName: 'tapas',
+    aliases: ['tapas', 'tapas bar', 'tapas restaurant'],
+  },
+  { canonicalName: 'tonkatsu', aliases: ['tonkatsu', 'katsu'] },
+  { canonicalName: 'winery', aliases: ['winery'] },
+  {
+    canonicalName: 'yakiniku',
+    aliases: ['yakiniku', 'yakiniku restaurant', 'japanese bbq'],
+  },
+  {
+    canonicalName: 'yakitori',
+    aliases: ['yakitori', 'yakitori restaurant', 'yakitori bar'],
   },
 ];
 
