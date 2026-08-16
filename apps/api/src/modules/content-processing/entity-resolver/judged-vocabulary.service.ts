@@ -14,13 +14,19 @@ import {
   CARRIES_CONCEPT,
   GRAMMATICAL_WORK,
   NEGATES,
+  ROLE_FRAME,
+  ROLE_VENUE_CATEGORY,
   WORD_GENERICNESS_LANE,
   WORD_GENERICNESS_RULE_VERSION,
   WORD_NEGATION_LANE,
   WORD_NEGATION_RULE_VERSION,
+  WORD_ROLE_LANE,
+  WORD_ROLE_RULE_VERSION,
   normalizeClaimLocale,
+  vocabularyLaneAdapter,
   wordGenericnessLane,
   wordNegationLane,
+  wordRoleLane,
   type WordVocabularyClaim,
 } from './word-vocabulary-lanes';
 
@@ -74,6 +80,7 @@ export class JudgedVocabularyService implements OnModuleInit {
   private readonly verdicts = new Map<string, Map<string, string>>([
     [WORD_GENERICNESS_LANE, new Map()],
     [WORD_NEGATION_LANE, new Map()],
+    [WORD_ROLE_LANE, new Map()],
   ]);
 
   /**
@@ -131,7 +138,10 @@ export class JudgedVocabularyService implements OnModuleInit {
               AND fold_version = ${wordGenericnessLane.keyFoldVersion})
           OR (lane = ${WORD_NEGATION_LANE}
               AND rule_version = ${WORD_NEGATION_RULE_VERSION}
-              AND fold_version = ${wordNegationLane.keyFoldVersion})`;
+              AND fold_version = ${wordNegationLane.keyFoldVersion})
+          OR (lane = ${WORD_ROLE_LANE}
+              AND rule_version = ${WORD_ROLE_RULE_VERSION}
+              AND fold_version = ${wordRoleLane.keyFoldVersion})`;
     for (const table of this.verdicts.values()) table.clear();
     this.negatingForms.clear();
     for (const row of rows) {
@@ -143,11 +153,13 @@ export class JudgedVocabularyService implements OnModuleInit {
         await this.ledger.latestDecidedAt([
           WORD_GENERICNESS_LANE,
           WORD_NEGATION_LANE,
+          WORD_ROLE_LANE,
         ])
       )?.getTime() ?? 0;
     this.logger.info('Judged vocabulary loaded', {
       genericness: this.verdicts.get(WORD_GENERICNESS_LANE)?.size ?? 0,
       negation: this.verdicts.get(WORD_NEGATION_LANE)?.size ?? 0,
+      role: this.verdicts.get(WORD_ROLE_LANE)?.size ?? 0,
       negators: this.negatingForms.size,
     });
   }
@@ -331,14 +343,27 @@ export class JudgedVocabularyService implements OnModuleInit {
    *  same HOLD test `judgeThenStrip` applies, for callers that batch their
    *  hearing across many terms and then strip each one. */
   holdsUnjudged(text: string, locale: string | null | undefined): boolean {
-    const table = this.verdicts.get(WORD_GENERICNESS_LANE);
     const claimLocale = normalizeClaimLocale(locale);
     let held = false;
     for (const word of tokenize(text)) {
       const claim = { word, locale: claimLocale };
-      if (table?.has(wordGenericnessLane.canonicalClaimKey(claim))) continue;
-      this.queue(WORD_GENERICNESS_LANE, claim);
-      held = true;
+      // BOTH demand-hygiene facets must be in force before this term may be
+      // recorded: genericness (is there an ask here at all) and word-role
+      // (is this word frame — 'best' recorded as demand is the same defect
+      // as 'de' recorded as demand, one law over). Negation is not consulted
+      // by any demand writer, so it does not hold a term.
+      if (
+        !this.verdicts
+          .get(WORD_GENERICNESS_LANE)
+          ?.has(wordGenericnessLane.canonicalClaimKey(claim))
+      ) {
+        this.queue(WORD_GENERICNESS_LANE, claim);
+        held = true;
+      }
+      if (!this.roleOf(word, claimLocale)) {
+        this.queue(WORD_ROLE_LANE, claim);
+        held = true;
+      }
     }
     return held;
   }
@@ -382,9 +407,96 @@ export class JudgedVocabularyService implements OnModuleInit {
       return { text: '', recordable: false };
     }
     const stripped = this.stripGrammar(text, [], claimLocale);
+    if (stripped.isGenericOnly || !stripped.text.trim().length) {
+      return { text: stripped.text, recordable: false };
+    }
+    // THE ASK-SHAPE LAW, FROM VERDICTS (word-role, 2026-08-15). A frame word
+    // wraps an ask without being one, so it may no more become a demand
+    // record than a preposition may: 'best' recorded as demand is 'de'
+    // recorded as demand, one lane over. And CATEGORIES ARE NOT DEMAND
+    // (owner amendment, same day): a term must carry at least one
+    // PARTICULAR word to be recordable; category words ride along in the
+    // text but never make the term worth spending on by themselves.
+    const framed = this.stripAskFrame(stripped.text, claimLocale);
     return {
-      text: stripped.text,
-      recordable: !stripped.isGenericOnly && stripped.text.trim().length > 0,
+      text: framed.text,
+      recordable: !framed.isGenericOnly && framed.text.trim().length > 0,
+    };
+  }
+
+  /**
+   * THE WORD-ROLE VERDICT IN FORCE for one word: 'particular',
+   * 'venue-category', 'frame' — or null when the word has not been heard on
+   * this facet in this language. The certification buys BOTH the surface's
+   * own locale and 'und' for every corpus word, because most real asks
+   * arrive undetectable and reach here as 'und'.
+   */
+  roleOf(word: string, locale: string | null | undefined): string | null {
+    // THE ASK'S OWN LANGUAGE ONLY — the genericness law, not negation's.
+    // 'top' is an English frame word AND a real Vietnamese word; reading an
+    // 'und' ruling into a vi-tagged ask would be the English-stop-list
+    // defect reborn one lane over. An undetectable ask IS 'und', and 'und'
+    // has its own certified verdicts; a locale-tagged miss stays null (and
+    // is queued by the hold path), which is the conservative direction.
+    return (
+      this.verdicts
+        .get(WORD_ROLE_LANE)
+        ?.get(`${normalizeClaimLocale(locale)}|${surfaceClaimKey(word)}`) ??
+      null
+    );
+  }
+
+  /**
+   * Remove the ask FRAME — every word ruled 'frame' on the word-role facet —
+   * and report whether NOTHING else was there (`isGenericOnly`, kept under
+   * the name its retired predecessor `stripGenericTokens` answered with,
+   * because every caller composes it the same way).
+   *
+   * This is what retired `generic-token-handling.ts`: the English-only
+   * ASK_FRAME_TOKENS / BARE_CATEGORY_TOKENS lists become per-language
+   * verdicts, so a Vietnamese frame word is stripped in Vietnamese instead
+   * of escaping judgement, and the bare-category suppression is now the
+   * per-language `venue-category` verdict instead of seven English nouns.
+   *
+   * SEGMENT UNITS, BY POSITION — the same removal law as `stripGrammar`, for
+   * the same two reasons (unspaced scripts have no word-boundary regex, and
+   * a sealed compound is never cut by one character's verdict). An UNHEARD
+   * word is kept: the conservative direction, and the hold path
+   * (`holdsUnjudged`) is what keeps an unheard frame word out of demand.
+   */
+  stripAskFrame(
+    text: string,
+    locale: string | null | undefined,
+  ): { text: string; isGenericOnly: boolean } {
+    const claimLocale = normalizeClaimLocale(locale);
+    const units = segmentStripUnits(text);
+    if (!units.length) return { text: '', isGenericOnly: true };
+    let out = '';
+    let cursor = 0;
+    // CATEGORIES ARE NOT DEMAND (owner amendment 2026-08-15, consensus
+    // reversal). A venue-category word STAYS IN THE TEXT — 'coffee shops'
+    // records as typed, never mangled to 'coffee' — but it does not by
+    // itself make a term recordable: only a PARTICULAR word (or an unheard
+    // one, conservatively) carries an ask worth spending on, so a term of
+    // nothing but frame and category words reports `isGenericOnly`.
+    let particularSurvivors = 0;
+    let survivors = 0;
+    for (const unit of units) {
+      const role = this.roleOf(unit.word, claimLocale);
+      out += text.slice(cursor, unit.start);
+      if (role !== ROLE_FRAME) {
+        out += unit.word;
+        survivors += 1;
+        if (role !== ROLE_VENUE_CATEGORY) particularSurvivors += 1;
+      }
+      cursor = unit.end;
+    }
+    out += text.slice(cursor);
+    out = out.replace(/\s+/g, ' ').trim();
+    out = out.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+    return {
+      text: survivors ? out : '',
+      isGenericOnly: particularSurvivors === 0,
     };
   }
 
@@ -401,12 +513,15 @@ export class JudgedVocabularyService implements OnModuleInit {
    */
   async ensureJudged(
     claims: readonly WordVocabularyClaim[],
-    lanes: readonly string[] = [WORD_GENERICNESS_LANE, WORD_NEGATION_LANE],
+    lanes: readonly string[] = [
+      WORD_GENERICNESS_LANE,
+      WORD_NEGATION_LANE,
+      WORD_ROLE_LANE,
+    ],
   ): Promise<void> {
     if (!claims.length) return;
     const due = lanes.filter((lane) => {
-      const adapter =
-        lane === WORD_GENERICNESS_LANE ? wordGenericnessLane : wordNegationLane;
+      const adapter = vocabularyLaneAdapter(lane);
       const table = this.verdicts.get(lane);
       return claims.some(
         (claim) => !table?.has(adapter.canonicalClaimKey(claim)),
@@ -557,8 +672,7 @@ export class JudgedVocabularyService implements OnModuleInit {
     let heard = 0;
     const answeredKeys: Array<[string, string]> = [];
     for (const [key, { lane, claim }] of byKey) {
-      const adapter =
-        lane === WORD_GENERICNESS_LANE ? wordGenericnessLane : wordNegationLane;
+      const adapter = vocabularyLaneAdapter(lane);
       if (!this.verdicts.get(lane)?.has(adapter.canonicalClaimKey(claim))) {
         continue;
       }
@@ -612,6 +726,7 @@ export class JudgedVocabularyService implements OnModuleInit {
     const latest = await this.ledger.latestDecidedAt([
       WORD_GENERICNESS_LANE,
       WORD_NEGATION_LANE,
+      WORD_ROLE_LANE,
     ]);
     const stamp = latest?.getTime() ?? 0;
     if (this.loaded && stamp === this.loadedStamp) return false;
@@ -628,8 +743,7 @@ export class JudgedVocabularyService implements OnModuleInit {
     word: string,
     locale: string | null | undefined,
   ): string | null {
-    const adapter =
-      lane === WORD_GENERICNESS_LANE ? wordGenericnessLane : wordNegationLane;
+    const adapter = vocabularyLaneAdapter(lane);
     return (
       this.verdicts
         .get(lane)

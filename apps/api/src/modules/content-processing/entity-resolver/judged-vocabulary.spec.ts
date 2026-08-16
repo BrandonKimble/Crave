@@ -17,6 +17,7 @@ import {
   WORD_NEGATION_PROMPT,
   WORD_NEGATION_RULE_FINGERPRINT,
   WORD_NEGATION_RULE_VERSION,
+  WORD_ROLE_LANE,
   normalizeClaimLocale,
   wordGenericnessLane,
   wordNegationLane,
@@ -415,10 +416,12 @@ describe('the write door hears before it writes', () => {
     // same words twice, which is the whole cost this removes. Nothing extra is
     // BOUGHT: `certifyFacets` records only the (word, facet) pairs that were
     // actually due.
-    expect(heard.length).toBe(2);
+    // THREE facets since word-role joined the co-due hearing (2026-08-15).
+    expect(heard.length).toBe(3);
     expect(heard.map((h) => h.lane).sort()).toEqual([
       WORD_GENERICNESS_LANE,
       WORD_NEGATION_LANE,
+      WORD_ROLE_LANE,
     ]);
     expect(heard[0].words.sort()).toEqual(['birria', 'de', 'tacos']);
   });

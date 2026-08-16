@@ -11,6 +11,9 @@ import {
   DOES_NOT_NEGATE,
   GRAMMATICAL_WORK,
   NEGATES,
+  ROLE_FRAME,
+  ROLE_PARTICULAR,
+  ROLE_VENUE_CATEGORY,
   WORD_GENERICNESS_LANE,
   WORD_GENERICNESS_PROMPT,
   WORD_GENERICNESS_RULE_FINGERPRINT,
@@ -19,9 +22,15 @@ import {
   WORD_NEGATION_PROMPT,
   WORD_NEGATION_RULE_FINGERPRINT,
   WORD_NEGATION_RULE_VERSION,
+  WORD_ROLE_LANE,
+  WORD_ROLE_PROMPT,
+  WORD_ROLE_RULE_FINGERPRINT,
+  WORD_ROLE_RULE_VERSION,
+  type WordVocabularyLaneAdapter,
   normalizeClaimLocale,
   wordGenericnessLane,
   wordNegationLane,
+  wordRoleLane,
   type WordVocabularyClaim,
 } from './word-vocabulary-lanes';
 
@@ -35,15 +44,19 @@ export const VOCABULARY_HEARING_CONCURRENCY = 8;
 
 interface LaneWiring {
   lane: string;
-  adapter: typeof wordGenericnessLane | typeof wordNegationLane;
+  adapter: WordVocabularyLaneAdapter;
   prompt: string;
   ruleVersion: number;
   ruleFingerprint: string;
   caller: string;
-  /** The boolean field the judge answers with, and what each answer means. */
-  answerField: 'carries_concept' | 'negates';
-  outcomeTrue: string;
-  outcomeFalse: string;
+  /** The field the judge answers this facet in. */
+  answerField: string;
+  /** Judge answer → stored outcome. A boolean facet maps 'true'/'false'; an
+   *  enum facet maps each allowed string. An answer outside the map leaves
+   *  the word unjudged on this facet — never coerced to a default. */
+  answers: Readonly<Record<string, string>>;
+  /** The JSON schema type of `answerField`. */
+  answerSchema: { type: 'boolean' } | { type: 'string'; enum: string[] };
 }
 
 export const VOCABULARY_LANES: Readonly<Record<string, LaneWiring>> = {
@@ -55,8 +68,8 @@ export const VOCABULARY_LANES: Readonly<Record<string, LaneWiring>> = {
     ruleFingerprint: WORD_GENERICNESS_RULE_FINGERPRINT,
     caller: 'vocabulary.genericness_judge',
     answerField: 'carries_concept',
-    outcomeTrue: CARRIES_CONCEPT,
-    outcomeFalse: GRAMMATICAL_WORK,
+    answers: { true: CARRIES_CONCEPT, false: GRAMMATICAL_WORK },
+    answerSchema: { type: 'boolean' },
   },
   [WORD_NEGATION_LANE]: {
     lane: WORD_NEGATION_LANE,
@@ -66,8 +79,26 @@ export const VOCABULARY_LANES: Readonly<Record<string, LaneWiring>> = {
     ruleFingerprint: WORD_NEGATION_RULE_FINGERPRINT,
     caller: 'vocabulary.negation_judge',
     answerField: 'negates',
-    outcomeTrue: NEGATES,
-    outcomeFalse: DOES_NOT_NEGATE,
+    answers: { true: NEGATES, false: DOES_NOT_NEGATE },
+    answerSchema: { type: 'boolean' },
+  },
+  [WORD_ROLE_LANE]: {
+    lane: WORD_ROLE_LANE,
+    adapter: wordRoleLane,
+    prompt: WORD_ROLE_PROMPT,
+    ruleVersion: WORD_ROLE_RULE_VERSION,
+    ruleFingerprint: WORD_ROLE_RULE_FINGERPRINT,
+    caller: 'vocabulary.word_role_judge',
+    answerField: 'word_role',
+    answers: {
+      particular: ROLE_PARTICULAR,
+      venue_category: ROLE_VENUE_CATEGORY,
+      frame: ROLE_FRAME,
+    },
+    answerSchema: {
+      type: 'string',
+      enum: ['particular', 'venue_category', 'frame'],
+    },
   },
 };
 
@@ -445,7 +476,7 @@ export class WordVocabularyJudgeService {
     const properties: Record<string, unknown> = { n: { type: 'number' } };
     const required: string[] = ['n'];
     for (const wiring of wirings) {
-      properties[wiring.answerField] = { type: 'boolean' };
+      properties[wiring.answerField] = wiring.answerSchema;
       properties[`${wiring.answerField}_reason`] = {
         type: 'string',
         description:
@@ -501,13 +532,12 @@ export class WordVocabularyJudgeService {
         // the word due on negation and answered on genericness — batching
         // must not make one facet's silence cost the other its verdict.
         if (!reason) continue;
-        perFacet.set(wiring.lane, {
-          outcome:
-            item[wiring.answerField] === true
-              ? wiring.outcomeTrue
-              : wiring.outcomeFalse,
-          reason,
-        });
+        // The answer maps through the wiring's own table — a string the
+        // schema does not allow (or a missing field) leaves this facet
+        // unjudged for this word rather than being coerced to any default.
+        const outcome = wiring.answers[String(item[wiring.answerField])];
+        if (!outcome) continue;
+        perFacet.set(wiring.lane, { outcome, reason });
       }
       out.set(n, perFacet);
     }

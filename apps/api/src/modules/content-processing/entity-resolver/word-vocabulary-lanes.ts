@@ -42,6 +42,7 @@ import {
 
 export const WORD_GENERICNESS_LANE = 'word-genericness';
 export const WORD_NEGATION_LANE = 'word-negation';
+export const WORD_ROLE_LANE = 'word-role';
 
 /**
  * THE CLAIM UNIT for both lanes: one word, in one language, SPELLED AS TYPED.
@@ -76,7 +77,7 @@ export interface WordVocabularyClaim {
  * over-stripping failure the generic module had already been corrected for
  * once.
  */
-abstract class WordVocabularyLaneAdapter extends BaseClaimLaneAdapter<WordVocabularyClaim> {
+export abstract class WordVocabularyLaneAdapter extends BaseClaimLaneAdapter<WordVocabularyClaim> {
   readonly keyFoldVersion = FOLD_ALGORITHM_VERSION;
 
   canonicalClaimKey(claim: WordVocabularyClaim): string {
@@ -121,8 +122,50 @@ class WordNegationLaneAdapter extends WordVocabularyLaneAdapter {
   }
 }
 
+/**
+ * THE THIRD FACET — WORD ROLE (owner ratification, 2026-08-15): what does
+ * this word DO in an ask? `particular` names a specific seekable thing;
+ * `venue-category` names a kind of place or a class so broad it works like
+ * one (kept out of demand by owner amendment 2026-08-15; its search-time
+ * composition lands with the venue-taxonomy plan); `frame` wraps the ask
+ * without naming anything (browse-driving, demand-SUPPRESSED — including
+ * bare `food`, by ruling).
+ *
+ * This is the judged claim class `generic-token-handling.ts` predicted as its
+ * own replacement — the ask-SHAPE half that could not become a genericness
+ * verdict, because `best` genuinely carries a concept. It is locale-keyed
+ * like genericness: whether a word frames an ask is a fact about a language's
+ * phrasing, and the consumer reads it in the ask's OWN language only — `und`
+ * is the tag most short queries genuinely arrive under, with its own
+ * certified verdicts, never a fallback read into a tagged ask.
+ *
+ * CONSULTED BEFORE GROUNDING, INDEPENDENT OF THE BANK — the corpus is
+ * contaminated (`best` is a banked ghost-restaurant surface, `good taco` a
+ * live entity), so a banked junk surface is never evidence against a frame
+ * verdict. The rule text says this to the judge in so many words.
+ */
+class WordRoleLaneAdapter extends WordVocabularyLaneAdapter {
+  readonly lane = WORD_ROLE_LANE;
+}
+
 export const wordGenericnessLane = new WordGenericnessLaneAdapter();
 export const wordNegationLane = new WordNegationLaneAdapter();
+export const wordRoleLane = new WordRoleLaneAdapter();
+
+/** The one lane→adapter authority. A ternary over two lanes silently made a
+ *  third lane unreachable at every call site that copied it. */
+export function vocabularyLaneAdapter(lane: string): WordVocabularyLaneAdapter {
+  switch (lane) {
+    case WORD_GENERICNESS_LANE:
+      return wordGenericnessLane;
+    case WORD_NEGATION_LANE:
+      return wordNegationLane;
+    case WORD_ROLE_LANE:
+      return wordRoleLane;
+    default:
+      throw new Error(`'${lane}' is not a judged-vocabulary lane`);
+  }
+}
 
 /** The locale tag every vocabulary claim is keyed by: a base language subtag,
  *  lower-cased, with 'und' standing for "undetermined". A region is NOT part
@@ -146,6 +189,10 @@ export const WORD_GENERICNESS_PROMPT = readPromptAsset(
 export const WORD_NEGATION_PROMPT = readPromptAsset(
   __dirname,
   'word-negation-prompt.md',
+);
+export const WORD_ROLE_PROMPT = readPromptAsset(
+  __dirname,
+  'word-role-prompt.md',
 );
 
 /**
@@ -191,6 +238,19 @@ const NEGATION_RELEASES: readonly RuleRelease[] = [
   },
 ];
 
+const ROLE_RELEASES: readonly RuleRelease[] = [
+  {
+    version: 1,
+    fingerprint: '6a70e294eaa2',
+    note: 'the what-does-this-word-DO question: particular / venue_category / frame, principle-stated with sixteen pinned gold cases (tacos, birria, 牛肉面, boba, coffee, restaurants, bar, bakery, 餐厅, best, top, near, me, 最好, food); bare `food` ruled frame by owner; corpus contamination stated to the judge (a banked `best` ghost is not evidence against a frame verdict)',
+  },
+  {
+    version: 2,
+    fingerprint: '5de12b9d66b0',
+    note: 'A PROPERTY SOME VENUES HAVE AND OTHERS LACK IS PARTICULAR — v1 let "quality of the results" swallow venue qualities, and the judge ruled romántico/tranquilo/mascotas/llevar FRAME, deleting real attribute asks (es gate 88.7→78, measured 2026-08-15); v2 states the deciding test (scoping vs ranking: nothing lacks `best`, some venues lack `romantic`) with five new gold cases (romántico, tranquilo, llevar, good, busco)',
+  },
+];
+
 const genericnessRule = resolvePromptRule(
   'word-genericness-prompt.md',
   'word-vocabulary-lanes.ts',
@@ -209,6 +269,15 @@ export const WORD_GENERICNESS_RULE_FINGERPRINT = genericnessRule.fingerprint;
 export const WORD_NEGATION_RULE_VERSION = negationRule.version;
 export const WORD_NEGATION_RULE_FINGERPRINT = negationRule.fingerprint;
 
+const roleRule = resolvePromptRule(
+  'word-role-prompt.md',
+  'word-vocabulary-lanes.ts',
+  WORD_ROLE_PROMPT,
+  ROLE_RELEASES,
+);
+export const WORD_ROLE_RULE_VERSION = roleRule.version;
+export const WORD_ROLE_RULE_FINGERPRINT = roleRule.fingerprint;
+
 /* --------------------------------------------------------------- outcomes */
 
 /** The genericness verdict, as stored in `claim_verdicts.outcome`. */
@@ -218,3 +287,8 @@ export const GRAMMATICAL_WORK = 'grammatical-work';
 /** The negation verdict. */
 export const NEGATES = 'negates';
 export const DOES_NOT_NEGATE = 'does-not-negate';
+
+/** The word-role verdict: what the word DOES in an ask. */
+export const ROLE_PARTICULAR = 'particular';
+export const ROLE_VENUE_CATEGORY = 'venue-category';
+export const ROLE_FRAME = 'frame';

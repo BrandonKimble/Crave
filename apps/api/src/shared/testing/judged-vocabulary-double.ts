@@ -2,8 +2,12 @@ import { JudgedVocabularyService } from '../../modules/content-processing/entity
 import {
   GRAMMATICAL_WORK,
   NEGATES,
+  ROLE_FRAME,
+  ROLE_PARTICULAR,
+  ROLE_VENUE_CATEGORY,
   WORD_GENERICNESS_LANE,
   WORD_NEGATION_LANE,
+  WORD_ROLE_LANE,
   normalizeClaimLocale,
 } from '../../modules/content-processing/entity-resolver/word-vocabulary-lanes';
 import { surfaceClaimKey } from '../../modules/content-processing/entity-resolver/entity-surface.service';
@@ -27,6 +31,10 @@ export function judgedVocabularyDouble(
   seed: {
     grammatical?: Array<[word: string, locale: string]>;
     negators?: Array<[word: string, locale: string]>;
+    /** Word-role verdicts. Unlisted words read as PARTICULAR by default —
+     *  the certified-but-ordinary state — via a seeded fallback below. */
+    frames?: Array<[word: string, locale: string]>;
+    venueCategories?: Array<[word: string, locale: string]>;
     /** Words this vocabulary has NOT heard — the hold path. Everything else
      *  counts as certified, which is what a running system looks like once
      *  the bulk certification has been paid for. A double that defaulted to
@@ -55,6 +63,7 @@ export function judgedVocabularyDouble(
   internals.verdicts = new Map([
     [WORD_GENERICNESS_LANE, new Map<string, string>()],
     [WORD_NEGATION_LANE, new Map<string, string>()],
+    [WORD_ROLE_LANE, new Map<string, string>()],
   ]);
   internals.negatingForms = new Set();
   internals.pending = new Map();
@@ -114,6 +123,36 @@ export function judgedVocabularyDouble(
       .set(`und|${surfaceClaimKey(word)}`, NEGATES);
     internals.negatingForms.add(surfaceClaimKey(word));
   }
+  // Seeded under the stated locale AND 'und' — mirroring the certification,
+  // which buys both keys for every word (most real asks arrive undetectable).
+  for (const [word, locale] of seed.frames ?? []) {
+    for (const tag of [normalizeClaimLocale(locale), 'und']) {
+      internals.verdicts
+        .get(WORD_ROLE_LANE)!
+        .set(`${tag}|${surfaceClaimKey(word)}`, ROLE_FRAME);
+    }
+  }
+  for (const [word, locale] of seed.venueCategories ?? []) {
+    for (const tag of [normalizeClaimLocale(locale), 'und']) {
+      internals.verdicts
+        .get(WORD_ROLE_LANE)!
+        .set(`${tag}|${surfaceClaimKey(word)}`, ROLE_VENUE_CATEGORY);
+    }
+  }
+  // Word-role reads as CERTIFIED-AND-PARTICULAR for every unlisted word —
+  // the running-system state — while `unjudged` words stay unheard (null).
+  const realRoleOf = JudgedVocabularyService.prototype.roleOf.bind(
+    service,
+  ) as JudgedVocabularyService['roleOf'];
+  service.roleOf = (word: string, locale: string | null | undefined) => {
+    const seeded = realRoleOf(word, locale);
+    if (seeded) return seeded;
+    return (seed.unjudged ?? []).some(
+      (w) => surfaceClaimKey(w) === surfaceClaimKey(word),
+    )
+      ? null
+      : ROLE_PARTICULAR;
+  };
   // THE VOCABULARY IS CERTIFIED unless the test says otherwise. `heldUnjudged`
   // and `holdsUnjudged` are the door's "I have not heard this word yet" answer;
   // in a running system that is true once per word, ever, and a suite about

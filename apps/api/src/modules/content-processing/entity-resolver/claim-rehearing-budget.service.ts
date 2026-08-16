@@ -112,6 +112,7 @@ const HEARING_METERS: ReadonlyMap<string, HearingMeter> = new Map([
     { caller: 'vocabulary.genericness_judge', claimsPerCall: 40 },
   ],
   ['word-negation', { caller: 'vocabulary.negation_judge', claimsPerCall: 40 }],
+  ['word-role', { caller: 'vocabulary.word_role_judge', claimsPerCall: 40 }],
 ]);
 
 /** The lane this service was born for, and the meter every legacy call site

@@ -42,6 +42,8 @@ import {
   WORD_GENERICNESS_RULE_VERSION,
   WORD_NEGATION_LANE,
   WORD_NEGATION_RULE_VERSION,
+  WORD_ROLE_LANE,
+  WORD_ROLE_RULE_VERSION,
   normalizeClaimLocale,
   wordGenericnessLane,
   type WordVocabularyClaim,
@@ -129,7 +131,45 @@ const RETIRED_LIST_SEED: ReadonlyArray<[string, string]> = [
   ['restaurants', 'en'],
   ['place', 'en'],
   ['places', 'en'],
+  // Ask-shape words real queries carry that no banked surface contains in
+  // the ask's own language: 'me' is a vi-banked surface (tamarind) but the
+  // en question is the one 'best food near me' actually asks; 'shops' is
+  // reached only through the number-variant fold, so the surface scan never
+  // offers the plural the user types.
+  ['me', 'en'],
+  ['shop', 'en'],
+  ['shops', 'en'],
+  ['bars', 'en'],
+  ['bakeries', 'en'],
+  // Word-role seeds (browse mode, 2026-08-15): ask-shape words of the other
+  // launch languages the corpus does not bank. Population, never verdicts —
+  // the judge rules each one ('comida' arrives here precisely BECAUSE the
+  // owner left its role an open question).
+  ['最好', 'zh'],
+  ['餐厅', 'zh'],
+  ['饭馆', 'zh'],
+  ['mejores', 'es'],
+  ['mejor', 'es'],
+  ['restaurante', 'es'],
+  ['restaurantes', 'es'],
+  ['comida', 'es'],
+  ['cerca', 'es'],
+  ['quán', 'vi'],
+  ['ngon', 'vi'],
+  ['gần', 'vi'],
+  ['đây', 'vi'],
 ];
+
+function laneRuleVersion(lane: string): number {
+  switch (lane) {
+    case WORD_NEGATION_LANE:
+      return WORD_NEGATION_RULE_VERSION;
+    case WORD_ROLE_LANE:
+      return WORD_ROLE_RULE_VERSION;
+    default:
+      return WORD_GENERICNESS_RULE_VERSION;
+  }
+}
 
 async function candidateWords(
   prisma: PrismaService,
@@ -173,10 +213,7 @@ async function printVerdictDiff(
   lane: string,
   out: (m: string) => void,
 ): Promise<void> {
-  const version =
-    lane === WORD_NEGATION_LANE
-      ? WORD_NEGATION_RULE_VERSION
-      : WORD_GENERICNESS_RULE_VERSION;
+  const version = laneRuleVersion(lane);
   if (version <= 1) {
     out(`${lane}: diff n/a (v1 — no prior rule to differ from)`);
     return;
@@ -208,7 +245,7 @@ async function main(): Promise<void> {
   const laneArg = flag('lane');
   const lanes = laneArg
     ? [laneArg]
-    : [WORD_GENERICNESS_LANE, WORD_NEGATION_LANE];
+    : [WORD_GENERICNESS_LANE, WORD_NEGATION_LANE, WORD_ROLE_LANE];
   const head = flag('head') ? Number(flag('head')) : null;
   const approvedHash = flag('approve-drain');
   const apply = argv.includes('--apply');
@@ -227,9 +264,12 @@ async function main(): Promise<void> {
     const words = head ? all.slice(0, head) : all;
     out(
       `population=${all.length} offering=${words.length} ` +
-        `rules=genericness:v${WORD_GENERICNESS_RULE_VERSION},negation:v${WORD_NEGATION_RULE_VERSION}`,
+        `rules=genericness:v${WORD_GENERICNESS_RULE_VERSION},negation:v${WORD_NEGATION_RULE_VERSION},role:v${WORD_ROLE_RULE_VERSION}`,
     );
 
+    /** Lanes with work owed — heard CO-DUE in one certifyFacets pass below,
+     *  so a word due on two facets costs one call, not two (B-call). */
+    const dueLanes: string[] = [];
     for (const lane of lanes) {
       // FINISH FIRST. A previous run may have died between a verdict and the
       // cache learning it; those decisions are paid for already.
@@ -257,13 +297,12 @@ async function main(): Promise<void> {
       await printVerdictDiff(app.get(ClaimVerdictLedgerService), lane, out);
       if (!due) continue;
 
+      dueLanes.push(lane);
       if (!apply) {
         try {
           const estimate = await budget.estimate(
             lane,
-            lane === WORD_NEGATION_LANE
-              ? WORD_NEGATION_RULE_VERSION
-              : WORD_GENERICNESS_RULE_VERSION,
+            laneRuleVersion(lane),
             due,
           );
           out(
@@ -278,10 +317,14 @@ async function main(): Promise<void> {
         }
         continue;
       }
+    }
 
-      let summary: VocabularyCertificationSummary;
+    // ONE CO-DUE PASS (B-call): every lane with work owed contributes its
+    // facet to the SAME hearing, so the words are sent once and each facet's
+    // verdict rows land independently.
+    if (apply && dueLanes.length) {
       try {
-        summary = await judge.certify(lane, words, {
+        const summaries = await judge.certifyFacets(dueLanes, words, {
           approvedHash,
           // AN OPERATOR IS WATCHING (A3): this drain is bounded by the
           // approve-by-hash law above, so it is not also charged against the
@@ -289,19 +332,19 @@ async function main(): Promise<void> {
           // steady trickle permanently refused behind the first bulk run.
           source: 'certification',
         });
+        for (const [lane, summary] of summaries) {
+          out(`${lane}: ${JSON.stringify(summary)}`);
+        }
       } catch (error) {
         if (
           error instanceof DrainExceedsStandingCapError ||
           error instanceof StaleDrainApprovalError ||
           error instanceof NoMeasuredHearingRateError
         ) {
-          out(`${lane}: REFUSED — ${error.message}`);
+          out(`REFUSED — ${error instanceof Error ? error.message : error}`);
           process.exitCode = 1;
-          continue;
-        }
-        throw error;
+        } else throw error;
       }
-      out(`${lane}: ${JSON.stringify(summary)}`);
     }
   } finally {
     await app.close();
