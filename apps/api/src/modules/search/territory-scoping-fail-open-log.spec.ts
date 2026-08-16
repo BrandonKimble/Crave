@@ -1,5 +1,9 @@
 import 'reflect-metadata';
 import { SearchQueryInterpretationService } from './search-query-interpretation.service';
+import {
+  judgedVocabularyDouble,
+  LEGACY_CUE_SEED,
+} from '../../shared/testing/judged-vocabulary-double';
 
 /**
  * TERRITORY-SCOPING FAIL-OPEN IS OBSERVABLE (F3104, D73: instrumentation
@@ -60,6 +64,7 @@ function makeService(coverage: { resolveViewportCoverage: jest.Mock }) {
     { recordResidue: jest.fn(() => Promise.resolve()) } as never,
     signals as never,
     { oracle: () => [] } as never,
+    judgedVocabularyDouble({ negators: LEGACY_CUE_SEED }),
     logger as never,
   );
   return { svc, logger, entityTextSearch };

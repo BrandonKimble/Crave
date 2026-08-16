@@ -3,6 +3,7 @@ import { BadRequestException } from '@nestjs/common';
 import { SearchService } from './search.service';
 import { SearchQueryExecutor } from './search-query.executor';
 import { SignalsService } from '../signals/signals.service';
+import { judgedVocabularyDouble } from '../../shared/testing/judged-vocabulary-double';
 
 // SEE-LOCATIONS mode (Leg 2 tail): the lean single-restaurant variant.
 // Laws under test:
@@ -115,6 +116,7 @@ function createServiceHarness(options: { inViewLocationCount?: number } = {}) {
       enqueue: jest.fn().mockResolvedValue(undefined),
       noteHeaderAnswer: jest.fn(),
     } as never, // placesPromotions
+    judgedVocabularyDouble(),
   );
   return { service, signalsPrisma, executeSeeLocations, executeDual };
 }

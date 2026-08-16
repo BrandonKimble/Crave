@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { SearchService } from './search.service';
 import { SignalsService } from '../signals/signals.service';
+import { judgedVocabularyDouble } from '../../shared/testing/judged-vocabulary-double';
 
 // Phase C SINGLE-WRITE spec (the dual-write milestone closed): a page-1
 // backend search submit records ONLY §3 signals — the search_events /
@@ -140,6 +141,7 @@ function createHarness(
       enqueue: jest.fn().mockResolvedValue(undefined),
       noteHeaderAnswer: jest.fn(),
     } as never, // placesPromotions
+    judgedVocabularyDouble(),
   );
   return {
     service,

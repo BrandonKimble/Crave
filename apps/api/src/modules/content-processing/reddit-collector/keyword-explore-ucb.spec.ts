@@ -13,6 +13,7 @@ import {
   type EstimatorStateStore,
   type SubjectState,
 } from '../../estimators/estimator-registry';
+import { judgedVocabularyDouble } from '../../../shared/testing/judged-vocabulary-double';
 
 /**
  * D41 — the explore family ranks on MEASURED yield (documents returned per
@@ -87,6 +88,7 @@ function buildSelection(
     exploreYield as never,
     {} as never,
     { emit: jest.fn() } as never,
+    judgedVocabularyDouble(),
     logger as never,
   );
 }

@@ -5,6 +5,7 @@ import {
   UNMET_FLOOR_FRACTION,
   EXPLORE_FLOOR_FRACTION,
 } from './keyword-slice-selection.service';
+import { judgedVocabularyDouble } from '../../../shared/testing/judged-vocabulary-double';
 
 /**
  * §11 portfolio specs: TWO floors only — unmet + explore FRACTIONS of each
@@ -41,6 +42,7 @@ function buildService(): KeywordSliceSelectionService {
     {} as never,
     {} as never,
     { emit: jest.fn() } as never,
+    judgedVocabularyDouble(),
     logger as never,
   );
 }

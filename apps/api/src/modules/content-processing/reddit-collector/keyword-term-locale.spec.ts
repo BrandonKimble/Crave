@@ -3,6 +3,7 @@ import {
   KeywordTermCandidate,
   KeywordSliceSelectionStats,
 } from './keyword-slice-selection.service';
+import { judgedVocabularyDouble } from '../../../shared/testing/judged-vocabulary-double';
 
 /**
  * GENERICNESS IS A CLAIM ABOUT A LANGUAGE, AND THE TERM NOW CARRIES ONE.
@@ -30,6 +31,7 @@ function buildService(): KeywordSliceSelectionService {
     {} as never,
     {} as never,
     { emit: jest.fn() } as never,
+    judgedVocabularyDouble(),
     logger as never,
   );
 }
@@ -44,12 +46,14 @@ function emptyStats(): KeywordSliceSelectionStats {
   };
 }
 
-function filter(candidate: KeywordTermCandidate): KeywordTermCandidate[] {
+async function filter(
+  candidate: KeywordTermCandidate,
+): Promise<KeywordTermCandidate[]> {
   const service = buildService() as unknown as {
     normalizeAndFilterCandidates(
       candidates: KeywordTermCandidate[],
       stats: KeywordSliceSelectionStats,
-    ): KeywordTermCandidate[];
+    ): Promise<KeywordTermCandidate[]>;
   };
   return service.normalizeAndFilterCandidates([candidate], emptyStats());
 }
@@ -59,29 +63,31 @@ function unmet(term: string, locale: string | null): KeywordTermCandidate {
 }
 
 describe('keyword candidates strip generic tokens IN THEIR OWN LANGUAGE', () => {
-  it('keeps a VIETNAMESE ask whose whole text is an English filler word', () => {
+  it('keeps a VIETNAMESE ask whose whole text is an English filler word', async () => {
     // English reading: 'top' is generic-only -> the term is dropped and
     // r/... is never searched for it. Vietnamese reading: it is the ask.
-    expect(filter(unmet('top', 'vi')).map((c) => c.term)).toEqual(['top']);
-  });
-
-  it('still strips the English filler out of an ENGLISH ask', () => {
-    expect(filter(unmet('best tacos', 'en')).map((c) => c.term)).toEqual([
-      'tacos',
+    expect((await filter(unmet('top', 'vi'))).map((c) => c.term)).toEqual([
+      'top',
     ]);
   });
 
-  it('leaves a SPANISH ask whole — no Spanish generic vocabulary is authored, so nothing may be judged generic in it', () => {
+  it('still strips the English filler out of an ENGLISH ask', async () => {
+    expect(
+      (await filter(unmet('best tacos', 'en'))).map((c) => c.term),
+    ).toEqual(['tacos']);
+  });
+
+  it('leaves a SPANISH ask whole — no Spanish generic vocabulary is authored, so nothing may be judged generic in it', async () => {
     // Deliberately NOT 'tacos': we hold no Spanish stop-list, and inventing
     // one is how a real word gets deleted. Under the English reading this
     // term passed through unchanged too — but only by luck, and 'top' above
     // is the case where that luck runs out.
-    expect(filter(unmet('mejores tacos', 'es-MX')).map((c) => c.term)).toEqual([
-      'mejores tacos',
-    ]);
+    expect(
+      (await filter(unmet('mejores tacos', 'es-MX'))).map((c) => c.term),
+    ).toEqual(['mejores tacos']);
   });
 
-  it('an UNDECIDABLE language gets NO stop list — not the English one', () => {
+  it('an UNDECIDABLE language gets NO stop list — not the English one', async () => {
     // Corrected 2026-08-13. A null locale used to read as English here. It is
     // the same defect this file's other cases already guard in the tagged
     // direction ('top' survives a vi ask), reached by the untagged path: the
@@ -89,15 +95,17 @@ describe('keyword candidates strip generic tokens IN THEIR OWN LANGUAGE', () => 
     // old default that undecidable term was judged — and, when every token
     // was English-generic, DISCARDED — on the strength of a word list it was
     // never subject to. Undetermined now means unjudged.
-    expect(filter(unmet('best tacos', null)).map((c) => c.term)).toEqual([
-      'best tacos',
-    ]);
+    expect(
+      (await filter(unmet('best tacos', null))).map((c) => c.term),
+    ).toEqual(['best tacos']);
   });
 
-  it('an undecidable one-worder that is English-generic SURVIVES the cycle', () => {
+  it('an undecidable one-worder that is English-generic SURVIVES the cycle', async () => {
     // The case that can show RED: under the old English default 'best' is
     // rank-generic AND all-generic, so isGenericOnly discarded the candidate
     // and the ask never reached collection at all.
-    expect(filter(unmet('top', null)).map((c) => c.term)).toEqual(['top']);
+    expect((await filter(unmet('top', null))).map((c) => c.term)).toEqual([
+      'top',
+    ]);
   });
 });

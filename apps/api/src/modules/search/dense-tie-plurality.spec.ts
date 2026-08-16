@@ -4,6 +4,10 @@ import type {
   EntityResolutionInput,
   EntityResolutionResult,
 } from '../content-processing/entity-resolver/entity-resolution.types';
+import {
+  judgedVocabularyDouble,
+  LEGACY_CUE_SEED,
+} from '../../shared/testing/judged-vocabulary-double';
 
 /**
  * THE DENSE LANE OBEYS THE TIE-PLURALITY LAW IT CITES (F6209).
@@ -39,6 +43,7 @@ function makeService(): SearchQueryInterpretationService {
     {} as never,
     {} as never,
     {} as never,
+    judgedVocabularyDouble({ negators: LEGACY_CUE_SEED }),
     logger as never,
   );
 }

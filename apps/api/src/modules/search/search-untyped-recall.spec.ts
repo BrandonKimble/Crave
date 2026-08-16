@@ -1,6 +1,10 @@
 import 'reflect-metadata';
 import { SearchQueryInterpretationService } from './search-query-interpretation.service';
 import type { EntityResolutionInput } from '../content-processing/entity-resolver/entity-resolution.types';
+import {
+  judgedVocabularyDouble,
+  LEGACY_CUE_SEED,
+} from '../../shared/testing/judged-vocabulary-double';
 
 /**
  * STEP-2 UNTYPED RECALL + LEMMA PROBES (spec §4.2, the never-look defect).
@@ -47,6 +51,7 @@ function makeService(
     {} as never,
     {} as never,
     {} as never,
+    judgedVocabularyDouble({ negators: LEGACY_CUE_SEED }),
     logger as never,
   );
 }

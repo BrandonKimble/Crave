@@ -27,6 +27,7 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { SearchService } from './search.service';
+import { judgedVocabularyDouble } from '../../shared/testing/judged-vocabulary-double';
 
 const TEST_TAG = 'itest-dish-tiebreak';
 
@@ -61,6 +62,7 @@ const service = new SearchService(
   {} as never,
   {} as never,
   {} as never,
+  judgedVocabularyDouble(),
 );
 
 let scoreRunId: string;

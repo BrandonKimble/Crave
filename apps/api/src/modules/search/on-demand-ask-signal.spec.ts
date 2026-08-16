@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { OnDemandRequestService } from './on-demand-request.service';
 import { SignalsService } from '../signals/signals.service';
 import { SignalDemandReadService } from '../signals/signal-demand-read.service';
+import { judgedVocabularyDouble } from '../../shared/testing/judged-vocabulary-double';
 
 // Phase C: the user-expressed collection gap is a SIGNAL (kind =
 // 'on_demand_ask'), replacing collection_on_demand_ask_events. These specs
@@ -68,6 +69,7 @@ describe('on_demand_ask signal write (Phase C ask-event replacement)', () => {
       prisma as never,
       createLogger() as never,
       signals,
+      judgedVocabularyDouble(),
     );
     return { service, signalsPrisma, prisma, tx };
   }

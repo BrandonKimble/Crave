@@ -1,4 +1,5 @@
 import { KeywordSliceSelectionService } from './keyword-slice-selection.service';
+import { judgedVocabularyDouble } from '../../../shared/testing/judged-vocabulary-double';
 
 /**
  * F207 / D22 — SKIP THIS CYCLE, LOUDLY.
@@ -29,6 +30,7 @@ describe('collector skips a cycle loudly when the demand read is unavailable', (
       {} as never,
       {} as never,
       opsAlerts as never,
+      judgedVocabularyDouble(),
       logger as never,
     );
     return { service, opsAlerts, logger };
