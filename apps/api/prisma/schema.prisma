@@ -3011,12 +3011,16 @@ model KnowledgePassRun {
 /// (lane, claim_key, rule_version) — the decision a judge reached about ONE
 /// claim under ONE version of its rule.
 ///
-/// It replaces the per-row stamp (`entity_surface.claim_judge_version`),
-/// whose memory was asymmetric: losses left a losing row to remember them,
-/// while a GRANT wrote an ordinary active row indistinguishable from an
-/// unjudged one — so a wrong YES was permanent. Keyed by the claim, both
-/// outcomes are one shape and "no verdict at the current rule_version"
-/// re-opens grants and losses alike.
+/// It supersedes the per-row stamp (`entity_surface.claim_judge_version`)
+/// AS VERDICT MEMORY, whose asymmetry was the finding: losses left a losing
+/// row to remember them, while a GRANT wrote an ordinary active row
+/// indistinguishable from an unjudged one — so a wrong YES was permanent.
+/// Keyed by the claim, both outcomes are one shape and "no verdict at the
+/// current rule_version" re-opens grants and losses alike. The stamp itself
+/// is NOT retired: it is still dual-written and survives as the per-row
+/// recall-qualification bit — surface-locale-index gates recall admission on
+/// `claim_judge_version IS NOT NULL`, a per-surface read this ledger's
+/// per-claim key cannot answer.
 ///
 /// `claimKey` is canonicalized by the LANE's adapter (ClaimLaneAdapter),
 /// never by this table: word claims key on (locale, claim-key form, entity),
