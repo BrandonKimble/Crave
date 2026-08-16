@@ -211,6 +211,16 @@ export const GEMINI_CALLER_PROFILES: Record<string, GeminiCallerProfile> = {
     context: 'query',
     maxOutputTokens: MODEL_MAX_OUTPUT,
   },
+  // THE RESTAURANT-NAME COURT (C4a, 2026-08-16) — is this form genuinely a
+  // name of this venue, or a generic word that landed as one? Evidence-heavy
+  // cards (raw mention excerpts) and few claims per call (8); FLASH for the
+  // same judgment-quality reason as the claim judge — the cases that matter
+  // are Supper-vs-Stars, which a cheap tier reads as identical.
+  'aliases.restaurant_name_judge': {
+    model: FLASH,
+    context: 'query',
+    maxOutputTokens: MODEL_MAX_OUTPUT,
+  },
   // THE JUDGED VOCABULARY (2026-08-13) — the two lanes that retired the query
   // path's last hand lists. One word, one language, one boolean; 40 words per
   // call, and each word is asked exactly once ever, so the whole certified
