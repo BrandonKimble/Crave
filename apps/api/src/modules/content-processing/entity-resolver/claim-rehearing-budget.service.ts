@@ -65,12 +65,61 @@ export const STANDING_REHEARING_CAP = 200;
  *  nightly is the rail this allowance exists to keep running. */
 export const STANDING_WINDOW_HOURS = 24;
 
-/** The metered caller every word-claim hearing bills to. */
-const JUDGE_CALLER = 'aliases.claim_judge';
+/**
+ * WHAT A HEARING COSTS IS A PROPERTY OF THE LANE, NOT OF THIS SERVICE.
+ *
+ * The rate and the rolling allowance are both metered from `api_usage_ledger`
+ * rows tagged with the CALLER that pays for the hearing, and divided by how
+ * many claims that lane packs into one LLM call. Those two numbers were module
+ * constants while exactly one lane existed; the judged-vocabulary lanes
+ * (2026-08-13) made them per-lane, and a plausible default would have been the
+ * worst possible answer — a vocabulary drain metered against the word-judge's
+ * caller reads its spend as someone else's and prices itself off a rate no
+ * hearing of its own ever produced.
+ *
+ * So every lane STATES its meter here, once, and `authorizeDrain` looks it up
+ * by the lane it was given. A lane with no entry cannot be quoted: that is a
+ * lane whose spend nobody attributed, and guessing is the failure this whole
+ * file exists to prevent.
+ */
+export interface HearingMeter {
+  /** The `api_usage_ledger.caller` this lane's hearings bill to. */
+  caller: string;
+  /** Claims packed into one LLM call — the divisor that turns a measured
+   *  cost-per-CALL into a cost-per-HEARING. */
+  claimsPerCall: number;
+}
 
-/** Claims the adjudicator packs into one LLM call — the divisor that turns a
- *  measured cost-per-CALL into a cost-per-HEARING. */
-const CLAIMS_PER_CALL = 10;
+const HEARING_METERS: ReadonlyMap<string, HearingMeter> = new Map([
+  ['word_claim', { caller: 'aliases.claim_judge', claimsPerCall: 10 }],
+  [
+    'word-genericness',
+    { caller: 'vocabulary.genericness_judge', claimsPerCall: 40 },
+  ],
+  ['word-negation', { caller: 'vocabulary.negation_judge', claimsPerCall: 40 }],
+]);
+
+/** The lane this service was born for, and the meter every legacy call site
+ *  that names no lane still means. */
+const WORD_CLAIM_METER = HEARING_METERS.get('word_claim') as HearingMeter;
+
+export class UnmeteredHearingLaneError extends Error {
+  constructor(lane: string) {
+    super(
+      `Lane '${lane}' has no entry in HEARING_METERS, so its hearings bill to ` +
+        `a caller nobody declared and cannot be priced. Add one in ` +
+        `claim-rehearing-budget.service.ts naming the caller its judge passes ` +
+        `to the LLM gateway and how many claims it packs per call.`,
+    );
+    this.name = 'UnmeteredHearingLaneError';
+  }
+}
+
+export function hearingMeterFor(lane: string): HearingMeter {
+  const meter = HEARING_METERS.get(lane);
+  if (!meter) throw new UnmeteredHearingLaneError(lane);
+  return meter;
+}
 
 /** Days of metered spend the rate is measured over. */
 const RATE_WINDOW_DAYS = 30;
@@ -131,9 +180,9 @@ export class StaleDrainApprovalError extends Error {
  * standing cap, which needs no estimate, and it publishes the rate.
  */
 export class NoMeasuredHearingRateError extends Error {
-  constructor(windowDays: number) {
+  constructor(windowDays: number, meter: HearingMeter) {
     super(
-      `No '${JUDGE_CALLER}' spend is metered in the last ${windowDays} days, so a ` +
+      `No '${meter.caller}' spend is metered in the last ${windowDays} days, so a ` +
         `hearing has no measured price and a large drain cannot be quoted. Run a ` +
         `drain within the standing cap of ${STANDING_REHEARING_CAP} first — it needs ` +
         `no estimate and it measures the rate.`,
@@ -150,10 +199,15 @@ export class ClaimRehearingBudgetService {
    * What one hearing costs, from this lane's own metered spend. Micro-USD.
    * Throws rather than guessing when nothing has been metered.
    */
-  async microUsdPerHearing(): Promise<number> {
-    const { micros, calls } = await this.meteredSpend(RATE_WINDOW_DAYS * 24);
-    if (!calls) throw new NoMeasuredHearingRateError(RATE_WINDOW_DAYS);
-    return micros / calls / CLAIMS_PER_CALL;
+  async microUsdPerHearing(
+    meter: HearingMeter = WORD_CLAIM_METER,
+  ): Promise<number> {
+    const { micros, calls } = await this.meteredSpend(
+      RATE_WINDOW_DAYS * 24,
+      meter,
+    );
+    if (!calls) throw new NoMeasuredHearingRateError(RATE_WINDOW_DAYS, meter);
+    return micros / calls / meter.claimsPerCall;
   }
 
   /** This lane's OWN billed spend over a trailing window, priced from the
@@ -162,6 +216,7 @@ export class ClaimRehearingBudgetService {
    *  hearing costs. */
   private async meteredSpend(
     windowHours: number,
+    meter: HearingMeter,
   ): Promise<{ micros: number; calls: number }> {
     const rows = await this.prisma.$queryRaw<
       Array<{
@@ -178,7 +233,7 @@ export class ClaimRehearingBudgetService {
              sum(cached_tokens) AS cached_tokens,
              count(*)           AS calls
         FROM api_usage_ledger
-       WHERE service = 'gemini' AND caller = ${JUDGE_CALLER}
+       WHERE service = 'gemini' AND caller = ${meter.caller}
          AND created_at > now() - make_interval(hours => ${windowHours}::int)
        GROUP BY model`;
     let micros = 0;
@@ -200,7 +255,7 @@ export class ClaimRehearingBudgetService {
    * a budget instead of a per-call speed bump.
    *
    * COUNTED, not converted. Every metered row is one judge call and a judge
-   * call carries `CLAIMS_PER_CALL` hearings, so the window's own rows say how
+   * call carries the lane meter's `claimsPerCall` hearings, so the window's own rows say how
    * many hearings were bought — exactly, with no rate in the arithmetic.
    * Dividing the window's dollars by a 30-day average rate would have been a
    * worse number in both directions: it needs a rate to exist before the
@@ -209,9 +264,11 @@ export class ClaimRehearingBudgetService {
    * pricier-model calls reads as more hearings than were actually bought, and
    * the allowance shrinks for a reason nobody chose.
    */
-  async hearingsSpentInWindow(): Promise<number> {
-    const { calls } = await this.meteredSpend(STANDING_WINDOW_HOURS);
-    return calls * CLAIMS_PER_CALL;
+  async hearingsSpentInWindow(
+    meter: HearingMeter = WORD_CLAIM_METER,
+  ): Promise<number> {
+    const { calls } = await this.meteredSpend(STANDING_WINDOW_HOURS, meter);
+    return calls * meter.claimsPerCall;
   }
 
   /**
@@ -243,7 +300,9 @@ export class ClaimRehearingBudgetService {
     ruleVersion: number,
     dueCount: number,
   ): Promise<DrainEstimate> {
-    const microUsdPerHearing = await this.microUsdPerHearing();
+    const microUsdPerHearing = await this.microUsdPerHearing(
+      hearingMeterFor(lane),
+    );
     const estimateMicros = Math.round(dueCount * microUsdPerHearing);
     const estimateHash = createHash('sha256')
       .update(
@@ -292,7 +351,10 @@ export class ClaimRehearingBudgetService {
     const wanted = Math.min(requested, params.dueCount);
     const remaining = Math.max(
       0,
-      STANDING_REHEARING_CAP - Math.round(await this.hearingsSpentInWindow()),
+      STANDING_REHEARING_CAP -
+        Math.round(
+          await this.hearingsSpentInWindow(hearingMeterFor(params.lane)),
+        ),
     );
     if (wanted <= remaining && !params.approvedHash) {
       return { allowed: wanted, estimate: null };
