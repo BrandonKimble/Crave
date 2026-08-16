@@ -146,6 +146,10 @@ const REVERTS: ReadonlyArray<{
  * If it is ruled IN, move the entry back into REVERTS above; the 21 losses are
  * the price, and the real fix is in the discriminator, not the tag.
  */
+// RULING LANDED (2026-08-13): coctel stays KEEP-UND — the owner ruled the 21
+// de-accented compound groundings outweigh the es tag's honesty; the entry
+// does NOT move into REVERTS. Kept here as the record of what was held and how
+// it was decided.
 const HELD_FOR_RULING = {
   entityName: 'cocktail',
   form: 'coctel',
