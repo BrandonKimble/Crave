@@ -1,5 +1,4 @@
 import { Injectable, Inject, OnModuleInit } from '@nestjs/common';
-import { createHash } from 'crypto';
 import { buildCauseChain, LoggerService } from '../../../shared';
 import {
   ChunkMetadata,
@@ -196,24 +195,32 @@ export class ExtractionPipelineService implements OnModuleInit {
   /** VERSIONED PROMPTS: a shadow replay pins a registered candidate
    *  version; the coverage hash, the run record, and the batch request must
    *  all use the SAME content or coverage lies. Batch mode only — an
-   *  interactive caller under a pinned version is a wiring bug. */
+   *  interactive caller under a pinned version is a wiring bug.
+   *
+   *  The hash comes from the REGISTRY ROW, never recomputed from content:
+   *  the row's fingerprint is the version identity (from v15 it folds the
+   *  response schema — a schema change is a different version), and a local
+   *  sha256(content) here would silently disagree with it. */
   private async resolveEffectivePrompt(
     baseParams: ExtractionPipelineBaseParams,
-  ): Promise<string> {
+  ): Promise<{ content: string; contentHash: string }> {
     if (!baseParams.promptVersion) {
       // FAIL CLOSED (D6): if this process could not read the registry's
       // ACTIVE prompt, refuse to extract rather than run under the asset
       // file — an unregistered prompt hash voids coverage corpus-wide.
       this.promptRegistry.assertCollectionPromptAvailable();
-      return this.llmService.getSystemPrompt();
+      const active = await this.promptRegistry.getActive();
+      return { content: active.content, contentHash: active.contentHash };
     }
     if ((baseParams.llmMode ?? this.collectionLlmMode) !== 'batch') {
       throw new Error(
         'promptVersion is only supported in batch mode (shadow replays)',
       );
     }
-    return (await this.promptRegistry.getVersion(baseParams.promptVersion))
-      .content;
+    const pinned = await this.promptRegistry.getVersion(
+      baseParams.promptVersion,
+    );
+    return { content: pinned.content, contentHash: pinned.contentHash };
   }
 
   onModuleInit(): void {
@@ -350,9 +357,7 @@ export class ExtractionPipelineService implements OnModuleInit {
     // post body itself is already covered. The post-LLM mention dedupe
     // remains the data-level guard.
     const effectivePrompt = await this.resolveEffectivePrompt(params);
-    const currentPromptHash = createHash('sha256')
-      .update(effectivePrompt)
-      .digest('hex');
+    const currentPromptHash = effectivePrompt.contentHash;
     const allSourceIds = params.llmPosts.flatMap((post) => [
       post.id,
       ...post.comments.map((comment) => comment.id),
@@ -486,9 +491,8 @@ export class ExtractionPipelineService implements OnModuleInit {
     // replay's versioned prompt, not the live one) — hashing the live
     // prompt here made every shadow re-extract read as "already covered"
     // and silently no-op (red team F3).
-    const gatePromptHash = createHash('sha256')
-      .update(await this.resolveEffectivePrompt(params))
-      .digest('hex');
+    const gatePromptHash = (await this.resolveEffectivePrompt(params))
+      .contentHash;
     const gateSourceIds = params.sourceDocuments.map(
       (document) => document.sourceId,
     );
@@ -594,7 +598,8 @@ export class ExtractionPipelineService implements OnModuleInit {
           platform: params.baseParams.platform ?? 'reddit',
           community: params.baseParams.community,
           model: this.llmService.getContentModel(),
-          systemPrompt: effectivePrompt,
+          systemPrompt: effectivePrompt.content,
+          systemPromptHash: effectivePrompt.contentHash,
           generationConfig: this.llmService.getGenerationConfigSnapshot(),
           chunkingConfig:
             params.chunkingConfigOverride ??
@@ -616,9 +621,7 @@ export class ExtractionPipelineService implements OnModuleInit {
       await this.collectionEvidenceService.stampCoverageClaims(
         extractionRunId,
         Array.from(new Set(params.sourceDocumentIdBySourceKey.values())),
-        createHash('sha256')
-          .update(await this.resolveEffectivePrompt(params.baseParams))
-          .digest('hex'),
+        (await this.resolveEffectivePrompt(params.baseParams)).contentHash,
       );
 
       const llmModeForRun = params.baseParams.llmMode ?? this.collectionLlmMode;

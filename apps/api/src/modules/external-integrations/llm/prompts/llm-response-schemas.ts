@@ -13,7 +13,7 @@ export const SEARCH_QUERY_RESPONSE_JSON_SCHEMA = {
       type: 'array',
       items: { type: 'string' },
       description:
-        'The dish the fragment names (THE ORDER TEST: sayable to a server as the thing you want), plus each broader phrase that passes THE PREDICTION TEST, most specific first; never a wrapper (special, combo, menu) or a cuisine',
+        'The dish the fragment names (THE ORDER TEST: "could you say this phrase to a server as the thing you want?"), plus each broader phrase that passes THE PREDICTION TEST, most specific first; never a wrapper (special, combo, menu) or a cuisine',
     },
     foodAttributes: {
       type: 'array',
@@ -150,7 +150,7 @@ export const ENTITY_MATCH_RESPONSE_JSON_SCHEMA = {
       type: 'string',
       enum: ['match', 'new'],
       description:
-        'THE ONE-THING TEST: match = a diner would treat the two names as one and the same thing (a name VARIANT); new = a different SPECIFICATION, or any doubt — doubt says new, because a wrong match FUSES two real entities',
+        'THE ONE-THING TEST: "Would a diner treat the two names as one and the same thing — or as two options to choose between?" match = one and the same (a name VARIANT); new = a different SPECIFICATION, or any doubt — doubt says new, because a wrong match FUSES two real entities',
     },
     candidate_id: {
       anyOf: [{ type: 'integer' }, { type: 'null' }],
@@ -391,7 +391,7 @@ export const ENTITY_MATCH_BATCH_RESPONSE_JSON_SCHEMA = {
             type: 'string',
             enum: ['match', 'new'],
             description:
-              'THE ONE-THING TEST: match = a name VARIANT of one candidate; new = a different SPECIFICATION, or any doubt — doubt says new, because a wrong match FUSES two real entities',
+              'THE ONE-THING TEST: "Would a diner treat the two names as one and the same thing — or as two options to choose between?" match = a name VARIANT of one candidate; new = a different SPECIFICATION, or any doubt — doubt says new, because a wrong match FUSES two real entities',
           },
           candidateId: { type: ['integer', 'null'] },
           reason: {

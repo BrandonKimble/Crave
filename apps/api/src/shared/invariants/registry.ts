@@ -870,6 +870,47 @@ export const INVARIANTS: readonly Invariant[] = [
     ],
   },
 
+  // ── PROMPTS ──────────────────────────────────────────────────────────
+  {
+    id: 'prompt.schema-descriptions-mirror-their-prompt',
+    statement:
+      'Every doctrine quote and named-test reference in an LLM response-schema description appears VERBATIM in the prompt file it is paired with, and every exported schema declares its pairing.',
+    incident:
+      'Schema descriptions are a second behavioral surface the decode layer enforces: "related food terms" in a description caused cuisine-in-categories while the prompt said the opposite, and a well-meaning description rewrite regressed ghost-best 6/6 -> 1/3. Nothing bound the two texts, so they drifted apart silently.',
+    level: 'behaviour',
+    mechanism:
+      'scripts/schema-quote-mirror.ts — extracts >3-word quoted spans + THE-X-TEST names from every *_JSON_SCHEMA description and requires each verbatim (whitespace-collapsed) in the paired prompt; KNOWN_DRIFT entries carry death dates and fail when stale',
+    check: {
+      command: 'npx ts-node -T scripts/schema-quote-mirror.ts',
+      reads: 'every schema description against its paired prompt file(s)',
+    },
+    mutations: [
+      {
+        // A quoted doctrine span that no longer matches the prompt.
+        file: 'src/modules/external-integrations/llm/prompts/llm-response-schemas.ts',
+        find: '"Would a diner treat the two names as one and the same thing — or as two options to choose between?"',
+        replace:
+          '"Would a diner consider the two names interchangeable in conversation?"',
+      },
+      {
+        // A new schema added without declaring its prompt pairing.
+        file: 'src/modules/external-integrations/llm/prompts/llm-response-schemas.ts',
+        find: 'export const SEARCH_QUERY_RESPONSE_JSON_SCHEMA = {',
+        replace:
+          'export const UNPAIRED_PROBE_RESPONSE_JSON_SCHEMA = { type: "object" } as const;\nexport const SEARCH_QUERY_RESPONSE_JSON_SCHEMA = {',
+      },
+    ],
+    legitimate: [
+      {
+        // Example literals (<= 3 words) are exempt: changing one is not drift.
+        file: 'src/modules/external-integrations/llm/prompts/llm-response-schemas.ts',
+        find: 'never a bare generic word kept from a list slot ("Best", "Good")',
+        replace:
+          'never a bare generic word kept from a list slot ("Best", "Nice")',
+      },
+    ],
+  },
+
   // ── CONCURRENCY ──────────────────────────────────────────────────────
   {
     id: 'concurrency.a-session-lock-never-meets-a-pool',

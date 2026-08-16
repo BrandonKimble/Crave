@@ -1,6 +1,5 @@
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Injectable, Inject, OnModuleInit } from '@nestjs/common';
-import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
@@ -137,6 +136,10 @@ export class CollectionEvidenceService implements OnModuleInit {
     community?: string | null;
     model: string;
     systemPrompt: string;
+    /** The registry row's fingerprint for the run's effective prompt. From
+     *  v15 it folds the response schema; recomputing sha256(systemPrompt)
+     *  here would silently disagree with it. */
+    systemPromptHash: string;
     generationConfig: Record<string, unknown>;
     chunkingConfig: Record<string, unknown>;
     extractionSchemaVersion?: string;
@@ -151,9 +154,7 @@ export class CollectionEvidenceService implements OnModuleInit {
           metadata: params.metadata ?? {},
         })
       : null;
-    const systemPromptHash = createHash('sha256')
-      .update(params.systemPrompt)
-      .digest('hex');
+    const systemPromptHash = params.systemPromptHash;
 
     const run = await this.prismaService.extractionRun.create({
       data: {

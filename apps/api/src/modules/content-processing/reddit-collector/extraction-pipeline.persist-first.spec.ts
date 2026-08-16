@@ -79,7 +79,14 @@ function build(options: { keepIds?: string[] } = {}) {
     relevanceGate as never,
     {
       getVersion: jest.fn(),
-      getActive: jest.fn(),
+      // The registry row is the hash authority: resolveEffectivePrompt reads
+      // {content, contentHash} from it rather than recomputing sha256.
+      getActive: jest.fn().mockResolvedValue({
+        version: 1,
+        content: 'system prompt',
+        contentHash: 'hash-of-system-prompt',
+        status: 'active',
+      }),
       assertCollectionPromptAvailable: jest.fn(),
     } as never,
   );
