@@ -1154,7 +1154,15 @@ export class ExtractionPipelineService implements OnModuleInit {
         `Unable to resolve source type for mention source_id=${canonicalSourceId}`,
       );
     }
-    const sourceUps = metadata.ups ?? mention.source_ups ?? 0;
+    // CONSENSUS = OPINIONS, NOT APPLAUSE (owner ruling 2026-08-16): a
+    // comment's upvotes co-sign that comment's specific claim, but a post's
+    // upvotes applaud the THREAD — they are not co-signs of the post body's
+    // claims. So a post-body claim carries exactly its creator's one ballot.
+    // Poll alignment: a poll creator's pick counts once, however popular the
+    // poll. (Measured before ruling: post claims were 10% of mentions but
+    // 82% of upvote mass — median 31 vs 1.)
+    const sourceUps =
+      sourceType === 'post' ? 1 : (metadata.ups ?? mention.source_ups ?? 0);
     const sourceUrl = metadata.url ?? mention.source_url ?? '';
     // F9201/F4905: unknown date -> ancient de-weighting sentinel, never NOW.
     const createdAt =
