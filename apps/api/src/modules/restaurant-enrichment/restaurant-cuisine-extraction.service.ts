@@ -10,6 +10,7 @@ import { LoggerService } from '../../shared';
 import { AliasManagementService } from '../content-processing/entity-resolver/alias-management.service';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { GOOGLE_PLACE_CUISINE_TYPE_MAP } from './google-place-type-attributes';
+import { identityScope } from '../../shared/locale/surface-scope';
 
 // Every value here means "we HAD evidence and extracted from it": place
 // types matched ('types'), the LLM was asked and returned cuisines ('llm'),
@@ -328,11 +329,13 @@ export class RestaurantCuisineExtractionService {
       return [];
     }
 
-    // Attributes reachable by NAME or by a banked recall surface. The surface
-    // half reads entity_surface's und/active/non-display slice, folded on both
-    // sides — the retired `aliases: { hasSome }` was a byte-exact array
+    // Attributes reachable by NAME or by a banked recall surface, folded on
+    // both sides — the retired `aliases: { hasSome }` was a byte-exact array
     // overlap, so a surface banked as "Tex-Mex" was invisible to an extracted
-    // "tex-mex".
+    // "tex-mex". This is an IDENTITY probe ("is this the same attribute?"),
+    // so the surface slice is identityScope() — locale-blind by law
+    // (surface-scope.ts): a hard-coded locale='und' here made an attribute
+    // whose twin surface was banked es/vi invisible and minted a duplicate.
     const foldedProbes = Array.from(
       new Set(normalized.map((value) => canonicalFold(value)).filter(Boolean)),
     );
@@ -344,9 +347,7 @@ export class RestaurantCuisineExtractionService {
                (SELECT array_agg(s.form)
                   FROM entity_surface s
                  WHERE s.entity_id = e.entity_id
-                   AND s.status = 'active'
-                   AND s.locale = 'und'
-                   AND s.role <> 'display') AS forms
+                   AND ${identityScope('s')}) AS forms
           FROM core_entities e
          WHERE e.type = 'restaurant_attribute'::entity_type
            AND (
@@ -354,9 +355,7 @@ export class RestaurantCuisineExtractionService {
              OR EXISTS (
                SELECT 1 FROM entity_surface m
                 WHERE m.entity_id = e.entity_id
-                  AND m.status = 'active'
-                  AND m.locale = 'und'
-                  AND m.role <> 'display'
+                  AND ${identityScope('m')}
                   AND m.form_folded = ANY(${foldedProbes}::text[])
              )
            )`
