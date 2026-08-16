@@ -776,6 +776,10 @@ export const COLUMN_COVERAGE: readonly ColumnCoverageEntry[] = [
         'claim_verdicts',
         'Word/concept ownership rulings keyed by a lane-canonical claim key — a concept and a word, never a person. The `subject` payload is the effect the ruling ordered (surface ids, forms, locales); nothing about a claimant human enters it, because no human claims a word here.',
       ],
+      [
+        'vocabulary_hearing_queue',
+        'Words the query path met without a verdict, waiting for the nightly hearing. A word of a LANGUAGE and the locale it was typed in — never who typed it: the row carries no user id, no request id and no geo, because the question it holds ("what does this word do in this language?") has the same answer whoever asked it.',
+      ],
       ['crave_score_calibration_epochs', 'Scoring constants.'],
       [
         'curated_list_items',
