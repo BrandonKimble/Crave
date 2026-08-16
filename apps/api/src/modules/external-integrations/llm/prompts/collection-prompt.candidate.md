@@ -485,7 +485,8 @@ judged once you know what it was modifying; peeling first is what turns
 ### C.1 Is there a dish at all?
 
 Ask THE ORDER TEST of the food language: _could you say this to a server as the
-thing you want to order?_
+thing you want to order?_ A food here is anything orderable — drinks included:
+an espresso or a cocktail is a dish exactly like a taco.
 
 If nothing does — the source named a cuisine, a style, a property, or filler
 but no orderable item — **there is no dish.** Leave `food` and

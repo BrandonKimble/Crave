@@ -271,7 +271,7 @@ export const COLLECTION_RESPONSE_JSON_SCHEMA = {
           ),
           restaurant: withDescription(
             { type: 'string' },
-            'Canonical restaurant name: lowercase, no articles, diacritics kept as written; never expanded, corrected, or completed from world knowledge of the venue, and never a bare generic word kept from a list slot ("Best", "Good") — such a slot emits the fuller observed form or nothing',
+            'Canonical restaurant name — bars, cafés, trucks, and stalls all qualify: "Read the mode of consumption, never the kind of business"; lowercase, diacritics kept as written; never expanded, corrected, or completed from world knowledge of the venue, and never a bare generic word kept from a list slot ("Best", "Good") — such a slot emits the fuller observed form or nothing',
           ),
           restaurant_attributes: withDescription(
             { ...NULLABLE_STRING_ARRAY_SCHEMA },
@@ -279,7 +279,7 @@ export const COLLECTION_RESPONSE_JSON_SCHEMA = {
           ),
           food: withDescription(
             { ...NULLABLE_STRING_SCHEMA },
-            'The order-name (THE ORDER TEST: sayable to a server as the thing you want), complete compound term, singular, excluding attributes; null when this source names no orderable dish — never a delivery wrapper (special, combo, menu), a cuisine, or a food token from the venue name',
+            'The order-name (THE ORDER TEST: sayable to a server as the thing you want) — "anything orderable — drinks included"; complete compound term, singular, excluding attributes; null when this source names no orderable dish — never a delivery wrapper (special, combo, menu), a cuisine, or a food token from the venue name',
           ),
           food_categories: withDescription(
             { ...NULLABLE_STRING_ARRAY_SCHEMA },
