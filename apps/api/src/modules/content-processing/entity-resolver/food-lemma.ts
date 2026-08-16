@@ -88,7 +88,16 @@ function singularCandidates(word: string): string[] {
 }
 
 function pluralCandidates(word: string): string[] {
-  if (word.endsWith('s')) {
+  // SUB-3-CHAR FLOOR (R15 defect 1, 2026-08-16): a 1–2-char fragment is not a
+  // food head word — it is a prefix someone stopped typing. Pluralizing it
+  // MANUFACTURES exact-tier evidence out of nothing: submitted 'jo' minted
+  // 'jos', which EXACT-matched Jo's Coffee's banked alias 'jos' and linked a
+  // restaurant identity off a 2-char prefix — the same family as the fold
+  // manufacturing its own language license. Mirrors singularCandidates'
+  // length<=3 guard: variants are for words, never fragments. Typing 'jos'
+  // VERBATIM still exact-matches (typed text is real evidence), and the
+  // autocomplete prefix lane never runs through variants at all.
+  if (word.length < 3 || word.endsWith('s')) {
     return [];
   }
   const guard = (forms: string[]): string[] =>

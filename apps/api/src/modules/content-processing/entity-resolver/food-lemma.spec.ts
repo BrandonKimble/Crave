@@ -91,6 +91,18 @@ describe('isSameFoodUpToNumber', () => {
     );
   });
 
+  it('NEVER pluralizes a sub-3-char fragment into an exact claim (the jo→jos accident)', () => {
+    // R15 defect 1: submitted 'jo' pluralized to 'jos', which exact-matched
+    // Jo's Coffee's banked alias — an identity link from a 2-char prefix.
+    expect(foodNameVariants('jo')).toEqual(['jo']);
+    expect(foodNameVariants('a')).toEqual(['a']);
+    expect(isSameFoodUpToNumber('jo', 'jos')).toBe(false);
+    // 3-char words are real head words and keep their variants.
+    expect(foodNameVariants('egg')).toContain('eggs');
+    // Head-final: only a short HEAD is floored, not a short first word.
+    expect(foodNameVariants('bo ssam')).toContain('bo ssams');
+  });
+
   it('returns nothing for an empty name and never matches it', () => {
     expect(foodNameVariants('   ')).toEqual([]);
     expect(isSameFoodUpToNumber('', 'taco')).toBe(false);
