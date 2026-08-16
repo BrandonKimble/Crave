@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-16T03:58:30.942Z",
+  "generatedAt": "2026-08-16T06:58:15.469Z",
   "pageSize": 25,
   "maxPages": 60,
   "mutation": null,
@@ -11,11 +11,11 @@
   },
   "corpus": {
     "mustAppear": 2303,
-    "missing": 367,
-    "served": 3326,
+    "missing": 33,
+    "served": 3666,
     "leaks": 376,
     "judgedRejectsServed": 3,
-    "coverage": 0.8406426400347373,
+    "coverage": 0.985670864090317,
     "unexplainedMisses": 0
   },
   "cases": [
@@ -904,7 +904,7 @@
       "query": "pastel de arroz",
       "viewport": "austin",
       "why": "es multiword, likely thin",
-      "grounded": ["pastel", "arroz", "de"],
+      "grounded": ["pastel", "arroz"],
       "groundingShattered": false,
       "anchors": 3,
       "tier0Concepts": 273,
@@ -912,13 +912,13 @@
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
-        "pages": 6,
+        "pages": 20,
         "exhausted": true,
-        "dishes": 113,
-        "restaurants": 74,
+        "dishes": 453,
+        "restaurants": 261,
         "reportedTotals": {
-          "dishes": 113,
-          "restaurants": 74
+          "dishes": 453,
+          "restaurants": 261
         }
       },
       "truth": {
@@ -926,43 +926,10 @@
         "mustAppear": 446,
         "mayAppear": 16
       },
-      "coverage": 0.2511,
-      "missing": 334,
-      "missReasons": {
-        "pooled-gate: tier-1 suppressed (venue lacks a soft restaurant attribute)": 334
-      },
-      "missSamples": [
-        {
-          "connectionId": "0106db95-2bfc-47e6-9e0c-f16cc9ca82af",
-          "food": "almond creme cake",
-          "restaurant": "Hayley Cakes and Cookies",
-          "reason": "pooled-gate: tier-1 suppressed (venue lacks a soft restaurant attribute)"
-        },
-        {
-          "connectionId": "01312af4-22b9-4c64-8d7e-9ede9fbe1372",
-          "food": "chuleta plate",
-          "restaurant": "Habanero Cafe",
-          "reason": "pooled-gate: tier-1 suppressed (venue lacks a soft restaurant attribute)"
-        },
-        {
-          "connectionId": "015b28c2-f8f7-4474-b0b9-1c12b1fa5a21",
-          "food": "rice",
-          "restaurant": "KG BBQ",
-          "reason": "pooled-gate: tier-1 suppressed (venue lacks a soft restaurant attribute)"
-        },
-        {
-          "connectionId": "01f8fcd2-c4c6-4455-8360-74eb7b71a266",
-          "food": "strawberry short cake",
-          "restaurant": "Jacoby's Restaurant & Mercantile",
-          "reason": "pooled-gate: tier-1 suppressed (venue lacks a soft restaurant attribute)"
-        },
-        {
-          "connectionId": "023b3e3f-a78f-45b6-848f-83b7db69e119",
-          "food": "grilled romaine handroll",
-          "restaurant": "Uchi Austin",
-          "reason": "pooled-gate: tier-1 suppressed (venue lacks a soft restaurant attribute)"
-        }
-      ],
+      "coverage": 1,
+      "missing": 0,
+      "missReasons": {},
+      "missSamples": [],
       "leaks": 0,
       "leakReasons": {},
       "leakSamples": [],

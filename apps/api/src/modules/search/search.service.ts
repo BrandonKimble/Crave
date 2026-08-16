@@ -216,7 +216,6 @@ export class SearchService {
   private readonly expansionMaxTermsPerType: number;
   private readonly denseSiblingsCut: SiblingCutOptions;
   private readonly expansionBudgetMs: number;
-  private readonly sectionedRanking: boolean;
 
   constructor(
     loggerService: LoggerService,
@@ -253,7 +252,6 @@ export class SearchService {
     this.expansionMaxTermsPerType = this.resolveExpansionMaxTermsPerType();
     this.denseSiblingsCut = this.resolveDenseSiblingsCut();
     this.expansionBudgetMs = this.resolveExpansionBudgetMs();
-    this.sectionedRanking = this.resolveSectionedRanking();
   }
 
   buildQueryPlan(request: SearchQueryRequestDto): QueryPlan {
@@ -1537,25 +1535,8 @@ export class SearchService {
     const textFoodIds =
       planExpansion?.foodIdsFromPrimaryFoodAttributeText ?? [];
     const hasPrimaryFoodAttributeQuery = constraints.primaryFoodAttributeQuery;
-    // Sectioned ranking (STEP-4: read from the STRUCTURE): tier 0 =
-    // anchors + family (is-a instances — "neapolitan pizza" IS the pizza
-    // you asked for); tier 1 = the similar set. Fires only when similar
-    // actually widened the membership past tier 0.
-    const grounding = constraints.grounding.food;
-    const exactFoodIds =
-      this.sectionedRanking && grounding.anchors.length
-        ? Array.from(new Set([...grounding.anchors, ...grounding.family]))
-        : [];
-    const widened =
-      exactFoodIds.length > 0 &&
-      constraints.ids.foodIds.length > exactFoodIds.length;
-
-    const twinIngredientIds = grounding.twinIngredientIds;
-    if (
-      !hasPrimaryFoodAttributeQuery &&
-      !widened &&
-      !twinIngredientIds.length
-    ) {
+    const twinIngredientIds = constraints.grounding.food.twinIngredientIds;
+    if (!hasPrimaryFoodAttributeQuery && !twinIngredientIds.length) {
       return undefined;
     }
 
@@ -1565,8 +1546,6 @@ export class SearchService {
         hasPrimaryFoodAttributeQuery && textFoodIds.length
           ? textFoodIds
           : undefined,
-      exactFoodIds: widened ? exactFoodIds : undefined,
-      sectionedRanking: widened || undefined,
       twinIngredientIds: twinIngredientIds.length
         ? twinIngredientIds
         : undefined,
@@ -3128,20 +3107,6 @@ export class SearchService {
       }
     }
     return 3;
-  }
-
-  /** SECTIONED RELEVANCY (owner-approved): exact-match rows form section 1
-   *  (pure Crave Score within), widened rows (siblings/categories/lexical)
-   *  section 2 — rank integrity holds WITHIN each section, relevance is
-   *  expressed as GROUPING, never as score-blending. 'crave' restores the
-   *  single pure-score list. */
-  private resolveSectionedRanking(): boolean {
-    // Default OFF (pure Crave Score — the owner's standing decision). The
-    // sectioned shape is one CANDIDATE for the future relevancy treatment
-    // (owner is still weighing a relevancy+score blend); rows carry exactMatch
-    // provenance either way, which any future shape needs.
-    const raw = process.env.SEARCH_RANKING_MODE?.trim().toLowerCase();
-    return raw === 'sectioned';
   }
 
   /** Wall-clock budget for the plan-expansion block (lexical + dense sibling

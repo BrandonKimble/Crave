@@ -558,7 +558,7 @@ type Served = {
   expansionFired: boolean;
   dishes: Map<
     string,
-    { foodId: string; foodName: string; restaurantId: string; tier?: number }
+    { foodId: string; foodName: string; restaurantId: string }
   >;
   restaurants: Set<string>;
   pages: number;
@@ -596,7 +596,6 @@ async function serveToExhaustion(
         foodId: row.foodId,
         foodName: row.foodName,
         restaurantId: row.restaurantId,
-        tier: (row as unknown as { matchTier?: number }).matchTier,
       });
     }
     for (const row of r) restaurants.add(row.restaurantId);

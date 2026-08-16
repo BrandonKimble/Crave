@@ -191,11 +191,6 @@ export class SearchQueryBuilder {
                   SELECT 1 FROM core_restaurant_items c
                   WHERE c.restaurant_id = ${Prisma.raw(alias)}.entity_id
                     AND c.food_attributes @> ${pooledGate.softFoodAttributeIds}::uuid[]
-                    ${
-                      directives?.exactFoodIds?.length
-                        ? Prisma.sql`AND c.food_id = ANY(${directives.exactFoodIds}::uuid[])`
-                        : Prisma.sql``
-                    }
                     ${connectionMatch.hasConditions ? Prisma.sql`AND ${connectionMatchSql}` : Prisma.sql``}
                 )`
               : Prisma.sql`TRUE`
@@ -302,31 +297,20 @@ export class SearchQueryBuilder {
     const restaurantOrder = this.resolveRestaurantOrderSql(
       plan.ranking.restaurantOrder,
     );
-    // SECTIONED RELEVANCY (restaurant axis): a restaurant serving ≥1 EXACT-match
-    // dish is tier 0; widened-only restaurants tier 1. Same grouping-not-blending
-    // contract as the dish list.
-    const restExactIds = directives?.sectionedRanking
-      ? (directives.exactFoodIds ?? [])
-      : [];
+    // Restaurant-axis match_tier: under the pooled gate a restaurant matching
+    // every soft word is tier 0, otherwise tier 1; without the gate the column
+    // is NULL. (The sectioned-relevancy tier arm that used to sit between the
+    // two was deleted with SEARCH_RANKING_MODE — the pooled tier is the one
+    // meaning match_tier has left.)
     const pooledRestTierExpr = pooledGate
       ? Prisma.sql`CASE WHEN ${pooledRestFullExpr('fr')} THEN 0 ELSE 1 END`
       : null;
-    const restTierExpr =
-      pooledRestTierExpr ??
-      (restExactIds.length
-        ? Prisma.sql`CASE WHEN EXISTS (
-          SELECT 1 FROM core_restaurant_items ce
-          WHERE ce.restaurant_id = fr.entity_id
-            AND ce.food_id = ANY(${restExactIds}::uuid[])
-        ) THEN 0 ELSE 1 END`
-        : null);
+    const restTierExpr = pooledRestTierExpr;
     const restTierSelect = restTierExpr
       ? Prisma.sql`${restTierExpr} AS match_tier,`
       : Prisma.sql`NULL::int AS match_tier,`;
-    // OWNER RULING 2026-08-08: tier NEVER orders — on the restaurant axis
-    // too (the first cut of this ruling missed the non-pooled sectioned
-    // path here; caught by the rederivation audit, C1). match_tier stays
-    // selected as row metadata; admission is the gate WHERE's job.
+    // OWNER RULING 2026-08-08: tier NEVER orders. match_tier stays selected
+    // as row metadata; admission is the gate WHERE's job.
     const restTierOrder = Prisma.sql``;
     const restaurantTopDishOrder = this.resolveTopDishOrderSql(
       plan.ranking.foodOrder,
@@ -668,13 +652,6 @@ WITH
           pooledGate.softRestaurantAttributeIds.length
             ? Prisma.sql`fr.restaurant_attributes @> ${pooledGate.softRestaurantAttributeIds}::uuid[]`
             : Prisma.sql`TRUE`
-        } AND ${
-          // Red team A6: when widening is active, tier 0 additionally
-          // requires the EXACT food set (anchors + family) — a sibling row
-          // matching every soft word must not wear the exact-match chip.
-          directives?.exactFoodIds?.length
-            ? Prisma.sql`c.food_id = ANY(${directives.exactFoodIds}::uuid[])`
-            : Prisma.sql`TRUE`
         })`
       : null;
     const similarRingIds = pooledGate?.similarFoodIds ?? [];
@@ -806,19 +783,13 @@ filtered_connections AS (
 
     const order = this.resolveDishOrderSql(plan.ranking.foodOrder);
 
-    // SECTIONED RELEVANCY: exact-match rows (tier 0) rank before widened rows
-    // (tier 1 — siblings/categories/lexical), pure Crave Score WITHIN each tier;
-    // every row carries match_tier so the client can draw the section divider.
-    // Under the pooled gate, match_tier IS the pooled tier (all-words vs
-    // partial) — same wire contract, richer meaning.
-    const exactIds = directives?.sectionedRanking
-      ? (directives.exactFoodIds ?? [])
-      : [];
+    // match_tier on the wire: under the pooled gate it IS the pooled tier
+    // (all-words vs partial); without the gate the column is NULL. (The
+    // sectioned-relevancy CASE arm that used to sit between the two was
+    // deleted with SEARCH_RANKING_MODE.)
     const tierSelectSql = pooledGate
       ? Prisma.sql`, fc.pooled_tier AS match_tier`
-      : exactIds.length
-        ? Prisma.sql`, CASE WHEN fc.food_id = ANY(${exactIds}::uuid[]) THEN 0 ELSE 1 END AS match_tier`
-        : Prisma.sql`, NULL::int AS match_tier`;
+      : Prisma.sql`, NULL::int AS match_tier`;
     // OWNER RULING 2026-08-08: tier never orders — admission only.
     const tierOrderSql = Prisma.sql``;
 
