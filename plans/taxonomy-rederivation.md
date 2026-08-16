@@ -199,6 +199,46 @@ future and lands with the ladder session.
   (research agent) — Google/industry behavior, full autocomplete code
   read, ideal shape across every search type given the new flow.
 
+## RED TEAM LENS-B VERDICTS (2026-08-16; foundational hindsight)
+FIVE OF SIX LAYERS SAME-AGAIN (entity model, hearing ledger, word court,
+doors, spend — spend "genuinely one model, not accretion"). Findings:
+- B1 CONFIRMED+FIX DISPATCHED (user-visible): browseMode has ZERO
+  orchestration consumers — typed 'best' still hits the empty-targets
+  scold; only the All-chip's separate door serves browse. My earlier
+  "works end-to-end" report was WRONG (probe bypassed orchestration);
+  fix converges on ONE serve path + orchestration-driven probe.
+- B2 for the LADDER SESSION: F3 clean delete; F1 band-0 is a REBUILD
+  (sectioned gate was deleted, all C4 numbers measured ungated); F8
+  fights the composition's name-matching clause — A1 must arbitrate
+  No-Name-Burgers vs F8 in the same span filter, not pre-wired.
+- B3 → RENAME CARRIES IT: venue-kind exists only in the TS map;
+  facet ∈ {venue_kind,cuisine,amenity} persisted on 59/~2000 rows —
+  persist for ALL in the rename migration or T2/R7 re-instantiate the
+  law per consumer (the pre-disease state). First-class column would be
+  WRONG (kinds are multi-tags); the facet column is the ideal.
+- B4: hearing budget is OPT-IN per lane — 4 of 9 lanes guarded by
+  comments only; ideal = due-scan on the ledger refuses unmetered lanes
+  (~1 day). + lane-declared outcome enums (free-text outcome typos
+  record forever). QUEUED post-rename.
+- B5: role<>'display' hand-spelled ~10 sites incl. ONE LIVE VIOLATION
+  (cuisine-extraction und identity probe — in the B1 fix dispatch);
+  door-lockdown allowlist spec = the enforcement. takeTheWord evict
+  UPDATE exists twice, unowned — QUEUED.
+- B6: places-promotion latent double-drain (recordSpend direct + would
+  meter again under runInWorkContext) — safe by wiring coincidence;
+  QUEUED small fix. Places pre-call ledgering over-meters failures.
+- B7 small: pickPlacedWinner indexOf -1 bug (in B1 dispatch); dup
+  autocomplete-entity switch (one unreachable); tokenizer
+  re-instantiated twice vs A2 law; detectedLocale??request hand-rolled
+  4+ sites; sync-hearing 5% headroom with no gate. QUEUED sweep.
+RENAME CARRY-LIST (R14 executes WITH these): persist facet for all
+attributes; rename denormalized columns (restaurant_attributes→
+place_attributes, Connection.foodId/restaurantId, restaurantMetadata,
+model names); collapse EntityScope dup enum into renamed EntityType;
+stamp food's dish|category|drink kind while the prompt reopens for v15;
+sweep raw table/column literals in invariant scripts + fixtures
+(resolution-gate fixture hand-mimics addSurfaces — drift risk).
+
 ## SEQUENCING
 Types-promotion backfill + invariant: post-v13-activation window (rides
 with reground/dedupe). Consumable facet + X-food ontology drain: with the
