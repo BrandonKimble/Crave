@@ -147,6 +147,32 @@ future and lands with the ladder session.
 - START CONDITION (owner): both sessions begin execution only after ⭐04
   acks K1-K5 → then report agreement to owner.
 
+## RULINGS/REFINEMENTS 2026-08-16 (round 2)
+- R6. Categories-never-demand DEMOTED from standing rule to TRANSITIONAL
+  guard: owner's reasoning accepted — once the venue axis + wave complete,
+  category words always ground and structurally never reach unmet-demand;
+  the code guard matters only for the un-banked-language window (餐厅
+  pre-wave). RETIREMENT CONDITION written: delete the guard when axis
+  semantic flip + wave land; until then it prevents category junk in
+  demand for unbanked locales.
+- R7. Button row FINAL noun set (time-of-day dynamic slot rotates):
+  All · Food · Drinks · [Breakfast|Brunch|Lunch|Dinner|Late Night by
+  local time] · Restaurants · Bars · Coffee Shops · Dessert · Bakeries ·
+  Food Trucks. Late Night pairs with hours data (open-late machinery).
+- R8. Button attribution BEFORE tap-event stream: search requests gain a
+  tiny origin field ('shortcut:<button>' | 'typed' | ...) flowing into the
+  existing kind:'search' signal — ships WITH the button row; identical
+  text typed-vs-tapped is indistinguishable today without it. Full UI
+  tap-event stream deferred.
+- R9. Containment-reads-surfaces = EXTEND the existing nightly
+  name-containment job (its input widens from canonical identity_key to
+  include recall surface forms; same law, same job) — not a new job;
+  wave scope (⭐04 K5 confirmed).
+- R10. Pinyin RECOMMENDATION pending owner: wave generator emits
+  romanized (Latin-letter) aliases for zh names at 'und' ("niurou mian"
+  → 牛肉面) — diaspora/learner typing mode currently unserved; nothing
+  generates these today or ever will without the ruling.
+
 ## SEQUENCING
 Types-promotion backfill + invariant: post-v13-activation window (rides
 with reground/dedupe). Consumable facet + X-food ontology drain: with the
