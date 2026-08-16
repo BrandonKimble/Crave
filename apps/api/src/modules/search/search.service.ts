@@ -824,6 +824,16 @@ export class SearchService {
         triggeredOnDemand: onDemandQueued,
       });
 
+      // OUT-OF-VIEWPORT HONESTY (R15 defect 3, 2026-08-16): a query that
+      // GROUNDED a specific restaurant ('the alcove' exact-names an NYC
+      // venue) but returns zero results from another city's viewport used to
+      // say NOTHING — the one case where we know exactly what the user meant
+      // and exactly why the page is empty. State it: found, but not near you.
+      const outOfViewportMessage =
+        totalFoodResults + totalRestaurantResults === 0
+          ? await this.buildOutOfViewportMessage(request)
+          : null;
+
       const metadata: SearchResponseMetadataDto = {
         totalFoodResults,
         totalRestaurantResults,
@@ -847,6 +857,7 @@ export class SearchService {
             : undefined,
         onDemandQueued: onDemandQueued || undefined,
         onDemandEtaMs,
+        emptyQueryMessage: outOfViewportMessage ?? undefined,
       };
 
       this.attachPhaseTimings(metadata, phaseTimings);
@@ -2717,6 +2728,49 @@ export class SearchService {
     }
 
     return 'full';
+  }
+
+  /**
+   * OUT-OF-VIEWPORT HONESTY (R15 defect 3): when the restaurants lane
+   * GROUNDED to specific entity ids, the search is viewport-bounded, and
+   * nothing came back, the empty page has a knowable cause — the place
+   * exists, just not here. Verified against the corpus (the grounded entity
+   * must hold a geocoded location somewhere) so the message is a fact, not a
+   * guess: an id with no location record stays silent rather than claiming a
+   * position we do not hold. Tone matches the honest-empty scold
+   * (buildEmptyResponse): tell the user what happened and what to do next.
+   */
+  private async buildOutOfViewportMessage(
+    request: SearchQueryRequestDto,
+  ): Promise<string | null> {
+    if (!request.bounds && !request.viewportPolygon) return null;
+    const groundedRestaurantIds = (request.entities.restaurants ?? [])
+      .flatMap((lane) => lane.entityIds ?? [])
+      .filter(Boolean);
+    if (!groundedRestaurantIds.length) return null;
+    try {
+      const rows = await this.prisma.$queryRaw<Array<{ name: string }>>`
+        SELECT e.name FROM core_entities e
+         WHERE e.entity_id = ANY(${groundedRestaurantIds}::uuid[])
+           AND e.status = 'active'::entity_status
+           AND EXISTS (
+             SELECT 1 FROM core_restaurant_locations rl
+              WHERE rl.restaurant_id = e.entity_id
+                AND rl.latitude IS NOT NULL AND rl.longitude IS NOT NULL
+           )
+         ORDER BY e.name ASC
+         LIMIT 1`;
+      const name = rows[0]?.name?.trim();
+      if (!name) return null;
+      return `Found ${name}, but it's outside this map area. Move or zoom the map to see it.`;
+    } catch (error) {
+      this.logger.warn('Out-of-viewport message lookup failed', {
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+      return null;
+    }
   }
 
   private isViewportEligibleForOnDemand(bounds?: MapBoundsDto): boolean {
