@@ -409,4 +409,157 @@ describe('the restaurant-name hearing lane (C4a) — live database', () => {
     expect(await verdictRow(key)).toBeNull();
     expect((await surfaceState(surfaceId)).status).toBe('active');
   });
+
+  /**
+   * PROOF 6 — THE SUPPER/STARS SEPARATION (census specimen check,
+   * 2026-08-15). A real venue whose name IS a generic word and a junk mint
+   * were indistinguishable when the card carried only counts — and the count
+   * it carried was the WRONG one (dish-connection mentions: 0 for Supper,
+   * whose 91 restaurant mention events the census saw). The enriched card
+   * must put RAW NAME-USAGE TEXT and both honestly-labeled counts in front
+   * of the judge.
+   *
+   * MUTATION-PROVEN in the RED direction: these assertions read the exact
+   * prompt handed to the judge. Delete the snippet builder, or regress the
+   * mention count to the dish-connection join alone, and they fail.
+   */
+  describe('the enriched evidence card (Supper vs Stars)', () => {
+    let runId = '';
+    const madeDocs: string[] = [];
+
+    const mintMentionDoc = async (
+      restaurantId: string,
+      body: string,
+    ): Promise<void> => {
+      if (!runId) {
+        const run = await prisma.extractionRun.create({
+          data: {
+            pipeline: 'itest',
+            model: 'none',
+            systemPromptHash: 'itest-restaurant-name-card',
+            status: 'completed',
+          },
+          select: { extractionRunId: true },
+        });
+        runId = run.extractionRunId;
+        await prisma.extractionInput.create({
+          data: { extractionRunId: runId, inputIndex: 0, inputPayload: {} },
+        });
+      }
+      const input = await prisma.extractionInput.findFirstOrThrow({
+        where: { extractionRunId: runId },
+        select: { inputId: true },
+      });
+      const doc = await prisma.sourceDocument.create({
+        data: {
+          platform: 'reddit',
+          sourceType: 'comment',
+          sourceId: `zzq-card-${randomUUID().slice(0, 16)}`,
+          sourceCreatedAt: new Date(),
+          body,
+        },
+        select: { documentId: true },
+      });
+      madeDocs.push(doc.documentId);
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO core_restaurant_events
+           (extraction_run_id, input_id, source_document_id, restaurant_id,
+            mention_key, evidence_type, mentioned_at)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, 'general_praise', now())`,
+        runId,
+        input.inputId,
+        doc.documentId,
+        restaurantId,
+        `zzq-card:${randomUUID().slice(0, 8)}`,
+      );
+    };
+
+    afterAll(async () => {
+      if (runId) {
+        // Cascades the minted core_restaurant_events rows.
+        await prisma.$executeRawUnsafe(
+          `DELETE FROM collection_extraction_runs WHERE extraction_run_id = $1::uuid`,
+          runId,
+        );
+      }
+      if (madeDocs.length) {
+        await prisma.$executeRawUnsafe(
+          `DELETE FROM collection_source_documents WHERE document_id = ANY($1::uuid[])`,
+          madeDocs,
+        );
+      }
+    });
+
+    it('a Supper-shaped venue: raw name-usage excerpts and both labeled counts reach the judge; the name is upheld', async () => {
+      const suffix = randomUUID().slice(0, 8);
+      const form = `zzqsupper${suffix}`;
+      const venue = await mintRestaurant(`Zzqsupper${suffix}`, {
+        grounded: true,
+      });
+      await mintSurface(venue, form, 'recall');
+      await mintMentionDoc(
+        venue,
+        `+1 to Zzqsupper${suffix}, I’m sure it’s the best chicken parm I’ve ever had.`,
+      );
+      await mintMentionDoc(
+        venue,
+        `Frank, Little Frankie’s, Zzqsupper${suffix}, Daddie’s — all Frank Prisinzanos spots.`,
+      );
+      const claim = { entityId: venue, form };
+      trackKey(claim);
+
+      const judge = judgeSaying([
+        { is_name: true, reason: 'name usage attested in running text' },
+      ]);
+      const summary = await courtWith(judge).hear([claim]);
+      expect(summary.namesUpheld).toBe(1);
+
+      const [call] = judge.generateForCaller.mock.calls[0] as [
+        { prompt: string },
+      ];
+      // The raw text itself is on the card — count-only cards are the defect.
+      expect(call.prompt).toContain('best chicken parm I’ve ever had');
+      expect(call.prompt).toContain('all Frank Prisinzanos spots');
+      // One snippet per document, total document count stated honestly.
+      expect(call.prompt).toContain(
+        'name usage in source text (2 document(s) total',
+      );
+      // Both counts, labeled as the different facts they are.
+      expect(call.prompt).toContain(
+        'mention traffic: 2 restaurant mention event(s) across 2 source document(s); 0 dish mention(s) attributed via dish connections',
+      );
+    });
+
+    it('a Stars-shaped mint: the card says no name usage was found, and the denial stands', async () => {
+      const suffix = randomUUID().slice(0, 8);
+      const form = `zzqstars${suffix}`;
+      const ghost = await mintRestaurant(`Zzqstars${suffix}`);
+      const surfaceId = await mintSurface(ghost, form, 'recall');
+      const claim = { entityId: ghost, form };
+      trackKey(claim);
+
+      const judge = judgeSaying([
+        {
+          is_name: false,
+          reason: 'no name usage in source text, ungrounded bare generic',
+        },
+      ]);
+      const summary = await courtWith(judge).hear([claim], { dryRun: false });
+      expect(summary.namesDenied).toBe(1);
+
+      const [call] = judge.generateForCaller.mock.calls[0] as [
+        { prompt: string },
+      ];
+      expect(call.prompt).toContain(
+        'mention traffic: 0 restaurant mention event(s) across 0 source document(s)',
+      );
+      expect(call.prompt).toContain(
+        'name usage in source text: no occurrence of the form found',
+      );
+      expect(await surfaceState(surfaceId)).toMatchObject({
+        status: 'deprecated',
+        role: 'recall',
+      });
+    });
+  });
 });

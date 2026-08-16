@@ -104,6 +104,16 @@ interface PreparedCase {
 
 @Injectable()
 export class RestaurantNameHearingService {
+  /** Excerpts quoted on a card — enough to show a usage pattern, small
+   *  enough that eight cards still fit one judge call. */
+  static readonly SNIPPETS_PER_CARD = 5;
+  /** Documents fetched and scanned for occurrences of the form — a bound on
+   *  the text pulled per hearing, newest first. The card states the TOTAL
+   *  document count separately, so the bound never misrepresents reach. */
+  static readonly SNIPPET_DOCS_SCANNED = 40;
+  /** Characters kept on each side of an occurrence. */
+  static readonly SNIPPET_WINDOW = 120;
+
   private readonly logger: LoggerService;
 
   constructor(
@@ -337,11 +347,29 @@ export class RestaurantNameHearingService {
 
   /**
    * THE EVIDENCE the judge sees: the entity's grounding state, its other
-   * surfaces, and its mention footprint — never the word's shape alone.
+   * surfaces, its mention footprint, and — decisive for the generic-word
+   * cases — RAW NAME-USAGE TEXT from the documents that mention the place.
+   *
+   * WHY THE RAW TEXT (census specimen check, 2026-08-15): a COUNT cannot
+   * separate a real venue whose name IS a generic word (Supper, East
+   * Village — "+1 to Supper, best chicken parm I've ever had") from a junk
+   * mint (Stars) — both read "one surface, some mentions." Only the running
+   * text shows whether people actually CALL the place by the form, so the
+   * card quotes up to SNIPPETS_PER_CARD windowed excerpts around the form,
+   * one per document, and states the total document count honestly.
+   *
+   * THE TWO COUNTS ARE DIFFERENT FACTS AND ARE LABELED AS SUCH: "restaurant
+   * mention events" (core_restaurant_events + core_restaurant_entity_events,
+   * what the census counts) versus "dish mentions via dish connections"
+   * (core_restaurant_item_mentions). The pre-fix card printed ONLY the
+   * second as "mention footprint", so Supper — 91 events across 11
+   * documents — read as zero-mention junk.
    *
    * THE FORM UNDER JUDGMENT IS NEVER ITS OWN EVIDENCE: the surface row being
    * judged is excluded from the "also known as" sample, or every hearing
-   * would read the claim restated as proof of itself.
+   * would read the claim restated as proof of itself. The excerpts are not
+   * that restatement — they are the CORPUS using the form, which is exactly
+   * the provenance question the rule asks.
    */
   private async evidenceCard(
     claim: RestaurantNameClaim,
@@ -354,24 +382,56 @@ export class RestaurantNameHearingService {
     const entity = entities[0];
     if (!entity) return null;
 
-    const [locations, mentions, surfaces] = await Promise.all([
-      this.prisma.$queryRaw<
-        Array<{ locations: bigint; grounded: bigint; geocoded: bigint }>
-      >`SELECT count(*) AS locations,
+    const [locations, dishMentions, traffic, mentionDocs, surfaces] =
+      await Promise.all([
+        this.prisma.$queryRaw<
+          Array<{ locations: bigint; grounded: bigint; geocoded: bigint }>
+        >`SELECT count(*) AS locations,
                count(google_place_id) AS grounded,
                count(latitude) AS geocoded
           FROM core_restaurant_locations
          WHERE restaurant_id = ${claim.entityId}::uuid`,
-      this.prisma.$queryRaw<Array<{ mentions: bigint }>>`
+        this.prisma.$queryRaw<Array<{ mentions: bigint }>>`
         SELECT count(*) AS mentions
           FROM core_restaurant_item_mentions m
           JOIN core_restaurant_items c ON c.connection_id = m.connection_id
          WHERE c.restaurant_id = ${claim.entityId}::uuid`,
-      this.prisma.$queryRaw<Array<{ form: string }>>`
+        // The census's count: every extraction event naming this restaurant,
+        // in BOTH event dimensions, and the distinct documents behind them.
+        this.prisma.$queryRaw<Array<{ events: bigint; documents: bigint }>>`
+        SELECT (SELECT count(*) FROM core_restaurant_events
+                 WHERE restaurant_id = ${claim.entityId}::uuid)
+             + (SELECT count(*) FROM core_restaurant_entity_events
+                 WHERE restaurant_id = ${claim.entityId}::uuid) AS events,
+               (SELECT count(*) FROM (
+                  SELECT source_document_id FROM core_restaurant_events
+                   WHERE restaurant_id = ${claim.entityId}::uuid
+                  UNION
+                  SELECT source_document_id FROM core_restaurant_entity_events
+                   WHERE restaurant_id = ${claim.entityId}::uuid) u
+               ) AS documents`,
+        // The raw text those events came from — newest first, bounded.
+        this.prisma.$queryRaw<
+          Array<{
+            document_id: string;
+            title: string | null;
+            body: string | null;
+          }>
+        >`SELECT d.document_id::text, d.title, d.body
+          FROM collection_source_documents d
+         WHERE d.document_id IN (
+                SELECT source_document_id FROM core_restaurant_events
+                 WHERE restaurant_id = ${claim.entityId}::uuid
+                UNION
+                SELECT source_document_id FROM core_restaurant_entity_events
+                 WHERE restaurant_id = ${claim.entityId}::uuid)
+         ORDER BY d.source_created_at DESC
+         LIMIT ${RestaurantNameHearingService.SNIPPET_DOCS_SCANNED}`,
+        this.prisma.$queryRaw<Array<{ form: string }>>`
         SELECT form FROM entity_surface
          WHERE entity_id = ${claim.entityId}::uuid AND status = 'active'
          ORDER BY created_at ASC LIMIT 8`,
-    ]);
+      ]);
     const loc = locations[0];
     const underJudgment = surfaceClaimKey(claim.form);
     const otherSurfaces = surfaces
@@ -387,11 +447,24 @@ export class RestaurantNameHearingService {
           ? `${Number(loc?.locations ?? 0)} location record(s), NONE verified against a real-world listing`
           : 'no location records at all';
 
+    const events = Number(traffic[0]?.events ?? 0);
+    const documents = Number(traffic[0]?.documents ?? 0);
+    const snippets = this.nameUsageSnippets(claim.form, mentionDocs);
+    const usageLines = snippets.length
+      ? [
+          `   name usage in source text (${documents} document(s) total; up to ${RestaurantNameHearingService.SNIPPETS_PER_CARD} excerpts, one per document):`,
+          ...snippets.map((s) => `     - "${s}"`),
+        ]
+      : [
+          `   name usage in source text: no occurrence of the form found in the ${Math.min(documents, RestaurantNameHearingService.SNIPPET_DOCS_SCANNED)} most recent of ${documents} document(s)`,
+        ];
+
     const card = [
       `restaurant: "${entity.name}"`,
       `   grounding: ${groundingLine}`,
       `   other surfaces: ${otherSurfaces.length ? otherSurfaces.join(', ') : '(none — this form is the entity’s only identity)'}`,
-      `   mention footprint: ${Number(mentions[0]?.mentions ?? 0)} dish mention(s) attributed to this place`,
+      `   mention traffic: ${events} restaurant mention event(s) across ${documents} source document(s); ${Number(dishMentions[0]?.mentions ?? 0)} dish mention(s) attributed via dish connections`,
+      ...usageLines,
     ].join('\n');
 
     return {
@@ -424,6 +497,79 @@ export class RestaurantNameHearingService {
         role: row.role,
         status: row.status,
       }));
+  }
+
+  /**
+   * WINDOWED EXCERPTS of the form in the entity's own mention documents —
+   * one per document, up to SNIPPETS_PER_CARD. Matching is case- and
+   * accent-insensitive (a per-character fold with an index map back into the
+   * ORIGINAL text, so the quoted window is the real bytes people wrote, not
+   * a folded rendering), and bounded by word edges so "supper" never matches
+   * inside "suppertime's" neighbors silently — an occurrence is the form
+   * used as a word.
+   */
+  private nameUsageSnippets(
+    form: string,
+    docs: Array<{
+      document_id: string;
+      title: string | null;
+      body: string | null;
+    }>,
+  ): string[] {
+    const foldChar = (ch: string): string =>
+      ch
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
+    const needle = Array.from(form).map(foldChar).join('');
+    if (!needle) return [];
+    const isWordChar = (ch: string | undefined): boolean =>
+      ch !== undefined && /[\p{L}\p{N}]/u.test(ch);
+
+    const snippets: string[] = [];
+    for (const doc of docs) {
+      if (snippets.length >= RestaurantNameHearingService.SNIPPETS_PER_CARD)
+        break;
+      const text = [doc.title, doc.body].filter(Boolean).join('\n');
+      if (!text) continue;
+      // Folded haystack with a map back to original character indices.
+      const chars = Array.from(text);
+      let folded = '';
+      const originIndex: number[] = [];
+      for (let i = 0; i < chars.length; i += 1) {
+        const f = foldChar(chars[i]);
+        for (let k = 0; k < f.length; k += 1) originIndex.push(i);
+        folded += f;
+      }
+      let at = folded.indexOf(needle);
+      while (at >= 0) {
+        const beforeIdx = originIndex[at] - 1;
+        const afterOrigin = originIndex[at + needle.length - 1] + 1;
+        const boundedLeft = !isWordChar(chars[beforeIdx]);
+        const boundedRight = !isWordChar(chars[afterOrigin]);
+        if (boundedLeft && boundedRight) {
+          const start = Math.max(
+            0,
+            originIndex[at] - RestaurantNameHearingService.SNIPPET_WINDOW,
+          );
+          const end = Math.min(
+            chars.length,
+            afterOrigin + RestaurantNameHearingService.SNIPPET_WINDOW,
+          );
+          const window = chars
+            .slice(start, end)
+            .join('')
+            .replace(/\s+/g, ' ')
+            .trim();
+          snippets.push(
+            `${start > 0 ? '…' : ''}${window}${end < chars.length ? '…' : ''}`,
+          );
+          break; // one snippet per document
+        }
+        at = folded.indexOf(needle, at + 1);
+      }
+    }
+    return snippets;
   }
 
   private async judge(

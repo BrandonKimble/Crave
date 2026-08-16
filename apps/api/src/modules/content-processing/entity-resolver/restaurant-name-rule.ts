@@ -27,6 +27,11 @@ const RULE_RELEASES: readonly RuleRelease[] = [
     fingerprint: '698b51e88588',
     note: 'first rule: names are facts about reference, decided from grounding + corroborating surfaces + provenance; Best-ghost / Chili’s / Favorite anchor cases pinned; underdetermined defaults to is-a-name except the ungrounded bare-generic pattern',
   },
+  {
+    version: 2,
+    fingerprint: '78611ab944c4',
+    note: 'evidence card enriched: raw name-usage excerpts from mention documents quoted as provenance, and the two mention counts (restaurant mention events vs dish-connection mentions) labeled honestly — closes the Supper/Stars indistinguishability (census specimen check: the v1 card read Supper’s 91 events / 11 docs as "0 dish mentions")',
+  },
 ];
 
 const restaurantNameRule = resolvePromptRule(

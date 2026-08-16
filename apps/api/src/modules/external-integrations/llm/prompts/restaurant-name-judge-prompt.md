@@ -34,6 +34,21 @@ shows this specific place is actually called this specific form:
   was being abbreviated, or only as an ordinary word that extraction seized,
   is not — even if it was reinforced many times, because reinforcement of a
   generic word measures the word's frequency, not the place's name.
+- **The name-usage excerpts are the provenance, made visible.** A case may
+  quote raw excerpts from the source documents that mention this restaurant —
+  windowed text around occurrences of the form, one per document, with the
+  total document count stated. Read them as testimony about reference: an
+  excerpt where people use the form AS the place's name in running text
+  ("+1 to Supper, best chicken parm I've ever had"; "Frank, Little Frankie's,
+  Supper — all his spots") is direct evidence the form is a name, even when
+  the word is otherwise perfectly generic. Excerpts where the form appears
+  only as an ordinary word ("we had supper there"), or a mention footprint
+  with NO excerpt using the form as a name, weigh against. A case may also
+  state that no occurrence of the form was found in the sampled documents —
+  weigh that as absence of attested usage, not as proof, and note the two
+  mention counts measure different things: restaurant mention events count
+  the place being talked about; dish mentions count dishes attributed to it.
+  A real, discussed place can legitimately have zero dish mentions.
 
 - **A full name and its bare shorthand are separate claims.** "Favorite Pizza"
   being the real name of a place does not decide whether the bare word
