@@ -1182,12 +1182,16 @@ export class SearchQueryInterpretationService {
   >(candidates: T[], dietaryIds: ReadonlySet<string>): T {
     const dietary = candidates.find((c) => dietaryIds.has(c.entityId));
     if (dietary) return dietary;
+    // AUDIT M9 applies HERE too: raw .indexOf() sent an unlisted (new)
+    // EntityType to -1 — winning every tie. rankIn() sends it to the back.
     return [...candidates].sort(
       (a, b) =>
-        SearchQueryInterpretationService.CROSS_TYPE_PLACEMENT_ORDER.indexOf(
+        SearchQueryInterpretationService.rankIn(
+          SearchQueryInterpretationService.CROSS_TYPE_PLACEMENT_ORDER,
           a.type,
         ) -
-        SearchQueryInterpretationService.CROSS_TYPE_PLACEMENT_ORDER.indexOf(
+        SearchQueryInterpretationService.rankIn(
+          SearchQueryInterpretationService.CROSS_TYPE_PLACEMENT_ORDER,
           b.type,
         ),
     )[0];
