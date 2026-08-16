@@ -173,18 +173,37 @@ describe('scripts/ cron containment', () => {
  *   scratch     — valuable for a day. Lives in scripts/scratch/ (gitignored);
  *                 a committed `scratch` is itself the signal to delete it.
  *
+ * Two later classes (red-team lens A, 2026-08-16) — both are `operational`
+ * scripts whose runner is a VERIFICATION harness, and the distinction is
+ * worth carrying because their deletion policy differs from ordinary tooling
+ * (deleting one silently un-guards an invariant or a gate):
+ *
+ *   gate            — run by a named gate harness (`@run-by` names it); its
+ *                     exit code blocks something.
+ *   invariant-check — the mechanism of a registered invariant in
+ *                     src/shared/invariants/registry.ts; the registry's
+ *                     mutation proofs require THIS script to go red.
+ *
  * The tsconfig exclusion of `scripts/search-harness/rt-*.ts` ("red-team /
  * exploratory harnesses: throwaway by convention") shows the convention was
  * already FELT. It was just never made operational, and it stopped at one
  * glob. This makes the class a fact the tree carries, so a deletion sweep is
  * mechanical instead of a judgement call per file.
  */
-const SCRIPT_CLASSES = ['operational', 'probe', 'scratch'];
+const SCRIPT_CLASSES = [
+  'operational',
+  'probe',
+  'scratch',
+  'gate',
+  'invariant-check',
+];
 
 describe('scripts/ class headers', () => {
   const classOf = (file: string): string | null => {
     const head = readFileSync(file, 'utf8').slice(0, 4000);
-    const m = /@script-class:\s*([a-z]+)/.exec(head);
+    // Hyphens are part of a class name (`invariant-check`); a bare [a-z]+
+    // silently truncated it to `invariant` and misreported the declaration.
+    const m = /@script-class:\s*([a-z][a-z-]*)/.exec(head);
     return m ? m[1] : null;
   };
 

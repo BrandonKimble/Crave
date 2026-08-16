@@ -92,6 +92,7 @@ describe('the invariant registry', () => {
       ['run-excluding delete on the event ledgers', 'extraction-scope'],
       ['A dynamic import is an import', 'gemini-sdk'],
       ['TomTom vendor surface has one owner', 'tomtom-vendor-has-one-door'],
+      ['Gemini vendor surface has one owner', 'gemini-vendor-has-one-door'],
       [
         'Advisory locks are session-scoped',
         'a-session-lock-never-meets-a-pool',
