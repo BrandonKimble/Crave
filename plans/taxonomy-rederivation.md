@@ -186,6 +186,19 @@ future and lands with the ladder session.
 - R13. Button-origin tracking → SPLIT to its own owner session (chip
   spawned, task_5009f71b); not part of this session's execution round.
 
+## RULING 2026-08-16 (round 3)
+- R14. O3 RULED: internal entity-type rename = **place / item**
+  (place, place_attribute, item, item_attribute). UI names stay
+  Where-to-Go/What-to-Get (R1). Execution: dedicated campaign on a clean
+  base AFTER the current red team lands; the efficient slot folds the
+  extraction-schema field renames into v15's natural certification
+  boundary (one cert covers both) — flagged to ⭐04 for timing consent.
+  Scope: DB enums + migration, code sweep, prompt schema fields
+  (⭐04's files, their lane), docs; UI already decoupled.
+- R15. Name-prefix fallback: from-scratch rederivation COMMISSIONED
+  (research agent) — Google/industry behavior, full autocomplete code
+  read, ideal shape across every search type given the new flow.
+
 ## SEQUENCING
 Types-promotion backfill + invariant: post-v13-activation window (rides
 with reground/dedupe). Consumable facet + X-food ontology drain: with the
