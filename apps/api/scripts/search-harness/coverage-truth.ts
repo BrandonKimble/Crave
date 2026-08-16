@@ -490,10 +490,10 @@ async function deriveTruthRows(
   const rows = await prisma.$queryRaw<Row[]>(Prisma.sql`
     SELECT DISTINCT ON (c.connection_id)
       c.connection_id                              AS "connectionId",
-      c.food_id                                    AS "foodId",
-      f.name                                       AS "foodName",
+      c.food_id                                    AS "itemId",
+      f.name                                       AS "itemName",
       c.restaurant_id                              AS "placeId",
-      r.name                                       AS "restaurantName",
+      r.name                                       AS "placeName",
       (${tier0Arm} OR ${twinArm})                  AS "viaTier0",
       (${tier0Arm})                                AS "viaTier0Concept",
       (${ringArm})                                 AS "viaRing",
@@ -1008,6 +1008,24 @@ async function main(): Promise<void> {
     // condition. A mutation run is exempt: `--mutate=` deliberately breaks the
     // derivation to prove the instrument can show red, so unexplained misses
     // there are the POINT rather than the failure.
+    // INSTRUMENT-FAILURE GUARD (2026-08-16). A full-battery corpus-truth run
+    // whose total MUST-APPEAR is 0 is not a clean pass — it is the instrument
+    // measuring nothing. It happened for real: core_restaurant_locations was
+    // emptied by a concurrent session and every truth set silently keyed off
+    // an empty location join, so 29 queries reported 100% coverage of an
+    // empty universe. A vacuous denominator on a 24k-entity corpus is a lying
+    // green, so it exits 1 as an instrument failure, not a coverage result.
+    // `--only=` runs are exempt (one thin case can honestly derive 0);
+    // mutation runs are exempt for the same reason as below.
+    if (totalMust === 0 && !MUTATE && !ONLY) {
+      out('');
+      out(
+        'FAIL (instrument): total must-appear is 0 across the full battery — ' +
+          'the truth derivation matched NOTHING. That is a broken instrument ' +
+          '(empty corpus arm, dead join, or stale field), never a real 100%.',
+      );
+      process.exitCode = 1;
+    }
     if (totalUnexplained > 0 && !MUTATE) {
       out('');
       out(

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-16T21:15:31.398Z",
+  "generatedAt": "2026-08-16T22:01:43.086Z",
   "pageSize": 25,
   "maxPages": 60,
   "mutation": null,
@@ -10,12 +10,12 @@
     "maxAnchors": 3
   },
   "corpus": {
-    "mustAppear": 0,
-    "missing": 0,
-    "served": 0,
-    "leaks": 0,
-    "judgedRejectsServed": 0,
-    "coverage": 1,
+    "mustAppear": 2304,
+    "missing": 33,
+    "served": 3732,
+    "leaks": 367,
+    "judgedRejectsServed": 2,
+    "coverage": 0.9856770833333334,
     "unexplainedMisses": 0
   },
   "cases": [
@@ -31,27 +31,66 @@
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
-        "pages": 1,
+        "pages": 19,
         "exhausted": true,
-        "dishes": 0,
-        "places": 0,
+        "dishes": 438,
+        "places": 312,
         "reportedTotals": {
-          "dishes": 0,
-          "places": 0
+          "dishes": 438,
+          "places": 312
         }
       },
       "truth": {
-        "candidates": 0,
-        "mustAppear": 0,
-        "mayAppear": 0
+        "candidates": 431,
+        "mustAppear": 410,
+        "mayAppear": 21
       },
       "coverage": 1,
       "missing": 0,
       "missReasons": {},
       "missSamples": [],
-      "leaks": 0,
-      "leakReasons": {},
-      "leakSamples": [],
+      "leaks": 7,
+      "leakReasons": {
+        "UNRELATED-CONCEPT (no arm explains it)": 6,
+        "lexical-expansion arm (name look-alike)": 1
+      },
+      "leakSamples": [
+        {
+          "connectionId": "ec528dbb-532b-414c-ad76-716d3385cabb",
+          "item": "pad ka prow",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "639683d7-8d7c-4659-81c0-d3b1f8530fbd",
+          "item": "aguachile",
+          "reason": "lexical-expansion arm (name look-alike)"
+        },
+        {
+          "connectionId": "9574bfa8-afea-408f-9b9f-463feac38420",
+          "item": "papaya salad",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "72083fa0-4fbd-425e-9ede-aca0423e15ad",
+          "item": "papaya salad",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "71383c71-fff3-4b81-83a0-d64e469cc286",
+          "item": "roja salsa",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "6b011850-63d5-45bd-b33f-58f4f3af0a35",
+          "item": "papaya salad",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "77a33996-42ba-4009-90e1-5b001811b0c8",
+          "item": "papaya salad",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        }
+      ],
       "judgedRejectsServed": 0,
       "judgedRejectSamples": [],
       "expectEmpty": false,
@@ -69,27 +108,66 @@
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
-        "pages": 1,
+        "pages": 19,
         "exhausted": true,
-        "dishes": 0,
-        "places": 0,
+        "dishes": 438,
+        "places": 312,
         "reportedTotals": {
-          "dishes": 0,
-          "places": 0
+          "dishes": 438,
+          "places": 312
         }
       },
       "truth": {
-        "candidates": 0,
-        "mustAppear": 0,
-        "mayAppear": 0
+        "candidates": 431,
+        "mustAppear": 410,
+        "mayAppear": 21
       },
       "coverage": 1,
       "missing": 0,
       "missReasons": {},
       "missSamples": [],
-      "leaks": 0,
-      "leakReasons": {},
-      "leakSamples": [],
+      "leaks": 7,
+      "leakReasons": {
+        "UNRELATED-CONCEPT (no arm explains it)": 6,
+        "lexical-expansion arm (name look-alike)": 1
+      },
+      "leakSamples": [
+        {
+          "connectionId": "ec528dbb-532b-414c-ad76-716d3385cabb",
+          "item": "pad ka prow",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "639683d7-8d7c-4659-81c0-d3b1f8530fbd",
+          "item": "aguachile",
+          "reason": "lexical-expansion arm (name look-alike)"
+        },
+        {
+          "connectionId": "9574bfa8-afea-408f-9b9f-463feac38420",
+          "item": "papaya salad",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "72083fa0-4fbd-425e-9ede-aca0423e15ad",
+          "item": "papaya salad",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "71383c71-fff3-4b81-83a0-d64e469cc286",
+          "item": "roja salsa",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "6b011850-63d5-45bd-b33f-58f4f3af0a35",
+          "item": "papaya salad",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "77a33996-42ba-4009-90e1-5b001811b0c8",
+          "item": "papaya salad",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        }
+      ],
       "judgedRejectsServed": 0,
       "judgedRejectSamples": [],
       "expectEmpty": false,
@@ -107,27 +185,40 @@
       "dietaryWallActive": false,
       "served": {
         "expansionFired": true,
-        "pages": 1,
+        "pages": 3,
         "exhausted": true,
-        "dishes": 0,
-        "places": 0,
+        "dishes": 34,
+        "places": 9,
         "reportedTotals": {
-          "dishes": 0,
-          "places": 0
+          "dishes": 34,
+          "places": 9
         }
       },
       "truth": {
-        "candidates": 0,
-        "mustAppear": 0,
-        "mayAppear": 0
+        "candidates": 79,
+        "mustAppear": 2,
+        "mayAppear": 77
       },
       "coverage": 1,
       "missing": 0,
       "missReasons": {},
       "missSamples": [],
-      "leaks": 0,
-      "leakReasons": {},
-      "leakSamples": [],
+      "leaks": 2,
+      "leakReasons": {
+        "lexical-expansion arm (name look-alike)": 2
+      },
+      "leakSamples": [
+        {
+          "connectionId": "c2cf4aec-182a-49fa-91ff-08f75f750ae1",
+          "item": "boat noodle",
+          "reason": "lexical-expansion arm (name look-alike)"
+        },
+        {
+          "connectionId": "1889c09b-4a5c-450e-b0da-386311a94780",
+          "item": "boat noodle",
+          "reason": "lexical-expansion arm (name look-alike)"
+        }
+      ],
       "judgedRejectsServed": 0,
       "judgedRejectSamples": [],
       "expectEmpty": false,
@@ -145,24 +236,57 @@
       "dietaryWallActive": false,
       "served": {
         "expansionFired": true,
-        "pages": 1,
+        "pages": 3,
         "exhausted": true,
-        "dishes": 0,
-        "places": 0,
+        "dishes": 34,
+        "places": 8,
         "reportedTotals": {
-          "dishes": 0,
-          "places": 0
+          "dishes": 34,
+          "places": 8
         }
       },
       "truth": {
-        "candidates": 0,
-        "mustAppear": 0,
-        "mayAppear": 0
+        "candidates": 57,
+        "mustAppear": 22,
+        "mayAppear": 35
       },
-      "coverage": 1,
-      "missing": 0,
-      "missReasons": {},
-      "missSamples": [],
+      "coverage": 0.0455,
+      "missing": 21,
+      "missReasons": {
+        "ask-ingredient conjunction (row lacks the decomposed part)": 21
+      },
+      "missSamples": [
+        {
+          "connectionId": "0985b8c0-ff95-44f8-91c1-8b4c0641cfb5",
+          "item": "quesabirria",
+          "place": "Tlakua Tako",
+          "reason": "ask-ingredient conjunction (row lacks the decomposed part)"
+        },
+        {
+          "connectionId": "1576807e-c99e-4a05-bde8-42a106540ffe",
+          "item": "quesabirria",
+          "place": "Tacos Las Mamis",
+          "reason": "ask-ingredient conjunction (row lacks the decomposed part)"
+        },
+        {
+          "connectionId": "1744d42c-4c7b-40e5-b198-6eecf6eb1b02",
+          "item": "birria tacos",
+          "place": "Los Galanes Birrias & Tacos",
+          "reason": "ask-ingredient conjunction (row lacks the decomposed part)"
+        },
+        {
+          "connectionId": "27ea0e2f-fb0d-4a28-8e56-5f1d9f0f2771",
+          "item": "birria tacos",
+          "place": "Birrieria Mama Rosa #1",
+          "reason": "ask-ingredient conjunction (row lacks the decomposed part)"
+        },
+        {
+          "connectionId": "2c13567c-caaa-4ef1-a0a5-d6e4dbad4571",
+          "item": "birria tacos",
+          "place": "Que Divino Cocina",
+          "reason": "ask-ingredient conjunction (row lacks the decomposed part)"
+        }
+      ],
       "leaks": 0,
       "leakReasons": {},
       "leakSamples": [],
@@ -183,19 +307,19 @@
       "dietaryWallActive": true,
       "served": {
         "expansionFired": true,
-        "pages": 1,
+        "pages": 2,
         "exhausted": true,
         "dishes": 0,
-        "places": 0,
+        "places": 1,
         "reportedTotals": {
           "dishes": 0,
-          "places": 0
+          "places": 1
         }
       },
       "truth": {
-        "candidates": 0,
+        "candidates": 2,
         "mustAppear": 0,
-        "mayAppear": 0
+        "mayAppear": 2
       },
       "coverage": 1,
       "missing": 0,
@@ -221,19 +345,19 @@
       "dietaryWallActive": false,
       "served": {
         "expansionFired": true,
-        "pages": 1,
+        "pages": 5,
         "exhausted": true,
-        "dishes": 0,
-        "places": 0,
+        "dishes": 65,
+        "places": 95,
         "reportedTotals": {
-          "dishes": 0,
-          "places": 0
+          "dishes": 65,
+          "places": 95
         }
       },
       "truth": {
-        "candidates": 0,
+        "candidates": 233,
         "mustAppear": 0,
-        "mayAppear": 0
+        "mayAppear": 233
       },
       "coverage": 1,
       "missing": 0,
@@ -259,27 +383,90 @@
       "dietaryWallActive": false,
       "served": {
         "expansionFired": true,
-        "pages": 1,
+        "pages": 10,
         "exhausted": true,
-        "dishes": 0,
-        "places": 0,
+        "dishes": 139,
+        "places": 201,
         "reportedTotals": {
-          "dishes": 0,
-          "places": 0
+          "dishes": 139,
+          "places": 201
         }
       },
       "truth": {
-        "candidates": 0,
-        "mustAppear": 0,
-        "mayAppear": 0
+        "candidates": 115,
+        "mustAppear": 31,
+        "mayAppear": 84
       },
       "coverage": 1,
       "missing": 0,
       "missReasons": {},
       "missSamples": [],
-      "leaks": 0,
-      "leakReasons": {},
-      "leakSamples": [],
+      "leaks": 24,
+      "leakReasons": {
+        "lexical-expansion arm (name look-alike)": 24
+      },
+      "leakSamples": [
+        {
+          "connectionId": "25c9806e-43ed-44f5-9040-9fad065b5f0f",
+          "item": "breakfast",
+          "reason": "lexical-expansion arm (name look-alike)"
+        },
+        {
+          "connectionId": "38007423-0443-4fb9-a9ca-ae8b24b0da1a",
+          "item": "breakfast",
+          "reason": "lexical-expansion arm (name look-alike)"
+        },
+        {
+          "connectionId": "6faf0408-cde5-4433-be81-5d2e822069fc",
+          "item": "breakfast",
+          "reason": "lexical-expansion arm (name look-alike)"
+        },
+        {
+          "connectionId": "01d93dd6-eb5e-480f-89e0-200befb40250",
+          "item": "breakfast",
+          "reason": "lexical-expansion arm (name look-alike)"
+        },
+        {
+          "connectionId": "a756ed16-2a98-4c41-b97f-00deb4d41868",
+          "item": "breakfast",
+          "reason": "lexical-expansion arm (name look-alike)"
+        },
+        {
+          "connectionId": "dd8fb504-4254-403a-9f0f-255ddb07fca0",
+          "item": "breakfast",
+          "reason": "lexical-expansion arm (name look-alike)"
+        },
+        {
+          "connectionId": "602291ab-d885-4a87-8b74-77cb1c7c8881",
+          "item": "ahmads breakfast sammie",
+          "reason": "lexical-expansion arm (name look-alike)"
+        },
+        {
+          "connectionId": "f7357f28-d06f-4721-8394-144cee9552cc",
+          "item": "breakfast",
+          "reason": "lexical-expansion arm (name look-alike)"
+        },
+        {
+          "connectionId": "2aa35d9f-897c-4089-b3e0-b8c1aec1366f",
+          "item": "breakfast",
+          "reason": "lexical-expansion arm (name look-alike)"
+        },
+        {
+          "connectionId": "5745f6f9-1b21-4054-bab9-18b5be25c63f",
+          "item": "breakfast",
+          "reason": "lexical-expansion arm (name look-alike)"
+        },
+        {
+          "connectionId": "0e0fec46-d529-4cfc-a089-98472971851a",
+          "item": "breakfast",
+          "reason": "lexical-expansion arm (name look-alike)"
+        },
+        {
+          "connectionId": "a54a8fd6-da89-4825-870a-d9b26a3393b5",
+          "item": "breakfast",
+          "reason": "lexical-expansion arm (name look-alike)"
+        }
+      ],
       "judgedRejectsServed": 0,
       "judgedRejectSamples": [],
       "expectEmpty": false,
@@ -297,27 +484,51 @@
       "dietaryWallActive": false,
       "served": {
         "expansionFired": true,
-        "pages": 1,
+        "pages": 2,
         "exhausted": true,
-        "dishes": 0,
-        "places": 0,
+        "dishes": 17,
+        "places": 15,
         "reportedTotals": {
-          "dishes": 0,
-          "places": 0
+          "dishes": 17,
+          "places": 15
         }
       },
       "truth": {
-        "candidates": 0,
-        "mustAppear": 0,
-        "mayAppear": 0
+        "candidates": 13,
+        "mustAppear": 10,
+        "mayAppear": 3
       },
       "coverage": 1,
       "missing": 0,
       "missReasons": {},
       "missSamples": [],
-      "leaks": 0,
-      "leakReasons": {},
-      "leakSamples": [],
+      "leaks": 4,
+      "leakReasons": {
+        "plan-expansion arm (lexical/attribute widening past the graph)": 3,
+        "lexical-expansion arm (name look-alike)": 1
+      },
+      "leakSamples": [
+        {
+          "connectionId": "fef4e5a7-d35f-408c-9d6f-a7d3f3e03aab",
+          "item": "chicken tail skewer",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        },
+        {
+          "connectionId": "4e4cc0a7-9f02-4691-9e78-773b40d2c1d5",
+          "item": "intestines",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        },
+        {
+          "connectionId": "7d28edd7-6a45-4c92-9602-c65200135897",
+          "item": "phony negroni",
+          "reason": "lexical-expansion arm (name look-alike)"
+        },
+        {
+          "connectionId": "1ff51cbb-fe58-4490-a4e6-3a2e4cce3f20",
+          "item": "grilled intestines",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        }
+      ],
       "judgedRejectsServed": 0,
       "judgedRejectSamples": [],
       "expectEmpty": false,
@@ -335,19 +546,19 @@
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
-        "pages": 1,
+        "pages": 2,
         "exhausted": true,
-        "dishes": 0,
-        "places": 0,
+        "dishes": 16,
+        "places": 1,
         "reportedTotals": {
-          "dishes": 0,
-          "places": 0
+          "dishes": 16,
+          "places": 1
         }
       },
       "truth": {
-        "candidates": 0,
-        "mustAppear": 0,
-        "mayAppear": 0
+        "candidates": 16,
+        "mustAppear": 1,
+        "mayAppear": 15
       },
       "coverage": 1,
       "missing": 0,
@@ -373,27 +584,90 @@
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
-        "pages": 1,
+        "pages": 10,
         "exhausted": true,
-        "dishes": 0,
-        "places": 0,
+        "dishes": 212,
+        "places": 179,
         "reportedTotals": {
-          "dishes": 0,
-          "places": 0
+          "dishes": 212,
+          "places": 179
         }
       },
       "truth": {
-        "candidates": 0,
-        "mustAppear": 0,
-        "mayAppear": 0
+        "candidates": 82,
+        "mustAppear": 1,
+        "mayAppear": 81
       },
       "coverage": 1,
       "missing": 0,
       "missReasons": {},
       "missSamples": [],
-      "leaks": 0,
-      "leakReasons": {},
-      "leakSamples": [],
+      "leaks": 130,
+      "leakReasons": {
+        "UNRELATED-CONCEPT (no arm explains it)": 130
+      },
+      "leakSamples": [
+        {
+          "connectionId": "ff29ddcf-c6f4-4861-a44f-5db0c3206852",
+          "item": "dosa",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "9ca64e54-b320-4b1f-aa6e-7cb470a4e1ec",
+          "item": "uni bowl",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "321f62c9-ad30-41b3-a803-f22fb1c0e53c",
+          "item": "basil steak bowl",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "d98f0517-3b92-4efe-b3c5-1b30ca3d6fb8",
+          "item": "spicy pork platter",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "5e424807-07b0-4224-91b0-07597199faf0",
+          "item": "spring green porridge",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "ad005480-7eff-4d3b-ba1d-004b5f559270",
+          "item": "shawarma platter",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "4e186c7f-a288-4d2e-8987-ae19ee4f836b",
+          "item": "dan bout",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "1eb70146-6d6f-4f0c-8dba-fcc9f6b7d9b6",
+          "item": "tuna poke bowl",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "90d10062-83ad-4708-9108-2150b84c415a",
+          "item": "chicken shawarma platter",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "fb5eb553-693c-4a46-b601-5a6e21e29098",
+          "item": "gimbap",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "0ef05b14-1502-4198-9bc9-5a6b5c3eb015",
+          "item": "dosa",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "68990b81-e155-49b1-8e73-55f156fc0ef2",
+          "item": "yellowtail kimbap",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        }
+      ],
       "judgedRejectsServed": 0,
       "judgedRejectSamples": [],
       "expectEmpty": false,
@@ -410,28 +684,91 @@
       "ringConcepts": 183,
       "dietaryWallActive": false,
       "served": {
-        "expansionFired": true,
-        "pages": 1,
+        "expansionFired": false,
+        "pages": 12,
         "exhausted": true,
-        "dishes": 0,
-        "places": 0,
+        "dishes": 257,
+        "places": 213,
         "reportedTotals": {
-          "dishes": 0,
-          "places": 0
+          "dishes": 257,
+          "places": 213
         }
       },
       "truth": {
-        "candidates": 0,
-        "mustAppear": 0,
-        "mayAppear": 0
+        "candidates": 127,
+        "mustAppear": 3,
+        "mayAppear": 124
       },
       "coverage": 1,
       "missing": 0,
       "missReasons": {},
       "missSamples": [],
-      "leaks": 0,
-      "leakReasons": {},
-      "leakSamples": [],
+      "leaks": 146,
+      "leakReasons": {
+        "UNRELATED-CONCEPT (no arm explains it)": 146
+      },
+      "leakSamples": [
+        {
+          "connectionId": "f0b0af45-1621-4cd2-9dab-5d5a76909665",
+          "item": "drunken noodles",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "d48f523d-6e7f-4c76-b667-205e3657c601",
+          "item": "prime rib",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "01a13b16-8af9-442e-94d1-80bcdbf70c0d",
+          "item": "suadero taco",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "c2cf4aec-182a-49fa-91ff-08f75f750ae1",
+          "item": "boat noodle",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "1c0482dc-6db6-4069-ba83-b959c9b172af",
+          "item": "cheesesteak",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "3968003b-15b6-4466-9a0a-56df89287d0e",
+          "item": "curry puff",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "16004e8d-e733-4ed9-9275-661b5bab9dc9",
+          "item": "porterhouse",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "9b077dfd-dd00-4110-9dc6-89dc1bb32dd9",
+          "item": "ribeye",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "ec641100-4cb5-4436-a8d6-c8cb1d89d6cc",
+          "item": "thai cheesesteak",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "fd5ffd20-0b45-4fa5-acdd-3019760609b5",
+          "item": "niku udon",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "b28f926f-67c0-4fd0-b8db-97f5bb2fab5d",
+          "item": "lort cha",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "17be64a3-5b8f-45b4-8692-9a97009ea33c",
+          "item": "asada tacos",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        }
+      ],
       "judgedRejectsServed": 0,
       "judgedRejectSamples": [],
       "expectEmpty": false,
@@ -448,25 +785,34 @@
       "ringConcepts": 84,
       "dietaryWallActive": false,
       "served": {
-        "expansionFired": true,
-        "pages": 1,
+        "expansionFired": false,
+        "pages": 7,
         "exhausted": true,
-        "dishes": 0,
-        "places": 0,
+        "dishes": 146,
+        "places": 108,
         "reportedTotals": {
-          "dishes": 0,
-          "places": 0
+          "dishes": 146,
+          "places": 108
         }
       },
       "truth": {
-        "candidates": 0,
-        "mustAppear": 0,
-        "mayAppear": 0
+        "candidates": 178,
+        "mustAppear": 147,
+        "mayAppear": 31
       },
-      "coverage": 1,
-      "missing": 0,
-      "missReasons": {},
-      "missSamples": [],
+      "coverage": 0.9932,
+      "missing": 1,
+      "missReasons": {
+        "ring-only membership (tier-0 concept miss; plan expansion did not fire)": 1
+      },
+      "missSamples": [
+        {
+          "connectionId": "b5899c50-1e46-4b6c-8126-acff0a8b9387",
+          "item": "camaron machete",
+          "place": "Machetes “Doña Leova”",
+          "reason": "ring-only membership (tier-0 concept miss; plan expansion did not fire)"
+        }
+      ],
       "leaks": 0,
       "leakReasons": {},
       "leakSamples": [],
@@ -487,24 +833,57 @@
       "dietaryWallActive": false,
       "served": {
         "expansionFired": true,
-        "pages": 1,
+        "pages": 5,
         "exhausted": true,
-        "dishes": 0,
-        "places": 0,
+        "dishes": 83,
+        "places": 11,
         "reportedTotals": {
-          "dishes": 0,
-          "places": 0
+          "dishes": 83,
+          "places": 11
         }
       },
       "truth": {
-        "candidates": 0,
-        "mustAppear": 0,
-        "mayAppear": 0
+        "candidates": 98,
+        "mustAppear": 15,
+        "mayAppear": 83
       },
-      "coverage": 1,
-      "missing": 0,
-      "missReasons": {},
-      "missSamples": [],
+      "coverage": 0.2667,
+      "missing": 11,
+      "missReasons": {
+        "ask-ingredient conjunction (row lacks the decomposed part)": 11
+      },
+      "missSamples": [
+        {
+          "connectionId": "27a0ea4f-f179-485a-b966-4ff52c7ec742",
+          "item": "al pastor tacos",
+          "place": "Paprika ATX",
+          "reason": "ask-ingredient conjunction (row lacks the decomposed part)"
+        },
+        {
+          "connectionId": "3060b0af-2537-4a10-970c-7b71e6d8788e",
+          "item": "al pastor tacos",
+          "place": "AUTENTICOS MICHOACANOS ATX #2",
+          "reason": "ask-ingredient conjunction (row lacks the decomposed part)"
+        },
+        {
+          "connectionId": "370f509f-ed16-49de-a4be-4bdc99d403c3",
+          "item": "al pastor tacos",
+          "place": "Tacos las Amazonas estilo Jalisco #2",
+          "reason": "ask-ingredient conjunction (row lacks the decomposed part)"
+        },
+        {
+          "connectionId": "3ecd08bd-855d-4bcc-a645-8169ccfc81ce",
+          "item": "al pastor tacos",
+          "place": "El Tacorrido",
+          "reason": "ask-ingredient conjunction (row lacks the decomposed part)"
+        },
+        {
+          "connectionId": "4e443b8b-9244-47d7-9d51-9a3cd970900a",
+          "item": "al pastor tacos",
+          "place": "Taco More",
+          "reason": "ask-ingredient conjunction (row lacks the decomposed part)"
+        }
+      ],
       "leaks": 0,
       "leakReasons": {},
       "leakSamples": [],
@@ -524,20 +903,20 @@
       "ringConcepts": 89,
       "dietaryWallActive": false,
       "served": {
-        "expansionFired": true,
-        "pages": 1,
+        "expansionFired": false,
+        "pages": 19,
         "exhausted": true,
-        "dishes": 0,
-        "places": 0,
+        "dishes": 448,
+        "places": 255,
         "reportedTotals": {
-          "dishes": 0,
-          "places": 0
+          "dishes": 448,
+          "places": 255
         }
       },
       "truth": {
-        "candidates": 0,
-        "mustAppear": 0,
-        "mayAppear": 0
+        "candidates": 457,
+        "mustAppear": 442,
+        "mayAppear": 15
       },
       "coverage": 1,
       "missing": 0,
@@ -573,9 +952,9 @@
         }
       },
       "truth": {
-        "candidates": 0,
+        "candidates": 2,
         "mustAppear": 0,
-        "mayAppear": 0
+        "mayAppear": 2
       },
       "coverage": 1,
       "missing": 0,
@@ -601,27 +980,45 @@
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
-        "pages": 1,
+        "pages": 3,
         "exhausted": true,
-        "dishes": 0,
-        "places": 0,
+        "dishes": 26,
+        "places": 15,
         "reportedTotals": {
-          "dishes": 0,
-          "places": 0
+          "dishes": 26,
+          "places": 15
         }
       },
       "truth": {
-        "candidates": 0,
-        "mustAppear": 0,
-        "mayAppear": 0
+        "candidates": 23,
+        "mustAppear": 4,
+        "mayAppear": 19
       },
       "coverage": 1,
       "missing": 0,
       "missReasons": {},
       "missSamples": [],
-      "leaks": 0,
-      "leakReasons": {},
-      "leakSamples": [],
+      "leaks": 3,
+      "leakReasons": {
+        "UNRELATED-CONCEPT (no arm explains it)": 3
+      },
+      "leakSamples": [
+        {
+          "connectionId": "ba60bf40-88b9-4b5e-8ebc-48fdaaec8175",
+          "item": "buffalo chicken slice",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "10a16f84-ee03-4274-a6fe-d68fd3c0c6d0",
+          "item": "buffalo chicken pizza",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "0c0f08ce-1ee7-4e53-96b0-a34b1c4f0361",
+          "item": "buffalo chicken pizza",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        }
+      ],
       "judgedRejectsServed": 0,
       "judgedRejectSamples": [],
       "expectEmpty": false,
@@ -638,30 +1035,38 @@
       "ringConcepts": 27,
       "dietaryWallActive": false,
       "served": {
-        "expansionFired": true,
-        "pages": 1,
+        "expansionFired": false,
+        "pages": 5,
         "exhausted": true,
-        "dishes": 0,
-        "places": 0,
+        "dishes": 77,
+        "places": 73,
         "reportedTotals": {
-          "dishes": 0,
-          "places": 0
+          "dishes": 77,
+          "places": 73
         }
       },
       "truth": {
-        "candidates": 0,
-        "mustAppear": 0,
-        "mayAppear": 0
+        "candidates": 106,
+        "mustAppear": 2,
+        "mayAppear": 104
       },
       "coverage": 1,
       "missing": 0,
       "missReasons": {},
       "missSamples": [],
-      "leaks": 0,
-      "leakReasons": {},
-      "leakSamples": [],
-      "judgedRejectsServed": 0,
-      "judgedRejectSamples": [],
+      "leaks": 1,
+      "leakReasons": {
+        "UNRELATED-CONCEPT (no arm explains it)": 1
+      },
+      "leakSamples": [
+        {
+          "connectionId": "106bd7b1-470f-4d6b-9a43-d7c65f3d7b17",
+          "item": "chefs table experience",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        }
+      ],
+      "judgedRejectsServed": 2,
+      "judgedRejectSamples": ["cocktail omakase", "tea omakase"],
       "expectEmpty": false,
       "honestEmptyHeld": null
     },
@@ -677,27 +1082,65 @@
       "dietaryWallActive": false,
       "served": {
         "expansionFired": true,
-        "pages": 1,
+        "pages": 2,
         "exhausted": true,
-        "dishes": 0,
-        "places": 0,
+        "dishes": 17,
+        "places": 9,
         "reportedTotals": {
-          "dishes": 0,
-          "places": 0
+          "dishes": 17,
+          "places": 9
         }
       },
       "truth": {
-        "candidates": 0,
-        "mustAppear": 0,
-        "mayAppear": 0
+        "candidates": 40,
+        "mustAppear": 2,
+        "mayAppear": 38
       },
       "coverage": 1,
       "missing": 0,
       "missReasons": {},
       "missSamples": [],
-      "leaks": 0,
-      "leakReasons": {},
-      "leakSamples": [],
+      "leaks": 7,
+      "leakReasons": {
+        "lexical-expansion arm (name look-alike)": 7
+      },
+      "leakSamples": [
+        {
+          "connectionId": "a8ec86bd-0f6c-4e5a-9169-14ec07fddc1d",
+          "item": "matcha",
+          "reason": "lexical-expansion arm (name look-alike)"
+        },
+        {
+          "connectionId": "7b3be7c2-7309-42aa-a03a-c93b937ae821",
+          "item": "matcha",
+          "reason": "lexical-expansion arm (name look-alike)"
+        },
+        {
+          "connectionId": "7e548515-90d2-496d-ba24-de471f4c2438",
+          "item": "matcha",
+          "reason": "lexical-expansion arm (name look-alike)"
+        },
+        {
+          "connectionId": "73f0d9ab-4435-44c0-8403-bb905b5842c6",
+          "item": "matcha",
+          "reason": "lexical-expansion arm (name look-alike)"
+        },
+        {
+          "connectionId": "c398aefc-f8ee-4d6f-b816-722e15466fb6",
+          "item": "matcha beignets",
+          "reason": "lexical-expansion arm (name look-alike)"
+        },
+        {
+          "connectionId": "976cf7ed-9862-42c6-a0da-8338583c0201",
+          "item": "matcha",
+          "reason": "lexical-expansion arm (name look-alike)"
+        },
+        {
+          "connectionId": "2be96f35-7955-41dd-9b33-48d8af363ffc",
+          "item": "matcha",
+          "reason": "lexical-expansion arm (name look-alike)"
+        }
+      ],
       "judgedRejectsServed": 0,
       "judgedRejectSamples": [],
       "expectEmpty": false,
@@ -715,19 +1158,19 @@
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
-        "pages": 1,
+        "pages": 5,
         "exhausted": true,
-        "dishes": 0,
-        "places": 0,
+        "dishes": 92,
+        "places": 74,
         "reportedTotals": {
-          "dishes": 0,
-          "places": 0
+          "dishes": 92,
+          "places": 74
         }
       },
       "truth": {
-        "candidates": 0,
-        "mustAppear": 0,
-        "mayAppear": 0
+        "candidates": 102,
+        "mustAppear": 92,
+        "mayAppear": 10
       },
       "coverage": 1,
       "missing": 0,
@@ -752,20 +1195,20 @@
       "ringConcepts": 29,
       "dietaryWallActive": false,
       "served": {
-        "expansionFired": true,
-        "pages": 1,
+        "expansionFired": false,
+        "pages": 3,
         "exhausted": true,
-        "dishes": 0,
-        "places": 0,
+        "dishes": 27,
+        "places": 13,
         "reportedTotals": {
-          "dishes": 0,
-          "places": 0
+          "dishes": 27,
+          "places": 13
         }
       },
       "truth": {
-        "candidates": 0,
-        "mustAppear": 0,
-        "mayAppear": 0
+        "candidates": 27,
+        "mustAppear": 14,
+        "mayAppear": 13
       },
       "coverage": 1,
       "missing": 0,
@@ -791,19 +1234,19 @@
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
-        "pages": 1,
+        "pages": 2,
         "exhausted": true,
-        "dishes": 0,
-        "places": 0,
+        "dishes": 20,
+        "places": 16,
         "reportedTotals": {
-          "dishes": 0,
-          "places": 0
+          "dishes": 20,
+          "places": 16
         }
       },
       "truth": {
-        "candidates": 0,
-        "mustAppear": 0,
-        "mayAppear": 0
+        "candidates": 20,
+        "mustAppear": 18,
+        "mayAppear": 2
       },
       "coverage": 1,
       "missing": 0,
@@ -815,7 +1258,7 @@
       "judgedRejectsServed": 0,
       "judgedRejectSamples": [],
       "expectEmpty": true,
-      "honestEmptyHeld": true
+      "honestEmptyHeld": false
     },
     {
       "query": "burrata",
@@ -829,19 +1272,19 @@
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
-        "pages": 1,
+        "pages": 2,
         "exhausted": true,
-        "dishes": 0,
-        "places": 0,
+        "dishes": 18,
+        "places": 10,
         "reportedTotals": {
-          "dishes": 0,
-          "places": 0
+          "dishes": 18,
+          "places": 10
         }
       },
       "truth": {
-        "candidates": 0,
-        "mustAppear": 0,
-        "mayAppear": 0
+        "candidates": 18,
+        "mustAppear": 13,
+        "mayAppear": 5
       },
       "coverage": 1,
       "missing": 0,
@@ -866,20 +1309,20 @@
       "ringConcepts": 224,
       "dietaryWallActive": false,
       "served": {
-        "expansionFired": true,
-        "pages": 1,
+        "expansionFired": false,
+        "pages": 19,
         "exhausted": true,
-        "dishes": 0,
-        "places": 0,
+        "dishes": 437,
+        "places": 224,
         "reportedTotals": {
-          "dishes": 0,
-          "places": 0
+          "dishes": 437,
+          "places": 224
         }
       },
       "truth": {
-        "candidates": 0,
-        "mustAppear": 0,
-        "mayAppear": 0
+        "candidates": 438,
+        "mustAppear": 37,
+        "mayAppear": 401
       },
       "coverage": 1,
       "missing": 0,
@@ -905,19 +1348,19 @@
       "dietaryWallActive": false,
       "served": {
         "expansionFired": true,
-        "pages": 1,
+        "pages": 2,
         "exhausted": true,
-        "dishes": 0,
-        "places": 0,
+        "dishes": 25,
+        "places": 18,
         "reportedTotals": {
-          "dishes": 0,
-          "places": 0
+          "dishes": 25,
+          "places": 18
         }
       },
       "truth": {
-        "candidates": 0,
-        "mustAppear": 0,
-        "mayAppear": 0
+        "candidates": 25,
+        "mustAppear": 1,
+        "mayAppear": 24
       },
       "coverage": 1,
       "missing": 0,
@@ -943,27 +1386,91 @@
       "dietaryWallActive": false,
       "served": {
         "expansionFired": true,
-        "pages": 1,
+        "pages": 3,
         "exhausted": true,
-        "dishes": 0,
-        "places": 0,
+        "dishes": 48,
+        "places": 47,
         "reportedTotals": {
-          "dishes": 0,
-          "places": 0
+          "dishes": 48,
+          "places": 47
         }
       },
       "truth": {
-        "candidates": 0,
-        "mustAppear": 0,
-        "mayAppear": 0
+        "candidates": 16,
+        "mustAppear": 11,
+        "mayAppear": 5
       },
       "coverage": 1,
       "missing": 0,
       "missReasons": {},
       "missSamples": [],
-      "leaks": 0,
-      "leakReasons": {},
-      "leakSamples": [],
+      "leaks": 36,
+      "leakReasons": {
+        "plan-expansion arm (lexical/attribute widening past the graph)": 35,
+        "lexical-expansion arm (name look-alike)": 1
+      },
+      "leakSamples": [
+        {
+          "connectionId": "e6ea0dd0-c3b4-4e75-a81b-c5c0ed089774",
+          "item": "tres leches cake",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        },
+        {
+          "connectionId": "26bd3a96-1d47-4dfb-8ffb-085141ab4e13",
+          "item": "tres leches cake",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        },
+        {
+          "connectionId": "1ab0d0ad-cbb4-4087-9468-cc385ff3fa2a",
+          "item": "tres leches cake",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        },
+        {
+          "connectionId": "708c9b48-f52e-4afc-96de-c8fab4a422a3",
+          "item": "tres leches cake",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        },
+        {
+          "connectionId": "561b6b8c-67d3-484f-84b8-f159025261ec",
+          "item": "tres leches cake",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        },
+        {
+          "connectionId": "18f671a0-3754-4680-8aab-ecb10e74b21b",
+          "item": "tres leches",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        },
+        {
+          "connectionId": "9b6175ef-c3af-48d0-872a-6329ba7b33d5",
+          "item": "tres leches",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        },
+        {
+          "connectionId": "8016e53a-211d-4c9e-bdee-4f4f15c122d1",
+          "item": "tres leches cake",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        },
+        {
+          "connectionId": "a7b49029-cb0f-44c3-b3cd-aeca7066c8f5",
+          "item": "tres leches cake",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        },
+        {
+          "connectionId": "938d33b7-4ada-4a7e-ba11-f3ff4461445f",
+          "item": "tres leches cake",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        },
+        {
+          "connectionId": "605ea37a-97dc-44d7-9cff-969a9263a5aa",
+          "item": "tres leches cake",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        },
+        {
+          "connectionId": "776b29d3-6b89-42cc-b1c9-2d0ef667203d",
+          "item": "tres leches cake",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        }
+      ],
       "judgedRejectsServed": 0,
       "judgedRejectSamples": [],
       "expectEmpty": false,
@@ -980,19 +1487,19 @@
       "ringConcepts": 4,
       "dietaryWallActive": false,
       "served": {
-        "expansionFired": true,
-        "pages": 1,
+        "expansionFired": false,
+        "pages": 3,
         "exhausted": true,
-        "dishes": 0,
-        "places": 0,
+        "dishes": 32,
+        "places": 26,
         "reportedTotals": {
-          "dishes": 0,
-          "places": 0
+          "dishes": 32,
+          "places": 26
         }
       },
       "truth": {
-        "candidates": 0,
-        "mustAppear": 0,
+        "candidates": 32,
+        "mustAppear": 32,
         "mayAppear": 0
       },
       "coverage": 1,
@@ -1019,19 +1526,19 @@
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
-        "pages": 1,
+        "pages": 4,
         "exhausted": true,
-        "dishes": 0,
-        "places": 0,
+        "dishes": 63,
+        "places": 39,
         "reportedTotals": {
-          "dishes": 0,
-          "places": 0
+          "dishes": 63,
+          "places": 39
         }
       },
       "truth": {
-        "candidates": 0,
-        "mustAppear": 0,
-        "mayAppear": 0
+        "candidates": 64,
+        "mustAppear": 63,
+        "mayAppear": 1
       },
       "coverage": 1,
       "missing": 0,
@@ -1057,19 +1564,19 @@
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
-        "pages": 1,
+        "pages": 22,
         "exhausted": true,
-        "dishes": 0,
-        "places": 0,
+        "dishes": 523,
+        "places": 232,
         "reportedTotals": {
-          "dishes": 0,
-          "places": 0
+          "dishes": 523,
+          "places": 232
         }
       },
       "truth": {
-        "candidates": 0,
-        "mustAppear": 0,
-        "mayAppear": 0
+        "candidates": 524,
+        "mustAppear": 521,
+        "mayAppear": 3
       },
       "coverage": 1,
       "missing": 0,
@@ -1094,14 +1601,14 @@
       "ringConcepts": 0,
       "dietaryWallActive": true,
       "served": {
-        "expansionFired": true,
-        "pages": 1,
+        "expansionFired": false,
+        "pages": 4,
         "exhausted": true,
         "dishes": 0,
-        "places": 0,
+        "places": 55,
         "reportedTotals": {
           "dishes": 0,
-          "places": 0
+          "places": 55
         }
       },
       "truth": {

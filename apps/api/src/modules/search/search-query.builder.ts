@@ -323,7 +323,7 @@ ranked_restaurants AS (
     fr.entity_id AS restaurant_id,
     ${restTierSelect}
     count(*) FILTER (WHERE ${restTierExpr!} = 0) OVER () AS pooled_full_count,
-    fr.name AS restaurant_name,
+    fr.name AS place_name,
     fr.restaurant_metadata,
     fr.price_level,
     fr.price_level_updated_at,
@@ -372,7 +372,7 @@ ranked_restaurants AS (
   SELECT
     fr.entity_id AS restaurant_id,
     ${restTierSelect}
-    fr.name AS restaurant_name,
+    fr.name AS place_name,
     fr.restaurant_metadata,
     fr.price_level,
     fr.price_level_updated_at,
@@ -735,15 +735,15 @@ filtered_connections AS (
     c.connection_id AS score_subject_id,
     f.name AS food_name,
     -- Restaurant data for map pins
-    fr.entity_id AS restaurant_entity_id,
-    fr.name AS restaurant_name,
+    fr.entity_id AS place_entity_id,
+    fr.name AS place_name,
     fr.restaurant_attributes AS place_attributes_arr,
-    prs.display_score AS restaurant_crave_score,
-    prs.percentile_rank AS restaurant_crave_score_exact,
-    prs.rising AS restaurant_rising,
-    prs.score_info AS restaurant_score_info,
-    fr.price_level AS restaurant_price_level,
-    fr.price_level_updated_at AS restaurant_price_level_updated_at,
+    prs.display_score AS place_crave_score,
+    prs.percentile_rank AS place_crave_score_exact,
+    prs.rising AS place_rising,
+    prs.score_info AS place_score_info,
+    fr.price_level AS place_price_level,
+    fr.price_level_updated_at AS place_price_level_updated_at,
     -- Location data for map pins
     sl.location_id,
     sl.google_place_id,

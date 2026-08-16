@@ -294,12 +294,12 @@ SELECT
   e.name,
   e.price_level,
   e.price_level_updated_at,
-  prs.display_score AS restaurant_crave_score,
-  prs.percentile_rank AS restaurant_crave_score_exact,
-  prs.rising AS restaurant_rising,
+  prs.display_score AS place_crave_score,
+  prs.percentile_rank AS place_crave_score_exact,
+  prs.rising AS place_rising,
   CASE WHEN prs.subject_id IS NULL THEN NULL
        ELSE jsonb_build_object('evidenceCopy', 'Based on community evidence.')
-  END AS restaurant_score_info,
+  END AS place_score_info,
   (
     SELECT COUNT(*)::int
     FROM core_restaurant_locations rlc
