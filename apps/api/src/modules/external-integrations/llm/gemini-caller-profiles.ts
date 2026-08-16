@@ -211,6 +211,26 @@ export const GEMINI_CALLER_PROFILES: Record<string, GeminiCallerProfile> = {
     context: 'query',
     maxOutputTokens: MODEL_MAX_OUTPUT,
   },
+  // THE JUDGED VOCABULARY (2026-08-13) — the two lanes that retired the query
+  // path's last hand lists. One word, one language, one boolean; 40 words per
+  // call, and each word is asked exactly once ever, so the whole certified
+  // vocabulary is a few dollars and the steady state is the trickle of newly
+  // banked words.
+  // FLASH, not LITE, for the same reason as the claim judge: the answers that
+  // matter are the cross-locale ones a cheap tier gets wrong — `chua` (sour)
+  // against `chưa` (not yet), `it` in English against `ít` in Vietnamese —
+  // and every verdict is PERSISTED, so a tier regression is bought once and
+  // read forever.
+  'vocabulary.genericness_judge': {
+    model: FLASH,
+    context: 'query',
+    maxOutputTokens: MODEL_MAX_OUTPUT,
+  },
+  'vocabulary.negation_judge': {
+    model: FLASH,
+    context: 'query',
+    maxOutputTokens: MODEL_MAX_OUTPUT,
+  },
   'photos.is_food': {
     // gemini-2.5 tier: no thinking control exists (and no HIGH default to
     // guard against); a yes/no on a thumbnail needs no more model than this.
