@@ -1,5 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression, Interval } from '@nestjs/schedule';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { AdvisoryLockService } from '../../../shared/advisory-lock/advisory-lock.service';
 import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
 import { isSchedulerRuntime } from '../../../shared/utils/process-role';
@@ -47,8 +52,41 @@ const VOCABULARY_MAINTENANCE_LOCK_KEY = 0x766f6362;
 const CACHE_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
 @Injectable()
-export class VocabularyMaintenanceService {
+export class VocabularyMaintenanceService
+  implements OnModuleInit, OnModuleDestroy
+{
   private readonly logger = new Logger(VocabularyMaintenanceService.name);
+
+  /**
+   * THE REFRESH POLL IS A PLAIN setInterval, NOT AN @Interval — and the
+   * difference is the whole finding (foundation red team #1, 2026-08-15).
+   * ScheduleModule.forRoot() is registered only under `isSchedulerRuntime()`
+   * (app.module.ts), so an @Interval here was dead on EXACTLY the process
+   * whose cache goes stale: the api serves the door, the worker buys the
+   * verdicts, and the api's @Interval never ticked. The poll must run on
+   * every long-lived runtime, so it starts itself in onModuleInit, honours
+   * only this rail's own flag (never the scheduler gate), and unref()s so a
+   * script that boots the full graph still exits.
+   */
+  private refreshTimer: NodeJS.Timeout | null = null;
+
+  onModuleInit(): void {
+    if (!isEnvFlagEnabled(process.env.VOCABULARY_MAINTENANCE_ENABLED, true)) {
+      return;
+    }
+    this.refreshTimer = setInterval(
+      () => void this.refreshCache(),
+      CACHE_REFRESH_INTERVAL_MS,
+    );
+    this.refreshTimer.unref();
+  }
+
+  onModuleDestroy(): void {
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer);
+      this.refreshTimer = null;
+    }
+  }
 
   /** Per-process in-flight guard. The advisory lock is the CROSS-process one;
    *  this stops a slow drain from being re-entered by its own next tick. */
@@ -124,9 +162,10 @@ export class VocabularyMaintenanceService {
    * must NOT be single-runner — and it costs one indexed aggregate.
    *
    * It is also not gated on `isSchedulerRuntime`: the api process runs no
-   * crons and is precisely the process whose cache goes stale.
+   * crons and is precisely the process whose cache goes stale. That is why
+   * the tick comes from the explicit setInterval in onModuleInit and NOT
+   * from an @Interval — the schedule registry does not exist on the api.
    */
-  @Interval(CACHE_REFRESH_INTERVAL_MS)
   async refreshCache(): Promise<void> {
     if (this.refreshing) return;
     this.refreshing = true;
