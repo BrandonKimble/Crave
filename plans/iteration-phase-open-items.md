@@ -644,9 +644,44 @@ query path. MEASURED 2026-08-13 (read-only agent, local corpus):
 - BONUS FINDING: junk und/legacy recall surfaces (good/great/place/best…)
   are live search landmines of the Best-ghost class → add to the
   reground/dedupe docket + restaurant-name hearing lane's population.
-DESIGN RATIFICATION PENDING (owner): judged-vocabulary shape above;
-build slot recommendation = WITH the language wave (the wave banks the
-tokens the judge certifies; one pass, one spend event).
+BUILT AND CERTIFIED 2026-08-15 (9f75a7542, 280821f5f, 9da61551e,
+0acf32f77, a534ee9d0, 56e9a1b11). Two lanes in the hearing ledger,
+keyed (word, language, accents intact): 'word-genericness' (content or
+glue) and 'word-negation' (does it deny the NEXT word). LANGUAGE_PACKS
+negation cues DELETED — the analyzer now has no opinion about negation.
+Certified: 32,340 words x 2 lanes from every banked surface in its own
+locale AND 'und', measured $3.11 + $3.14 (~96µ/hearing, vs the brief's
+$126µ projection; the divisor is 40 words/call, not 10).
+
+THE ONE PART THAT COULD NOT DIE, with the evidence:
+ENGLISH_GENERIC_VOCABULARY survives, renamed ASK_FRAME_TOKENS +
+BARE_CATEGORY_TOKENS. Every token in it CARRIES A CONCEPT under the
+ratified question — best is a quality, restaurant is a kind of place —
+and the judge said so on the real corpus (und|best, en|restaurant =
+carries-concept). The measurement had already found best/good/great/
+favorite/popular/place BANKED AS LIVE SURFACES (the Best-ghost class).
+It was never a genericness claim; it is a claim about the SHAPE OF AN
+ASK, which is positional. The brief anticipated this for rankLocation
+only; it is true of the object tokens too. HONEST RESIDUE: the ideal
+is a THIRD judged class — "a particular food, or the category word for
+a class of them?" — unratified, not invented.
+
+TWO PROMPT DEFECTS CAUGHT BY READING VERDICTS, not by a gate:
+(a) genericness v1 phrased not-a-word-of-this-language as a double
+negative; the judge inverted it and ruled 'feteer'(es) grammar, which
+would have deleted a borrowed dish name from an ask in the language
+that borrowed it. v2 states it as its own rule.
+(b) negation v2 ruled 72 words negators including boneless/cheeseless/
+meatless/unsweetened/nonalcoholic/free/zero/hold/86 — "boneless wings"
+would have embedded as "wings". v3: the absence must be of something
+ELSE, and the false-YES cost (a deleted ask) is strictly worse than the
+false-NO cost (one word of context), reversing v2's stated asymmetry.
+
+NEW CAPABILITY the lists never had: zh is covered. `segmentWords` is
+exported from the analyzer so the door cuts per-character inside an
+unspaced run — the deleted cue-list comment correctly predicted that a
+whitespace-splitting zh pack "would either no-op or delete a whole
+run", and that is now fixed rather than documented.
 
 ## ARCH VERDICT (2026-08-12 red team; the owner's patches-vs-foundations question)
 
