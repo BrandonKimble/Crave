@@ -15,6 +15,7 @@ import {
   RESTAURANT_NAME_LANE,
   restaurantNameLane,
 } from './restaurant-name-lane';
+import { writeRestaurantEvents } from '../reddit-collector/extraction-scope.service';
 
 /**
  * THE RESTAURANT-NAME COURT (C4a) — proven against a real database.
@@ -461,17 +462,19 @@ describe('the restaurant-name hearing lane (C4a) — live database', () => {
         select: { documentId: true },
       });
       madeDocs.push(doc.documentId);
-      await prisma.$executeRawUnsafe(
-        `INSERT INTO core_restaurant_events
-           (extraction_run_id, input_id, source_document_id, restaurant_id,
-            mention_key, evidence_type, mentioned_at)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, 'general_praise', now())`,
-        runId,
-        input.inputId,
-        doc.documentId,
-        restaurantId,
-        `zzq-card:${randomUUID().slice(0, 8)}`,
-      );
+      // Through the ledger's one write door — never a direct INSERT
+      // (ledger.the-evidence-ledger-has-one-write-door).
+      await writeRestaurantEvents(prisma, [
+        {
+          extractionRunId: runId,
+          inputId: input.inputId,
+          sourceDocumentId: doc.documentId,
+          restaurantId,
+          mentionKey: `zzq-card:${randomUUID().slice(0, 8)}`,
+          evidenceType: 'general_praise',
+          mentionedAt: new Date(),
+        },
+      ]);
     };
 
     afterAll(async () => {
