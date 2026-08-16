@@ -104,6 +104,28 @@ future and lands with the ladder session.
 - O3. T5 naming: full rename go/no-go + word pair.
 - O4. T4 doctrine ratification (ontology-court merge, minimal-native-form).
 
+## RULINGS LANDED 2026-08-16 (owner)
+- R1. UI panes: **"Where to Go" / "What to Get"** RATIFIED.
+- R2. Shortcut buttons OVERHAUL: collapse Best Restaurants + Best Dishes
+  (duplicates — both = unfiltered browse) into ONE agnostic button; fill
+  the row with venue-category buttons (Google-style) once the venue axis
+  lands. Naming + "best"-prefix question answered in session (rec: drop
+  "best", plain nouns, first button "Everything").
+- R3. SECTIONED RELEVANCY: owner re-affirms it is RULED OUT PERMANENTLY —
+  he believed it deleted; verified it still exists inert
+  (resolveSectionedRanking + SEARCH_RANKING_MODE + 11 match_tier sites,
+  off by default). DELETE the dead machinery (queued; compatible with A1 —
+  the ladder governs ADMISSION, ranking stays pure Crave-Score).
+- R4. Consumable-kind ownership: moves to ⭐04's knowledge-attribute
+  program as its first CLOSED-ENUM exhaustive pass (writes verdict
+  ledger); NOT a word-court facet (word court judges words; this judges
+  entities — one entity-knowledge lane, not two).
+- R5. X-food division: primary fix = extraction prompt (⭐04); secondary =
+  attribute-ontology merge doctrine (minimal-native-form + alias kept —
+  verified mechanically sound: merges fold name+aliases through the one
+  projection writer). Third layer verified NOT needed (search matches
+  through surfaces).
+
 ## SEQUENCING
 Types-promotion backfill + invariant: post-v13-activation window (rides
 with reground/dedupe). Consumable facet + X-food ontology drain: with the
