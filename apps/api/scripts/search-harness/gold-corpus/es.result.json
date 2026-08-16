@@ -1,18 +1,20 @@
 {
-  "ranAt": "2026-08-13T05:47:37.234Z",
+  "ranAt": "2026-08-16T04:55:23.813Z",
   "lang": "es",
   "corpusVersion": 1,
   "scoreboard": {
-    "overall": 88.66666666666667,
-    "top1SingleConcept": 91,
+    "overall": 88,
+    "top1SingleConcept": 90,
     "negationNonInversion": 100,
     "constraintPreservation": 91.66666666666667,
     "homographMisGroundings": [
+      "pan→pan[gazetteer-exact]",
       "тако→tako[linked]",
       "chile→chili[gazetteer-exact]",
       "ave→averna amaro[linked]"
     ],
     "homographMisGroundingsExact": [
+      "pan→pan[gazetteer-exact]",
       "chile→chili[gazetteer-exact]"
     ]
   },
@@ -45,7 +47,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Source-faithful: the Spanish word IS the corpus name. Gazetteer exact, no dense needed."
@@ -67,6 +70,15 @@
           "name": "pan dulce",
           "tier": "gazetteer-exact",
           "foldedName": "pan dulce"
+        },
+        {
+          "entityId": "984263e0-402b-434a-9320-d93b23bb0e0a",
+          "bucket": "food",
+          "type": "food",
+          "span": "pan",
+          "name": "pan",
+          "tier": "linked",
+          "foldedName": "pan"
         }
       ],
       "unresolved": [],
@@ -78,7 +90,8 @@
           "confidence": 0.125,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Source-faithful compound noun. Must NOT decompose to 'pan'→bread — the 2-gram must beat the 1-gram."
@@ -111,7 +124,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Source-faithful."
@@ -144,7 +158,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Source-faithful."
@@ -177,7 +192,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Source-faithful."
@@ -210,7 +226,8 @@
           "confidence": 0.1111111111111111,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Source-faithful."
@@ -243,7 +260,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Source-faithful (plural is the corpus form)."
@@ -276,7 +294,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Source-faithful."
@@ -309,7 +328,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Source-faithful."
@@ -342,7 +362,8 @@
           "confidence": 0.16666666666666666,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Source-faithful."
@@ -375,7 +396,8 @@
           "confidence": 0.16666666666666666,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Source-faithful."
@@ -417,7 +439,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Source-faithful. R5-5 note: es-MX torta ≠ es-ES/es-AR torta (cake) — a regional-locale row, not a bug."
@@ -450,7 +473,8 @@
           "confidence": 0.1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Source-faithful."
@@ -483,7 +507,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Source-faithful."
@@ -516,7 +541,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Source-faithful."
@@ -549,7 +575,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Source-faithful."
@@ -582,7 +609,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Source-faithful."
@@ -615,7 +643,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Source-faithful."
@@ -648,7 +677,8 @@
           "confidence": 0.1111111111111111,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Source-faithful."
@@ -681,7 +711,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Source-faithful 2-gram."
@@ -714,7 +745,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE. No 'pulpo' row exists — only the M4 dense tier can reach octopus. The plan's headline dense result."
@@ -756,7 +788,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE. No 'camarones' row (only 'camarones enchilados' compound)."
@@ -789,7 +822,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE. R5-5: es-AR/es-CL say 'palta' — a regional alias row, not a fix here."
@@ -822,7 +856,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE."
@@ -855,7 +890,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE."
@@ -897,7 +933,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE."
@@ -930,7 +967,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE."
@@ -963,7 +1001,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE."
@@ -996,7 +1035,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE to a MULTI-WORD English concept — dense must bridge across token count."
@@ -1029,7 +1069,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE (ingredient-typed target)."
@@ -1062,7 +1103,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE + accent (N1 fold must not break the residue text)."
@@ -1095,7 +1137,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE."
@@ -1137,7 +1180,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE."
@@ -1170,7 +1214,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE."
@@ -1221,7 +1266,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "AUTHORING CORRECTION (gate run 1, surfaced by the LLM spot check, which scored this 100 against a mechanical FAIL): 'fideo' is a source-faithful corpus row and the singularish() lemma reaches it from 'fideos'. Grounding a Spanish word to its own row beats bridging to 'noodles' — the first draft demanded the bridge and scored a success as red."
@@ -1263,7 +1309,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE. Target exists as food AND restaurant_attribute — either is correct."
@@ -1296,7 +1343,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE (category noun — dense is weakest on abstractions; park is tolerable, a WRONG dish is not)."
@@ -1329,7 +1377,8 @@
           "confidence": 0.25,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE + accent. Also a near-homograph with the venue sense ('a café')."
@@ -1371,7 +1420,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "A9 TWIN: 'pollo' AND 'chicken' both exist as food rows — evidence mass is split across an unmerged cross-language twin. Grounding 'pollo' is correct TODAY; the twin belongs in the judge-merge queue. | RE-AUTHORED 2026-08-07: pollo merged into chicken."
@@ -1404,7 +1454,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "TRANSLATION BRIDGE, SINGULAR + accent — the Spanish-morphology half of sn-22."
@@ -1416,9 +1467,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 0.5,
-      "reasons": [
-        "NOT GROUNDED: tacos"
-      ],
+      "reasons": ["NOT GROUNDED: tacos"],
       "grounded": [
         {
           "entityId": "e01829f2-0a43-4ee9-ad75-857284eda918",
@@ -1466,7 +1515,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "The plan's named failure. 'baratos' is a PRICE DIRECTIVE, not an entity — M4b's directive vocabulary, deliberately not asserted as a concept."
@@ -1508,9 +1558,7 @@
           "foldedName": "pizza"
         }
       ],
-      "unresolved": [
-        "cerca"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -1519,7 +1567,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "TRAP: 'sin' is a negation cue, but 'sin gluten' is a SEEDED 2-gram alias for gluten free. The n-gram must win over the cue — negating it would be a false-positive fail-closed. 'cerca' is a proximity directive."
@@ -1552,9 +1601,7 @@
           "foldedName": "mexican"
         }
       ],
-      "unresolved": [
-        "barata"
-      ],
+      "unresolved": ["barata"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -1563,7 +1610,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Seeded cuisine label 'mexicana'. 'comida'/'barata' are carrier + directive."
@@ -1605,7 +1653,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "MORPHOLOGY: seeded forms are 'italiana' (fem) and 'romántico'. Masculine 'italiano' is the plan's named gender/number gap."
@@ -1617,9 +1666,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 0.5,
-      "reasons": [
-        "NOT GROUNDED: tacos"
-      ],
+      "reasons": ["NOT GROUNDED: tacos"],
       "grounded": [
         {
           "entityId": "d5deecd4-a9b8-4875-8dba-495bb50f8306",
@@ -1658,7 +1705,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "MORPHOLOGY: seeded 'vegano', queried plural 'veganos'."
@@ -1709,7 +1757,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "MORPHOLOGY: seeded 'japonesa' (fem), queried masculine + accent."
@@ -1751,7 +1800,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "MORPHOLOGY: seeded 'coreana'."
@@ -1763,9 +1813,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 0.5,
-      "reasons": [
-        "NOT GROUNDED: vegetarian"
-      ],
+      "reasons": ["NOT GROUNDED: vegetarian"],
       "grounded": [
         {
           "entityId": "f8fa5dd1-8043-469d-bbb5-6af5ef8e819c",
@@ -1795,7 +1843,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "THE PLAN'S RECORDED MISS (M4b thesis test): feminine 'vegetariana' was not seeded. Kept as a standing morphology probe."
@@ -1855,7 +1904,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "'picante' is the P3 cross-language CONCEPT normalization case (picante→spicy) — spine seeding territory, not dish."
@@ -1906,7 +1956,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Bridge noun + seeded cuisine, masculine form."
@@ -1957,7 +2008,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Bridge noun + seeded cuisine ('peruana'), masculine plural."
@@ -2008,7 +2060,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Source-faithful noun + an identical-in-both-languages dietary spine word. | RE-AUTHORED 2026-08-07: pollo merged into chicken (corpus merge, redirect written)."
@@ -2059,7 +2112,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Both words are locale-invariant — the control for this stratum."
@@ -2110,7 +2164,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Seeded cuisine + UNSEEDED tail attribute 'para llevar'→takeout. The M3 label-as-match-surface case."
@@ -2161,7 +2216,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Spanish head-final order over an English head-initial corpus name. The compound 'birria tacos' exists; grounding [tacos]+[birria] separately is a partial, not a pass."
@@ -2212,7 +2268,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "AUTHORING CORRECTION (gate run 1): the dense tier resolved the WHOLE span to the single concept 'strawberry ice cream', which is strictly better than the two-noun parse the first draft demanded. Two bridge nouns in one query, answered as one concept."
@@ -2263,7 +2320,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "'chicken soup' exists as one concept. 'sopa' has no row; 'pollo' does."
@@ -2303,24 +2361,6 @@
           "name": "pollo",
           "tier": "gazetteer-exact",
           "foldedName": "pollo"
-        },
-        {
-          "entityId": "a39e1db2-ce8f-49d2-8cc5-4c4c18c62985",
-          "bucket": "food",
-          "type": "food",
-          "span": "con",
-          "name": "concha",
-          "tier": "linked",
-          "foldedName": "concha"
-        },
-        {
-          "entityId": "cfb7e980-a6a3-44a2-b356-57cc92b0cdc7",
-          "bucket": "food",
-          "type": "food",
-          "span": "con",
-          "name": "consome de borrego",
-          "tier": "linked",
-          "foldedName": "consome de borrego"
         }
       ],
       "unresolved": [],
@@ -2332,7 +2372,8 @@
           "confidence": 0.15384615384615385,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "A real dish name that is ALSO decomposable — no 'arroz con pollo' row exists on the mirror, so the parse is the two nouns. | RE-AUTHORED 2026-08-07: pollo merged into chicken (corpus merge, redirect written)."
@@ -2383,7 +2424,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Seeded 'napolitana' — exact form, should pass."
@@ -2425,9 +2467,7 @@
           "foldedName": "not too busy"
         }
       ],
-      "unresolved": [
-        "restaurante"
-      ],
+      "unresolved": ["restaurante"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -2436,7 +2476,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Two seeded spine words, exact forms."
@@ -2487,7 +2528,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Seeded 'india' exact + feminine 'vegetariana' (unseeded)."
@@ -2529,7 +2571,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Loanword + seeded accented spine word (fold symmetry on 'romántico')."
@@ -2551,24 +2594,6 @@
           "name": "coffee",
           "tier": "gazetteer-exact",
           "foldedName": "coffee"
-        },
-        {
-          "entityId": "a39e1db2-ce8f-49d2-8cc5-4c4c18c62985",
-          "bucket": "food",
-          "type": "food",
-          "span": "con",
-          "name": "concha",
-          "tier": "linked",
-          "foldedName": "concha"
-        },
-        {
-          "entityId": "cfb7e980-a6a3-44a2-b356-57cc92b0cdc7",
-          "bucket": "food",
-          "type": "food",
-          "span": "con",
-          "name": "consome de borrego",
-          "tier": "linked",
-          "foldedName": "consome de borrego"
         },
         {
           "entityId": "1c629813-ffc1-4860-bf00-5ca06dccc4fb",
@@ -2607,7 +2632,8 @@
           "confidence": 0.21428571428571427,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Bridge noun + UNSEEDED tail attribute 'terraza'→outdoor seating."
@@ -2631,9 +2657,7 @@
           "foldedName": "korean"
         }
       ],
-      "unresolved": [
-        "barata"
-      ],
+      "unresolved": ["barata"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -2642,7 +2666,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Seeded 'coreana' exact form; 'barata' is a directive."
@@ -2693,7 +2718,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "'grilled fish' exists as one concept; the Spanish is a 4-token postmodifier — the hardest decomposition shape in the set."
@@ -2705,9 +2731,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 0.5,
-      "reasons": [
-        "NOT GROUNDED: tacos"
-      ],
+      "reasons": ["NOT GROUNDED: tacos"],
       "grounded": [
         {
           "entityId": "18f5fa4d-51d0-4a50-a998-966bd12f76b9",
@@ -2735,15 +2759,6 @@
           "name": "shrimp",
           "tier": "gazetteer-exact",
           "foldedName": "shrimp"
-        },
-        {
-          "entityId": "444b28e9-ab71-4ffc-be44-c37ef4f73a99",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
-          "span": "de",
-          "name": "serves dessert",
-          "tier": "linked",
-          "foldedName": "serves dessert"
         }
       ],
       "unresolved": [],
@@ -2755,7 +2770,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "No 'shrimp tacos' row on the mirror (verified) — the two-concept parse IS the right answer here."
@@ -2797,7 +2813,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Bridge category noun + seeded spine word, exact form."
@@ -2830,7 +2847,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Seeded 'mediterránea' exact — accented, exercises fold symmetry on the seeded alias."
@@ -2842,9 +2860,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 0.5,
-      "reasons": [
-        "NOT GROUNDED: greek"
-      ],
+      "reasons": ["NOT GROUNDED: greek"],
       "grounded": [
         {
           "entityId": "1c629813-ffc1-4860-bf00-5ca06dccc4fb",
@@ -2874,9 +2890,7 @@
           "foldedName": "outdoor bar"
         }
       ],
-      "unresolved": [
-        "restaurante griego con"
-      ],
+      "unresolved": ["restaurante griego"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -2885,7 +2899,8 @@
           "confidence": 0.1111111111111111,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "MORPHOLOGY ('griega' seeded) + UNSEEDED tail attribute. Expected double miss; kept because it is the shape real users type."
@@ -2899,24 +2914,6 @@
       "preservation": 1,
       "reasons": [],
       "grounded": [
-        {
-          "entityId": "282c8c61-06b5-4f31-94a4-6fd1d32353df",
-          "bucket": "food",
-          "type": "food",
-          "span": "comida",
-          "name": "upside down",
-          "tier": "gazetteer-exact",
-          "foldedName": "upside down"
-        },
-        {
-          "entityId": "6c3c92e9-9872-4a8e-befa-76bd5d657fc4",
-          "bucket": "food",
-          "type": "food",
-          "span": "comida",
-          "name": "lunch",
-          "tier": "gazetteer-exact",
-          "foldedName": "lunch"
-        },
         {
           "entityId": "a1fafbb5-06bc-474d-9c47-65f7a7bd1716",
           "bucket": "foodAttributes",
@@ -2945,7 +2942,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Feminine 'vegana' (seeded form is 'vegano') + unseeded tail attribute."
@@ -2976,15 +2974,6 @@
           "name": "pork",
           "tier": "gazetteer-exact",
           "foldedName": "pork"
-        },
-        {
-          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
-          "bucket": "food",
-          "type": "food",
-          "span": "sin",
-          "name": "sincronizada",
-          "tier": "linked",
-          "foldedName": "sincronizada"
         }
       ],
       "unresolved": [],
@@ -2996,7 +2985,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "KNOWN-RED SEED. Pre-R5-3 this returned VEGAN ramen — silent inversion. Non-inversion is the hard clause. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
@@ -3008,9 +2998,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "head not grounded: missing tacos"
-      ],
+      "reasons": ["head not grounded: missing tacos"],
       "grounded": [
         {
           "entityId": "18f5fa4d-51d0-4a50-a998-966bd12f76b9",
@@ -3040,7 +3028,8 @@
           "confidence": 0.15384615384615385,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "The negated span IS a corpus entity ('queso' ingredient) — the fail-closed path must drop a groundable span, not just unknown residue. | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
@@ -3100,7 +3089,8 @@
           "confidence": 0.15384615384615385,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Same cue over a different head. | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
@@ -3140,15 +3130,6 @@
           "name": "rice",
           "tier": "gazetteer-exact",
           "foldedName": "rice"
-        },
-        {
-          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
-          "bucket": "food",
-          "type": "food",
-          "span": "sin",
-          "name": "sincronizada",
-          "tier": "linked",
-          "foldedName": "sincronizada"
         }
       ],
       "unresolved": [],
@@ -3160,7 +3141,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Negated span is a BRIDGE word — it must not reach the dense tier (dense is precisely what inverts). | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
@@ -3200,15 +3182,6 @@
           "name": "pollo",
           "tier": "gazetteer-exact",
           "foldedName": "pollo"
-        },
-        {
-          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
-          "bucket": "food",
-          "type": "food",
-          "span": "sin",
-          "name": "sincronizada",
-          "tier": "linked",
-          "foldedName": "sincronizada"
         }
       ],
       "unresolved": [],
@@ -3220,7 +3193,8 @@
           "confidence": 0.15384615384615385,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Negated span is a source-faithful corpus row. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
@@ -3269,15 +3243,6 @@
           "name": "meat",
           "tier": "gazetteer-exact",
           "foldedName": "meat"
-        },
-        {
-          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
-          "bucket": "food",
-          "type": "food",
-          "span": "sin",
-          "name": "sincronizada",
-          "tier": "linked",
-          "foldedName": "sincronizada"
         }
       ],
       "unresolved": [],
@@ -3289,7 +3254,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "The classic inversion bait: 'no meat' semantically equals vegetarian, and a bi-encoder WILL say so. It must not. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
@@ -3320,15 +3286,6 @@
           "name": "avocado",
           "tier": "gazetteer-exact",
           "foldedName": "avocado"
-        },
-        {
-          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
-          "bucket": "food",
-          "type": "food",
-          "span": "sin",
-          "name": "sincronizada",
-          "tier": "linked",
-          "foldedName": "sincronizada"
         }
       ],
       "unresolved": [],
@@ -3340,7 +3297,8 @@
           "confidence": 0.10526315789473684,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Head is itself a bridge word — parking the head is acceptable; INVERTING the constraint is not. Concepts left empty deliberately. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
@@ -3352,9 +3310,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "head not grounded: missing tacos"
-      ],
+      "reasons": ["head not grounded: missing tacos"],
       "grounded": [
         {
           "entityId": "18f5fa4d-51d0-4a50-a998-966bd12f76b9",
@@ -3364,15 +3320,6 @@
           "name": "taco",
           "tier": "gazetteer-exact",
           "foldedName": "taco"
-        },
-        {
-          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
-          "bucket": "food",
-          "type": "food",
-          "span": "sin",
-          "name": "sincronizada",
-          "tier": "linked",
-          "foldedName": "sincronizada"
         },
         {
           "entityId": "67529bfb-394a-4bab-817a-f8b4ca7eb2cc",
@@ -3393,7 +3340,8 @@
           "confidence": 0.13333333333333333,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Negated span is unknown residue in the English corpus — still a recorded constraint (the excludedSpan carries empty entityIds). | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
@@ -3433,15 +3381,6 @@
           "name": "frijoles",
           "tier": "gazetteer-exact",
           "foldedName": "frijoles"
-        },
-        {
-          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
-          "bucket": "food",
-          "type": "food",
-          "span": "sin",
-          "name": "sincronizada",
-          "tier": "linked",
-          "foldedName": "sincronizada"
         }
       ],
       "unresolved": [],
@@ -3453,7 +3392,8 @@
           "confidence": 0.1111111111111111,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Bridge word behind a cue. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
@@ -3477,15 +3417,6 @@
           "foldedName": "quesadilla"
         },
         {
-          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
-          "bucket": "food",
-          "type": "food",
-          "span": "sin",
-          "name": "sincronizada",
-          "tier": "linked",
-          "foldedName": "sincronizada"
-        },
-        {
           "entityId": "5cc72741-a47d-4c7f-9146-684f7eed3d4d",
           "bucket": "ingredients",
           "type": "ingredient",
@@ -3504,7 +3435,8 @@
           "confidence": 0.16666666666666666,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "'crema' IS a corpus ingredient — groundable span behind a cue. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
@@ -3537,15 +3469,6 @@
           "foldedName": "pollo"
         },
         {
-          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
-          "bucket": "food",
-          "type": "food",
-          "span": "sin",
-          "name": "sincronizada",
-          "tier": "linked",
-          "foldedName": "sincronizada"
-        },
-        {
           "entityId": "17a3a5b1-9a4f-4ab5-928f-3dd1f1945176",
           "bucket": "ingredients",
           "type": "ingredient",
@@ -3564,7 +3487,8 @@
           "confidence": 0.16666666666666666,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "'skin' exists as an ingredient row — a bridge target that must stay unreached. | RE-AUTHORED 2026-08-07: pollo merged into chicken. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
@@ -3597,15 +3521,6 @@
           "foldedName": "pasta"
         },
         {
-          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
-          "bucket": "food",
-          "type": "food",
-          "span": "sin",
-          "name": "sincronizada",
-          "tier": "linked",
-          "foldedName": "sincronizada"
-        },
-        {
           "entityId": "67529bfb-394a-4bab-817a-f8b4ca7eb2cc",
           "bucket": "ingredients",
           "type": "ingredient",
@@ -3624,7 +3539,8 @@
           "confidence": 0.13333333333333333,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Locale-invariant head + negated residue. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
@@ -3636,9 +3552,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "head not grounded: missing tacos"
-      ],
+      "reasons": ["head not grounded: missing tacos"],
       "grounded": [
         {
           "entityId": "18f5fa4d-51d0-4a50-a998-966bd12f76b9",
@@ -3657,15 +3571,6 @@
           "name": "meat",
           "tier": "gazetteer-exact",
           "foldedName": "meat"
-        },
-        {
-          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
-          "bucket": "food",
-          "type": "food",
-          "span": "sin",
-          "name": "sincronizada",
-          "tier": "linked",
-          "foldedName": "sincronizada"
         }
       ],
       "unresolved": [],
@@ -3677,7 +3582,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Second inversion-bait shape, different head. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
@@ -3717,15 +3623,6 @@
           "name": "egg",
           "tier": "gazetteer-exact",
           "foldedName": "egg"
-        },
-        {
-          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
-          "bucket": "food",
-          "type": "food",
-          "span": "sin",
-          "name": "sincronizada",
-          "tier": "linked",
-          "foldedName": "sincronizada"
         }
       ],
       "unresolved": [],
@@ -3737,7 +3634,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Bridge word behind a cue. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
@@ -3788,9 +3686,7 @@
           "foldedName": "vegetarian"
         }
       ],
-      "unresolved": [
-        "no"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -3799,7 +3695,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Cue 'no' (both an es and an en pack cue). Negating a SPINE constraint — the case where a wrong answer is most visible. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
@@ -3841,42 +3738,6 @@
           "foldedName": "sushi prepared fish"
         },
         {
-          "entityId": "6fab7563-9f1b-4a08-b753-932f348a4899",
-          "bucket": "food",
-          "type": "food",
-          "span": "que",
-          "name": "quesito",
-          "tier": "linked",
-          "foldedName": "quesito"
-        },
-        {
-          "entityId": "0578fbbd-5d01-442d-bd43-740ae61481b3",
-          "bucket": "food",
-          "type": "food",
-          "span": "que",
-          "name": "que divino taco",
-          "tier": "linked",
-          "foldedName": "que divino taco"
-        },
-        {
-          "entityId": "77704ddc-d9c2-4197-853a-6b10e14d89dd",
-          "bucket": "food",
-          "type": "food",
-          "span": "que",
-          "name": "quesadilla especial",
-          "tier": "linked",
-          "foldedName": "quesadilla especial"
-        },
-        {
-          "entityId": "da6035cd-687a-4baa-9ed2-34705a82848b",
-          "bucket": "food",
-          "type": "food",
-          "span": "que",
-          "name": "quesadilla",
-          "tier": "linked",
-          "foldedName": "quesadilla"
-        },
-        {
           "entityId": "08630647-825b-439d-8a47-461cf61a7f3d",
           "bucket": "restaurantAttributes",
           "type": "restaurant_attribute",
@@ -3895,7 +3756,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "KNOWN-RED SHAPE: the cue is NOT adjacent to the negated word (negatedSpan only looks one token left), and 'caro' is a price directive, not a concept. Asserts only NON-INVERSION — excluded is deliberately empty so this entry cannot manufacture a false green. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
@@ -3909,33 +3771,6 @@
       "preservation": 1,
       "reasons": [],
       "grounded": [
-        {
-          "entityId": "282c8c61-06b5-4f31-94a4-6fd1d32353df",
-          "bucket": "food",
-          "type": "food",
-          "span": "comida",
-          "name": "upside down",
-          "tier": "gazetteer-exact",
-          "foldedName": "upside down"
-        },
-        {
-          "entityId": "6c3c92e9-9872-4a8e-befa-76bd5d657fc4",
-          "bucket": "food",
-          "type": "food",
-          "span": "comida",
-          "name": "lunch",
-          "tier": "gazetteer-exact",
-          "foldedName": "lunch"
-        },
-        {
-          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
-          "bucket": "food",
-          "type": "food",
-          "span": "sin",
-          "name": "sincronizada",
-          "tier": "linked",
-          "foldedName": "sincronizada"
-        },
         {
           "entityId": "ca15d0cc-13d5-4e38-8d2b-95dc4dd28808",
           "bucket": "foodAttributes",
@@ -3964,7 +3799,8 @@
           "confidence": 0.125,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Negating the P3 normalized concept. 'comida' is a carrier with no expected grounding. | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
@@ -4015,7 +3851,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Accent inside the negated span — the excludedSpan text is asserted FOLDED (azúcar→azucar). | RE-AUTHORED 2026-08-07 (negation doctrine): app deliberately does NOT support negation; sin-X may ground positively (sin queso->cheeseless). Assert non-inversion only. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
@@ -4046,15 +3883,6 @@
           "name": "milk",
           "tier": "gazetteer-exact",
           "foldedName": "milk"
-        },
-        {
-          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
-          "bucket": "food",
-          "type": "food",
-          "span": "sin",
-          "name": "sincronizada",
-          "tier": "linked",
-          "foldedName": "sincronizada"
         }
       ],
       "unresolved": [],
@@ -4066,7 +3894,8 @@
           "confidence": 0.16666666666666666,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Bridge head + bridge negated span. park=true: the head may legitimately not reach 'coffee'; the constraint record is the hard part. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
@@ -4088,15 +3917,6 @@
           "name": "birria",
           "tier": "gazetteer-exact",
           "foldedName": "birria"
-        },
-        {
-          "entityId": "88c10136-e92a-45a5-8e32-a761249ec0e7",
-          "bucket": "food",
-          "type": "food",
-          "span": "sin",
-          "name": "sincronizada",
-          "tier": "linked",
-          "foldedName": "sincronizada"
         },
         {
           "entityId": "8965509f-4c09-4343-895a-85fecc85f969",
@@ -4126,7 +3946,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Source-faithful head + a negated span that is an EXACT English-corpus ingredient name — the cleanest fail-closed test in the set. | RE-AUTHORED 2026-08-08 (negation v2, plan §12b): LITERAL IGNORE — the negated word grounds POSITIVELY like any mentioned ingredient; only dense INVERSION (vegan/vegetarian for a sin-X query) stays forbidden. excluded assertions deleted with the machinery."
@@ -4159,7 +3980,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "M3 TAIL-LABEL CASE. Not in the 73-word seeded spine; correct behavior needs entity_labels read as a match surface."
@@ -4210,7 +4032,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "M3 TAIL-LABEL CASE. Unseeded."
@@ -4243,7 +4066,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "SEEDED spine word, accented — should pass; also proves fold symmetry on seeded alias rows."
@@ -4276,7 +4100,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "M3 TAIL-LABEL CASE, and a LEXICAL GAP: the English concept is 'allows dogs', not 'pet friendly' — a literal label draft would miss it. The plan's own example."
@@ -4318,7 +4143,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "SEEDED spine word."
@@ -4351,7 +4177,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "SEEDED 3-gram spine phrase — the longest seeded form."
@@ -4393,7 +4220,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "SEEDED, and the cue/alias collision case in isolation: 'sin' must not negate the phrase it is part of."
@@ -4426,7 +4254,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "SEEDED. Note 'vegan' exists as food AND food_attribute — attribute typing is what is scored."
@@ -4459,7 +4288,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "SEEDED."
@@ -4492,7 +4322,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Locale-invariant spine word."
@@ -4525,7 +4356,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Locale-invariant spine word."
@@ -4537,9 +4369,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 1,
-      "reasons": [
-        "TYPE MISS (grounded, not as an attribute): mexican"
-      ],
+      "reasons": ["TYPE MISS (grounded, not as an attribute): mexican"],
       "grounded": [
         {
           "entityId": "645a6bdc-cb24-4404-89db-27579cc27a33",
@@ -4560,7 +4390,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "SEEDED cuisine."
@@ -4593,7 +4424,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "SEEDED cuisine."
@@ -4605,9 +4437,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 1,
-      "reasons": [
-        "TYPE MISS (grounded, not as an attribute): italian"
-      ],
+      "reasons": ["TYPE MISS (grounded, not as an attribute): italian"],
       "grounded": [
         {
           "entityId": "5ac2a9cf-156a-4917-98f8-de3cd4031f85",
@@ -4628,7 +4458,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "SEEDED cuisine."
@@ -4640,9 +4471,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 1,
-      "reasons": [
-        "TYPE MISS (grounded, not as an attribute): thai"
-      ],
+      "reasons": ["TYPE MISS (grounded, not as an attribute): thai"],
       "grounded": [
         {
           "entityId": "50866eb6-cd19-45bf-969f-16061dd85244",
@@ -4663,7 +4492,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "SEEDED cuisine."
@@ -4696,7 +4526,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "SEEDED cuisine."
@@ -4729,7 +4560,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "M3 TAIL-LABEL CASE, 3-gram."
@@ -4753,9 +4585,7 @@
           "foldedName": "rooftop"
         }
       ],
-      "unresolved": [
-        "en la"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -4764,7 +4594,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "M3 TAIL-LABEL CASE with function words — the label sweep must draft 'azotea', not the whole phrase."
@@ -4797,7 +4628,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "M3 TAIL-LABEL CASE, idiomatic (not a word-for-word rendering of 'late night')."
@@ -4848,7 +4680,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "M3 TAIL-LABEL CASE; head-final Spanish over a head-initial English concept name."
@@ -4858,10 +4691,19 @@
       "query": "pan",
       "stratum": "homograph",
       "locale": "es-US",
-      "pass": true,
+      "pass": false,
       "preservation": 1,
-      "reasons": [],
+      "reasons": ["MIS-GROUNDED (outside allowed set): pan[gazetteer-exact]"],
       "grounded": [
+        {
+          "entityId": "984263e0-402b-434a-9320-d93b23bb0e0a",
+          "bucket": "food",
+          "type": "food",
+          "span": "pan",
+          "name": "pan",
+          "tier": "gazetteer-exact",
+          "foldedName": "pan"
+        },
         {
           "entityId": "d0cee3f7-5e48-4efc-86ce-dfbf8f3ca5eb",
           "bucket": "food",
@@ -4881,9 +4723,10 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
-      "misGroundings": [],
+      "misGroundings": ["pan[gazetteer-exact]"],
       "notes": "KNOWN-RED SEED. Spanish 'pan'=bread; English 'pan'=cookware and the prefix of 60+ corpus names. SAFE = bread, or clean park. Anything else is a confident wrong-language grounding."
     },
     {
@@ -4913,11 +4756,10 @@
         "script": "cyrillic",
         "requestLocale": "ru-RU",
         "detectedLocale": null,
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
-      "misGroundings": [
-        "tako[linked]"
-      ],
+      "misGroundings": ["tako[linked]"],
       "notes": "KNOWN-RED SEED, cross-script. Russian 'тако' embedded NEAREST to the Japanese dish 'tako' (octopus) at the adversarial set's HIGHEST confidence — a wrong answer outscoring right ones. SAFE = park. Locale is deliberately ru-RU on this entry."
     },
     {
@@ -4948,7 +4790,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "No 'sopa' row. SAFE = soup via dense, or park."
@@ -4981,7 +4824,8 @@
           "confidence": 0.2,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "'crema' IS an English-corpus ingredient (the Mexican cream) AND a Spanish word for cream generally. Any of the three, or park, is safe."
@@ -4993,9 +4837,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "MIS-GROUNDED (outside allowed set): chili[gazetteer-exact]"
-      ],
+      "reasons": ["MIS-GROUNDED (outside allowed set): chili[gazetteer-exact]"],
       "grounded": [
         {
           "entityId": "5546be91-c8a2-4d69-aa4a-e645ce6fbda8",
@@ -5016,11 +4858,10 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
-      "misGroundings": [
-        "chili[gazetteer-exact]"
-      ],
+      "misGroundings": ["chili[gazetteer-exact]"],
       "notes": "Pepper vs. the country. The corpus holds 'chilean sea bass' — a country-shaped capture would be the failure."
     },
     {
@@ -5051,7 +4892,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Sauce vs. the dance. Corpus row exists and is the food sense — control entry, should pass."
@@ -5084,7 +4926,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "THE SHARPEST LATIN-SCRIPT HOMOGRAPH IN THE SET: es 'tuna' = prickly pear; en 'tuna' = the fish, which exists as an exact confidence-1.0 corpus row. Today's gazetteer has no locale filter on the alias/name arms — this is the M3 homograph guard's reason to exist. RECLASSIFIED (parent ruling): exact English NAME matches are correct for ANY locale in an English-corpus market — source-faithful names match for everyone; the locale guard governs tagged alias rows only. es-MX users on US menus read \"tuna\" as the fish."
@@ -5117,7 +4960,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "es 'pie' = foot. English 'pie' is an exact corpus food row. SAFE = park. RECLASSIFIED (parent ruling): exact English NAME matches are correct for ANY locale in an English-corpus market — source-faithful names match for everyone; the locale guard governs tagged alias rows only. es-MX users on US menus read \"tuna\" as the fish."
@@ -5150,7 +4994,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Bridge word that is also the past tense of 'venir'. Safe = wine or park."
@@ -5183,7 +5028,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "3-letter bridge word — short-string fuzzy floors are exactly where a wrong confident match appears."
@@ -5216,7 +5062,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Bridge word, no English collision — the negative control for this stratum."
@@ -5249,7 +5096,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "One edit from 'pear' — tests that a LEXICAL near-miss does not masquerade as a translation."
@@ -5282,7 +5130,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Fruit vs. the Peruvian capital vs. restaurant proper nouns. R5-4 type-aware admission: a constraint-shaped span must not capture a RESTAURANT."
@@ -5315,7 +5164,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Identical in both languages (es also = 'handle'). CONTROL — must pass."
@@ -5348,7 +5198,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "CONTROL — a Spanish word fully naturalized into the English corpus. Must pass, and must not be dragged into hg-02's cross-script confusion."
@@ -5381,7 +5232,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "3-letter bridge word; also an English name prefix (Sal's). Type-aware admission case."
@@ -5393,9 +5245,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "MIS-GROUNDED (outside allowed set): averna amaro[linked]"
-      ],
+      "reasons": ["MIS-GROUNDED (outside allowed set): averna amaro[linked]"],
       "grounded": [
         {
           "entityId": "d1bc44e8-3897-4b90-b586-49b6ae2a26ee",
@@ -5416,11 +5266,10 @@
           "confidence": 0.3333333333333333,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
-      "misGroundings": [
-        "averna amaro[linked]"
-      ],
+      "misGroundings": ["averna amaro[linked]"],
       "notes": "es 'ave' = bird/poultry; en 'Ave' = Avenue, which appears in thousands of address strings and restaurant names. SAFE = park."
     },
     {
@@ -5460,7 +5309,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "AUTHORING CORRECTION (gate run 1): 'caldo' IS an exact source-faithful corpus row — grounding a Spanish word to its own row is the CORRECT answer, not a mis-grounding. The first draft allowed only 'broth' and scored a real success as red."
@@ -5502,7 +5352,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "'masa' IS an English-corpus row (the nixtamalized dough) AND the general Spanish word for dough. Either is safe."
@@ -5514,13 +5365,9 @@
       "locale": "es-US",
       "pass": true,
       "preservation": 0,
-      "reasons": [
-        "clean park (safe)"
-      ],
+      "reasons": ["clean park (safe)"],
       "grounded": [],
-      "unresolved": [
-        "tinto"
-      ],
+      "unresolved": ["tinto"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5529,7 +5376,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "R5-5 REGIONAL DIVERGENCE, deliberately included: es-ES 'tinto' = red wine; es-CO 'tinto' = black coffee. Bare 'es' CANNOT be right for both — the entry exists to make the regional-locale need measurable rather than arguable."
@@ -5541,9 +5389,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "NOT GROUNDED: breakfast tacos"
-      ],
+      "reasons": ["NOT GROUNDED: breakfast tacos"],
       "grounded": [
         {
           "entityId": "c62e8da3-1995-42b6-8029-f236701c3cd8",
@@ -5573,9 +5419,7 @@
           "foldedName": "breakfast"
         }
       ],
-      "unresolved": [
-        "quiero"
-      ],
+      "unresolved": ["quiero"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5584,7 +5428,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Spanish verb + English compound dish. The English span must ground as if English."
@@ -5608,9 +5453,7 @@
           "foldedName": "brunch"
         }
       ],
-      "unresolved": [
-        "en downtown"
-      ],
+      "unresolved": ["en downtown"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5619,7 +5462,8 @@
           "confidence": 1,
           "source": "detector"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "'downtown' is a PLACE directive, not a concept — deliberately unasserted."
@@ -5643,10 +5487,7 @@
           "foldedName": "ramen"
         }
       ],
-      "unresolved": [
-        "busco",
-        "cerca"
-      ],
+      "unresolved": ["busco"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5655,7 +5496,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Spanish carrier + proximity directive around an English/loan dish."
@@ -5697,9 +5539,7 @@
           "foldedName": "affordable"
         }
       ],
-      "unresolved": [
-        "quiero"
-      ],
+      "unresolved": ["quiero"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5708,7 +5548,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Price directive unasserted."
@@ -5732,10 +5573,7 @@
           "foldedName": "pho"
         }
       ],
-      "unresolved": [
-        "el mejor",
-        "de la ciudad"
-      ],
+      "unresolved": ["ciudad"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5744,7 +5582,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Long Spanish carrier around a one-syllable loan dish; 'pho' also exists as a RESTAURANT name — type-aware admission matters."
@@ -5768,9 +5607,7 @@
           "foldedName": "dim sum"
         }
       ],
-      "unresolved": [
-        "dónde hay"
-      ],
+      "unresolved": ["dónde hay"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5779,7 +5616,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Accented carrier + English 2-gram concept."
@@ -5791,9 +5629,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 0.5,
-      "reasons": [
-        "NOT GROUNDED: tacos"
-      ],
+      "reasons": ["NOT GROUNDED: tacos"],
       "grounded": [
         {
           "entityId": "18f5fa4d-51d0-4a50-a998-966bd12f76b9",
@@ -5814,9 +5650,7 @@
           "foldedName": "cheese"
         }
       ],
-      "unresolved": [
-        "with"
-      ],
+      "unresolved": ["with"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5825,7 +5659,8 @@
           "confidence": 1,
           "source": "detector"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "REVERSE code-switch (Spanish noun, English frame) from an es-US phone. 'with' must NOT be read as the English cue 'without'."
@@ -5849,9 +5684,7 @@
           "foldedName": "bbq"
         }
       ],
-      "unresolved": [
-        "quiero comer"
-      ],
+      "unresolved": ["quiero"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5860,7 +5693,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Seeded spine word that is identical in both languages."
@@ -5882,11 +5716,18 @@
           "name": "rooftop",
           "tier": "gazetteer-exact",
           "foldedName": "rooftop"
+        },
+        {
+          "entityId": "9e50abab-b138-4b6f-ab56-65efa1f6789f",
+          "bucket": "restaurantAttributes",
+          "type": "restaurant_attribute",
+          "span": "restaurantes",
+          "name": "restaurant week",
+          "tier": "linked",
+          "foldedName": "restaurant week"
         }
       ],
-      "unresolved": [
-        "restaurantes con"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5895,7 +5736,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "The English form of at-18's attribute — proves the attribute red is a LABEL gap, not a grounding gap."
@@ -5919,15 +5761,6 @@
           "foldedName": "ice cream"
         },
         {
-          "entityId": "8f3dd353-57da-422c-8e45-0ffdcc9bb217",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "me",
-          "name": "tamarind",
-          "tier": "gazetteer-exact",
-          "foldedName": "tamarind"
-        },
-        {
           "entityId": "fd5a75b5-7dd4-49f9-9704-e7b272e9bf98",
           "bucket": "ingredients",
           "type": "ingredient",
@@ -5946,9 +5779,7 @@
           "foldedName": "cream"
         }
       ],
-      "unresolved": [
-        "gusta el"
-      ],
+      "unresolved": ["gusta"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5957,7 +5788,8 @@
           "confidence": 0.23529411764705882,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "English form of sn-29 — same isolation test for the bridge red."
@@ -5999,9 +5831,7 @@
           "foldedName": "wine"
         }
       ],
-      "unresolved": [
-        "hay algún"
-      ],
+      "unresolved": ["hay algún"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -6010,7 +5840,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "English form of at-20."
@@ -6034,9 +5865,7 @@
           "foldedName": "bagel"
         }
       ],
-      "unresolved": [
-        "quiero un"
-      ],
+      "unresolved": ["quiero"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -6045,7 +5874,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Bagel exists as ingredient AND restaurant_attribute — cross-type placement under a Spanish carrier."
@@ -6087,15 +5917,6 @@
           "foldedName": "pizza"
         },
         {
-          "entityId": "e6beb36c-4a34-45af-aad0-a471e6aa0f58",
-          "bucket": "food",
-          "type": "food",
-          "span": "para",
-          "name": "la paradiso",
-          "tier": "linked",
-          "foldedName": "la paradiso"
-        },
-        {
           "entityId": "ed20b835-e451-4a80-96cd-92a12b4b88dc",
           "bucket": "restaurantAttributes",
           "type": "restaurant_attribute",
@@ -6114,7 +5935,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "English form of cp-14's attribute — isolates the label gap from the cuisine word."
@@ -6126,9 +5948,7 @@
       "locale": "es-US",
       "pass": false,
       "preservation": 0.5,
-      "reasons": [
-        "NOT GROUNDED: thai"
-      ],
+      "reasons": ["NOT GROUNDED: thai"],
       "grounded": [
         {
           "entityId": "64ff9303-1978-49d4-80a4-88cf7d8ab997",
@@ -6149,9 +5969,7 @@
           "foldedName": "curry"
         }
       ],
-      "unresolved": [
-        "busco"
-      ],
+      "unresolved": ["busco"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -6160,7 +5978,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "English dish + Spanish masculine cuisine adjective (seeded form is 'tailandesa')."
@@ -6184,9 +6003,7 @@
           "foldedName": "pancakes"
         }
       ],
-      "unresolved": [
-        "quiero"
-      ],
+      "unresolved": ["quiero"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -6195,7 +6012,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Plural English dish under a Spanish verb."
@@ -6219,9 +6037,7 @@
           "foldedName": "steak"
         }
       ],
-      "unresolved": [
-        "dónde comer"
-      ],
+      "unresolved": ["dónde"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -6230,7 +6046,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "English form of sn-32."
@@ -6252,11 +6069,18 @@
           "name": "salad",
           "tier": "gazetteer-exact",
           "foldedName": "salad"
+        },
+        {
+          "entityId": "d36ae232-1a26-4b26-a2d5-ec142009ab43",
+          "bucket": "food",
+          "type": "food",
+          "span": "buen",
+          "name": "bueno burger",
+          "tier": "linked",
+          "foldedName": "bueno burger"
         }
       ],
-      "unresolved": [
-        "un buen"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -6265,7 +6089,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "English form of sn-34; ungrammatical mixing is normal bilingual input."
@@ -6307,9 +6132,7 @@
           "foldedName": "bbq"
         }
       ],
-      "unresolved": [
-        "quiero probar"
-      ],
+      "unresolved": ["quiero probar"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -6318,7 +6141,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "English 2-gram concept that must beat its own parts ('korean' + 'bbq')."
@@ -6342,9 +6166,7 @@
           "foldedName": "seafood"
         }
       ],
-      "unresolved": [
-        "algo de"
-      ],
+      "unresolved": ["algo"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -6353,7 +6175,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "English form of sn-36."
@@ -6395,9 +6218,7 @@
           "foldedName": "sando"
         }
       ],
-      "unresolved": [
-        "quiero un"
-      ],
+      "unresolved": ["quiero"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -6406,7 +6227,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Control for the stratum — a plain English noun under a Spanish carrier must ground exactly as English."

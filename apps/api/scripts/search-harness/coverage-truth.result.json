@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-13T06:06:53.354Z",
+  "generatedAt": "2026-08-16T03:58:30.942Z",
   "pageSize": 25,
   "maxPages": 60,
   "mutation": null,
@@ -10,12 +10,12 @@
     "maxAnchors": 3
   },
   "corpus": {
-    "mustAppear": 2333,
-    "missing": 781,
-    "served": 2910,
-    "leaks": 365,
+    "mustAppear": 2303,
+    "missing": 367,
+    "served": 3326,
+    "leaks": 376,
     "judgedRejectsServed": 3,
-    "coverage": 0.6652378911273039,
+    "coverage": 0.8406426400347373,
     "unexplainedMisses": 0
   },
   "cases": [
@@ -26,24 +26,24 @@
       "grounded": ["chili", "cheese", "dog"],
       "groundingShattered": true,
       "anchors": 3,
-      "tier0Concepts": 108,
-      "ringConcepts": 177,
+      "tier0Concepts": 90,
+      "ringConcepts": 182,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
         "pages": 19,
         "exhausted": true,
-        "dishes": 443,
-        "restaurants": 324,
+        "dishes": 426,
+        "restaurants": 309,
         "reportedTotals": {
-          "dishes": 443,
-          "restaurants": 324
+          "dishes": 426,
+          "restaurants": 309
         }
       },
       "truth": {
-        "candidates": 436,
-        "mustAppear": 414,
-        "mayAppear": 22
+        "candidates": 420,
+        "mustAppear": 399,
+        "mayAppear": 21
       },
       "coverage": 1,
       "missing": 0,
@@ -100,68 +100,74 @@
       "query": "best chili cheese dog",
       "viewport": "nyc",
       "why": "superlative prefix",
-      "grounded": ["chili", "cheese", "dog", "best"],
+      "grounded": ["chili", "cheese", "dog"],
       "groundingShattered": false,
       "anchors": 3,
-      "tier0Concepts": 108,
-      "ringConcepts": 177,
+      "tier0Concepts": 90,
+      "ringConcepts": 182,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
-        "pages": 1,
+        "pages": 19,
         "exhausted": true,
-        "dishes": 0,
-        "restaurants": 0,
+        "dishes": 426,
+        "restaurants": 309,
         "reportedTotals": {
-          "dishes": 0,
-          "restaurants": 0
+          "dishes": 426,
+          "restaurants": 309
         }
       },
       "truth": {
-        "candidates": 436,
-        "mustAppear": 414,
-        "mayAppear": 22
+        "candidates": 420,
+        "mustAppear": 399,
+        "mayAppear": 21
       },
-      "coverage": 0,
-      "missing": 414,
-      "missReasons": {
-        "restaurant-entity conjunction (query grounded a venue)": 414
+      "coverage": 1,
+      "missing": 0,
+      "missReasons": {},
+      "missSamples": [],
+      "leaks": 7,
+      "leakReasons": {
+        "UNRELATED-CONCEPT (no arm explains it)": 6,
+        "lexical-expansion arm (name look-alike)": 1
       },
-      "missSamples": [
+      "leakSamples": [
         {
-          "connectionId": "010a5246-b9f2-40be-b24f-a0ff313cc0a6",
-          "food": "pierogi",
-          "restaurant": "Pierogi Boys",
-          "reason": "restaurant-entity conjunction (query grounded a venue)"
+          "connectionId": "cdbaff04-91d8-422d-bc06-c22caa3c0b48",
+          "food": "pad ka prow",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
         },
         {
-          "connectionId": "016e95aa-c079-429f-9df5-9fb2a2613d05",
-          "food": "apple cheese danish",
-          "restaurant": "Torrisi",
-          "reason": "restaurant-entity conjunction (query grounded a venue)"
+          "connectionId": "04b4cc66-b7c8-4bb8-b04e-45f59b75c8d0",
+          "food": "aguachile",
+          "reason": "lexical-expansion arm (name look-alike)"
         },
         {
-          "connectionId": "019e88c5-70ad-4d9e-8be5-4f033fb44ecf",
-          "food": "jalapeno bagel with egg and cheese",
-          "restaurant": "Liberty Bagels Midtown",
-          "reason": "restaurant-entity conjunction (query grounded a venue)"
+          "connectionId": "b550a48b-731a-4e2b-b6a1-73379a3acc70",
+          "food": "papaya salad",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
         },
         {
-          "connectionId": "01c57fa5-b024-4dd4-9202-b255088f193e",
-          "food": "torta",
-          "restaurant": "Carnitas Ramirez",
-          "reason": "restaurant-entity conjunction (query grounded a venue)"
+          "connectionId": "2efeb1a3-6c10-4b96-8daf-ac970ea562c6",
+          "food": "papaya salad",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
         },
         {
-          "connectionId": "01ceae41-b9e9-47d1-9c17-de7c110ca4fe",
-          "food": "shroom burger",
-          "restaurant": "Shake Shack 1700 Broadway - 53rd & 7th",
-          "reason": "restaurant-entity conjunction (query grounded a venue)"
+          "connectionId": "ba498208-e713-4510-a66e-f09a82ca6256",
+          "food": "roja salsa",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "6e4badc7-1645-48af-8267-b6d86dd3e625",
+          "food": "papaya salad",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
+        },
+        {
+          "connectionId": "d0cc6b6b-4f61-426e-b436-742054e0671f",
+          "food": "papaya salad",
+          "reason": "UNRELATED-CONCEPT (no arm explains it)"
         }
       ],
-      "leaks": 0,
-      "leakReasons": {},
-      "leakSamples": [],
       "judgedRejectsServed": 0,
       "judgedRejectSamples": [],
       "expectEmpty": false,
@@ -175,7 +181,7 @@
       "groundingShattered": false,
       "anchors": 1,
       "tier0Concepts": 2,
-      "ringConcepts": 45,
+      "ringConcepts": 46,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": true,
@@ -226,7 +232,7 @@
       "groundingShattered": true,
       "anchors": 1,
       "tier0Concepts": 3,
-      "ringConcepts": 250,
+      "ringConcepts": 251,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": true,
@@ -297,7 +303,7 @@
       "groundingShattered": false,
       "anchors": 1,
       "tier0Concepts": 1,
-      "ringConcepts": 19,
+      "ringConcepts": 20,
       "dietaryWallActive": true,
       "served": {
         "expansionFired": true,
@@ -311,9 +317,9 @@
         }
       },
       "truth": {
-        "candidates": 3,
+        "candidates": 2,
         "mustAppear": 0,
-        "mayAppear": 3
+        "mayAppear": 2
       },
       "coverage": 1,
       "missing": 0,
@@ -343,7 +349,7 @@
       "groundingShattered": false,
       "anchors": 1,
       "tier0Concepts": 1,
-      "ringConcepts": 104,
+      "ringConcepts": 105,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": true,
@@ -381,7 +387,7 @@
       "groundingShattered": true,
       "anchors": 1,
       "tier0Concepts": 10,
-      "ringConcepts": 69,
+      "ringConcepts": 70,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": true,
@@ -481,18 +487,18 @@
       "grounded": ["pho"],
       "groundingShattered": false,
       "anchors": 1,
-      "tier0Concepts": 12,
-      "ringConcepts": 13,
+      "tier0Concepts": 10,
+      "ringConcepts": 16,
       "dietaryWallActive": false,
       "served": {
-        "expansionFired": false,
+        "expansionFired": true,
         "pages": 2,
         "exhausted": true,
-        "dishes": 15,
-        "restaurants": 15,
+        "dishes": 19,
+        "restaurants": 19,
         "reportedTotals": {
-          "dishes": 15,
-          "restaurants": 15
+          "dishes": 19,
+          "restaurants": 19
         }
       },
       "truth": {
@@ -504,9 +510,33 @@
       "missing": 0,
       "missReasons": {},
       "missSamples": [],
-      "leaks": 0,
-      "leakReasons": {},
-      "leakSamples": [],
+      "leaks": 4,
+      "leakReasons": {
+        "plan-expansion arm (lexical/attribute widening past the graph)": 3,
+        "lexical-expansion arm (name look-alike)": 1
+      },
+      "leakSamples": [
+        {
+          "connectionId": "23eedca9-b7d3-4d53-aefa-3a9c91192af9",
+          "food": "chicken tail skewer",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        },
+        {
+          "connectionId": "4f81e0ae-80aa-46de-8233-cf971c80da90",
+          "food": "intestines",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        },
+        {
+          "connectionId": "eb13e296-e277-4671-883b-b728bbdad57b",
+          "food": "phony negroni",
+          "reason": "lexical-expansion arm (name look-alike)"
+        },
+        {
+          "connectionId": "4a6268d0-1bed-4ce7-9180-0db79f93a1b8",
+          "food": "grilled intestines",
+          "reason": "plan-expansion arm (lexical/attribute widening past the graph)"
+        }
+      ],
       "judgedRejectsServed": 0,
       "judgedRejectSamples": [],
       "expectEmpty": false,
@@ -520,7 +550,7 @@
       "groundingShattered": false,
       "anchors": 2,
       "tier0Concepts": 2,
-      "ringConcepts": 48,
+      "ringConcepts": 47,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
@@ -558,7 +588,7 @@
       "groundingShattered": true,
       "anchors": 3,
       "tier0Concepts": 4,
-      "ringConcepts": 157,
+      "ringConcepts": 159,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
@@ -572,9 +602,9 @@
         }
       },
       "truth": {
-        "candidates": 92,
+        "candidates": 87,
         "mustAppear": 2,
-        "mayAppear": 90
+        "mayAppear": 85
       },
       "coverage": 1,
       "missing": 0,
@@ -659,7 +689,7 @@
       "groundingShattered": true,
       "anchors": 2,
       "tier0Concepts": 4,
-      "ringConcepts": 184,
+      "ringConcepts": 183,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
@@ -759,8 +789,8 @@
       "grounded": ["camarones"],
       "groundingShattered": false,
       "anchors": 2,
-      "tier0Concepts": 49,
-      "ringConcepts": 80,
+      "tier0Concepts": 48,
+      "ringConcepts": 84,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
@@ -877,8 +907,8 @@
       "grounded": ["pastel", "arroz", "de"],
       "groundingShattered": false,
       "anchors": 3,
-      "tier0Concepts": 271,
-      "ringConcepts": 88,
+      "tier0Concepts": 273,
+      "ringConcepts": 89,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
@@ -995,23 +1025,23 @@
       "groundingShattered": false,
       "anchors": 1,
       "tier0Concepts": 11,
-      "ringConcepts": 29,
+      "ringConcepts": 30,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
-        "pages": 2,
+        "pages": 3,
         "exhausted": true,
-        "dishes": 23,
+        "dishes": 26,
         "restaurants": 15,
         "reportedTotals": {
-          "dishes": 23,
+          "dishes": 26,
           "restaurants": 15
         }
       },
       "truth": {
-        "candidates": 20,
+        "candidates": 23,
         "mustAppear": 4,
-        "mayAppear": 16
+        "mayAppear": 19
       },
       "coverage": 1,
       "missing": 0,
@@ -1051,7 +1081,7 @@
       "groundingShattered": false,
       "anchors": 1,
       "tier0Concepts": 4,
-      "ringConcepts": 26,
+      "ringConcepts": 27,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
@@ -1172,8 +1202,8 @@
       "grounded": ["shrimp"],
       "groundingShattered": false,
       "anchors": 1,
-      "tier0Concepts": 46,
-      "ringConcepts": 79,
+      "tier0Concepts": 45,
+      "ringConcepts": 82,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
@@ -1211,7 +1241,7 @@
       "groundingShattered": false,
       "anchors": 2,
       "tier0Concepts": 4,
-      "ringConcepts": 28,
+      "ringConcepts": 29,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
@@ -1249,7 +1279,7 @@
       "groundingShattered": false,
       "anchors": 1,
       "tier0Concepts": 26,
-      "ringConcepts": 10,
+      "ringConcepts": 11,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
@@ -1325,7 +1355,7 @@
       "groundingShattered": false,
       "anchors": 2,
       "tier0Concepts": 20,
-      "ringConcepts": 220,
+      "ringConcepts": 224,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
@@ -1502,8 +1532,8 @@
       "grounded": ["birria"],
       "groundingShattered": false,
       "anchors": 1,
-      "tier0Concepts": 16,
-      "ringConcepts": 3,
+      "tier0Concepts": 17,
+      "ringConcepts": 4,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
@@ -1540,7 +1570,7 @@
       "grounded": ["ramen"],
       "groundingShattered": false,
       "anchors": 1,
-      "tier0Concepts": 45,
+      "tier0Concepts": 43,
       "ringConcepts": 6,
       "dietaryWallActive": false,
       "served": {
@@ -1578,8 +1608,8 @@
       "grounded": ["tacos"],
       "groundingShattered": false,
       "anchors": 1,
-      "tier0Concepts": 236,
-      "ringConcepts": 7,
+      "tier0Concepts": 235,
+      "ringConcepts": 8,
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,

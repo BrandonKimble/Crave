@@ -1,20 +1,19 @@
 {
-  "ranAt": "2026-08-13T05:47:00.682Z",
+  "ranAt": "2026-08-16T04:54:03.170Z",
   "lang": "vi",
   "corpusVersion": 1,
   "scoreboard": {
     "overall": 90.41916167664671,
     "top1SingleConcept": 91.58878504672897,
     "negationNonInversion": 100,
-    "constraintPreservation": 86.25,
+    "constraintPreservation": 83.75,
     "homographMisGroundings": [
-      "giá→soybean sprout[gazetteer-exact]",
       "mì→mian[gazetteer-exact]",
+      "chả→cha lua[linked]",
       "nem→Nems[linked]",
       "bún→vermicelli bowl[gazetteer-exact]"
     ],
     "homographMisGroundingsExact": [
-      "giá→soybean sprout[gazetteer-exact]",
       "mì→mian[gazetteer-exact]",
       "bún→vermicelli bowl[gazetteer-exact]"
     ]
@@ -48,7 +47,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "SOURCE-FAITHFUL: the Vietnamese surface is banked as a vi alias on this exact entity (verified in entity_alias locale=vi, status=active). Grounding a Vietnamese word to its own corpus row is the CORRECT answer — the es corpus learned this the hard way (see its AUTHORING CORRECTION notes); no translation bridge is demanded where a vi-named row exists. 'phở'→pho (food). Note 'Pho' also exists as a RESTAURANT name — type-aware admission matters."
@@ -81,7 +81,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "DE-DIACRITIZED TYPING — the single most common way a Vietnamese speaker types on a US keyboard. form_folded is 'pho' either way, so the fold (N1) is what makes the two spellings one query."
@@ -132,7 +133,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "SOURCE-FAITHFUL: the Vietnamese surface is banked as a vi alias on this exact entity (verified in entity_alias locale=vi, status=active). Grounding a Vietnamese word to its own corpus row is the CORRECT answer — the es corpus learned this the hard way (see its AUTHORING CORRECTION notes); no translation bridge is demanded where a vi-named row exists. 'bánh mì' is banked on FOUR entities (banh mi, bread, bun, viet sandwich) — the source-faithful dish row is the one asserted."
@@ -183,7 +185,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "DE-DIACRITIZED twin of sn-03."
@@ -225,7 +228,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "SOURCE-FAITHFUL: the Vietnamese surface is banked as a vi alias on this exact entity (verified in entity_alias locale=vi, status=active). Grounding a Vietnamese word to its own corpus row is the CORRECT answer — the es corpus learned this the hard way (see its AUTHORING CORRECTION notes); no translation bridge is demanded where a vi-named row exists. 'bún chả'→bun cha."
@@ -267,7 +271,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "SOURCE-FAITHFUL: the Vietnamese surface is banked as a vi alias on this exact entity (verified in entity_alias locale=vi, status=active). Grounding a Vietnamese word to its own corpus row is the CORRECT answer — the es corpus learned this the hard way (see its AUTHORING CORRECTION notes); no translation bridge is demanded where a vi-named row exists. 'bánh xèo'→banh xeo."
@@ -327,7 +332,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "SOURCE-FAITHFUL: the Vietnamese surface is banked as a vi alias on this exact entity (verified in entity_alias locale=vi, status=active). Grounding a Vietnamese word to its own corpus row is the CORRECT answer — the es corpus learned this the hard way (see its AUTHORING CORRECTION notes); no translation bridge is demanded where a vi-named row exists. banked on both 'com tam' and 'broken rice'; the source-faithful row is asserted."
@@ -387,7 +393,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "SOURCE-FAITHFUL: the Vietnamese surface is banked as a vi alias on this exact entity (verified in entity_alias locale=vi, status=active). Grounding a Vietnamese word to its own corpus row is the CORRECT answer — the es corpus learned this the hard way (see its AUTHORING CORRECTION notes); no translation bridge is demanded where a vi-named row exists."
@@ -429,7 +436,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "NEAR-SYNONYM FAMILY (word-claim judge v3, 2026-08-09). 'chả giò' is the Vietnamese name for the fried roll English menus print as both 'egg roll' and 'spring roll'. The v2 judge gave the word to egg roll and evicted spring roll — a verdict an agent then reverted BY HAND, which is what proved the rule needed fixing rather than the row. v3 upholds both claims on the merits; both must be reachable."
@@ -471,7 +479,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "NAME-ARM match: no vi ALIAS row exists, but 'bun bo hue' IS an English-corpus food NAME, so the folded query hits the name arm. The Vietnamese dish name naturalized into the English catalogue."
@@ -504,7 +513,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked vi alias 'gà'→chicken (food + ingredient)."
@@ -516,9 +526,7 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0.5,
-      "reasons": [
-        "NOT GROUNDED: prawns"
-      ],
+      "reasons": ["NOT GROUNDED: prawns"],
       "grounded": [
         {
           "entityId": "7eeb7cb1-5653-46e7-a24b-af91cd5e85cd",
@@ -539,7 +547,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "NEAR-SYNONYM FAMILY, not a single winner (word-claim judge v3, 2026-08-09). 'tôm' is the Vietnamese word for BOTH shrimp and prawns; a diner typing it wants the family. The v2 judge evicted shrimp's claim in favour of prawns and this entry was authored to that eviction ('NOT shrimp'), which is the defect, not the spec: the corpus's own graph records shrimp[food] --satisfies--> prawns[food] and each as the other's rank-1 mutual sibling. v3 upholds both, so the user-visible assertion is the FAMILY — a tôm search must reach shrimp AND prawns."
@@ -572,7 +581,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'cá'→fish."
@@ -605,7 +615,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'cua'→crab."
@@ -638,7 +649,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'mực'→squid."
@@ -671,7 +683,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'vịt'→duck."
@@ -704,7 +717,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'cơm'→rice."
@@ -716,9 +730,7 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "NOT GROUNDED: rice noodle"
-      ],
+      "reasons": ["NOT GROUNDED: rice noodle"],
       "grounded": [
         {
           "entityId": "38dd8008-11fd-4771-8203-7434a8040bd4",
@@ -757,7 +769,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'bún'→rice noodle (food) / rice vermicelli + vermicelli (ingredient). The English homograph 'bun' (bread) is the danger — see hg-13."
@@ -799,7 +812,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'rau'→vegetable / veggie / veggies."
@@ -832,7 +846,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'trứng'→egg."
@@ -865,7 +880,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'xoài'→mango."
@@ -898,7 +914,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 2-gram 'dưa hấu'→watermelon; must beat the 1-gram 'dưa' (coconut/melon senses)."
@@ -931,7 +948,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'kem'→ice cream — a single Vietnamese token bridging to a MULTI-WORD English concept."
@@ -953,6 +971,15 @@
           "name": "coffee",
           "tier": "gazetteer-exact",
           "foldedName": "coffee"
+        },
+        {
+          "entityId": "e73a034c-649a-42e4-9e6b-606cfba63f1f",
+          "bucket": "food",
+          "type": "food",
+          "span": "cà phê",
+          "name": "cà phê",
+          "tier": "gazetteer-exact",
+          "foldedName": "ca phe"
         }
       ],
       "unresolved": [],
@@ -964,7 +991,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'cà phê'→coffee."
@@ -986,6 +1014,15 @@
           "name": "coffee",
           "tier": "gazetteer-exact",
           "foldedName": "coffee"
+        },
+        {
+          "entityId": "e73a034c-649a-42e4-9e6b-606cfba63f1f",
+          "bucket": "food",
+          "type": "food",
+          "span": "ca phe",
+          "name": "cà phê",
+          "tier": "gazetteer-exact",
+          "foldedName": "ca phe"
         }
       ],
       "unresolved": [],
@@ -997,7 +1034,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "DE-DIACRITIZED twin of sn-24."
@@ -1030,7 +1068,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'trà'→tea."
@@ -1063,7 +1102,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'bia'→beer."
@@ -1105,7 +1145,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'lẩu'→hot pot AND hotpot (an unmerged English twin — either grounding is right; 'hot pot' is asserted)."
@@ -1138,7 +1179,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'xôi'→sticky rice."
@@ -1171,7 +1213,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 2-gram 'tôm hùm'→lobster; must beat 'tôm'→prawns (the 2-gram over the 1-gram, sn-12's word as the head)."
@@ -1204,7 +1247,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'hải sản'→seafood (food + ingredient + restaurant_attribute)."
@@ -1237,7 +1281,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'thịt heo'→pork."
@@ -1270,7 +1315,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'thịt bò'→beef. Contrast hg-01: bare 'bò' is NOT banked on beef."
@@ -1312,7 +1358,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 2-gram 'gà nướng'→grilled chicken; must beat 'gà'→chicken alone."
@@ -1354,7 +1401,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'bò kho'→vietnamese beef stew. Also the sharpest 2-gram-over-1-gram case in the set: 'bò'→avocado/butter and 'kho'→braised would BOTH be wrong decompositions."
@@ -1387,7 +1435,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "SOURCE-FAITHFUL: the Vietnamese surface is banked as a vi alias on this exact entity (verified in entity_alias locale=vi, status=active). Grounding a Vietnamese word to its own corpus row is the CORRECT answer — the es corpus learned this the hard way (see its AUTHORING CORRECTION notes); no translation bridge is demanded where a vi-named row exists. 3-gram, source-faithful row."
@@ -1429,7 +1478,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'bánh bao'→steamed bun / bun / dumpling."
@@ -1489,7 +1539,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'thịt nướng'→grilled meat."
@@ -1503,6 +1554,15 @@
       "preservation": 1,
       "reasons": [],
       "grounded": [
+        {
+          "entityId": "33c909c3-0de7-4cd6-aaea-ca05e968f0a0",
+          "bucket": "restaurants",
+          "type": "restaurant",
+          "span": "bahn",
+          "name": "Bánh",
+          "tier": "linked",
+          "foldedName": "banh"
+        },
         {
           "entityId": "78d11036-478c-41bb-a78d-4a7320dde99c",
           "bucket": "food",
@@ -1522,7 +1582,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "TYPO (transposition) — the most common real-world misspelling of 'banh mi' in US English. Goes through the EDIT lane, not the gazetteer. park=true encodes the honest assertion for a typo: reach the right dish OR stay silent; a confident WRONG dish fails."
@@ -1534,9 +1595,7 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "NOT GROUNDED: banh mi"
-      ],
+      "reasons": ["NOT GROUNDED: banh mi"],
       "grounded": [
         {
           "entityId": "33c909c3-0de7-4cd6-aaea-ca05e968f0a0",
@@ -1566,7 +1625,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "TYPO (vowel substitution, and 'my' is itself a corpus surface — see hg-06). Same edit-lane assertion as sn-39."
@@ -1617,7 +1677,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'phở bò'→beef pho (and beef rib pho). The 2-gram must win: decomposing to [pho]+[bò→avocado] is the failure shape."
@@ -1668,7 +1729,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'phở gà'→chicken pho."
@@ -1719,7 +1781,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "DE-DIACRITIZED twin of cp-01 — the everyday US-keyboard spelling."
@@ -1779,7 +1842,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'cơm gà'→chicken and rice — a Vietnamese 2-gram bridging to an English 3-token concept."
@@ -1830,7 +1894,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'cơm chiên'→fried rice."
@@ -1881,7 +1946,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'mì xào'→chow mein."
@@ -1932,7 +1998,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'gà rán'→fried chicken."
@@ -1983,7 +2050,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'cá chiên'→fried fish."
@@ -2034,7 +2102,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'tôm nướng'→grilled shrimp. Note the corpus bridges tôm→prawns bare (sn-12) but →shrimp inside this compound; both are its own banked evidence."
@@ -2046,72 +2115,25 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "NOT GROUNDED: pork vermicelli"
-      ],
+      "reasons": ["NOT GROUNDED: pork vermicelli"],
       "grounded": [
+        {
+          "entityId": "2aebb6b7-bd9c-432a-a07b-3964020a96f0",
+          "bucket": "food",
+          "type": "food",
+          "span": "bún thịt nướng",
+          "name": "bun thit nuong",
+          "tier": "gazetteer-exact",
+          "foldedName": "bun thit nuong"
+        },
         {
           "entityId": "38dd8008-11fd-4771-8203-7434a8040bd4",
           "bucket": "food",
           "type": "food",
           "span": "bún",
           "name": "bun",
-          "tier": "gazetteer-exact",
+          "tier": "linked",
           "foldedName": "bun"
-        },
-        {
-          "entityId": "6e666716-a419-45b8-93fd-c0a2274af7cb",
-          "bucket": "food",
-          "type": "food",
-          "span": "bún",
-          "name": "vermicelli bowl",
-          "tier": "gazetteer-exact",
-          "foldedName": "vermicelli bowl"
-        },
-        {
-          "entityId": "e3a3aa75-60aa-4310-a06c-77a967fab87c",
-          "bucket": "food",
-          "type": "food",
-          "span": "bún",
-          "name": "vermicelli",
-          "tier": "gazetteer-exact",
-          "foldedName": "vermicelli"
-        },
-        {
-          "entityId": "44ab6d3b-4174-4506-a24b-3b35d2b76c6d",
-          "bucket": "food",
-          "type": "food",
-          "span": "thịt nướng",
-          "name": "grilled meat",
-          "tier": "gazetteer-exact",
-          "foldedName": "grilled meat"
-        },
-        {
-          "entityId": "c3b169ed-8b25-4c8e-8bdd-d3c700eca72c",
-          "bucket": "food",
-          "type": "food",
-          "span": "thịt nướng",
-          "name": "grilled protein",
-          "tier": "gazetteer-exact",
-          "foldedName": "grilled protein"
-        },
-        {
-          "entityId": "3b38ad58-7750-42c8-9363-0b2742f704b2",
-          "bucket": "food",
-          "type": "food",
-          "span": "thịt",
-          "name": "meat",
-          "tier": "linked",
-          "foldedName": "meat"
-        },
-        {
-          "entityId": "5e7775c8-82bc-410a-bce3-7b5d05e49249",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
-          "span": "nướng",
-          "name": "grilled",
-          "tier": "linked",
-          "foldedName": "grilled"
         }
       ],
       "unresolved": [],
@@ -2123,7 +2145,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 3-gram 'bún thịt nướng'→pork vermicelli; must beat 'thịt nướng'→grilled meat (sn-38) and 'bún'→rice noodle."
@@ -2135,9 +2158,7 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "NOT GROUNDED: pork chop plate"
-      ],
+      "reasons": ["NOT GROUNDED: pork chop plate"],
       "grounded": [
         {
           "entityId": "625f7efc-70c1-4f02-aa27-99017396a47a",
@@ -2167,7 +2188,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'cơm sườn'→pork chop plate."
@@ -2209,7 +2231,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 3-gram 'bò lúc lắc'→shaken beef."
@@ -2251,7 +2274,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 3-gram 'gỏi cuốn tôm'→shrimp rolls. Bare 'gỏi cuốn' is NOT banked (see hg-12) — the longer form is the one with evidence."
@@ -2284,7 +2308,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 3-gram 'phở bò tái'→raw steak pho; must beat the 2-gram 'phở bò'→beef pho."
@@ -2335,7 +2360,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'kem dừa'→coconut ice cream; must beat 'kem'→ice cream (sn-23)."
@@ -2395,7 +2421,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'trà sữa'→milk tea AND boba tea (an unmerged twin, both banked on the same surface). 'milk tea' is asserted; grounding boba tea as well is not a failure."
@@ -2446,7 +2473,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 4-gram 'cà phê sữa đá'→iced viet coffee — the longest banked dish surface in the set; must beat 'cà phê'→coffee."
@@ -2479,7 +2507,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "AUTHORING NOTE: 'bánh mì chay' is banked as ONE concept → veggie sandwich. Asserting [banh mi]+[vegetarian] would demand a decomposition the vocabulary explicitly overrode."
@@ -2503,9 +2532,7 @@
           "foldedName": "italian"
         }
       ],
-      "unresolved": [
-        "nhà hàng"
-      ],
+      "unresolved": ["nhà hàng"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -2514,7 +2541,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "'Ý' (Italy) is banked → italian (restaurant_attribute); 'nhà hàng' (restaurant) is a carrier with no expected grounding."
@@ -2538,9 +2566,7 @@
           "foldedName": "vietnamese"
         }
       ],
-      "unresolved": [
-        "đồ ăn"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -2549,7 +2575,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 3-gram 'đồ ăn Việt Nam'→vietnamese (restaurant_attribute)."
@@ -2582,7 +2609,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'ẩm thực Thái'→thai."
@@ -2594,9 +2622,7 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "NOT GROUNDED: korean bbq"
-      ],
+      "reasons": ["NOT GROUNDED: korean bbq"],
       "grounded": [
         {
           "entityId": "53df955f-ec55-4392-ba46-e1184c52fafc",
@@ -2626,7 +2652,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'BBQ Hàn Quốc'→korean bbq as ONE concept — must beat [bbq]+[korean]."
@@ -2659,7 +2686,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'ẩm thực Hy Lạp'→greek. Bare 'Hy Lạp' is NOT banked — the carrier is load-bearing here."
@@ -2692,7 +2720,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'ẩm thực Địa Trung Hải'→mediterranean — a 5-token Vietnamese phrase for one English word."
@@ -2725,7 +2754,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'đồ ăn Trung Quốc'→chinese food."
@@ -2737,9 +2767,7 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0.5,
-      "reasons": [
-        "NOT GROUNDED: spicy"
-      ],
+      "reasons": ["NOT GROUNDED: spicy"],
       "grounded": [
         {
           "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
@@ -2769,7 +2797,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Dish + food_attribute, both banked ('cay'→spicy). The two-concept parse IS the right answer — no 'spicy pho' row exists."
@@ -2820,7 +2849,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Two banked nouns, no banked compound — the two-concept parse is correct."
@@ -2853,9 +2883,7 @@
           "foldedName": "romantic"
         }
       ],
-      "unresolved": [
-        "nhà hàng"
-      ],
+      "unresolved": ["nhà hàng"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -2864,7 +2892,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Cuisine + ambience attribute, both banked; 'nhà hàng' is a carrier."
@@ -2906,7 +2935,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Two banked restaurant_attributes in one phrase."
@@ -2957,7 +2987,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "OVERLAPPING banked spans: 'cơm gà'→chicken and rice and 'gà nướng'→grilled chicken share the token 'gà', so only ONE of them can be placed. | AUTHORING CORRECTION (gate run 1): the first draft demanded 'chicken and rice' AND 'grilled chicken' — two covers that cannot coexist. The parse chose [cơm]→rice + [gà nướng]→grilled chicken, which is a coherent, complete cover of the query and is the correct answer; the entry now asserts that cover."
@@ -2990,9 +3021,7 @@
           "foldedName": "meat"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -3001,7 +3030,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). INVERSION BAIT: 'no meat' is semantically vegetarian and a bi-encoder will say so. It must not."
@@ -3013,9 +3043,7 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "head not grounded: missing rice noodle"
-      ],
+      "reasons": ["head not grounded: missing rice noodle"],
       "grounded": [
         {
           "entityId": "38dd8008-11fd-4771-8203-7434a8040bd4",
@@ -3054,9 +3082,7 @@
           "foldedName": "beef"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -3065,7 +3091,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Same bait over a rice-noodle head."
@@ -3098,9 +3125,7 @@
           "foldedName": "onion"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -3109,7 +3134,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). 'hành'→onions is a banked ingredient — a groundable span behind the cue."
@@ -3160,9 +3186,7 @@
           "foldedName": "pate"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -3171,7 +3195,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). 'pate' is an English-corpus ingredient row; grounding it positively is allowed under v2."
@@ -3231,7 +3256,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). 'không phô mai' is itself a SEEDED 2-gram alias → cheeseless (food_attribute). The cue must not negate the phrase it is part of — the vi twin of the es 'sin gluten' trap."
@@ -3253,6 +3279,15 @@
           "name": "coffee",
           "tier": "gazetteer-exact",
           "foldedName": "coffee"
+        },
+        {
+          "entityId": "e73a034c-649a-42e4-9e6b-606cfba63f1f",
+          "bucket": "food",
+          "type": "food",
+          "span": "cà phê",
+          "name": "cà phê",
+          "tier": "gazetteer-exact",
+          "foldedName": "ca phe"
         },
         {
           "entityId": "0232d6b6-257b-49b3-aaa2-2e58cc12b8c8",
@@ -3291,7 +3326,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). 'không đường' is a seeded 2-gram → sugar free. Positive grounding of the whole phrase is the CORRECT outcome."
@@ -3333,7 +3369,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). 'không cay' is a seeded 2-gram → mild. mustNotResolve is deliberately EMPTY: under literal-ignore, grounding 'cay'→spicy is also acceptable; only an unasked dietary flip is forbidden."
@@ -3375,9 +3412,7 @@
           "foldedName": "vegetable"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -3386,7 +3421,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Negated span is a banked food ('rau'→vegetable)."
@@ -3419,9 +3455,7 @@
           "foldedName": "skin"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -3430,7 +3464,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). 'skin' exists as an English ingredient row — a bridge target behind the cue."
@@ -3481,7 +3516,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Second 'không cay' shape, different head."
@@ -3523,9 +3559,7 @@
           "foldedName": "shrimp"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -3534,7 +3568,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Source-faithful head + banked negated ingredient."
@@ -3603,7 +3638,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Source-faithful head; 'mỡ' (fat) is unknown residue."
@@ -3645,9 +3681,7 @@
           "foldedName": "vegetable"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -3656,7 +3690,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). The commonest real Vietnamese order-modification phrase in the set."
@@ -3698,9 +3733,7 @@
           "foldedName": "fish sauce"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -3709,7 +3742,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Negated span is a banked 2-gram ('nước mắm'→fish sauce) — a multi-token groundable span behind the cue."
@@ -3769,9 +3803,7 @@
           "foldedName": "raw fish"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -3780,7 +3812,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). English head under a Vietnamese negation frame."
@@ -3867,7 +3900,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). park=true: the head 'trà sữa' may legitimately be consumed by the seeded 'không đường'→sugar free placement. Non-inversion is the hard part."
@@ -3891,9 +3925,7 @@
           "foldedName": "meat"
         }
       ],
-      "unresolved": [
-        "đồ ăn không"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -3902,7 +3934,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). THE CLASSIC INVERSION BAIT with a carrier head — nothing to preserve, everything to get wrong. park=true, so the ONLY way to fail is to invert."
@@ -3953,9 +3986,7 @@
           "foldedName": "meat"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -3964,7 +3995,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Inversion bait over a locale-invariant head."
@@ -4006,9 +4038,7 @@
           "foldedName": "savory"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -4017,7 +4047,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). Negating a taste attribute rather than an ingredient."
@@ -4059,7 +4090,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "NEGATION v2 (LITERAL IGNORE): 'không X' is not a supported exclusion — the mentioned word may ground POSITIVELY like any other ingredient. The assertion is head preservation + NON-INVERSION: the parse must never flip into the semantic opposite (a vegetarian/vegan constraint the user did not ask for). 'không sữa' is a seeded 2-gram → dairy free; positive grounding is correct and is NOT an inversion (the user did ask for dairy-free)."
@@ -4071,9 +4103,7 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "NOT GROUNDED: spicy"
-      ],
+      "reasons": ["NOT GROUNDED: spicy"],
       "grounded": [
         {
           "entityId": "042653d2-f070-45f0-aa1c-5da1caf6df2c",
@@ -4094,7 +4124,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'cay'→spicy (food_attribute)."
@@ -4127,7 +4158,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "DIETARY BOUNDARY (half 1): 'chay' is banked → vegetarian ONLY. Substituting vegan would tell a Buddhist-vegetarian diner that a dish with fish sauce is fine — the two are never interchangeable."
@@ -4160,7 +4192,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "DIETARY BOUNDARY (half 2): 'thuần chay' is banked → vegan. It CONTAINS the token 'chay', so a 1-gram fallback would silently downgrade a vegan search to vegetarian — that substitution is the failure this pair exists to catch."
@@ -4202,7 +4235,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Seeded 2-gram; also the cue/alias collision in isolation — 'không' must not negate the phrase it is part of."
@@ -4235,7 +4269,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Locale-invariant spine word — the control for this stratum."
@@ -4268,7 +4303,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'ít cay'→mild. A DEGREE phrase, not a negation: it must not become spicy, and it must not become a cue."
@@ -4301,7 +4337,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'chiên giòn'→crispy (preparation attribute)."
@@ -4334,7 +4371,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'hun khói'→smoked."
@@ -4367,7 +4405,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'hấp'→steamed — a single-token attribute with a very short folded form ('hap')."
@@ -4400,7 +4439,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'lãng mạn'→romantic (restaurant_attribute)."
@@ -4433,7 +4473,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'yên tĩnh'→quiet."
@@ -4445,13 +4486,9 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "NOT GROUNDED: rooftop"
-      ],
+      "reasons": ["NOT GROUNDED: rooftop"],
       "grounded": [],
-      "unresolved": [
-        "sân thượng"
-      ],
+      "unresolved": ["sân thượng"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -4460,7 +4497,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'sân thượng'→rooftop."
@@ -4493,7 +4531,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 4-token phrase → outdoor seating."
@@ -4526,7 +4565,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'giao hàng'→delivery."
@@ -4559,7 +4599,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'ăn đêm'→late night — idiomatic, not a word-for-word rendering."
@@ -4592,7 +4633,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 4-token phrase → allows dogs. The es corpus's lexical-gap case in Vietnamese: the English concept is 'allows dogs', not 'pet friendly'."
@@ -4625,7 +4667,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 4-token phrase → good for groups."
@@ -4647,15 +4690,6 @@
           "name": "wifi",
           "tier": "gazetteer-exact",
           "foldedName": "wifi"
-        },
-        {
-          "entityId": "8012f46c-e90c-42a7-a5ff-f06f4e51529e",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
-          "span": "có",
-          "name": "cozy",
-          "tier": "linked",
-          "foldedName": "cozy"
         }
       ],
       "unresolved": [],
@@ -4667,7 +4701,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 'có wifi'→wifi; 'có' (has) is a carrier that must not block the match."
@@ -4718,7 +4753,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 3-token phrase → parking."
@@ -4751,7 +4787,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Banked 4-token phrase → cash only."
@@ -4784,7 +4821,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "THE SHARPEST VIETNAMESE HOMOGRAPH: tone marks are meaning. 'bò' = beef, 'bơ' = butter/avocado — and BOTH fold to 'bo', where the corpus banks 'bo'→avocado + butter and NOTHING on beef. A confident avocado answer to a beef query is the vi twin of the es 'tuna' case. SAFE = beef, or clean park."
@@ -4826,7 +4864,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "CONTROL for hg-01: this is the spelling the banked alias actually means. Either sense is correct."
@@ -4859,7 +4898,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "'chè' = a sweet dessert soup; 'chè' also = the tea plant, and the corpus banks 'chè'→tea (ingredient). MEASURED 2026-08-09: the dessert is UNREACHABLE for two independent reasons, and neither is the judge's. (1) No dessert-soup concept exists in this corpus, so there is no entity for 'chè' to claim — no hearing was ever held and none is due (nothing was evicted; tea's row was never contested). (2) Even if one existed, an EXACT/alias link TERMINATES the span: the dense admission tier is reached only when sparse produced no link or a weak fuzzy one, so a confident exact grounding suppresses dense for that span. Park stays safe; fixing this is a CORPUS question (mint the concept), not a judging one."
@@ -4869,31 +4909,10 @@
       "query": "giá",
       "stratum": "homograph",
       "locale": "vi-VN",
-      "pass": false,
-      "preservation": 0.3333333333333333,
-      "reasons": [
-        "MIS-GROUNDED (outside allowed set): soybean sprout[gazetteer-exact]"
-      ],
-      "grounded": [
-        {
-          "entityId": "0a1d53a2-7cc6-4c42-8fa9-8f782df1e009",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "giá",
-          "name": "soybean sprout",
-          "tier": "gazetteer-exact",
-          "foldedName": "soybean sprout"
-        },
-        {
-          "entityId": "b8f957ef-c8a5-4b87-bf11-7d143ec96f15",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "giá",
-          "name": "bean sprout",
-          "tier": "gazetteer-exact",
-          "foldedName": "bean sprout"
-        }
-      ],
+      "pass": true,
+      "preservation": 0,
+      "reasons": ["clean park (safe)"],
+      "grounded": [],
       "unresolved": [],
       "analysis": {
         "script": "latin",
@@ -4903,11 +4922,10 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": true
       },
-      "misGroundings": [
-        "soybean sprout[gazetteer-exact]"
-      ],
+      "misGroundings": [],
       "notes": "'giá' = bean sprouts AND 'price'. Banked on the sprout senses. A price-shaped or restaurant-shaped capture would be the failure."
     },
     {
@@ -4917,9 +4935,7 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0.6666666666666666,
-      "reasons": [
-        "MIS-GROUNDED (outside allowed set): mian[gazetteer-exact]"
-      ],
+      "reasons": ["MIS-GROUNDED (outside allowed set): mian[gazetteer-exact]"],
       "grounded": [
         {
           "entityId": "042de43d-2fb6-460d-bbea-b8779b79b52a",
@@ -4958,11 +4974,10 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
-      "misGroundings": [
-        "mian[gazetteer-exact]"
-      ],
+      "misGroundings": ["mian[gazetteer-exact]"],
       "notes": "'mì' = wheat noodles; banked on noodle/noodles. Also one fold away from 'mỹ' (America) — see hg-06."
     },
     {
@@ -4993,7 +5008,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "TONE-FOLD COLLISION: 'Mỹ' = America/American, but folded it is 'my', which the corpus banks on the Chinese noodle 'mian'. A user asking for American food must not be handed a noodle dish. SAFE = american, or park."
@@ -5026,7 +5042,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "'phô mai' (cheese) vs 'phở' (the soup) — one diacritic apart in speech, and 'pho mai' shares its first token with the folded 'pho'. Banked on cheese/queso; a pho grounding would be the failure."
@@ -5059,7 +5076,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "'cá' = fish; 'ca' = to sing / a shift / a cup. Banked on fish. Control-ish, but the 2-letter folded form is exactly where short-string fuzzy floors misfire."
@@ -5092,7 +5110,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "UN-PARKED 2026-08-09: 'canh' (a clear soup) is banked on soup and grounds gazetteer-exact. It was unbanked because the claims registry adjudicated on the accent-DESTROYING recall fold, so canh/cánh (wing)/cạnh (edge) arrived as one word and the offer lost a hearing that was never real. The claim unit is the FORM now, so the three words no longer contest each other. Live assertion, not a park: a wing or an edge here would be the failure."
@@ -5102,15 +5121,21 @@
       "query": "chả",
       "stratum": "homograph",
       "locale": "vi-VN",
-      "pass": true,
+      "pass": false,
       "preservation": 1,
-      "reasons": [
-        "clean park (safe)"
+      "reasons": ["MIS-GROUNDED (outside allowed set): cha lua[linked]"],
+      "grounded": [
+        {
+          "entityId": "1a8b7cad-9826-44f9-a753-61d42b81cc02",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "chả",
+          "name": "cha lua",
+          "tier": "linked",
+          "foldedName": "cha lua"
+        }
       ],
-      "grounded": [],
-      "unresolved": [
-        "chả"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5119,9 +5144,10 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
-      "misGroundings": [],
+      "misGroundings": ["cha lua[linked]"],
       "notes": "'chả' = a grilled pork patty, unbanked as a bare surface (verified) — and it is a substring of dozens of banked compounds (chả giò, bún chả, chả cá). SAFE = clean park; any confident dish is a fragment mis-grounding."
     },
     {
@@ -5131,9 +5157,7 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "MIS-GROUNDED (outside allowed set): Nems[linked]"
-      ],
+      "reasons": ["MIS-GROUNDED (outside allowed set): Nems[linked]"],
       "grounded": [
         {
           "entityId": "c560b1f8-e46b-47ee-a74f-19d3d2bdb25b",
@@ -5154,11 +5178,10 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
-      "misGroundings": [
-        "Nems[linked]"
-      ],
+      "misGroundings": ["Nems[linked]"],
       "notes": "STILL PARKED, and the reason is now known precisely (2026-08-09). 'nem' is unbanked bare not because anything refused it — with form-scoped claims nothing contests it — but because the vocabulary generator never OFFERS the bare word: asked for spring roll in vi it emits the compounds ('nem cuốn', 'nem rán', 'chả giò'). So bare 'nem' falls to the fuzzy linker, which reaches 'little gem lettuce' — a substring accident, not a locale defect. The fix is a generator that also emits the head word, and it is not owed to the claims registry."
     },
     {
@@ -5189,7 +5212,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "'gỏi' = a Vietnamese salad; unbanked bare (only 'gỏi cuốn tôm' is banked — cp-13). SAFE = salad, or park."
@@ -5242,11 +5266,10 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
-      "misGroundings": [
-        "vermicelli bowl[gazetteer-exact]"
-      ],
+      "misGroundings": ["vermicelli bowl[gazetteer-exact]"],
       "notes": "CROSS-LANGUAGE HOMOGRAPH: Vietnamese 'bún' = rice vermicelli; English 'bun' = bread. The corpus holds BOTH and they fold identically. | AUTHORING CORRECTION (gate run 1): the first draft forbade 'bun'. That contradicts the ratified es ruling (hg-07/hg-08, tuna/pie): an exact English NAME match is correct for ANY locale in an English-corpus market — the locale guard governs tagged ALIAS rows, not source-faithful names. The parse returned rice noodle AND bun; the Vietnamese sense is present, so this is breadth, not a mis-grounding."
     },
     {
@@ -5277,7 +5300,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "TRUE IN-LANGUAGE HOMOGRAPH: 'thơm' = pineapple (southern) AND fragrant (the adjective) — the corpus banks the SAME surface on both, a food and a food_attribute. Either is correct; the entry exists because a market must not have to pick."
@@ -5328,7 +5352,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "DIACRITIC TRAP: 'cơm chay' (vegetarian rice) and 'cơm cháy' (scorched rice crust) both fold to 'com chay', and only the SCORCHED sense is banked. This entry asserts the banked sense; hg-16 asserts the other spelling, and the pair makes the collision measurable instead of arguable. | AUTHORING CORRECTION (gate run 1): 'rice' added to the allowed set — the parse also linked the sub-span 'cơm'→rice, which is a true sub-grounding of the query, not a wrong sense."
@@ -5370,7 +5395,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "The other half of hg-15: a vegetarian-rice query whose folded form is banked on scorched rice. SAFE = rice and/or vegetarian, or park; being handed a rice crust is a wrong-sense grounding a diner would notice immediately."
@@ -5439,7 +5465,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "'ớt' is banked on five unmerged English chili twins — any of them is right. Folded it is 'ot', a 2-letter string: the fuzzy-floor case."
@@ -5472,7 +5499,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "'chanh' covers BOTH lemon and lime in Vietnamese; the corpus banks both. Either is correct — the entry documents that no single English row is the right answer."
@@ -5505,7 +5533,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "'ngô' = corn (northern) and also a common surname/'Chinese' in older usage. Banked on corn."
@@ -5538,7 +5567,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "DE-DIACRITIZED COLLISION: typed bare, 'ga' is 'gà' (chicken), 'ga' (train station / gas), and the folded head of 'có ga'→sparkling. SAFE = chicken, or park."
@@ -5571,9 +5601,7 @@
           "foldedName": "sushi prepared fish"
         }
       ],
-      "unresolved": [
-        "tôi muốn ăn"
-      ],
+      "unresolved": ["tôi muốn"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5582,7 +5610,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Vietnamese carrier (\"I want to eat\") + English dish. The English span must ground as if English."
@@ -5622,11 +5651,18 @@
           "name": "pizza",
           "tier": "gazetteer-exact",
           "foldedName": "pizza"
+        },
+        {
+          "entityId": "38f85a48-d950-4741-97ee-e02b24521230",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "tôi",
+          "name": "pigs ears",
+          "tier": "linked",
+          "foldedName": "pigs ears"
         }
       ],
-      "unresolved": [
-        "cho tôi"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5635,7 +5671,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Imperative carrier + loanword dish."
@@ -5668,9 +5705,7 @@
           "foldedName": "ramen"
         }
       ],
-      "unresolved": [
-        "gần đây"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5679,7 +5714,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Carrier + proximity directive (\"gần đây\" = nearby), deliberately unasserted as a concept."
@@ -5701,11 +5737,18 @@
           "name": "burger",
           "tier": "gazetteer-exact",
           "foldedName": "burger"
+        },
+        {
+          "entityId": "38f85a48-d950-4741-97ee-e02b24521230",
+          "bucket": "ingredients",
+          "type": "ingredient",
+          "span": "tôi",
+          "name": "pigs ears",
+          "tier": "linked",
+          "foldedName": "pigs ears"
         }
       ],
-      "unresolved": [
-        "tôi thích"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5714,7 +5757,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Carrier + English dish that also exists as a restaurant_attribute — cross-type placement."
@@ -5738,9 +5782,7 @@
           "foldedName": "bbq"
         }
       ],
-      "unresolved": [
-        "muốn ăn"
-      ],
+      "unresolved": ["muốn"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5749,7 +5791,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Spine word identical in both languages."
@@ -5791,9 +5834,7 @@
           "foldedName": "bbq"
         }
       ],
-      "unresolved": [
-        "tìm quán"
-      ],
+      "unresolved": ["tìm quán"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5802,7 +5843,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "English 2-gram concept that must beat its own parts ('korean' + 'bbq'), under a Vietnamese carrier."
@@ -5824,20 +5866,9 @@
           "name": "dim sum",
           "tier": "gazetteer-exact",
           "foldedName": "dim sum"
-        },
-        {
-          "entityId": "8012f46c-e90c-42a7-a5ff-f06f4e51529e",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
-          "span": "có",
-          "name": "cozy",
-          "tier": "linked",
-          "foldedName": "cozy"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5846,7 +5877,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Vietnamese yes/no frame ('có ... không') WRAPPING an English concept — the trailing 'không' is a question particle here, NOT a negation cue. If it reads as negation the parse inverts on a purely grammatical word."
@@ -5888,9 +5920,7 @@
           "foldedName": "cream"
         }
       ],
-      "unresolved": [
-        "tôi muốn"
-      ],
+      "unresolved": ["tôi muốn"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5899,7 +5929,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "English form of sn-23 — isolates whether the sn-23 result is a bridge or a grounding gap."
@@ -5950,7 +5981,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "English noun + banked Vietnamese attribute in one query."
@@ -5974,9 +6006,7 @@
           "foldedName": "seafood"
         }
       ],
-      "unresolved": [
-        "nhà hàng"
-      ],
+      "unresolved": ["nhà hàng"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5985,7 +6015,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "English form of sn-31."
@@ -6009,10 +6040,7 @@
           "foldedName": "brunch"
         }
       ],
-      "unresolved": [
-        "ăn",
-        "ở đâu"
-      ],
+      "unresolved": ["ở đâu"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -6021,7 +6049,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Loanword under a Vietnamese question frame (\"where to eat\")."
@@ -6054,9 +6083,7 @@
           "foldedName": "pasta"
         }
       ],
-      "unresolved": [
-        "tôi muốn"
-      ],
+      "unresolved": ["tôi muốn"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -6065,7 +6092,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "English dish; note 'mì Ý' is the banked Vietnamese form → pasta, so both routes exist."
@@ -6107,7 +6135,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "English dish + banked price attribute 'giá rẻ'→affordable."
@@ -6131,9 +6160,7 @@
           "foldedName": "steak"
         }
       ],
-      "unresolved": [
-        "muốn ăn"
-      ],
+      "unresolved": ["muốn"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -6142,7 +6169,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Plain English noun under a Vietnamese verb."
@@ -6166,9 +6194,7 @@
           "foldedName": "salad"
         }
       ],
-      "unresolved": [
-        "tìm"
-      ],
+      "unresolved": ["tìm"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -6177,7 +6203,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "Shortest possible code-switch: one carrier verb + one English noun."
@@ -6199,20 +6226,9 @@
           "name": "rooftop",
           "tier": "gazetteer-exact",
           "foldedName": "rooftop"
-        },
-        {
-          "entityId": "8012f46c-e90c-42a7-a5ff-f06f4e51529e",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
-          "span": "có",
-          "name": "cozy",
-          "tier": "linked",
-          "foldedName": "cozy"
         }
       ],
-      "unresolved": [
-        "không"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -6221,7 +6237,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "English form of at-12, inside the same 'có ... không' frame as cs-07 — the second reading of the question particle."
@@ -6236,6 +6253,15 @@
       "reasons": [],
       "grounded": [
         {
+          "entityId": "b01592d6-f94a-4b23-afdb-9764d21095ad",
+          "bucket": "restaurants",
+          "type": "restaurant",
+          "span": "quán",
+          "name": "Quan Sushi Grill",
+          "tier": "linked",
+          "foldedName": "quan sushi grill"
+        },
+        {
           "entityId": "092f9cb2-74c9-49da-92a6-3ffcf05d2245",
           "bucket": "restaurantAttributes",
           "type": "restaurant_attribute",
@@ -6245,9 +6271,7 @@
           "foldedName": "wifi"
         }
       ],
-      "unresolved": [
-        "quán có"
-      ],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -6256,7 +6280,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "English form of at-18."
@@ -6289,9 +6314,7 @@
           "foldedName": "hot pot"
         }
       ],
-      "unresolved": [
-        "tôi muốn thử"
-      ],
+      "unresolved": ["tôi muốn"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -6300,7 +6323,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "English form of sn-28."
@@ -6333,9 +6357,7 @@
           "foldedName": "sub sandwich"
         }
       ],
-      "unresolved": [
-        "muốn ăn"
-      ],
+      "unresolved": ["muốn"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -6344,7 +6366,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": true,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "English noun whose Vietnamese sibling ('bánh mì'→viet sandwich) is a DIFFERENT dish — the two must not collapse."
@@ -6375,15 +6398,6 @@
           "name": "pho",
           "tier": "gazetteer-exact",
           "foldedName": "pho"
-        },
-        {
-          "entityId": "523eec4d-ead5-4ca0-a897-b5de1b259793",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
-          "span": "ngon",
-          "name": "vietnamese",
-          "tier": "linked",
-          "foldedName": "vietnamese"
         }
       ],
       "unresolved": [],
@@ -6395,7 +6409,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "De-diacritized dish inside a Vietnamese frame ('ngon' = tasty, a quality word with no entity). 'Pho' also exists as a RESTAURANT name — type-aware admission matters."
@@ -6446,7 +6461,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'phở bò' is banked vi on beef pho / beef rib pho; the user typed the tone on 'phở' and skipped it on 'bò'."
@@ -6497,7 +6513,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: The mirror of pa-01 — the accent lands on the SECOND word instead. Position must not matter."
@@ -6539,7 +6556,8 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'bún bò huế' is banked vi; 'huế'→'hue' is the classic half-applied Telex ending."
@@ -6551,9 +6569,7 @@
       "locale": "vi-VN",
       "pass": false,
       "preservation": 0,
-      "reasons": [
-        "NOT GROUNDED: iced viet coffee"
-      ],
+      "reasons": ["NOT GROUNDED: iced viet coffee"],
       "grounded": [
         {
           "entityId": "926935db-c5d9-45f8-8618-05fb6a9fd3e9",
@@ -6563,6 +6579,15 @@
           "name": "coffee",
           "tier": "gazetteer-exact",
           "foldedName": "coffee"
+        },
+        {
+          "entityId": "e73a034c-649a-42e4-9e6b-606cfba63f1f",
+          "bucket": "food",
+          "type": "food",
+          "span": "cà phê",
+          "name": "cà phê",
+          "tier": "gazetteer-exact",
+          "foldedName": "ca phe"
         },
         {
           "entityId": "89127e73-89c8-44a1-9f97-8b4a4c702f22",
@@ -6592,7 +6617,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'cà phê sữa đá' is banked (vi + und); 'đá'→'da' loses both the tone AND the đ, the commonest US-keyboard slip."
@@ -6602,36 +6628,27 @@
       "query": "cà phe sua da",
       "stratum": "compound",
       "locale": "vi-VN",
-      "pass": true,
-      "preservation": 1,
-      "reasons": [],
+      "pass": false,
+      "preservation": 0,
+      "reasons": ["NOT GROUNDED: coffee"],
       "grounded": [
         {
-          "entityId": "926935db-c5d9-45f8-8618-05fb6a9fd3e9",
+          "entityId": "19014d88-a89f-451b-b2fa-ae98f3e02311",
+          "bucket": "food",
+          "type": "food",
+          "span": "cà phe sua da",
+          "name": "cà phê sứa đá",
+          "tier": "gazetteer-exact",
+          "foldedName": "ca phe sua da"
+        },
+        {
+          "entityId": "e73a034c-649a-42e4-9e6b-606cfba63f1f",
           "bucket": "food",
           "type": "food",
           "span": "cà phe",
-          "name": "coffee",
-          "tier": "gazetteer-exact",
-          "foldedName": "coffee"
-        },
-        {
-          "entityId": "89127e73-89c8-44a1-9f97-8b4a4c702f22",
-          "bucket": "food",
-          "type": "food",
-          "span": "sua",
-          "name": "milk",
-          "tier": "gazetteer-exact",
-          "foldedName": "milk"
-        },
-        {
-          "entityId": "17a3a5b1-9a4f-4ab5-928f-3dd1f1945176",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "da",
-          "name": "skin",
-          "tier": "gazetteer-exact",
-          "foldedName": "skin"
+          "name": "cà phê",
+          "tier": "linked",
+          "foldedName": "ca phe"
         }
       ],
       "unresolved": [],
@@ -6643,7 +6660,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: Mostly plain with ONE accent left on 'cà'. A single surviving accent must not refuse the whole phrase — the defect this stratum was written to catch."
@@ -6685,7 +6703,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'gỏi cuốn' is banked und on spring roll."
@@ -6736,7 +6755,8 @@
           "confidence": 1,
           "source": "detector"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: Fully accented, but asserted at locale en to pin that SPELLING EVIDENCE is not locale-scoped: the accented form lives on the vi display row while the en/und recall row is 'banh mi'. Scoping the evidence to the request locale refused the dish and handed back the restaurant 'Bánh'."
@@ -6769,7 +6789,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'ẩm thực Hy Lạp' is banked vi on the greek attribute — five tokens, so this entry also covers the phrase-length window."
@@ -6802,7 +6823,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'chỉ nhận tiền mặt' is banked vi on the cash-only attribute; the final word is typed plain."
@@ -6862,7 +6884,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'cơm tấm' is banked vi on com tam (and broken rice); 'tấm'→'tam' plain."
@@ -6904,7 +6927,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'bánh xèo' is the vi display spelling, 'banh xeo' the recall row — a partial mix must reach the dish either way."
@@ -6914,74 +6938,27 @@
       "query": "bun thịt nướng",
       "stratum": "compound",
       "locale": "vi-VN",
-      "pass": false,
+      "pass": true,
       "preservation": 0,
-      "reasons": [
-        "NOT GROUNDED: pork vermicelli"
-      ],
+      "reasons": ["parked (allowed for this entry)"],
       "grounded": [
         {
-          "entityId": "38dd8008-11fd-4771-8203-7434a8040bd4",
+          "entityId": "2aebb6b7-bd9c-432a-a07b-3964020a96f0",
           "bucket": "food",
           "type": "food",
+          "span": "bun thịt nướng",
+          "name": "bun thit nuong",
+          "tier": "gazetteer-exact",
+          "foldedName": "bun thit nuong"
+        },
+        {
+          "entityId": "2b683f4e-1101-42de-921d-d6a0fa80495d",
+          "bucket": "ingredients",
+          "type": "ingredient",
           "span": "bun",
           "name": "bun",
-          "tier": "gazetteer-exact",
+          "tier": "linked",
           "foldedName": "bun"
-        },
-        {
-          "entityId": "6e666716-a419-45b8-93fd-c0a2274af7cb",
-          "bucket": "food",
-          "type": "food",
-          "span": "bun",
-          "name": "vermicelli bowl",
-          "tier": "gazetteer-exact",
-          "foldedName": "vermicelli bowl"
-        },
-        {
-          "entityId": "e3a3aa75-60aa-4310-a06c-77a967fab87c",
-          "bucket": "food",
-          "type": "food",
-          "span": "bun",
-          "name": "vermicelli",
-          "tier": "gazetteer-exact",
-          "foldedName": "vermicelli"
-        },
-        {
-          "entityId": "44ab6d3b-4174-4506-a24b-3b35d2b76c6d",
-          "bucket": "food",
-          "type": "food",
-          "span": "thịt nướng",
-          "name": "grilled meat",
-          "tier": "gazetteer-exact",
-          "foldedName": "grilled meat"
-        },
-        {
-          "entityId": "c3b169ed-8b25-4c8e-8bdd-d3c700eca72c",
-          "bucket": "food",
-          "type": "food",
-          "span": "thịt nướng",
-          "name": "grilled protein",
-          "tier": "gazetteer-exact",
-          "foldedName": "grilled protein"
-        },
-        {
-          "entityId": "3b38ad58-7750-42c8-9363-0b2742f704b2",
-          "bucket": "food",
-          "type": "food",
-          "span": "thịt",
-          "name": "meat",
-          "tier": "linked",
-          "foldedName": "meat"
-        },
-        {
-          "entityId": "5e7775c8-82bc-410a-bce3-7b5d05e49249",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
-          "span": "nướng",
-          "name": "grilled",
-          "tier": "linked",
-          "foldedName": "grilled"
         }
       ],
       "unresolved": [],
@@ -6993,7 +6970,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: 'bún thịt nướng' is banked vi on pork vermicelli; the HEAD word is the plain one here."
@@ -7035,7 +7013,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "PARTIAL ACCENTING — the input mode a corpus authored only in the clean regimes cannot see. Telex/VNI half-applied, iOS autocorrect mixes, one word typed lazily: this is NORMAL Vietnamese input, not a typo. The accent-evidence rule reads evidence PER TOKEN for exactly this reason — an accented token must agree with the surface, a plain one asks nothing. Authored against the DB: THE COUNTERWEIGHT. Every entry above says a plain token asks nothing — this one says the evidence that IS present is still enforced. 'chay' is banked vi as a word of its own (vegetarian), so it is a complete spelling, not a skipped accent, and must not match the scorched-rice surface 'cơm cháy'. Duplicates hg-16's assertion deliberately: it is the boundary the partial-accent rule is most likely to erode."
@@ -7068,7 +7047,8 @@
           "confidence": 1,
           "source": "surface"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "TONE MARKS ARE PHONEMIC, AND THE CLAIM UNIT IS THE FORM. 'chảy' (runny/melted — what a searcher means by gooey cheese) and 'chay' (vegetarian) are DIFFERENT WORDS that share one de-diacritized recall fold. The pre-per-form judge heard them as one case and refused gooey's claim, leaving 'chảy' completely unresolved — a real word typed with its real accents returning nothing. That verdict was hand-reverted; it is now re-heard mechanically (the judge version stamps every verdict, and a bump re-opens it). This entry is the standing proof: accented 'chảy' reaches gooey, and never the dietary word."
@@ -7137,7 +7117,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "BRIDGING SEAM (cover-linker, 2026-08-10). The registry banks 'bánh mì burger' as a surface of BURGER — a span that sits ACROSS the seam between the two dishes this query names. If that bridge is selected it eats words on both sides and one of the two concepts disappears. The assertion is the INTENT only: both concepts resolve. Nothing is asserted about the decomposed parts (L1 lands later). Verified against the corpus: 'bánh mì'→banh mi (vi surface) and 'burger thực vật'→veggie burger (vi surface)."
@@ -7188,7 +7169,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "BRIDGING SEAM, second shape. 'bánh pizza'→pizza and 'pizza napoletana'→neapolitan pizza overlap on the middle word, so selection must pick a whole-query reading rather than the locally longest span. The dish the user named is the Neapolitan pizza; that is what is asserted."
@@ -7239,7 +7221,8 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false
+        "denseTierUsed": false,
+        "browseMode": false
       },
       "misGroundings": [],
       "notes": "THE THIRD MEASURED STRAND CASE, RE-AUTHORED TO WHAT THE DATA SAYS (2026-08-10). It looks like a bridging case — 'bánh taco' (vi surface of taco) against 'taco callejero' (es surface of street taco) — but under a vi request the Spanish surface is never admitted, so there is no second span to select and the word 'callejero' cannot ground at all. This is a RECALL/locale fact, not a selection one: no span-selection rule can recover it. Kept as the record of that finding, asserting the concept that IS reachable."

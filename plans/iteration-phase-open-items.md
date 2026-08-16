@@ -709,6 +709,21 @@ demand leak for those queries, and retires generic-token-handling.ts
 entirely. Name-prefix fallback ('the' → The-named venues) designed,
 NOT built (ledger-noted; grounds-nothing + not-browse arm, trigram index
 exists). REPAIR+BROWSE AGENT DISPATCHED (phases 1-2, 13 items).
+PHASE 2 BUILT 2026-08-15: word-role lane live (particular/venue-category/
+frame; v1 6a70e294eaa2 → v2 5de12b9d66b0 same day — v1's "quality of the
+results" swallowed venue qualities, ruling romántico/tranquilo/mascotas
+FRAME and dropping es 88.7→78; v2's scoping-vs-ranking test restored it,
+1,934 verdicts flipped, diff artifact printed + saved). Certified over
+the banked vocabulary 32,392 questions x2 rules, measured $113µ/hearing
+(~$7.2 total incl. the v2 re-hear). Composition NARROWED by owner
+amendment same day: browse = frame-only queries (+ provisional bare
+'restaurants', flagged in code pending the venue-taxonomy plan);
+venue-category keeps today's behavior, categories are NOT demand
+(consensus reversal), frame words excluded from grounding input only when
+a span grounded. generic-token-handling.ts DELETED (4 demand-hygiene
+consumers read stripAskFrame verdicts). Name-prefix fallback REMAINS
+designed-not-built — still the grounds-nothing + not-browse arm, trigram
+index exists; build when a real 'the'-class miss is measured.
 GHOST CENSUS (provenance agent, verified): THREE diseases not one —
 M1 shorthand-in-list (v14 KILLS, certified 3/3 vs live 0/3); M2
 LEADING-ARTICLE STRIP (v14 GAP — "The Place"→Place manufactures bare
