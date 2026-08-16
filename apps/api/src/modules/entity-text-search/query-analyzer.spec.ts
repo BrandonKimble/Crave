@@ -587,17 +587,24 @@ describe('query analyzer (A2 seam)', () => {
     });
   });
 
-  describe('negation cues (R5-3 tier 1)', () => {
-    it('finds cues from every installed pack, tagged by locale', () => {
+  describe('the analyzer has no opinion about negation (judged vocabulary, 2026-08-13)', () => {
+    it('exposes no cue list — the question moved to claim_verdicts', () => {
+      const analysis = analyzeQuery(
+        'ramen sin cerdo',
+        null,
+      ) as unknown as Record<string, unknown>;
+      // The negation-cue pack lived here and answered from ~10 hand-typed
+      // words per language. It is gone: 'sin' is now a WORD WITH A VERDICT,
+      // read by the one consumer that ever needed it. A property reappearing
+      // here means somebody re-grew the list.
+      expect(analysis.negationCues).toBeUndefined();
+      expect(Object.keys(analysis)).not.toContain('negationCues');
+    });
+
+    it('still tokenizes the negator like any other word', () => {
       expect(
-        analyzeQuery('ramen sin cerdo', null).negationCues.map((c) => [
-          c.cue,
-          c.locale,
-        ]),
-      ).toEqual([['sin', 'es']]);
-      expect(
-        analyzeQuery('pizza senza glutine', null).negationCues[0].locale,
-      ).toBe('it');
+        analyzeQuery('ramen sin cerdo', null).tokens.map((t) => t.folded),
+      ).toEqual(['ramen', 'sin', 'cerdo']);
     });
   });
 

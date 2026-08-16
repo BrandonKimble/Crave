@@ -25,34 +25,8 @@ import {
   denseAdmits,
   linkerAdmits,
 } from './evidence-admission';
-import {
-  analyzeQuery,
-  negationCueTexts,
-} from '../entity-text-search/query-analyzer';
-
-/** Negation v2: remove cue words ("no", "sin", "without", …) from a phrase
- *  before the dense fallback embeds it — never from lexical matching, where
- *  a cue inside a NAME ("No Name Burgers", "sin gluten" aliases) is real. */
-function stripCueTokens(
-  analysis: Parameters<typeof negationCueTexts>[0],
-  text: string,
-): string {
-  const cues = negationCueTexts(analysis);
-  if (!cues.size) return text;
-  // Compare in FOLDED space: the cue set is folded (canonicalFold strips
-  // diacritics), so a raw-lowercase compare silently missed every accented
-  // cue — "không" never matched the folded "khong" and vi hygiene would
-  // have been a no-op.
-  const kept = text
-    .split(/\s+/)
-    .filter((word) => !cues.has(canonicalFold(word)));
-  // ALL CUE ⇒ NOTHING TO EMBED. Returning the original text here (the old
-  // fallback) handed the semantic model a bare negator — "phở không thịt"
-  // grounds phở and thịt, leaving the run "không", which was then embedded
-  // and linked as if it were a dish. An empty string tells the caller to
-  // skip the dense attempt: there is no positive concept in this run.
-  return kept.join(' ');
-}
+import { analyzeQuery } from '../entity-text-search/query-analyzer';
+import { JudgedVocabularyService } from '../content-processing/entity-resolver/judged-vocabulary.service';
 export interface ResidueToken {
   text: string;
   start: number;
@@ -181,6 +155,7 @@ export class SearchQueryInterpretationService {
     private readonly unsegmentedResidue: UnsegmentedResidueService,
     private readonly signals: SignalsService,
     private readonly surfaceLocaleIndex: SurfaceLocaleIndexService,
+    private readonly judgedVocabulary: JudgedVocabularyService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SearchQueryInterpretationService');
@@ -416,7 +391,17 @@ export class SearchQueryInterpretationService {
       // it. Exact/alias links still terminate — they are claims.
       // Cue tokens never reach the embedder; a run made ENTIRELY of cues has
       // no positive concept to embed, so the dense tier is skipped outright.
-      const denseCandidateText = stripCueTokens(analysis, run.text);
+      // NEGATION HYGIENE, FROM VERDICTS (2026-08-13). Words ruled negators
+      // are withheld from the embedder — never from lexical matching, where a
+      // negator inside a NAME ("No Name Burgers") is a real word of that name.
+      // The read is SYNCHRONOUS against the in-memory verdict table because
+      // this runs per keystroke-search; a word nobody has heard yet is kept
+      // (today's behaviour for anything off the old cue list) and queued for
+      // the next hearing, so the miss self-heals once and never again.
+      const denseCandidateText = this.judgedVocabulary.strippedForEmbedding(
+        run.text,
+        analysis.detectedLocale?.tag ?? request.locale ?? null,
+      );
       if (
         (!linked || (linkedWasWeak && analysis.isNonEnglish)) &&
         probeBudget > 0 &&

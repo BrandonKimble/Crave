@@ -6,45 +6,53 @@ export interface GenericTokenStrippingResult {
 }
 
 /**
- * GENERIC-TOKEN STRIPPING IS A CLAIM ABOUT A LANGUAGE'S VOCABULARY, AND WE MAY
- * ONLY MAKE IT FOR A LANGUAGE WHOSE VOCABULARY WE ACTUALLY HOLD.
+ * ASK SHAPE, NOT WORD MEANING — what is left of this module after the judged
+ * vocabulary took the half that was actually about words (2026-08-13).
  *
- * This module used to hold ONE list — an English one — and apply it to every
- * string that arrived, whatever language it was in. That is the same defect the
- * language detector was corrected for (81c0d2751: "the detector may only name
- * languages we serve"), one level down: a hard-coded English answer asserted
- * over text nobody checked the language of.
+ * THE FINDING, stated plainly, because the rederivation that opened this work
+ * expected BOTH hand lists here to die and only one of them could:
  *
- * Two things went wrong, and they point in opposite directions:
+ *   The judged-vocabulary lane asks "does this word carry a concept, or does
+ *   it only do grammatical work between other words?" — and every token in
+ *   this module's lists CARRIES A CONCEPT. `best` is a quality, `nearby` is a
+ *   proximity, `restaurant` is a kind of place, `dish` is a kind of thing. A
+ *   judge told to rule them grammatical work would be lying, and the corpus
+ *   already agrees: the 2026-08-13 measurement found best/good/great/favorite/
+ *   popular/place BANKED AS LIVE RECALL SURFACES — the Best-ghost class.
  *
- *  - UNDER-STRIPPING (cosmetic). 'mejores tacos' keeps 'mejores' because
- *    'mejores' is not in an English list. The outbound query is merely worse.
+ *   So this list was never a genericness claim. It is a claim about the SHAPE
+ *   OF AN ASK: "best tacos near me" is a ranking-and-proximity FRAME wrapped
+ *   around one real ask (`tacos`), and "restaurants near me" is a frame with
+ *   no ask inside it at all. Deciding that is a different law from deciding
+ *   what a word means, it is positional rather than lexical, and folding it
+ *   into a per-word verdict would have made the verdict wrong for every other
+ *   consumer of the same word.
  *
- *  - OVER-STRIPPING (destructive, and the reason this is locale-keyed rather
- *    than merely extended). Every token in the English list is a legal word in
- *    some other language, and stripping one there deletes a CONCEPT, not a
- *    modifier. When every token is deleted the caller is told
- *    `isGenericOnly` — a verdict that DISCARDS the term outright: the keyword
- *    lane drops it from the cycle, the on-demand lane sanitizes it to ''. A
- *    non-English ask can be thrown away on the strength of an English word
- *    list it was never subject to.
+ * WHAT THIS MODULE IS NOW. Two English-only, locale-gated rules, unchanged in
+ * behaviour and renamed to say what they do:
  *
- * THE RULE. Genericness is looked up per locale, in a table we author. Today we
- * hold exactly one generic vocabulary — English — because that list is the one
- * that was authored and the untagged corpus is English-by-construction. A
- * locale we hold no generic vocabulary for gets NO STRIPPING: nothing is
- * removed and nothing is ever judged generic-only. That is the conservative
- * direction — an unstripped term is a slightly worse query, a wrongly-stripped
- * one is a deleted ask — and it is honest, because we are not inventing Spanish
- * or Vietnamese stop-lists we have no evidence for. When a real es/vi generic
- * vocabulary is authored (or derived from the registry), it lands in this map
- * and nothing else changes.
+ *   - THE FRAME (`ASK_FRAME_TOKENS`): rank and proximity words that wrap an
+ *     ask without being one. Removed from the term, wherever they appear.
+ *   - THE BARE CATEGORY (`BARE_CATEGORY_TOKENS`): words naming the CATEGORY
+ *     the whole app is about. Never removed — a category word is content —
+ *     but a term made of NOTHING ELSE names no particular food, and
+ *     `isGenericOnly` tells the caller there is no ask here to record or
+ *     spend on.
  *
- * `und` / absent locale resolves to English deliberately: it is the untagged
- * legacy corpus, which IS English, so every pre-existing caller keeps its exact
- * behaviour and no gate moves.
+ * THE LOCALE RULE IS UNCHANGED, and so is its reason. This is a claim about
+ * one language's phrasing, and it may only be made for a language whose
+ * phrasing we hold. We hold English. A locale absent from the map — including
+ * `und`, which means "nobody could tell", not "English" — gets NO frame
+ * stripping and is never judged bare-category: an unstripped term is a
+ * slightly worse query, a wrongly-stripped one is a deleted ask.
+ *
+ * THE HONEST RESIDUE, for whoever picks this up: the ideal shape is a THIRD
+ * judged claim class — "is this word a particular food, or the category word
+ * for a whole class of them?" — which would work in every language on day one
+ * exactly as the other two lanes do. It was not ratified with them and is not
+ * invented here.
  */
-const GENERIC_RANK_LOCATION_TOKENS = [
+const ASK_FRAME_TOKENS = [
   'best',
   'top',
   'good',
@@ -59,7 +67,7 @@ const GENERIC_RANK_LOCATION_TOKENS = [
   'close',
 ] as const;
 
-const GENERIC_OBJECT_TOKENS = new Set<string>([
+const BARE_CATEGORY_TOKENS = new Set<string>([
   'food',
   'dish',
   'dishes',
@@ -69,69 +77,47 @@ const GENERIC_OBJECT_TOKENS = new Set<string>([
   'places',
 ]);
 
-interface GenericVocabulary {
-  rankLocationRegex: RegExp;
-  objectTokens: ReadonlySet<string>;
+interface AskShapeVocabulary {
+  frameRegex: RegExp;
+  categoryTokens: ReadonlySet<string>;
 }
 
-const ENGLISH_GENERIC_VOCABULARY: GenericVocabulary = {
-  rankLocationRegex: new RegExp(
-    `(?<![\\p{L}\\p{N}])(?:${GENERIC_RANK_LOCATION_TOKENS.join(
-      '|',
-    )})(?![\\p{L}\\p{N}])`,
+const ENGLISH_ASK_SHAPE: AskShapeVocabulary = {
+  frameRegex: new RegExp(
+    `(?<![\\p{L}\\p{N}])(?:${ASK_FRAME_TOKENS.join('|')})(?![\\p{L}\\p{N}])`,
     'giu',
   ),
-  objectTokens: GENERIC_OBJECT_TOKENS,
+  categoryTokens: BARE_CATEGORY_TOKENS,
 };
 
 /**
- * The authored generic vocabularies, keyed by canonical BCP 47 language. A
- * locale absent from this map has no generic vocabulary and is therefore never
- * stripped — see the module header. Extend by ADDING an entry; never by
- * widening the English one.
+ * The authored ask-shape vocabularies, keyed by canonical BCP 47 language. A
+ * locale absent from this map is never framed or judged bare-category — see
+ * the module header. Extend by ADDING an entry; never by widening the English
+ * one.
  */
-const GENERIC_VOCABULARY_BY_LOCALE: ReadonlyMap<string, GenericVocabulary> =
-  new Map([['en', ENGLISH_GENERIC_VOCABULARY]]);
+const ASK_SHAPE_BY_LOCALE: ReadonlyMap<string, AskShapeVocabulary> = new Map([
+  ['en', ENGLISH_ASK_SHAPE],
+]);
 
 /**
- * Resolve the generic vocabulary for a locale through the standard lookup
- * chain, so 'en-GB' and 'en-US' reach the English entry the same way every
- * other locale-scoped read in the codebase does.
- *
  * 'und' / null / undefined GET NO VOCABULARY — they do NOT get English
- * (corrected 2026-08-13; the "untagged corpus is English-by-construction"
- * reading is retired here, as it was on `localeLookupChain` and
- * `entity_surface.locale`).
- *
- * 'und' MEANS UNIVERSAL: the honest tag for a string nobody can assign a
- * language to. A universal tag entitles a term to NO language's stop list,
- * because "we could not tell what language this was" is not evidence that it
- * was English — and this module's own rule is that genericness may only be
- * asserted for a language whose vocabulary we hold. Returning the English
- * list for an undetermined term was the module header's OVER-STRIPPING
- * failure, reached by the one path the header did not close: a Vietnamese
- * one-worder whose language the detector cannot decide arrives here as null,
- * was judged against the English list, and a term that is entirely
- * English-generic ('top', 'best') is discarded outright — `isGenericOnly`
- * makes the keyword lane drop it and the on-demand lane sanitize it to ''.
- *
- * Nothing is lost for real English: an English request carries 'en' (or
- * 'en-US'), reaches the chain, and strips exactly as before. What changes is
- * that a term nobody could identify is no longer silently prosecuted under
- * English law. The chain already ends in 'und', and this map holds no 'und'
- * entry — so the loop below returns null for it without a special case, which
- * is why the early return could simply go rather than be inverted.
+ * (2026-08-13). 'und' MEANS UNIVERSAL: the honest tag for a string nobody can
+ * assign a language to, and "we could not tell what language this was" is not
+ * evidence that it was English. The chain already ends in 'und' and this map
+ * holds no 'und' entry, so the loop returns null for it without a special
+ * case.
  */
-function resolveGenericVocabulary(
+function resolveAskShape(
   locale: string | null | undefined,
-): GenericVocabulary | null {
+): AskShapeVocabulary | null {
   const normalized = typeof locale === 'string' ? locale.trim() : '';
   if (!normalized.length) {
     return null;
   }
 
   for (const tag of localeLookupChain(normalized)) {
-    const vocabulary = GENERIC_VOCABULARY_BY_LOCALE.get(tag);
+    const vocabulary = ASK_SHAPE_BY_LOCALE.get(tag);
     if (vocabulary) {
       return vocabulary;
     }
@@ -152,6 +138,14 @@ function extractTokens(value: string): string[] {
   return value.match(/[\p{L}\p{N}]+/gu) ?? [];
 }
 
+/**
+ * Remove the ask FRAME and report whether what is left is a bare category.
+ *
+ * Kept under its original name and signature: every caller composes it with
+ * the judged-vocabulary door, and renaming the function at the same time as
+ * splitting its law would have made the diff unreadable at exactly the call
+ * sites that most need reviewing.
+ */
 export function stripGenericTokens(
   input: string,
   locale?: string | null,
@@ -161,22 +155,22 @@ export function stripGenericTokens(
     return { text: '', isGenericOnly: true };
   }
 
-  const vocabulary = resolveGenericVocabulary(locale);
+  const vocabulary = resolveAskShape(locale);
   if (!vocabulary) {
-    // No authored generic vocabulary for this language: strip nothing, judge
+    // No authored ask-shape vocabulary for this language: strip nothing, judge
     // nothing generic. The term passes through whole.
     const text = collapseWhitespace(trimEdgeSeparators(working));
     return { text, isGenericOnly: extractTokens(text).length === 0 };
   }
 
-  working = working.replace(vocabulary.rankLocationRegex, ' ');
+  working = working.replace(vocabulary.frameRegex, ' ');
   working = collapseWhitespace(trimEdgeSeparators(working));
 
   const tokens = extractTokens(working).map((token) => token.toLowerCase());
-  const hasNonGenericObjectToken = tokens.some(
-    (token) => !vocabulary.objectTokens.has(token),
+  const hasNonCategoryToken = tokens.some(
+    (token) => !vocabulary.categoryTokens.has(token),
   );
-  if (tokens.length > 0 && !hasNonGenericObjectToken) {
+  if (tokens.length > 0 && !hasNonCategoryToken) {
     return { text: '', isGenericOnly: true };
   }
 

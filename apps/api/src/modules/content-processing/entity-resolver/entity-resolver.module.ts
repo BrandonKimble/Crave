@@ -9,6 +9,8 @@ import { AliasManagementService } from './alias-management.service';
 import { WordClaimAdjudicatorService } from './word-claim-adjudicator.service';
 import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
 import { ClaimRehearingBudgetService } from './claim-rehearing-budget.service';
+import { WordVocabularyJudgeService } from './word-vocabulary-judge.service';
+import { JudgedVocabularyService } from './judged-vocabulary.service';
 import { PrismaModule } from '../../../prisma/prisma.module';
 import { SharedModule } from '../../../shared/shared.module';
 import { LLMModule } from '../../external-integrations/llm/llm.module';
@@ -33,6 +35,8 @@ import { EntityTextSearchModule } from '../../entity-text-search/entity-text-sea
     WordClaimAdjudicatorService,
     ClaimVerdictLedgerService,
     ClaimRehearingBudgetService,
+    WordVocabularyJudgeService,
+    JudgedVocabularyService,
     EntityAnchorRehomeService,
   ],
   exports: [
@@ -40,6 +44,8 @@ import { EntityTextSearchModule } from '../../entity-text-search/entity-text-sea
     WordClaimAdjudicatorService,
     ClaimVerdictLedgerService,
     ClaimRehearingBudgetService,
+    WordVocabularyJudgeService,
+    JudgedVocabularyService,
     EntityResolutionService,
     MetroAdoptionService,
     AliasManagementService,

@@ -174,17 +174,6 @@ export type SurfaceLocaleOracle = (
   foldedText: string,
 ) => readonly SurfaceLocaleEvidence[];
 
-export interface NegationCue {
-  /** The folded cue word. */
-  cue: string;
-  /** Token index of the cue within `tokens`. */
-  index: number;
-  start: number;
-  end: number;
-  /** The locale pack that owns this cue. */
-  locale: string;
-}
-
 export interface QueryAnalysis {
   raw: string;
   /** Locale the request asked for (BCP 47), or null. */
@@ -193,7 +182,6 @@ export interface QueryAnalysis {
   script: QueryScript;
   /** Soft prior. null = undecidable (the honest answer for 1–2 words). */
   detectedLocale: DetectedLocale | null;
-  negationCues: NegationCue[];
   /** True when the query is NOT written in Latin script (M4's hard gate). */
   isNonLatinScript: boolean;
   /** True when the fused language is confidently not English. */
@@ -203,59 +191,23 @@ export interface QueryAnalysis {
 }
 
 /**
- * A LANGUAGE PACK is the plug point (N7/A2). Today exactly one pack is
- * INSTALLED as the analyzer's behavior (English/Latin); the negation cue
- * lists for the other launch languages ride here because R5-3's gate is a
- * closed word list, not morphology — a pack with only cues is honest data,
- * not speculative machinery.
+ * THE NEGATION CUE LISTS ARE GONE (2026-08-13, judged vocabulary).
+ *
+ * A pack of ~10 hand-typed negators per language lived here, and it was the
+ * last authored word list in the query path apart from English ask-shape
+ * phrasing. It was honest about what it was and it still could not do the job:
+ * it held no Mandarin at all (the comment said so, correctly — an unspaced
+ * 不要肉 has no whitespace to split on), it could not tell `chua` from `chưa`
+ * because it compared on the accent-destroying fold, and every new language
+ * meant someone typing ten more words from memory.
+ *
+ * The question "does this word negate what follows?" is now a JUDGED CLAIM,
+ * heard once per (word, language) and stored in `claim_verdicts` with its
+ * stated ground — see `word-vocabulary-lanes.ts`. The analyzer therefore has
+ * no opinion about negation at all: it produces tokens, and the one consumer
+ * that ever needed cues (dense-input hygiene in
+ * `search-query-interpretation`) reads the verdicts directly.
  */
-interface LanguagePack {
-  /** Base language subtag. */
-  language: string;
-  /** Closed negation-cue list, folded. */
-  negationCues: ReadonlySet<string>;
-}
-
-const pack = (language: string, cues: string[]): LanguagePack => ({
-  language,
-  negationCues: new Set(cues.map((c) => canonicalFold(c))),
-});
-
-/** Closed ~10-word lists. Under negation v2 (LITERAL IGNORE) these lists
- *  drive EXACTLY ONE thing: stripping cue tokens from the text handed to
- *  the DENSE EMBEDDER. They no longer touch lexical grounding, residue
- *  runs, staging or the on-demand ask, so a false cue costs one word of
- *  embedded context rather than a dropped span — the old "FAILS CLOSED
- *  (drops a span)" cost died with the cue machinery. Still kept small and
- *  high-precision: not extended with "hold the", "free of", "-less". */
-const LANGUAGE_PACKS: ReadonlyMap<string, LanguagePack> = new Map(
-  [
-    pack('en', ['no', 'without', 'not', 'non']),
-    pack('es', ['sin', 'no']),
-    pack('it', ['senza', 'non']),
-    pack('de', ['ohne', 'kein', 'keine', 'nicht']),
-    pack('fr', ['sans', 'pas']),
-    pack('pt', ['sem']),
-    // vi is a SHIPPED locale (F4): without this pack "phở không thịt"
-    // embedded whole and the dense tier — the one component that can
-    // UNDERSTAND negation — could invert it (the sin cerdo → vegan class)
-    // in the third launch language. Standard high-frequency negators only;
-    // `khong`/`chang` are the plain negations, `dung` the prohibitive,
-    // `mien` the "hold the / free of" sense. Deliberately NOT listed:
-    // `chua` ("not yet") and `it` ("little"), which are degree words and
-    // appear inside dish text. Cue lists affect ONLY dense-input
-    // stripping, never lexical grounding, so a false positive costs one
-    // word of embedded context and nothing else.
-    pack('vi', ['không', 'chẳng', 'đừng', 'miễn']),
-    // NO zh/ko/ja pack, deliberately. Neither is a SUPPORTED_LOCALE, and the
-    // one consumer (dense-input stripping) removes WHITESPACE-DELIMITED
-    // words: an unspaced 不要肉 carries no whitespace to split on, so a zh
-    // pack would either no-op or, once someone "fixed" it, delete a whole
-    // run. CJK negation hygiene is real work (strip at the segmented-token
-    // level), not a list entry — adding the list now would be machinery
-    // that cannot do its job.
-  ].map((p) => [p.language, p]),
-);
 
 /**
  * Languages the detector is allowed to answer with. Restricting the candidate
@@ -862,6 +814,33 @@ function segmentToken(
 }
 
 /**
+ * THE WORDS OF A STRING, WITH WHERE THEY SIT — the analyzer's own word
+ * boundaries, exported for anything outside the query path that has to agree
+ * with them.
+ *
+ * The judged vocabulary is the caller this was extracted for, and the reason
+ * is Mandarin. A plain `/[\p{L}\p{N}]+/` match treats 好吃的 as ONE word, so a
+ * verdict about the particle 的 can never be applied — which would have
+ * shipped the zh half of the vocabulary as a silent no-op, the same shape the
+ * deleted cue-list comment correctly predicted for a zh negation pack. The
+ * analyzer already cuts an unspaced run into per-character pieces; sharing
+ * that walk is what keeps "what is a word" one answer instead of two.
+ */
+export function segmentWords(
+  raw: string,
+): Array<{ word: string; start: number; end: number }> {
+  const out: Array<{ word: string; start: number; end: number }> = [];
+  TOKEN_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = TOKEN_RE.exec(raw)) !== null) {
+    for (const piece of segmentToken(match[0], match.index)) {
+      out.push({ word: piece.raw, start: piece.start, end: piece.end });
+    }
+  }
+  return out;
+}
+
+/**
  * IN A SCRIPT WITH NO SPACING CONVENTION, A TYPED SPACE IS NOT A WORD
  * BOUNDARY (2026-08-12, Mandarin battery defect 2).
  *
@@ -986,27 +965,6 @@ export function analyzeQuery(
     ? fuseLocale(raw, script, requestLocale, options.surfaceLocales)
     : null;
 
-  // Cue scan reads EVERY installed pack, not just the fused locale: the
-  // fused locale is a soft prior and "ramen sin cerdo" from an en-US phone
-  // must still fail closed. Cues are closed lists, so cross-pack scanning
-  // costs nothing but the English "no" ambiguity, which fails closed by
-  // design (wrong-and-confident is the thing being prevented).
-  const negationCues: NegationCue[] = [];
-  tokens.forEach((token, index) => {
-    for (const [language, languagePack] of LANGUAGE_PACKS) {
-      if (languagePack.negationCues.has(token.folded)) {
-        negationCues.push({
-          cue: token.folded,
-          index,
-          start: token.start,
-          end: token.end,
-          locale: language,
-        });
-        break;
-      }
-    }
-  });
-
   const fusedBase = baseLanguage(detectedLocale?.tag ?? null);
   const analysis: QueryAnalysis = {
     raw,
@@ -1014,7 +972,6 @@ export function analyzeQuery(
     tokens,
     script,
     detectedLocale,
-    negationCues,
     isNonLatinScript: script !== 'latin' && script !== 'other',
     isNonEnglish: fusedBase != null && fusedBase !== 'en',
     ngrams(maxPhraseWords: number): QueryNgram[] {
@@ -1078,14 +1035,4 @@ export function analyzeQuery(
 export function denseQueryInput(term: string, locale: string | null): string {
   const tag = locale?.trim();
   return tag ? `[${tag}] ${term}` : term;
-}
-
-/** NEGATION V2 (plan §12b): the folded cue tokens present in THIS query —
- *  used ONLY as dense-input hygiene (strip before embedding). Lexical
- *  matching never consults cues anymore: a cue inside a name is a real
- *  word ("No Name Burgers"). */
-export function negationCueTexts(analysis: {
-  negationCues: NegationCue[];
-}): ReadonlySet<string> {
-  return new Set(analysis.negationCues.map((cue) => cue.cue));
 }
