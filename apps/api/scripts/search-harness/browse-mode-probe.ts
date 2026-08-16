@@ -88,6 +88,10 @@ async function main(): Promise<void> {
     // hearing (FIRST_SEARCH_HEARING_CEILING_MS = 1500ms) plus ordinary
     // interpret cost. A nonsense word is novel by construction; this case
     // goes RED if the bounded await ever becomes unbounded.
+    // MEASURED at the real 1-2 word shape (2026-08-16, api_usage_ledger
+    // duration_ms, n=12): hearing p50=1226ms / p95=1423ms — the ceiling
+    // holds with ~5% headroom, so a typical run pays the hearing itself
+    // (~1.2-1.4s), not the timeout.
     const CEILING_MS = 1_500;
     const SLACK_MS = 1_500; // grounding probes + analyzer, generous
     const novelWord = `zzqx${Date.now().toString(36)}`;

@@ -103,14 +103,20 @@ import { ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES } from './on-demand-tuning.constants
  * #7, 2026-08-16). How long ONE search may wait for a hearing on a word
  * nobody has judged, before proceeding with today's unheard semantics.
  *
- * MEASURED, not invented (no-fake-estimates law): the 2026-08-16 drain of
- * the standing backlog ledgered single-batch vocabulary.* judge latency of
- * p50=4219ms / p95=7453ms / max=7812ms (duration_ms on api_usage_ledger,
- * 3 batches, 140 words). The measured p95 exceeds the PROVISIONAL 1500ms
- * ceiling the owner accepted as the first-search cost of correctness, so
- * the ceiling binds: most first-meetings of a novel word will time out,
- * queue durably, and be right on the SECOND search. Raising this buys
- * same-request correctness at first-search latency — the owner's dial.
+ * MEASURED AT THE REAL SHAPE, not invented (no-fake-estimates law). The
+ * first measurement (2026-08-16 drain: p50=4219ms / p95=7453ms) was taken
+ * on 40-word DRAIN batches — the wrong shape for this cap, whose hearings
+ * carry the 1-3 novel words of one query and ~10-40x fewer output tokens.
+ * Re-measured 2026-08-16 through the actual certifyFacets path on twelve
+ * genuine 1-2 word hearings (duration_ms on api_usage_ledger,
+ * vocabulary.* callers): p50=1226ms / p95=1423ms / max=1423ms, wall-clock
+ * ensureJudgedWithin p50=1242ms / p95=1442ms. ALL twelve landed inside
+ * the ceiling — at the real shape the cap does NOT bind (observed bind
+ * rate 0/12), so a novel word's verdict is usually in force for the SAME
+ * request. The headroom is thin (~5% at p95): a tail hearing still times
+ * out, queues durably, and is right on the second search. Raising this
+ * buys the tail same-request correctness at first-search latency —
+ * the owner's dial.
  */
 const FIRST_SEARCH_HEARING_CEILING_MS = 1_500;
 
