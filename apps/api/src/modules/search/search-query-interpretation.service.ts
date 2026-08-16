@@ -611,7 +611,25 @@ export class SearchQueryInterpretationService {
           ).engines.map((engine) => engine.engineId)
         : [];
       const now = new Date();
-      for (const residueText of cappedResidues) {
+      for (const rawResidueText of cappedResidues) {
+        // THE WRITE DOOR, AT LAST (A5, 2026-08-15). These two writes are the
+        // LARGEST demand ingress in the app — every unknown span of every
+        // search — and they were the one ingress that never passed the door.
+        // They recorded RAW residue: a Spanish preposition the gazetteer
+        // failed to ground became an on_demand_ask, and collection went and
+        // spent money looking for `de`.
+        //
+        // NEVER AWAITED (D2). The door consulted here is the SYNCHRONOUS one:
+        // it reads the in-memory verdict table and nothing else, so a search
+        // pays microseconds, never an LLM round trip. A term holding an
+        // unheard word is HELD and its word queued for tonight's drain — the
+        // ask recurs, and by then it is answerable.
+        const judged = this.judgedVocabulary.demandTerm(
+          rawResidueText,
+          analysis.detectedLocale?.tag ?? request.locale ?? null,
+        );
+        if (!judged.recordable) continue;
+        const residueText = judged.text;
         const tokenCount = residueText.split(/\s+/).filter(Boolean).length;
         if (tokenCount <= 2) {
           // Direct untyped ask — geo is the signal's spine (R4-①).

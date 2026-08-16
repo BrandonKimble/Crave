@@ -281,6 +281,51 @@ describe('verdicts never touch name matching ("No Name Burgers")', () => {
   it('calls the judged vocabulary exactly once, on the dense path', () => {
     expect([...source.matchAll(/strippedForEmbedding/g)]).toHaveLength(1);
   });
+
+  /**
+   * A5 — THE LARGEST DEMAND INGRESS GOES THROUGH THE DOOR.
+   *
+   * Every unknown span of every search records demand here: an on_demand_ask
+   * signal for short residue, a staged residue row for longer runs. Both wrote
+   * RAW text. So a Spanish preposition the gazetteer failed to ground became a
+   * durable instruction to go and collect `de` — the exact failure the write
+   * door was built to make impossible, at the one ingress that never used it.
+   */
+  it('judges residue before recording it as demand', () => {
+    expect(source).toContain('this.judgedVocabulary.demandTerm(');
+    // The raw text may not reach either writer: both read the JUDGED term.
+    const askBlock = source.slice(
+      source.indexOf('const cappedResidues'),
+      source.indexOf('const phaseTimings'),
+    );
+    expect(askBlock).toContain('if (!judged.recordable) continue;');
+    expect(askBlock).toContain('const residueText = judged.text;');
+    expect(askBlock).not.toMatch(/term:\s*rawResidueText/);
+    expect(askBlock).not.toMatch(/residueText:\s*rawResidueText/);
+  });
+
+  /**
+   * D2 — AND IT NEVER AWAITS A HEARING.
+   *
+   * `judgeThenStrip` is the same law with an LLM call inside it. On a path a
+   * user is watching, that call is the product regressing to buy a chore:
+   * `search.service` paid one per grounded entity. Neither search-path door
+   * may await it — the synchronous `demandTerm` reads the in-memory table and
+   * queues its misses for the maintenance drain.
+   */
+  it('never awaits a hearing on a search path', () => {
+    for (const file of [
+      'search-query-interpretation.service.ts',
+      'search.service.ts',
+    ]) {
+      const text = stripComments(
+        readFileSync(join(__dirname, '../../search/', file), 'utf8'),
+        file,
+      );
+      expect(text).not.toContain('judgeThenStrip');
+      expect(text).not.toMatch(/await\s+this\.judgedVocabulary\./);
+    }
+  });
 });
 
 describe('genericness: grammar comes out, content stays in', () => {

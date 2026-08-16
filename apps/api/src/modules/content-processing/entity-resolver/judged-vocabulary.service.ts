@@ -343,6 +343,51 @@ export class JudgedVocabularyService implements OnModuleInit {
     return held;
   }
 
+  /**
+   * THE DEMAND DOOR — judged before the write, and NEVER on the user's clock
+   * (A5 + D2, 2026-08-15).
+   *
+   * `judgeThenStrip` is the same law with an LLM call inside it, and that call
+   * is affordable exactly where its callers already await a model. It is NOT
+   * affordable on the search path: `search.service` awaited it once per
+   * grounded entity while a user watched a spinner, and the largest demand
+   * ingress of all — the gazetteer's residue asks — skipped the door entirely
+   * rather than pay for it, writing on_demand_ask and staging rows about RAW
+   * terms nobody had judged. Both are the same mistake from opposite ends: a
+   * blocking hearing is too expensive for this path, so one path paid and the
+   * other cheated.
+   *
+   * This is the shape that costs nothing and cheats nothing. It reads the
+   * in-memory table only — microseconds, no network — and:
+   *
+   *   - a term whose words are all judged is stripped and RECORDABLE now;
+   *   - a term holding an unheard word is HELD, and that word is queued to
+   *     the durable backlog the maintenance rail drains tonight.
+   *
+   * The held ask is not lost, and this is the property that makes deferral
+   * honest rather than a dropped write: a demand signal exists because
+   * somebody searched for something, and somebody who searches for something
+   * once searches for it again. The next identical ask records normally,
+   * against a verdict that was bought off the user's clock.
+   */
+  demandTerm(
+    text: string,
+    locale: string | null | undefined,
+  ): { text: string; recordable: boolean } {
+    const claimLocale = normalizeClaimLocale(locale);
+    // HOLD FIRST: `holdsUnjudged` is what queues the misses, and a term is
+    // held on the strength of ANY unheard word in it — stripping first would
+    // let a judged word's verdict decide the fate of an unjudged neighbour.
+    if (this.holdsUnjudged(text, claimLocale)) {
+      return { text: '', recordable: false };
+    }
+    const stripped = this.stripGrammar(text, [], claimLocale);
+    return {
+      text: stripped.text,
+      recordable: !stripped.isGenericOnly && stripped.text.trim().length > 0,
+    };
+  }
+
   /** Hear every claim here that has no verdict, on BOTH lanes. Batched; the
    *  budget gate inside the judge bounds it. */
   async ensureJudged(

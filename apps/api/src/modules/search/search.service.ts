@@ -881,7 +881,7 @@ export class SearchService {
 
       if (pagination.page === 1) {
         try {
-          await this.recordQueryImpressions(request, {
+          this.recordQueryImpressions(request, {
             searchRequestId,
             totalResults,
             totalFoodResults,
@@ -2266,7 +2266,9 @@ export class SearchService {
     };
   }
 
-  private async recordQueryImpressions(
+  /** SYNCHRONOUS since D2 (2026-08-15): signals is a fire-and-forget writer,
+   *  and the vocabulary hearing was the last thing here that ever awaited. */
+  private recordQueryImpressions(
     request: SearchQueryRequestDto,
     context: {
       searchRequestId: string;
@@ -2276,10 +2278,10 @@ export class SearchService {
       queryExecutionTimeMs: number;
       resultCoverageStatus: 'full' | 'partial' | 'unresolved';
     },
-  ): Promise<void> {
+  ): void {
     // Phase C: signals is the ONE write path — the search_events /
     // search_event_entities writers are dead, the tables dropped.
-    const targets = await this.gatherEntityImpressionTargets(request);
+    const targets = this.gatherEntityImpressionTargets(request);
     this.recordSearchSignals(request, context, targets);
   }
 
@@ -2355,9 +2357,11 @@ export class SearchService {
     return Array.from(new Set(normalized)).sort((a, b) => a - b);
   }
 
-  private async gatherEntityImpressionTargets(
+  /** SYNCHRONOUS since D2 (2026-08-15): the only thing this ever awaited was
+   *  a vocabulary hearing, which no longer happens on the request path. */
+  private gatherEntityImpressionTargets(
     request: SearchQueryRequestDto,
-  ): Promise<{ entityId: string; entityType: EntityType }[]> {
+  ): { entityId: string; entityType: EntityType }[] {
     const selectedEntityId =
       request.submissionContext?.selectedEntityId ?? null;
     const selectedEntityType =
@@ -2374,7 +2378,9 @@ export class SearchService {
       term: string;
     }> = [];
 
-    const pushMostSpecific = async (
+    // SYNCHRONOUS, and that is the D2 fix visible in the signature: this used
+    // to await one LLM hearing per grounded entity on the request path.
+    const pushMostSpecific = (
       entities: QueryEntityDto[] | undefined,
       entityType: EntityType,
     ) => {
@@ -2393,15 +2399,22 @@ export class SearchService {
         // value), and an undetermined ask is heard under 'und', which is a
         // real locale with real verdicts rather than a silent fallback to
         // English.
-        const judged = await this.judgedVocabulary.judgeThenStrip(
+        //
+        // AND NEVER ON THE USER'S CLOCK (D2, 2026-08-15). This used to be
+        // `await judgeThenStrip`, one blocking LLM hearing per grounded
+        // entity, inside the request a user is watching — the first search
+        // of a new word paid seconds for a chore. `demandTerm` applies the
+        // identical law against the in-memory table: microseconds, no
+        // network. A held term's word is queued for the maintenance drain,
+        // and the next identical search records normally.
+        const judged = this.judgedVocabulary.demandTerm(
           rawTerm,
           request.detectedLocale ?? null,
         );
-        if (judged.isGenericOnly || judged.heldUnjudged) {
-          // HELD: a word in this term has no verdict yet (the hearing was
-          // deferred). A demand signal steers future spend, so it waits for
-          // the answer rather than being recorded on a guess; the word is
-          // queued and the next identical search records normally.
+        if (!judged.recordable) {
+          // HELD: a word in this term has no verdict yet. A demand signal
+          // steers future spend, so it waits for the answer rather than being
+          // recorded on a guess.
           continue;
         }
         // The ask-SHAPE strip is a separate law (rank/proximity framing, bare
@@ -2428,10 +2441,10 @@ export class SearchService {
       }
     };
 
-    await pushMostSpecific(request.entities.food, 'food');
-    await pushMostSpecific(request.entities.restaurants, 'restaurant');
-    await pushMostSpecific(request.entities.foodAttributes, 'food_attribute');
-    await pushMostSpecific(
+    pushMostSpecific(request.entities.food, 'food');
+    pushMostSpecific(request.entities.restaurants, 'restaurant');
+    pushMostSpecific(request.entities.foodAttributes, 'food_attribute');
+    pushMostSpecific(
       request.entities.restaurantAttributes,
       'restaurant_attribute',
     );
