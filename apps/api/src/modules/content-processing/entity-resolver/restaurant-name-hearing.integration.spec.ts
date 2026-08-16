@@ -530,6 +530,40 @@ describe('the restaurant-name hearing lane (C4a) — live database', () => {
       );
     });
 
+    it('a Ninos-shaped possessive: "Nino’s" in raw text matches the folded form "ninos" — apostrophes fold to nothing in the matcher', async () => {
+      // The ninos re-hear (2026-08-16): the census hands the FOLDED form, but
+      // people write the possessive. Without apostrophe-folding the card said
+      // "no occurrence of the form found" about a doc that plainly named the
+      // place — and the judge, correctly reading its evidence, denied a real
+      // venue. This pin makes that regression RED.
+      const suffix = randomUUID().slice(0, 8);
+      const form = `zzqninos${suffix}`;
+      const venue = await mintRestaurant(`Zzqninos${suffix}`, {
+        grounded: false,
+      });
+      await mintSurface(venue, form, 'recall');
+      await mintMentionDoc(
+        venue,
+        `Luigi’s in south slope / Zzqnino’s${suffix} and elegante in bay ridge / krispy’s in dyker heights`,
+      );
+      const claim = { entityId: venue, form };
+      trackKey(claim);
+
+      const judge = judgeSaying([
+        { is_name: true, reason: 'possessive coinage attested in a list' },
+      ]);
+      await courtWith(judge).hear([claim]);
+
+      const [call] = judge.generateForCaller.mock.calls[0] as [
+        { prompt: string },
+      ];
+      // The possessive spelling reached the card as a real excerpt.
+      expect(call.prompt).toContain(`Zzqnino’s${suffix} and elegante`);
+      expect(call.prompt).not.toContain(
+        'name usage in source text: no occurrence of the form found',
+      );
+    });
+
     it('a Stars-shaped mint: the card says no name usage was found, and the denial stands', async () => {
       const suffix = randomUUID().slice(0, 8);
       const form = `zzqstars${suffix}`;

@@ -517,10 +517,17 @@ export class RestaurantNameHearingService {
     }>,
   ): string[] {
     const foldChar = (ch: string): string =>
-      ch
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase();
+      // Apostrophes fold to NOTHING, same as surfaceClaimKey's treatment:
+      // the census hands us the folded form ("ninos"), and the raw text says
+      // "Nino's" \u2014 a possessive coinage IS the name (B.1 doctrine). Without
+      // this, every possessive-named venue's usage is invisible to the card
+      // and the judge reads "no usage found" (the ninos re-hear, 2026-08-16).
+      /['\u2019\u02bc]/.test(ch)
+        ? ''
+        : ch
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase();
     const needle = Array.from(form).map(foldChar).join('');
     if (!needle) return [];
     const isWordChar = (ch: string | undefined): boolean =>
