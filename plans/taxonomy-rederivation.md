@@ -168,10 +168,23 @@ future and lands with the ladder session.
   name-containment job (its input widens from canonical identity_key to
   include recall surface forms; same law, same job) — not a new job;
   wave scope (⭐04 K5 confirmed).
-- R10. Pinyin RECOMMENDATION pending owner: wave generator emits
-  romanized (Latin-letter) aliases for zh names at 'und' ("niurou mian"
-  → 牛肉面) — diaspora/learner typing mode currently unserved; nothing
-  generates these today or ever will without the ruling.
+- R10. Pinyin RULED YES (owner 2026-08-16): romanization is a LAYER of
+  the zh wave (extra generator output banked at 'und'), not a separate
+  language — same shape for romanized ko later. Wave scope.
+- R11. GOOGLE-TYPES AUDIT (owner-ordered, my venue-axis lane): review the
+  full Google type set + the existing map; produce keep-as-attribute vs
+  ignore lists (establishment/point_of_interest = ignore; store = lean
+  no). Google changes types rarely — owner re-audits manually on their
+  next big release; between releases the unmapped-types census invariant
+  alarms via opsAlerts (feasible: types arrive AS-IS from Places
+  responses, unpicked, stored raw — so new types ARE detectable;
+  email/sentry ride the existing ops-alert rails). Nice-to-have priority.
+- R12. TRUST-GOOGLE MAPPING POLICY RULED: restaurant+bar → appears under
+  "Restaurants" (Google's restaurant tag means it serves food); bar-only
+  → does not. Extend the same trust to other kind combinations; revisit
+  only if real data shows Google's tagging misleads.
+- R13. Button-origin tracking → SPLIT to its own owner session (chip
+  spawned, task_5009f71b); not part of this session's execution round.
 
 ## SEQUENCING
 Types-promotion backfill + invariant: post-v13-activation window (rides
