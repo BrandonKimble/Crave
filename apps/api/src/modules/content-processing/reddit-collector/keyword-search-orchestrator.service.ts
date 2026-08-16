@@ -15,6 +15,11 @@ import { BatchJob } from './batch-processing-queue.types';
 import { ConfigService } from '@nestjs/config';
 import { normalizeKeywordTerm } from './keyword-term-normalization';
 import { stripGenericTokens } from '../../../shared/utils/generic-token-handling';
+import {
+  JudgedVocabularyService,
+  tokenize as judgedVocabularyTokens,
+} from '../entity-resolver/judged-vocabulary.service';
+import { normalizeClaimLocale } from '../entity-resolver/word-vocabulary-lanes';
 import { KeywordAttemptHistoryService } from './keyword-attempt-history.service';
 import { KeywordExploreYieldEstimatorService } from './keyword-explore-yield.estimator';
 import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
@@ -68,6 +73,7 @@ export class KeywordSearchOrchestratorService {
     private readonly configService: ConfigService,
     private readonly keywordAttemptHistory: KeywordAttemptHistoryService,
     private readonly exploreYield: KeywordExploreYieldEstimatorService,
+    private readonly judgedVocabulary: JudgedVocabularyService,
     @InjectQueue('keyword-batch-processing-queue')
     private readonly keywordQueue: Queue<BatchJob>,
     @InjectQueue('keyword-search-execution')
@@ -108,7 +114,7 @@ export class KeywordSearchOrchestratorService {
       const source = options.source ?? 'manual';
       const dryRun = this.keywordCollectionDryRunEnabled();
       const engineName = options.engineName ?? subreddit.trim().toLowerCase();
-      const selection = this.dedupeTermsForKeywordSearch(terms);
+      const selection = await this.dedupeTermsForKeywordSearch(terms);
       const selectedTerms = selection.selectedTerms;
       const termNames = selectedTerms.map((term) => term.term);
 
@@ -1039,7 +1045,14 @@ export class KeywordSearchOrchestratorService {
     return isEnvFlagEnabled(raw);
   }
 
-  private dedupeTermsForKeywordSearch(terms: KeywordSearchTerm[]): {
+  /**
+   * THE WRITE DOOR (2026-08-13). Every surviving term is about to be searched
+   * with real money and recorded as demand, so the whole batch is heard first
+   * — one hearing per unheard (word, language), then the filter.
+   */
+  private async dedupeTermsForKeywordSearch(
+    terms: KeywordSearchTerm[],
+  ): Promise<{
     selectedTerms: Array<{
       term: string;
       normalizedTerm: string;
@@ -1054,7 +1067,15 @@ export class KeywordSearchOrchestratorService {
       droppedTerm: string;
       droppedSlice: string | null;
     }>;
-  } {
+  }> {
+    await this.judgedVocabulary.ensureJudged(
+      terms.flatMap((input) =>
+        judgedVocabularyTokens(input.term).map((word) => ({
+          word,
+          locale: input.locale ?? 'und',
+        })),
+      ),
+    );
     const selectedTerms: Array<{
       term: string;
       normalizedTerm: string;
@@ -1076,7 +1097,18 @@ export class KeywordSearchOrchestratorService {
     }> = [];
 
     for (const input of terms) {
-      const stripped = stripGenericTokens(input.term, input.locale);
+      const judged = this.judgedVocabulary.stripGrammar(
+        input.term,
+        judgedVocabularyTokens(input.term),
+        normalizeClaimLocale(input.locale),
+      );
+      // HELD: a word here has no verdict yet, so this term may not become a
+      // demand record. It is queued and returns on the next cycle, judged.
+      const stripped =
+        judged.isGenericOnly ||
+        this.judgedVocabulary.holdsUnjudged(input.term, input.locale)
+          ? { text: '', isGenericOnly: true }
+          : stripGenericTokens(judged.text, input.locale);
       const term = stripped.text;
       const normalizedTerm = normalizeKeywordTerm(term);
       if (!normalizedTerm || stripped.isGenericOnly) {

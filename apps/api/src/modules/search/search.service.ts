@@ -14,6 +14,7 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService, TextSanitizerService } from '../../shared';
 import { stripGenericTokens } from '../../shared/utils/generic-token-handling';
+import { JudgedVocabularyService } from '../content-processing/entity-resolver/judged-vocabulary.service';
 import {
   EntityScope,
   FoodResultDto,
@@ -235,6 +236,7 @@ export class SearchService {
     private readonly placesCatalog: PlacesCatalogService,
     private readonly placesReconciler: PlacesReconcilerService,
     private readonly placesPromotions: PlacesPromotionService,
+    private readonly judgedVocabulary: JudgedVocabularyService,
   ) {
     this.logger = loggerService.setContext('SearchService');
     this.resultLimit = this.resolveResultLimit();
@@ -879,7 +881,7 @@ export class SearchService {
 
       if (pagination.page === 1) {
         try {
-          this.recordQueryImpressions(request, {
+          await this.recordQueryImpressions(request, {
             searchRequestId,
             totalResults,
             totalFoodResults,
@@ -2264,7 +2266,7 @@ export class SearchService {
     };
   }
 
-  private recordQueryImpressions(
+  private async recordQueryImpressions(
     request: SearchQueryRequestDto,
     context: {
       searchRequestId: string;
@@ -2274,10 +2276,10 @@ export class SearchService {
       queryExecutionTimeMs: number;
       resultCoverageStatus: 'full' | 'partial' | 'unresolved';
     },
-  ): void {
+  ): Promise<void> {
     // Phase C: signals is the ONE write path — the search_events /
     // search_event_entities writers are dead, the tables dropped.
-    const targets = this.gatherEntityImpressionTargets(request);
+    const targets = await this.gatherEntityImpressionTargets(request);
     this.recordSearchSignals(request, context, targets);
   }
 
@@ -2353,9 +2355,9 @@ export class SearchService {
     return Array.from(new Set(normalized)).sort((a, b) => a - b);
   }
 
-  private gatherEntityImpressionTargets(
+  private async gatherEntityImpressionTargets(
     request: SearchQueryRequestDto,
-  ): { entityId: string; entityType: EntityType }[] {
+  ): Promise<{ entityId: string; entityType: EntityType }[]> {
     const selectedEntityId =
       request.submissionContext?.selectedEntityId ?? null;
     const selectedEntityType =
@@ -2372,7 +2374,7 @@ export class SearchService {
       term: string;
     }> = [];
 
-    const pushMostSpecific = (
+    const pushMostSpecific = async (
       entities: QueryEntityDto[] | undefined,
       entityType: EntityType,
     ) => {
@@ -2383,15 +2385,29 @@ export class SearchService {
         }
 
         const rawTerm = entity.originalText ?? entity.normalizedName ?? '';
-        // The ask's OWN language judges its genericness — the same doctrine
-        // `on-demand-request.sanitizeTerm` states. This used to pass no
-        // locale, which reached the English list by default; that default is
-        // gone, so the locale has to be the real one. `detectedLocale` is
-        // server-derived (the DTO refuses a client value), and when it is
-        // absent the term is simply not judged generic — the conservative
-        // direction for a ranking input.
-        const stripped = stripGenericTokens(
+        // THE WRITE DOOR (2026-08-13). This term becomes a DEMAND SIGNAL — a
+        // durable record that steers what the app collects and spends on next
+        // — so it may not be recorded about a word nobody has judged. The
+        // hearing happens HERE, before the write, in the ask's own language;
+        // `detectedLocale` is server-derived (the DTO refuses a client
+        // value), and an undetermined ask is heard under 'und', which is a
+        // real locale with real verdicts rather than a silent fallback to
+        // English.
+        const judged = await this.judgedVocabulary.judgeThenStrip(
           rawTerm,
+          request.detectedLocale ?? null,
+        );
+        if (judged.isGenericOnly || judged.heldUnjudged) {
+          // HELD: a word in this term has no verdict yet (the hearing was
+          // deferred). A demand signal steers future spend, so it waits for
+          // the answer rather than being recorded on a guess; the word is
+          // queued and the next identical search records normally.
+          continue;
+        }
+        // The ask-SHAPE strip is a separate law (rank/proximity framing, bare
+        // category) and still English-only; see generic-token-handling.ts.
+        const stripped = stripGenericTokens(
+          judged.text,
           request.detectedLocale ?? null,
         );
         if (stripped.isGenericOnly) {
@@ -2412,10 +2428,10 @@ export class SearchService {
       }
     };
 
-    pushMostSpecific(request.entities.food, 'food');
-    pushMostSpecific(request.entities.restaurants, 'restaurant');
-    pushMostSpecific(request.entities.foodAttributes, 'food_attribute');
-    pushMostSpecific(
+    await pushMostSpecific(request.entities.food, 'food');
+    await pushMostSpecific(request.entities.restaurants, 'restaurant');
+    await pushMostSpecific(request.entities.foodAttributes, 'food_attribute');
+    await pushMostSpecific(
       request.entities.restaurantAttributes,
       'restaurant_attribute',
     );

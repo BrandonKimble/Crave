@@ -54,6 +54,11 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { normalizeKeywordTerm } from './keyword-term-normalization';
 import { stripGenericTokens } from '../../../shared/utils/generic-token-handling';
+import {
+  JudgedVocabularyService,
+  tokenize as judgedVocabularyTokens,
+} from '../entity-resolver/judged-vocabulary.service';
+import { normalizeClaimLocale } from '../entity-resolver/word-vocabulary-lanes';
 import { DemandScoringTraceService } from '../../analytics/demand-scoring-trace.service';
 import * as curves from '../../analytics/demand-scoring/curves';
 import { ON_DEMAND_MIN_RESULTS } from '../../search/on-demand-tuning.constants';
@@ -271,6 +276,7 @@ export class KeywordSliceSelectionService {
     private readonly exploreYield: KeywordExploreYieldEstimatorService,
     private readonly scoringTrace: DemandScoringTraceService,
     private readonly opsAlerts: OpsAlertsService,
+    private readonly judgedVocabulary: JudgedVocabularyService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('KeywordSliceSelectionService');
@@ -374,7 +380,7 @@ export class KeywordSliceSelectionService {
     };
 
     for (const slice of SLICE_PRIORITY) {
-      candidatesBySlice[slice] = this.normalizeAndFilterCandidates(
+      candidatesBySlice[slice] = await this.normalizeAndFilterCandidates(
         candidatesBySlice[slice],
         stats,
         gateRejects,
@@ -540,15 +546,45 @@ export class KeywordSliceSelectionService {
     };
   }
 
-  private normalizeAndFilterCandidates(
+  /**
+   * THE WRITE DOOR (2026-08-13). A surviving candidate becomes a keyword the
+   * collector will pay Reddit and the LLM to search, so no unjudged token may
+   * reach the demand record: every token of every candidate is heard, in its
+   * own language, in ONE batched hearing before any of them is filtered.
+   *
+   * Batched deliberately at the slice level rather than per candidate — a
+   * slice is hundreds of terms and a per-term door would be hundreds of round
+   * trips for a question each word is only ever asked once.
+   */
+  private async normalizeAndFilterCandidates(
     candidates: KeywordTermCandidate[],
     stats: KeywordSliceSelectionStats,
     gateRejects?: KeywordGateRejectTrace[],
-  ): KeywordTermCandidate[] {
+  ): Promise<KeywordTermCandidate[]> {
     const result: KeywordTermCandidate[] = [];
 
+    await this.judgedVocabulary.ensureJudged(
+      candidates.flatMap((candidate) =>
+        judgedVocabularyTokens(candidate.term).map((word) => ({
+          word,
+          locale: candidate.locale ?? 'und',
+        })),
+      ),
+    );
+
     for (const candidate of candidates) {
-      const stripped = stripGenericTokens(candidate.term, candidate.locale);
+      const judged = this.judgedVocabulary.stripGrammar(
+        candidate.term,
+        judgedVocabularyTokens(candidate.term),
+        normalizeClaimLocale(candidate.locale),
+      );
+      // HELD: a word here has no verdict yet, so this term may not become a
+      // demand record. It is queued and returns on the next cycle, judged.
+      const stripped =
+        judged.isGenericOnly ||
+        this.judgedVocabulary.holdsUnjudged(candidate.term, candidate.locale)
+          ? { text: '', isGenericOnly: true }
+          : stripGenericTokens(judged.text, candidate.locale);
       const term = stripped.text;
       if (!term.length || stripped.isGenericOnly) {
         stats.dropped.invalid += 1;

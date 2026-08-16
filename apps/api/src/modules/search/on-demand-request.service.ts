@@ -3,6 +3,7 @@ import { EntityType, OnDemandReason, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { stripGenericTokens } from '../../shared/utils/generic-token-handling';
+import { JudgedVocabularyService } from '../content-processing/entity-resolver/judged-vocabulary.service';
 import { normalizeDetectedLocaleTag } from '../../shared/locale';
 import { SignalsService } from '../signals/signals.service';
 
@@ -62,6 +63,7 @@ export class OnDemandRequestService {
     private readonly prisma: PrismaService,
     @Inject(LoggerService) loggerService: LoggerService,
     private readonly signals: SignalsService,
+    private readonly judgedVocabulary: JudgedVocabularyService,
   ) {
     this.logger = loggerService.setContext('OnDemandRequestService');
     this.cooldownMs = this.resolveCooldownMs();
@@ -73,7 +75,7 @@ export class OnDemandRequestService {
     options: OnDemandRequestRecordOptions = {},
     context: Record<string, unknown> = {},
   ): Promise<OnDemandRequestInput[]> {
-    const deduped = this.deduplicateRequests(requests);
+    const deduped = await this.deduplicateRequests(requests);
     const capped =
       this.maxEntities > 0 ? deduped.slice(0, this.maxEntities) : deduped;
     if (!capped.length) {
@@ -279,13 +281,13 @@ export class OnDemandRequestService {
     );
   }
 
-  private deduplicateRequests(
+  private async deduplicateRequests(
     requests: OnDemandRequestInput[],
-  ): OnDemandRequestInput[] {
+  ): Promise<OnDemandRequestInput[]> {
     const seen = new Set<string>();
     const result: OnDemandRequestInput[] = [];
     for (const request of requests) {
-      const sanitizedTerm = this.sanitizeTerm(
+      const sanitizedTerm = await this.sanitizeTerm(
         request.term,
         request.detectedLocale,
       );
@@ -331,13 +333,33 @@ export class OnDemandRequestService {
   }
 
   /**
-   * The ask's OWN language decides which generic vocabulary may judge it. An
-   * ask detected as `es`/`vi` is no longer measured against an English
-   * stop-list that could sanitize it to '' — i.e. drop the collection request
-   * entirely — on the strength of a word list it was never subject to.
+   * THE WRITE DOOR (2026-08-13). An on-demand request is a spend decision —
+   * it sends the collector out to search a term — so it may never be recorded
+   * about a word nobody has judged. `judgeThenStrip` hears every unheard token
+   * of this ask in its own language BEFORE the sanitized term is minted, then
+   * removes the ones ruled pure grammatical work; a term left with nothing but
+   * grammar is no ask at all and is dropped.
+   *
+   * The ask's OWN language still decides. What changed is that we now hold a
+   * vocabulary for every language a word has been heard in, rather than only
+   * English — so a Spanish ask is judged in Spanish instead of escaping
+   * judgement altogether.
+   *
+   * The ask-SHAPE strip ("best … near me") runs after and is a separate law;
+   * see `generic-token-handling.ts` for why it could not become a verdict.
    */
-  private sanitizeTerm(term: string, detectedLocale?: string | null): string {
-    const stripped = stripGenericTokens(term, detectedLocale);
+  private async sanitizeTerm(
+    term: string,
+    detectedLocale?: string | null,
+  ): Promise<string> {
+    const judged = await this.judgedVocabulary.judgeThenStrip(
+      term,
+      detectedLocale,
+    );
+    // HELD counts as "no ask yet": an on-demand request sends the collector
+    // out to spend, and it waits for the verdict rather than guessing.
+    if (judged.isGenericOnly || judged.heldUnjudged) return '';
+    const stripped = stripGenericTokens(judged.text, detectedLocale);
     return stripped.isGenericOnly ? '' : stripped.text;
   }
 
