@@ -683,6 +683,44 @@ unspaced run — the deleted cue-list comment correctly predicted that a
 whitespace-splitting zh pack "would either no-op or delete a whole
 run", and that is now fixed rather than documented.
 
+## RED TEAM 2026-08-15 (judged-vocabulary + fresh-lens; owner-ordered) + GHOST PROVENANCE CENSUS
+
+VOCAB RED TEAM VERDICT: "the prose is ahead of the wiring" — hearing
+primitive right, rails missing. CONFIRMED: A1 drainPending has NO caller
+(verified personally — backlog write-only, dies on restart); A2 budget
+refuses everything (bulk-cert counted 97,400 vs cap 200); A3 trickle
+over-metered 40× (counts calls×40 not words); A4 SEVERE zh per-character
+strip mutilates names (包子→包, 无糖奶茶→糖奶茶 — negation-v3's fix cannot
+transfer to zh at character granularity; strip unit must be the SEGMENT);
+A5 the largest demand ingress (interpretation :619-636 on_demand_ask)
+bypasses the doors with raw terms; A6 verdict cache never reloads
+cross-process. CLEAN: no truncation, no double-judge corruption,
+rule-version reads sound, batch isolation works.
+UNIFICATION ANSWER (owner's question, measured): do NOT unify lanes (5
+actual rule releases at different cadences — one version would have
+re-bought the corpus 5×); DO unify the CALL (co-due facet batching, one
+LLM call, N facets, independent versions) and FIX the negation key
+(spelling-only — 38% of its spend bought locale answers nothing reads).
+BROWSE MODE (owner product intent, measured today: 'food' EMPTY, 'top' →
+beer, 'best food near me' → NOTHING — confident wrongness, not just
+emptiness): third facet word-role (particular/category/frame) + one
+composition rule = browse for all-frame/category queries, kills the A5
+demand leak for those queries, and retires generic-token-handling.ts
+entirely. Name-prefix fallback ('the' → The-named venues) designed,
+NOT built (ledger-noted; grounds-nothing + not-browse arm, trigram index
+exists). REPAIR+BROWSE AGENT DISPATCHED (phases 1-2, 13 items).
+GHOST CENSUS (provenance agent, verified): THREE diseases not one —
+M1 shorthand-in-list (v14 KILLS, certified 3/3 vs live 0/3); M2
+LEADING-ARTICLE STRIP (v14 GAP — "The Place"→Place manufactures bare
+generics; 15 live ghost restaurants; replay docs handed to ⭐04); M3
+legacy alias backfill (21,801 rows 2026-08-04, active surfaces on
+archived entities — inert by accident, hygiene pass queued with
+reground); M4 bare-real-name homographs (Senza dup → dedupe docket);
+M5 'good taco' evaluative-glue entity alive (fixture suggested).
+Blast radius: single-word annihilation (place/senza/quality/home →
+EMPTY page), phantom-venue pollution on best-X queries, Places spend
+burned per reground sweep on ghosts.
+
 ## ARCH VERDICT (2026-08-12 red team; the owner's patches-vs-foundations question)
 
 NOT a week of patching — commits deleted machinery and measured claims. But
