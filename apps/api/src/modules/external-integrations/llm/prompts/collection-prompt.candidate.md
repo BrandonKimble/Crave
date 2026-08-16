@@ -552,8 +552,9 @@ wrapper head: "salmon omakase" composes normally as a dish, because `omakase`
 predicts the food; "salmon tasting menu" redirects to `salmon`, because
 `tasting menu` does not.)
 
-Drop generic filler outright ("item", "meal", "dish", "the food", "place",
-"place", "spot") — it names nothing orderable and describes no property.
+Drop generic filler outright ("food", "meal", "dish", "the food",
+"restaurant", "place", "spot") — it names nothing orderable and describes no
+property.
 
 ### C.2 Build the order-name
 
