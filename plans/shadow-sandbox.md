@@ -128,3 +128,22 @@ any one door (e.g. surfaces born active) fails the compare — that IS the
 5. The acceptance spec + a RED mutation for at least doors 1, 2, 7, 11.
 6. ⭐05 un-gates word-lane drains during windows (their #2) once the
    acceptance spec is green.
+
+## Shadow-damage docket (live witnesses, tracked by id — not prose)
+
+- **SD-1 — shadow-banked live surfaces (the 1,402 class).** Witnesses:
+  `bơ` → junk ingredient "bo" (surface 4200d370, source=extraction, born
+  2026-08-13 01:29 — inside a shadow window; makes acc-02 red: exact-match
+  beats the real vi avocado/butter surfaces) and the hg-01 `pan` flag.
+  Cleanup: retro sweep at sandbox landing — surfaces whose ONLY evidence
+  ties to never-activated runs (join their events' run ids) archive; the
+  sweep ships with the rehearsal migration so the marker gap never needs
+  guessing again.
+- **SD-2 — shadow-minted junk entities.** Witness: ingredient "bo"
+  (adopted the folded key, now the exact-match target). Same retro sweep,
+  entity side; survivors need live-run evidence.
+- **SD-3 — ghost `Best` (b92af0ed) serves autocomplete exact-top.** Name-
+  hearing correctly UPHELD it (it is a real shorthand of Best Pizza) — the
+  defect is lifecycle, not name-hood: ungrounded-after-attempt must not be
+  searchable. Owned by the P8 reground → ghost-lifecycle sweep,
+  explicitly, so no lane assumes another owns it.

@@ -1,5 +1,5 @@
 /**
- * @script-class: epoch
+ * @script-class: operational
  * @finding: plans/prompt-fleet-audit.md P3 — "consensus = opinions, not
  *   applause" (owner ruling 2026-08-16).
  *

@@ -45,6 +45,15 @@ type Verdict = 'routed' | 'proper-noun' | 'not-user-facing';
 
 /** file (relative to src/) → why it is allowed to emit a raw `.name`. */
 const ALLOWLIST: Readonly<Record<string, { verdict: Verdict; why: string }>> = {
+  'modules/content-processing/entity-resolver/restaurant-name-hearing.service.ts':
+    {
+      verdict: 'not-user-facing',
+      why: 'the restaurant-name court — entity names go onto the evidence card shown to the JUDGE LLM (the sanctioned evidence-card use), never a user DTO',
+    },
+  'modules/external-integrations/llm/entity-match-prompt.ts': {
+    verdict: 'not-user-facing',
+    why: 'the entity-match judge payload — candidate names/aliases go to the JUDGE LLM as evidence (same sanctioned class as the hearing court), never a user DTO',
+  },
   'modules/content-processing/entity-resolver/word-claim-adjudicator.service.ts':
     {
       verdict: 'not-user-facing',
