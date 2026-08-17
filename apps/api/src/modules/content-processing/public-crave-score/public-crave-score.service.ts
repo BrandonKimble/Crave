@@ -21,6 +21,8 @@ import {
   LaneCalibrationConstants,
   SourceActivity,
   buildCalibrationIndex,
+  poolSourcesByMarket,
+  distinctRoomActivities,
   calibrationG,
   calibrationInfluence,
   deriveLaneConstants,
@@ -157,10 +159,16 @@ export class PublicCraveScoreService {
       // NOT issue a second run/write/prune — the keyed upsert + stale-prune would
       // wipe the first pass.
       const { stable, fast } = await this.loadCandidates(config, params);
+      const threadShare =
+        config.pooling === 'thread-share' ||
+        config.pooling === 'thread-share-confidence'
+          ? await this.threadShareEndorsements(config)
+          : undefined;
       const stableScored = this.scoreCandidates(
         stable,
         config,
         calibration.stable,
+        threadShare,
       );
       const fastScored = this.scoreCandidates(fast, config, calibration.fast);
 
@@ -227,6 +235,9 @@ export class PublicCraveScoreService {
     candidates: CraveScoreCandidates,
     config: PublicCraveScoreConfig = DEFAULT_CONFIG,
     calibration: CalibrationIndex = neutralCalibrationIndex('stable'),
+    /** Bake-off variant input (pooling thread-share*): per-place decayed
+     *  conversation-share endorsement, computed by threadShareEndorsements. */
+    threadShareEndorsements?: ReadonlyMap<string, number>,
   ): ScoredCraveSubject[] {
     const pooledOne = (contribution: SourceContribution): number =>
       (calibrationInfluence(calibration, contribution.platform) *
@@ -346,6 +357,22 @@ export class PublicCraveScoreService {
         bestDish: dishes[0] ?? 0,
         provenanceSourceId: dominantSource(provenanceMass),
       });
+    }
+
+    // THREAD-SHARE POOLING (bake-off variant, owner-tabled 2026-08-17): a
+    // thread is a poll — a place's stable endorsement is its decayed SHARE
+    // of each conversation's ballots ('confidence' multiplies each poll by
+    // total/(total+8) so tiny uncontested threads count fractionally).
+    // Probe-only shape: overrides the STABLE restaurant endorsement; dish
+    // scores and the rising delta keep the structured math.
+    if (
+      threadShareEndorsements &&
+      (config.pooling === 'thread-share' ||
+        config.pooling === 'thread-share-confidence')
+    ) {
+      for (const [placeId, aggregate] of placeAggregate) {
+        aggregate.endorsement = threadShareEndorsements.get(placeId) ?? 0;
+      }
     }
 
     const scored: ScoredCraveSubject[] = [];
@@ -665,17 +692,20 @@ export class PublicCraveScoreService {
     config: PublicCraveScoreConfig,
     sources: SourceActivity[],
   ): Promise<Record<CalibrationLane, CalibrationIndex>> {
+    // MARKET ROOMS (owner ruling 2026-08-17): pool activities per market
+    // before deriving constants or building the index — a city is one room.
+    const pooled = poolSourcesByMarket(sources);
     const result = {} as Record<CalibrationLane, CalibrationIndex>;
     for (const lane of CALIBRATION_LANES) {
       const constants = await this.resolveLaneConstants(
         config.scoreVersion,
         lane,
-        sources.map((source) => source.activity[lane]),
+        distinctRoomActivities(pooled, lane),
       );
       result[lane] = buildCalibrationIndex(
         lane,
         constants,
-        sources,
+        pooled,
         config.sourceClassInfluence,
       );
     }
@@ -800,6 +830,59 @@ export class PublicCraveScoreService {
   // sourceId-null contribution (unmeasurable room → g = 1). Returns two
   // candidate views over the same subjects so scoreCandidates can run once
   // per lane.
+  /**
+   * BAKE-OFF: per-place decayed conversation-share endorsement (pooling
+   * 'thread-share' / 'thread-share-confidence'). A thread is a poll: a
+   * place's per-conversation signal is its share of that conversation's
+   * floored ballots (dish + praise pooled); 'confidence' multiplies each
+   * poll by total/(total+8). Stable lane only — the tabled equation
+   * comparison (owner 2026-08-17) re-runs post-backfill through
+   * scripts/consensus-policy-diff.ts.
+   */
+  private async threadShareEndorsements(
+    config: PublicCraveScoreConfig,
+  ): Promise<Map<string, number>> {
+    const tau = Math.max(0.0001, Number(config.endorsementHalfLifeDays) || 365);
+    const confidence =
+      config.pooling === 'thread-share-confidence'
+        ? Prisma.sql`(per_t.total / (per_t.total + 8))`
+        : Prisma.sql`1`;
+    const rows = await this.prisma.$queryRaw<
+      Array<{ rid: string; endorsement: number }>
+    >(Prisma.sql`
+      WITH dish_ballots AS (
+        SELECT c.restaurant_id AS rid,
+               coalesce(d.parent_source_id, d.source_id) AS thread,
+               (1 + 0.7*(CASE WHEN d.source_type='post' THEN 1
+                              ELSE m.source_upvotes END))::numeric AS w,
+               m.mentioned_at AS at
+        FROM core_restaurant_items c
+        JOIN core_restaurant_item_mentions m ON m.connection_id = c.connection_id
+        JOIN collection_source_documents d ON d.document_id = m.source_document_id
+      ),
+      praise_ballots AS (
+        SELECT ev_scope.restaurant_id,
+               coalesce(d_scope.parent_source_id, d_scope.source_id),
+               (1 + 0.7*(CASE WHEN d_scope.source_type='post' THEN 1
+                              ELSE MAX(ev_scope.source_upvotes) END))::numeric,
+               MAX(ev_scope.mentioned_at)
+        FROM ${Prisma.raw(activePlaceEventsSourceSql())}
+        GROUP BY ev_scope.restaurant_id,
+                 coalesce(d_scope.parent_source_id, d_scope.source_id),
+                 ev_scope.mention_key, d_scope.source_type
+      ),
+      ballots AS (SELECT * FROM dish_ballots UNION ALL SELECT * FROM praise_ballots),
+      per_rt AS (SELECT rid, thread, SUM(w) AS mass, MAX(at) AS at
+                   FROM ballots GROUP BY rid, thread),
+      per_t AS (SELECT thread, SUM(mass) AS total FROM per_rt GROUP BY thread)
+      SELECT per_rt.rid::text AS rid,
+             SUM((per_rt.mass/per_t.total) * ${confidence}
+                 * power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (now()-per_rt.at)))/86400.0/${Prisma.raw(String(tau))}))::float AS endorsement
+      FROM per_rt JOIN per_t USING(thread)
+      GROUP BY per_rt.rid`);
+    return new Map(rows.map((row) => [row.rid, Number(row.endorsement)]));
+  }
+
   private async loadCandidates(
     config: PublicCraveScoreConfig,
     params?: {

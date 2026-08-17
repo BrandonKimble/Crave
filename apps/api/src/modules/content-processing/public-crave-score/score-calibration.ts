@@ -163,6 +163,56 @@ export interface CalibrationIndex {
   influenceByPlatform: Readonly<Record<string, number>>;
 }
 
+/**
+ * MARKET ROOMS (owner ruling 2026-08-17): the calibration room is the WHOLE
+ * MARKET, not the individual community. Sources sharing an anchorPlaceId
+ * pool their activity; every member source carries its market's pooled A,
+ * so ballots within one city always trade at par while cities still
+ * normalize against each other (the June cross-city principle, aimed at the
+ * boundary it was invented for). A source with no anchor is its own room —
+ * refusing to guess beats inventing a market. With today's one-community-
+ * per-city corpus this is semantics-preserving; it becomes load-bearing the
+ * day a second community lands in a city.
+ */
+export function poolSourcesByMarket(
+  sources: SourceActivity[],
+): SourceActivity[] {
+  const marketActivity = new Map<string, Record<CalibrationLane, number>>();
+  for (const source of sources) {
+    if (!source.anchorPlaceId) continue;
+    const pooled =
+      marketActivity.get(source.anchorPlaceId) ??
+      (Object.fromEntries(CALIBRATION_LANES.map((l) => [l, 0])) as Record<
+        CalibrationLane,
+        number
+      >);
+    for (const lane of CALIBRATION_LANES) {
+      pooled[lane] += source.activity[lane];
+    }
+    marketActivity.set(source.anchorPlaceId, pooled);
+  }
+  return sources.map((source) =>
+    source.anchorPlaceId && marketActivity.has(source.anchorPlaceId)
+      ? { ...source, activity: marketActivity.get(source.anchorPlaceId)! }
+      : source,
+  );
+}
+
+/** The DISTINCT room activities for constants derivation: one entry per
+ *  market (or per anchorless source) — a market with many member sources
+ *  must not overweight the median. */
+export function distinctRoomActivities(
+  sources: SourceActivity[],
+  lane: CalibrationLane,
+): number[] {
+  const byRoom = new Map<string, number>();
+  for (const source of sources) {
+    const key = source.anchorPlaceId ?? `source:${source.sourceId}`;
+    byRoom.set(key, source.activity[lane]);
+  }
+  return [...byRoom.values()];
+}
+
 export function buildCalibrationIndex(
   lane: CalibrationLane,
   constants: LaneCalibrationConstants,

@@ -33,7 +33,11 @@ export interface PublicCraveScoreConfig {
   // praiseWeight/rho at the restaurant level. Dish structure still builds
   // each DISH's own score. Probe dial; live change rides a calibration
   // epoch.
-  pooling?: 'structured' | 'one-pool';
+  pooling?:
+    | 'structured'
+    | 'one-pool'
+    | 'thread-share'
+    | 'thread-share-confidence';
   // exponential decay half-life (days) applied to each mention by Reddit post date.
   // The STABLE/all-time axis. Doubles as the stable calibration lane's τ (§8).
   endorsementHalfLifeDays: number;
