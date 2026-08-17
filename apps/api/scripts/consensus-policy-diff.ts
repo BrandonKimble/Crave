@@ -68,7 +68,10 @@ async function snapshot(prisma: PrismaClient): Promise<Record<string, Row[]>> {
     )
     SELECT subject_type, subject_id, name, city, display_score, endorsement_raw
     FROM ranked WHERE rn <= ${TOP_N}
-    ORDER BY city, subject_type, endorsement_raw DESC
+    -- rn, NEVER the selected endorsement_raw: that column is a ::text cast,
+    -- and text-DESC puts '9.9' above '14.3' — the bug that scrambled every
+    -- board above score 10 (caught 2026-08-16 via the Uchi 'inversion').
+    ORDER BY city, subject_type, rn
   `);
   const byKey: Record<string, Row[]> = {};
   for (const row of rows) {
