@@ -126,12 +126,12 @@ async function main(): Promise<void> {
     await rebuild({ praiseWeight: 1.0 });
     results.floorPraise1 = await snapshot(prisma);
 
-    console.log('variant 5/6: floor + fast decay (half-life 365→90d)…');
-    await rebuild({ endorsementHalfLifeDays: 90 });
+    console.log('variant 5/6: floor + fast decay (half-life 365→180d)…');
+    await rebuild({ endorsementHalfLifeDays: 180 });
     results.floorDecay = await snapshot(prisma);
 
     console.log('variant 6/6: floor + praiseWeight 1.0 + fast decay…');
-    await rebuild({ praiseWeight: 1.0, endorsementHalfLifeDays: 90 });
+    await rebuild({ praiseWeight: 1.0, endorsementHalfLifeDays: 180 });
     results.floorPraise1Decay = await snapshot(prisma);
   } finally {
     console.log('restoring upvote columns…');
