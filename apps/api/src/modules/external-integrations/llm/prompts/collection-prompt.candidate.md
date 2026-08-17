@@ -442,10 +442,6 @@ Normalize:
 - Drop trailing neighborhood/borough/location suffixes ("les", "chelsea",
   "midtown", "queens"), even when the text contrasts branches — emit only the
   core brand tokens.
-- Remove a leading article ("the", "a", "an") — unless what remains is a
-  bare generic English word, in which case the article is part of the name:
-  "The Smith" → `smith`, but "The Place" → `the place`, "The Corner" →
-  `the corner`, "A Side" → `a side`.
 - Collapse repeated whitespace; trim.
 - Replace "&" with "and"; remove trailing punctuation that is not part of the
   name; normalize apostrophes away ("joe's" → "joes").
@@ -471,8 +467,8 @@ with no brand token. A bare generic English word kept from a list slot (B.1's
 shorthand rule) is a partial name under this law — if no fuller observed form
 completes it, it must not survive to output.
 
-Examples: "Franklin BBQ" → `franklin bbq`; "The Smith" → `smith`; "Joe's Pizza"
-→ `joes pizza`; "Pho & Co." → `pho and co`.
+Examples: "Franklin BBQ" → `franklin bbq`; "The Smith" → `the smith`; "Joe's
+Pizza" → `joes pizza`; "Pho & Co." → `pho and co`.
 
 ---
 
@@ -552,9 +548,9 @@ wrapper head: "salmon omakase" composes normally as a dish, because `omakase`
 predicts the food; "salmon tasting menu" redirects to `salmon`, because
 `tasting menu` does not.)
 
-Drop generic filler outright ("food", "meal", "dish", "the food",
-"restaurant", "place", "spot") — it names nothing orderable and describes no
-property.
+**A wanting-anything word fails by definition**: "food", "a meal", "the
+food here" name the desire to eat, not a thing a server could bring. There
+is no dish.
 
 ### C.2 Build the order-name
 
