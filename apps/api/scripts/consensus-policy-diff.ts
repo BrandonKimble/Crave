@@ -102,10 +102,6 @@ async function main(): Promise<void> {
     await rebuild();
     results.baseline = await snapshot(prisma);
 
-    console.log('variant 2/6: praiseWeight 1.0 (same data)…');
-    await rebuild({ praiseWeight: 1.0 });
-    results.praise1 = await snapshot(prisma);
-
     console.log('variant 3/6: post-body claims floored to 1…');
     await prisma.$executeRawUnsafe(`
       UPDATE core_restaurant_item_mentions m
@@ -122,17 +118,25 @@ async function main(): Promise<void> {
     await rebuild();
     results.floorPosts = await snapshot(prisma);
 
-    console.log('variant 4/6: floor + praiseWeight 1.0…');
-    await rebuild({ praiseWeight: 1.0 });
-    results.floorPraise1 = await snapshot(prisma);
+    console.log('variant: floor + sqrt compression…');
+    await rebuild({ compression: 'sqrt' });
+    results.floorSqrt = await snapshot(prisma);
 
-    console.log('variant 5/6: floor + fast decay (half-life 365→180d)…');
-    await rebuild({ endorsementHalfLifeDays: 180 });
-    results.floorDecay = await snapshot(prisma);
+    console.log('variant: floor + sqrt + praiseWeight 1.0…');
+    await rebuild({ compression: 'sqrt', praiseWeight: 1.0 });
+    results.floorSqrtPraise1 = await snapshot(prisma);
 
-    console.log('variant 6/6: floor + praiseWeight 1.0 + fast decay…');
-    await rebuild({ praiseWeight: 1.0, endorsementHalfLifeDays: 180 });
-    results.floorPraise1Decay = await snapshot(prisma);
+    console.log('variant: floor + sqrt + decay 180d…');
+    await rebuild({ compression: 'sqrt', endorsementHalfLifeDays: 180 });
+    results.floorSqrtDecay = await snapshot(prisma);
+
+    console.log('variant: floor + sqrt + ONE POOL…');
+    await rebuild({ compression: 'sqrt', pooling: 'one-pool' });
+    results.floorSqrtOnePool = await snapshot(prisma);
+
+    console.log('variant: floor + log + ONE POOL…');
+    await rebuild({ pooling: 'one-pool' });
+    results.floorLogOnePool = await snapshot(prisma);
   } finally {
     console.log('restoring upvote columns…');
     await prisma.$executeRawUnsafe(`

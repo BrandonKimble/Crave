@@ -233,8 +233,9 @@ export class PublicCraveScoreService {
         (Math.max(0, contribution.mentions) +
           config.upvoteWeight * Math.max(0, contribution.upvotes))) /
       calibrationG(calibration, contribution.sourceId);
+    const compress = config.compression === 'sqrt' ? Math.sqrt : Math.log1p;
     const endorse = (contributions: SourceContribution[]): number =>
-      Math.log1p(
+      compress(
         Math.max(
           0,
           contributions.reduce((sum, c) => sum + pooledOne(c), 0),
@@ -326,8 +327,19 @@ export class PublicCraveScoreService {
         provenanceMass,
         dishContributionsByPlace.get(place.placeId) ?? [],
       );
+      // ONE-POOL (probe): every ballot endorsing this place — through a
+      // dish or by name — lands in one pool under one law. See
+      // PublicCraveScoreConfig.pooling.
+      const onePool =
+        config.pooling === 'one-pool'
+          ? endorse([
+              ...(dishContributionsByPlace.get(place.placeId) ?? []),
+              ...place.praiseContributions,
+            ])
+          : null;
       placeAggregate.set(place.placeId, {
-        endorsement: config.dishWeight * acclaim + config.praiseWeight * praise,
+        endorsement:
+          onePool ?? config.dishWeight * acclaim + config.praiseWeight * praise,
         acclaim,
         praise,
         dishCount: dishes.length,

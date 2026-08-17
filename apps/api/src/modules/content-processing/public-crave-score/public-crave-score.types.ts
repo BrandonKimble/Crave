@@ -18,6 +18,22 @@ export interface PublicCraveScoreConfig {
   // comment) counts as 1; an upvote / poll-like counts as `upvoteWeight` — a gentle premium for the
   // conviction + origination of writing, while still counting agreement as a strong signal.
   upvoteWeight: number;
+  // Pooled-mass compression in `endorse`. 'log1p' (v3-era default) was born
+  // BEFORE the one-ballot floor, when 2,125-upvote applause posts needed
+  // brute taming; with the floor doing that job at the source, gentler
+  // curves become viable — 'sqrt' preserves breadth-of-support gaps that
+  // log crushes (20 votes vs 200: log 3.0→5.3, sqrt 4.5→14.1). Probe dial;
+  // any live change rides a calibration epoch.
+  compression?: 'log1p' | 'sqrt';
+  // Restaurant-level aggregation. 'structured' (default) = discounted
+  // dish-acclaim + weighted praise (two aggregation laws for one kind of
+  // endorsement — the SP-vs-Uchi asymmetry). 'one-pool' = a restaurant's
+  // endorsement is compress(EVERY decayed ballot naming it, dish-directed
+  // and place-directed alike): one person one ballot, one law, no
+  // praiseWeight/rho at the restaurant level. Dish structure still builds
+  // each DISH's own score. Probe dial; live change rides a calibration
+  // epoch.
+  pooling?: 'structured' | 'one-pool';
   // exponential decay half-life (days) applied to each mention by Reddit post date.
   // The STABLE/all-time axis. Doubles as the stable calibration lane's τ (§8).
   endorsementHalfLifeDays: number;
