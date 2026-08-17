@@ -35,3 +35,12 @@ unchanged HEAD under identical conditions).
 - Week-of-edits self-review (v14+v15 boundary changes under the same lens).
 - Schema descriptions under the same lens (equilibrium constraint: any move
   re-certifies).
+
+## Round 2 — B.3 punctuation + suffix rules (IN FLIGHT, staged)
+
+| Rule | Provenance | Verdict | State |
+|---|---|---|---|
+| `"&"→"and"` + strip apostrophes/trailing punctuation (B.3) | Aug-5 rewrite | **PATCH, and an active identity bug**: canonicalFold folds "&" to a space, so the prompt's "pho and co" NEVER exact-matches the stored `pho co` identity key of an &-named venue — the rule fights the fold. Rederivation: keep punctuation as observed (observed-forms doctrine; folding is the identity layer's job). | **STAGED, not committed.** The edit certified through every semantically-related case (typo law re-aligned: "Switf's" stays `switf's`; B4's stale stripped-era needle updated) but knife-edged D14 — an ask-dish-inheritance case with no semantic link — during the 02:00 drift window where controls are least trustworthy. Variant + fixture pair preserved (scratchpad/staged-rhino/); re-certify at a calm hour before landing. Meta-lesson re-confirmed: the first wording's justification tail ("…is the identity layer's job") was foreign-system meta-commentary and broke G64 (two-hop referent) until cut — same token class as V14j's earlier breaks. |
+| Trailing-location-suffix drop ("les","chelsea","midtown","queens") | Aug-5 rewrite | KEEP as example-teaching-class, with a flag: the example list is NY/Austin-locale-bound; generalize wording when a non-US city lands. Branch-tag handling interacts with secondary-locations machinery — deeper walk queued. | unchanged |
+| Possessive-clitic strip ("Nixta's duck taco" → nixta) | Aug-5 rewrite | KEEP — principled (grammar attachment, stable identity). | unchanged |
+| Lowercase + whitespace-collapse | v1-era | KEEP — mechanical, matches fold. | unchanged |
