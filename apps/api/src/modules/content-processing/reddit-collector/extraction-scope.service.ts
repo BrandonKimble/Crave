@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { EntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { foldSurfacesFromMerge } from '../entity-resolver/entity-surface.service';
 
@@ -560,6 +560,20 @@ export async function finalizeMergeCompletion(
     DO UPDATE SET to_entity_id = ${canonicalId}::uuid`;
 }
 
+/** THE ONE lock-key derivation for identity mutual exclusion — creator
+ *  and both merge services derive their advisory-lock string HERE, keyed
+ *  off the LIVE entity_type enum values ('item'/'place'). Rename residue
+ *  (red-team lens 1, 2026-08-17): the merges free-composed
+ *  'entity:food:…'/'entity:restaurant:…' while the creator composed from
+ *  the live enum ('item'/'place') — two namespaces, H3 race protection
+ *  void. No caller may free-compose an 'entity:' lock string. */
+export function identityMergeLockKey(
+  entityType: EntityType,
+  key: string,
+): string {
+  return `entity:${entityType}:${key}`;
+}
+
 /** Identity advisory locks for a merge — the SAME locks the creation
  *  path takes (async-integrity H3; round-12 audit: the plan asserted
  *  this and the code didn't do it — a creator could adopt the loser
@@ -567,11 +581,11 @@ export async function finalizeMergeCompletion(
  *  deadlock. */
 export async function acquireIdentityMergeLocks(
   tx: Prisma.TransactionClient,
-  entityType: string,
+  entityType: EntityType,
   lockKeys: string[],
 ): Promise<void> {
   for (const key of [...lockKeys].sort()) {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`entity:${entityType}:${key}`}))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${identityMergeLockKey(entityType, key)}))`;
   }
 }
 

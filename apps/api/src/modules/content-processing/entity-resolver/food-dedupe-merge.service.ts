@@ -559,7 +559,7 @@ export class ItemDedupeMergeService {
 
     await this.prisma.$transaction(
       async (tx) => {
-        await acquireIdentityMergeLocks(tx, 'food', [
+        await acquireIdentityMergeLocks(tx, EntityType.item, [
           entityLockKey(winner.name, EntityType.item),
           entityLockKey(loser.name, EntityType.item),
         ]);

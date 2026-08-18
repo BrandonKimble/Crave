@@ -111,7 +111,7 @@ export class PlaceEntityMergeService {
       };
       // Same identity locks the creation path takes (H3 — round-12
       // audit: the plan asserted this, the code didn't do it).
-      await acquireIdentityMergeLocks(tx, 'restaurant', [
+      await acquireIdentityMergeLocks(tx, EntityType.place, [
         entityLockKey(canonical.name, EntityType.place),
         entityLockKey(duplicate.name, EntityType.place),
       ]);

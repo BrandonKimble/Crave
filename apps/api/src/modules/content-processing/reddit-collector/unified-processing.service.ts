@@ -74,6 +74,7 @@ import { PlaceEnrichmentQueueService } from '../../restaurant-enrichment/restaur
 import { PlaceSecondaryLocationExpansionQueueService } from '../../restaurant-enrichment/restaurant-secondary-location-expansion-queue.service';
 import { ProjectionRebuildService } from './projection-rebuild.service';
 import {
+  identityMergeLockKey,
   supersedeAndActivate,
   writePlaceEvents,
   writePlaceEntityEvents,
@@ -1838,7 +1839,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             // key: number variants, ACTIVE rows only (an archived loser must
             // never be adopted — its merge redirect is followed instead, so
             // post-merge mentions land on the surviving canonical).
-            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`entity:${entityType}:${entityLockKey(canonicalName, entityType)}`}))`;
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${identityMergeLockKey(entityType, entityLockKey(canonicalName, entityType))}))`;
             const probeNames = identityProbeNames(canonicalName, entityType);
             let existing = await tx.entity.findFirst({
               where: {

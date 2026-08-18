@@ -3,6 +3,8 @@ import {
   identityInsertData,
 } from '../content-processing/entity-resolver/entity-identity';
 import { addSurfaces } from '../content-processing/entity-resolver/entity-surface.service';
+import { entityLockKey } from '../content-processing/entity-resolver/entity-identity';
+import { identityMergeLockKey } from '../content-processing/reddit-collector/extraction-scope.service';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { EntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -349,7 +351,12 @@ export class PollEntitySeedService {
       // name; the enrichment-time conflict resolver and the nightly sweep
       // own the finer distinct-business judgment with domain evidence).
       const resolvedName = String(entityData.name ?? name);
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`entity:place:${resolvedName.toLowerCase()}`}))`;
+      // Lock key derived by THE shared function (sweep 2026-08-17): this
+      // line free-composed `entity:place:<lowercased name>` — the raw
+      // lowercase differed from the creator's entityLockKey normalization
+      // (punctuation-stripped), so this path and the reddit creator could
+      // hold DIFFERENT locks for the same identity.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${identityMergeLockKey(EntityType.place, entityLockKey(resolvedName, EntityType.place))}))`;
       const sameName = await tx.entity.findFirst({
         where: {
           type: EntityType.place,
