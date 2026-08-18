@@ -1348,6 +1348,48 @@ export const INVARIANTS: readonly Invariant[] = [
       },
     ],
   },
+  {
+    // THE SCORE LAYER CANNOT SIT SILENTLY SHORT (lens-2 residuals,
+    // 2026-08-17). The rescore runs only on rescore_state.dirty — so every
+    // tool that invalidates scores must set the flag, and something must
+    // notice a short table whose flag nobody set. Two mechanisms hold the
+    // one law, and each is a separate artifact that can die without a
+    // failing test: an SQL comment block in the wipe script, and a
+    // comparison inside the coordinator's parity audit.
+    id: 'scores.a-wipe-fires-the-rescore',
+    statement:
+      'Anything that deletes core_public_entity_scores rows sets rescore_state.dirty in the same transaction, and the rescore coordinator itself detects a score table short of the core_restaurant_items count (boot + hourly) — a wiped or short score layer can never sit behind a clean flag.',
+    incident:
+      'Lens-2 sweep (2026-08-17): wipe-city-derived.sql deleted score rows without marking dirty, full-projection-rebuild LOGGED a manual instruction to rescore, and nothing anywhere compared score count to item count — the incident state (empty scores, clean flag) was undetectable by construction.',
+    level: 'behaviour',
+    mechanism:
+      'scripts/reload/wipe-city-derived.sql (the UPDATE rescore_state after the scores DELETE) + RescoreCoordinatorService.healIfScoresShort (count-parity audit at boot and each tick, with the kill-switch-honesty alert); scripts/check-wipe-fires-rescore.ts polices the SQL half.',
+    check: {
+      command:
+        'npx ts-node -T scripts/check-wipe-fires-rescore.ts && npx jest src/modules/content-processing/public-crave-score/rescore-coordinator.service.spec.ts --silent',
+      reads:
+        'the wipe script (does the scores DELETE fire the flag) and the coordinator specs (does a short table mark dirty and alert)',
+    },
+    mutations: [
+      {
+        // The wipe reverts to deleting scores WITHOUT firing the rescore —
+        // the exact defect the sweep found.
+        file: 'scripts/reload/wipe-city-derived.sql',
+        find: 'UPDATE rescore_state\nSET dirty = true, dirty_since = COALESCE(dirty_since, now())\nWHERE id = 1;',
+        replace:
+          '-- MUTATED: the wipe no longer fires the rescore it makes necessary.',
+      },
+      {
+        // The parity audit is disarmed: half-deleted connection scores read
+        // as parity and the short table sits silently — the census check
+        // must bite.
+        file: 'src/modules/content-processing/public-crave-score/rescore-coordinator.service.ts',
+        find: 'if (!row || row.scores >= row.items) return;',
+        replace:
+          'if (!row || true) return; // MUTATED: a short score table reads as parity.',
+      },
+    ],
+  },
 ];
 
 export const SCRATCH_FILE = SCRATCH;
