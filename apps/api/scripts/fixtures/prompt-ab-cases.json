@@ -2395,5 +2395,32 @@
         }
       ]
     }
+  },
+  {
+    "id": "P1b-best-shorthand-list",
+    "why": "P1b trace: the REAL t1_ob9w2uz comment (r/FoodNYC, 2026-07-31) that minted ghost restaurant 'Best' (b92af0ed) from local shorthand in a list. Ruled direction: expand shorthand to referent or emit against it, never mint the shorthand. Discriminating assertion: no standalone 'best' restaurant. Body + title verbatim from collection_source_documents.",
+    "posts": [
+      {
+        "id": "t3_1rxlujb",
+        "title": "Places You Think Are Over-hyped &amp; Where You Would Recommend Going Instead",
+        "body": "I've bought into the hype enough times to know that there is nothing worse than going halfway across town, waiting in a long line, and paying an inflated price just to have a mediocre meal. So, I'm hoping to gather some intel on which places should be skipped, and better alternatives to opt for instead.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_ob9w2uz",
+            "body": "Big disagree on Joe’s. Native Brooklynite zillennial here. Joe’s Carmine is the one though. The 14th street one is fine too. Can’t vouch for the rest of the Joe’s. I would say Vinnie’s, Williamsburg Pizza, Best, Smiling, Ben’s, and L&amp;B Spumoni.\n\nApollo Bagels is awful bc it is venture capital disney version of nyc. I will not acknowledge it as a valid food establishment in this here fine city."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "places": ["vinnie's", "williamsburg pizza"],
+      "notRestaurants": [
+        "best",
+        "smiling",
+        "vinnies",
+        "l and b spumoni gardens"
+      ]
+    }
   }
 ]

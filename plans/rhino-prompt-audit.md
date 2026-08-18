@@ -165,3 +165,22 @@ D.1 catalogs, Step A, B.1. Standing debts on the queue: parent-category
 gold pins (precondition for C.3), the drift band (V14j/G65/ML4/G6-class —
 model-side, re-controlled per run), and the pre-shadow re-cert at the
 rename+backfill boundary.
+
+## P1b closure — shorthand-completion (2026-08-17, post-freeze)
+
+The Best-mint class is CLOSED at the extraction layer by the frozen text,
+proven on the minting document itself: t1_ob9w2uz (the r/FoodNYC
+shorthand list that minted ghost restaurant "Best" b92af0ed under v8)
+now yields, per run, either shorthand EXPANDED to its referent (`best
+pizza`, `smiling pizza`, `ben's pizza`, `l&b spumoni gardens` — with
+punctuation as observed) or the shorthand SKIPPED — never a standalone
+`best` mint, across 3+6 repeats. Expansion-vs-skip is sampling-dependent,
+so the certified pin (P1b-best-shorthand-list, case 105) asserts the
+INVARIANT: vinnie's + williamsburg pizza present, and never `best`,
+`smiling`, `vinnies`, or `l and b spumoni gardens` (the live prompt fails
+this case on apostrophe-stripping and &→and rewriting — both rhino-fixed
+classes). Live-arm control: 0/3. The ghost entity itself still awaits the
+P8 reground/ghost-lifecycle sweep (SD-3) — lifecycle, not extraction.
+No A/B against a text variant was needed: the ruled behavior ("expand to
+referent or emit against it, never mint the shorthand") is already the
+frozen candidate's certified behavior.
