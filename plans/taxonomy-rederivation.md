@@ -295,9 +295,18 @@ bounded to search/profile/runtime cluster deliberately.
 ## POST-RENAME INCIDENT LEDGER (2026-08-16 evening; all resolved, 1b65344e3)
 - core_restaurant_locations EMPTIED by an unidentified statement in the
   rollback window (perpetrator unrecoverable — pg log errors-only).
-  Restored 13,193 rows from sim snapshot; ~1,050 newest lost pending a
-  SURGICAL prod pull (never full refresh — would wipe iteration verdicts/
-  vocab). OPEN ITEM (mine): targeted locations pull script.
+  Restored 13,193 rows from sim snapshot. SURGICAL PROD PULL RAN
+  (98072e154, crave_readonly, SELECT-only): DIFF EMPTY — local exactly
+  matches prod (13,193=13,193, md5-identical on location_id||place_id);
+  the "~1,050 newest lost" estimate was wrong (it came from a stale
+  derived-intervals count; prod's newest location is 2026-07-31). LOSS
+  FULLY RECOVERED, item CLOSED. Two artifacts on record: local
+  location timestamps sit uniformly +5h vs prod (snapshot tz artifact —
+  anything comparing local-vs-prod timestamps must know); local postgres
+  now logs ALL mutations (log_statement='mod', verified live —
+  ~/Library/.../var-18/postgresql.log) so the next silent wipe has a
+  culprit. Recovery script kept (dry-run default) for future surgical
+  pulls.
 - The empty table MASKED two real R14 residue bugs, both fixed: builder/
   executor SQL emitted restaurant_* aliases vs TS place_* reads (serving
   crashed once data returned); coverage-truth truth-SQL aliases vs mapper.
