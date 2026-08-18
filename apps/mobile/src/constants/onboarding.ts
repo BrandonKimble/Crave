@@ -16,7 +16,9 @@ import {
   labelledOptions,
 } from '@crave-search/shared';
 
-// TODO: Replace with actual app screenshot showing search results
+// OWNER 2026-08-17: placeholder asset — the hero step ships the splash image
+// until an actual app screenshot (search results) is produced; owner-owned
+// asset decision, not a code task.
 import placeholderImage from '../assets/splash.png';
 
 interface BaseStep {
