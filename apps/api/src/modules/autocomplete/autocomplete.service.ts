@@ -1422,7 +1422,7 @@ export class AutocompleteService {
       SELECT
         attribute_id AS "attributeId",
         COUNT(DISTINCT restaurant_id)::int AS "corpusConnectionCount",
-        (SELECT total_restaurant_count FROM totals) AS "totalRestaurantCount"
+        (SELECT total_restaurant_count FROM totals) AS "totalPlaceCount"
       FROM attribute_refs
       WHERE attribute_id = ANY(ARRAY[${Prisma.join(attributeIds)}]::uuid[])
       GROUP BY attribute_id
@@ -1430,13 +1430,27 @@ export class AutocompleteService {
     ]);
 
     const corpusById = new Map(
-      corpusRows.map((row) => [
-        row.attributeId,
-        {
-          connectionCount: Number(row.corpusConnectionCount ?? 0),
-          totalPlaceCount: Number(row.totalPlaceCount ?? 0),
-        },
-      ]),
+      corpusRows.map((row) => {
+        // NO silent-zero mask on the denominator (rename-residue lesson,
+        // 2026-08-17): the SQL alias said "totalRestaurantCount" while this
+        // reader said totalPlaceCount, and a `?? 0` fallback ATE the
+        // mismatch — every attribute's corpus usefulness normalized against
+        // zero, silently, for weeks. A missing denominator is a broken
+        // query shape and must be loud.
+        const totalPlaceCount = Number(row.totalPlaceCount);
+        if (!Number.isFinite(totalPlaceCount)) {
+          throw new Error(
+            `attribute corpus-support query returned no totalPlaceCount for attribute ${row.attributeId} — SQL alias/reader mismatch`,
+          );
+        }
+        return [
+          row.attributeId,
+          {
+            connectionCount: Number(row.corpusConnectionCount ?? 0),
+            totalPlaceCount,
+          },
+        ] as const;
+      }),
     );
     const supportById = new Map<string, AttributeSupportScore>();
 

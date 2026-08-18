@@ -281,7 +281,7 @@ export class TeaserService {
         WHERE type = 'place_attribute' AND status = 'active'
           AND lower(name) = ANY(${attrNames.map((n) => n.toLowerCase())})
       )
-      SELECT r.name AS restaurant_name, s.display_score::float AS score
+      SELECT r.name AS place_name, s.display_score::float AS score
       FROM core_entities r
       JOIN core_public_entity_scores s
         ON s.subject_type = 'restaurant' AND s.subject_id = r.entity_id
@@ -438,7 +438,7 @@ export class TeaserService {
       }>
     >(Prisma.sql`
       SELECT f.name AS dish_name,
-             r.name AS restaurant_name,
+             r.name AS place_name,
              s.display_score::float AS score
       ${this.connectionFilter(cities, itemIds)}
       ORDER BY s.percentile_rank DESC

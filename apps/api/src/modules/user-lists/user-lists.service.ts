@@ -462,7 +462,7 @@ export class UserListsService {
     >(Prisma.sql`
       SELECT p.place_id AS "placeId",
              p.name,
-             COUNT(DISTINCT rl.restaurant_id) AS "restaurantCount"
+             COUNT(DISTINCT rl.restaurant_id) AS "placeCount"
       FROM core_restaurant_locations rl
       JOIN place_geometries pg
         ON ST_Covers(

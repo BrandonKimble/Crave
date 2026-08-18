@@ -755,7 +755,7 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
   // §2a: username · metadata dot · TYPED count ("N dishes"/"N places").
   const countLabel =
     data.listType === 'restaurant'
-      ? `${rowCount} ${rowCount === 1 ? 'restaurant' : 'places'}`
+      ? `${rowCount} ${rowCount === 1 ? 'place' : 'places'}`
       : `${rowCount} ${rowCount === 1 ? 'dish' : 'dishes'}`;
   // F2051: the hand-rolled chain that lived here skipped `isDeleted`, so a list owned by a
   // deleted account still rendered that account's stale @handle in the meta line.
