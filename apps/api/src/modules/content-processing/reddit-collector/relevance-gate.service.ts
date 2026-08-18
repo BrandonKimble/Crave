@@ -67,9 +67,12 @@ export function normalizeVerdictReason(value: unknown): string | undefined {
  * keep-precision 0.797 under the shipped 2026-07-29 configuration
  * (fail-open by design — uncertainty and errors KEEP).
  *
- * Verdicts persist per (platform, postId): a post judged once is never
- * re-judged (re-loads and keyword overlaps are free) and false drops are
- * auditable. Runs interactively even when extraction defers to batch — the
+ * Verdicts persist per (platform, postId, promptHash): a post judged once
+ * UNDER THE CURRENT GATE CONFIG is never re-judged (re-loads and keyword
+ * overlaps are free), false drops are auditable, and a config change
+ * re-opens every post — superseded verdicts stay as history (P7 re-open,
+ * 2026-08-17; ~$1 per full city per bump, deliberate). Runs interactively
+ * even when extraction defers to batch — the
  * gate costs ~$1 per full city, which doesn't justify two-phase batch
  * choreography.
  */
@@ -123,11 +126,11 @@ export class RelevanceGateService implements OnModuleInit {
     // HIGH thinking, and this commit moved the gate prompt from the user
     // text part to systemInstruction — both real configuration changes that
     // a prompt-text hash cannot see. The discriminator makes every future
-    // row honest about WHICH judging configuration produced it. (Verdict
-    // REUSE is keyed on (platform, postId) and is unaffected; this is the
-    // audit record. The 130-post calibration numbers describe the old
-    // configuration — re-run density-replay before trusting them for this
-    // one.)
+    // row honest about WHICH judging configuration produced it — and since
+    // the P7 re-open (2026-08-17) it is part of the verdict's IDENTITY:
+    // reuse is keyed on it, so changing the config re-judges every post.
+    // (The 130-post calibration numbers describe the old configuration —
+    // re-run density-replay before trusting them for this one.)
     // The discriminator is the REAL profile, serialized — a hand-written
     // literal here could not see a profile model/thinking change (red team
     // R7 round 2). Placement is the one config fact the profile cannot
@@ -153,7 +156,14 @@ export class RelevanceGateService implements OnModuleInit {
     }
 
     const cached = await this.prisma.collectionRelevanceVerdict.findMany({
-      where: { platform, postId: { in: posts.map((post) => post.id) } },
+      // Config-scoped reuse: only a verdict from THIS gate configuration
+      // counts; a row from a superseded config leaves the post unseen, so
+      // the bump re-judges it (the P7 re-open).
+      where: {
+        platform,
+        postId: { in: posts.map((post) => post.id) },
+        promptHash: this.promptHash,
+      },
       select: { postId: true, keep: true },
     });
     const verdictById = new Map(cached.map((row) => [row.postId, row.keep]));

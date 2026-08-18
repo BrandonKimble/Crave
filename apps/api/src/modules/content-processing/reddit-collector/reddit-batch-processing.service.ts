@@ -527,7 +527,9 @@ export class RedditBatchProcessingService implements OnModuleInit {
           keep: false,
           reason: 'fetch_failed_decisive',
           model: 'reddit-batch-fetch',
-          promptHash: null,
+          // Sentinel config (P7 re-open): a fetch outcome is not an LLM
+          // judgment; it is not scoped to a gate config and never re-opens.
+          promptHash: 'unfetchable',
         })),
         skipDuplicates: true,
       })

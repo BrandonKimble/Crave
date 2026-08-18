@@ -305,8 +305,14 @@ rehearing budget — the healthiest corner of the fleet.
 
 ### Residual docket (ranked; none block the shadow)
 
-1. **Relevance-gate memory cannot re-open — decide BEFORE the archive
-   load.** Empirically confirmed: PK (platform, post_id), reuse query
+1. **DONE 2026-08-17 (owner-ordered, same day).** Config-scoped verdicts:
+   promptHash (the F3/R7 discriminator) joined the PK, reuse filters on it,
+   tombstones ('parent_unfetchable', 'fetch_failed_decisive') carry the
+   sentinel config 'unfetchable' and never re-open, the A(τ) calibration
+   reader moved to latest-judgment-wins fail-open, and the orphan sweep
+   stays deliberately hash-agnostic (re-judge, never re-fetch). RED-capable
+   spec pins the re-open; tsc caught a 4th writer the grep sweep missed.
+   ORIGINAL FINDING: **Relevance-gate memory cannot re-open.** Empirically confirmed: PK (platform, post_id), reuse query
    ignores the stored prompt_hash; 8,846 verdicts already permanent. The
    ~117k-doc archive completion will write tens of thousands more
    permanent verdicts; a later gate-prompt improvement can never re-hear

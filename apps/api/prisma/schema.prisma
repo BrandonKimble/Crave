@@ -532,17 +532,21 @@ model ApiUsageEvent {
 }
 
 /// Persisted relevance-gate verdicts (plans/archive-prefilter-pipeline.md):
-/// a post judged once is never re-judged; false drops are auditable.
+/// a post judged once UNDER THE CURRENT GATE CONFIG is never re-judged; a
+/// config change (prompt/profile/placement, hashed into promptHash) re-opens
+/// every post, and superseded verdicts remain as auditable history. Readers
+/// that want "the gate's opinion" take the LATEST verdict per post;
+/// fetch-outcome tombstones use the sentinel config 'unfetchable'.
 model CollectionRelevanceVerdict {
   platform   String   @db.VarChar(32)
   postId     String   @map("post_id") @db.VarChar(64)
   keep       Boolean
   reason     String?  @db.VarChar(256)
   model      String   @db.VarChar(128)
-  promptHash String?  @map("prompt_hash") @db.VarChar(16)
+  promptHash String   @map("prompt_hash") @db.VarChar(16)
   judgedAt   DateTime @default(now()) @map("judged_at") @db.Timestamptz(3)
 
-  @@id([platform, postId])
+  @@id([platform, postId, promptHash])
   @@index([keep], map: "idx_relevance_verdicts_keep")
   @@map("collection_relevance_verdicts")
 }

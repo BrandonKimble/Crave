@@ -728,7 +728,9 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
     }
 
     // Exclude parents already judged (incl. 'parent_unfetchable' tombstones):
-    // a verdict means the gate has decisively spoken — never re-fetch.
+    // a verdict means the parent was fetched (or proven unfetchable) once —
+    // never re-FETCH. Deliberately hash-agnostic: the config-scoped re-open
+    // (P7, 2026-08-17) re-JUDGES at gate time; it never re-downloads.
     const judged = await this.prisma.collectionRelevanceVerdict.findMany({
       where: { platform: 'reddit', postId: { in: candidateParentIds } },
       select: { postId: true },
@@ -809,7 +811,9 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
             keep: false,
             reason: 'parent_unfetchable',
             model: 'orphan-parent-sweep',
-            promptHash: null,
+            // Sentinel config: a fetch outcome is not an LLM judgment, so it
+            // is not scoped to any gate configuration and never re-opens.
+            promptHash: 'unfetchable',
           })),
           skipDuplicates: true,
         })

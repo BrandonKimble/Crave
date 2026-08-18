@@ -635,12 +635,18 @@ export class PublicCraveScoreService {
           -- re-weights by turnout. The predicate and the key it tests are
           -- one fact, owned by polls/supply/ballot-document-marker.
           AND ${notABallotDocumentSql('sd')}
-          AND NOT EXISTS (
-            SELECT 1 FROM collection_relevance_verdicts v
+          -- Gate verdicts are config-scoped since the P7 re-open
+          -- (2026-08-17): a post can carry one verdict per gate
+          -- configuration, so "gate-rejected" means the LATEST judgment
+          -- says drop — a re-heard post rejoins A(τ) the moment a newer
+          -- verdict keeps it. No verdict at all fails open (kept).
+          AND COALESCE((
+            SELECT v.keep FROM collection_relevance_verdicts v
             WHERE v.platform = sd.platform
               AND v.post_id = COALESCE(sd.parent_source_id, sd.source_id)
-              AND v.keep = false
-          )
+            ORDER BY v.judged_at DESC
+            LIMIT 1
+          ), true)
       ) d ON TRUE
       LEFT JOIN LATERAL (
         SELECT MAX(lr.last_ran_at) AS last_ran_at
