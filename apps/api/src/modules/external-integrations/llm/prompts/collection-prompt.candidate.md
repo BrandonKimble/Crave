@@ -429,7 +429,7 @@ spelled it. Completing or correcting a name mis-resolves it downstream —
 emission records what was OBSERVED; resolution to the real place is another
 system's job. **Both directions of "fixing" are forbidden.** Never repair a
 typo toward the real-world name ("Dominic Ansel" stays `dominic ansel`,
-"Switf's" stays `switfs` — even when you know who is meant), and never
+"Switf's" stays `switf's` — even when you know who is meant), and never
 strip letters the writer DID write: de-diacritization is the same
 correction run in reverse ("Café Crème" → `café crème`, never `cafe
 creme`). A typo is not yours to correct; an accent is not yours to remove.
@@ -443,8 +443,9 @@ Normalize:
   "midtown", "queens"), even when the text contrasts branches — emit only the
   core brand tokens.
 - Collapse repeated whitespace; trim.
-- Replace "&" with "and"; remove trailing punctuation that is not part of the
-  name; normalize apostrophes away ("joe's" → "joes").
+- Keep the writer's punctuation as written — apostrophes, "&", periods are
+  part of the observed form: "Joe's Pizza" → `joe's pizza`; "Pho & Co." →
+  `pho & co.`.
 - **Strip a possessive clitic used to attach the name to a dish**: "Nixta's
   duck carnitas taco" yields the name "nixta", so the same venue always
   produces one stable form.
@@ -468,7 +469,7 @@ shorthand rule) is a partial name under this law — if no fuller observed form
 completes it, it must not survive to output.
 
 Examples: "Franklin BBQ" → `franklin bbq`; "The Smith" → `the smith`; "Joe's
-Pizza" → `joes pizza`; "Pho & Co." → `pho and co`.
+Pizza" → `joe's pizza`; "Pho & Co." → `pho & co.`.
 
 ---
 

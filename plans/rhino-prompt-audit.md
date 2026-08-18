@@ -44,3 +44,22 @@ unchanged HEAD under identical conditions).
 | Trailing-location-suffix drop ("les","chelsea","midtown","queens") | Aug-5 rewrite | KEEP as example-teaching-class, with a flag: the example list is NY/Austin-locale-bound; generalize wording when a non-US city lands. Branch-tag handling interacts with secondary-locations machinery — deeper walk queued. | unchanged |
 | Possessive-clitic strip ("Nixta's duck taco" → nixta) | Aug-5 rewrite | KEEP — principled (grammar attachment, stable identity). | unchanged |
 | Lowercase + whitespace-collapse | v1-era | KEEP — mechanical, matches fold. | unchanged |
+
+## Round 2 LANDED (calm-hour cert 2026-08-17 20:30): keep-punctuation is in.
+Knife-edge five at x6: G64/V14l/V14q/B4 green; D14 flaky on BOTH prompts =
+band, not attributable. The &→and identity bug is dead.
+
+## Round 3 FINDING (attempted + reverted): C.1 is SATURATED, and dish
+## inheritance is MIS-HOMED
+The ask-dish inheritance rule lives ~925 lines in, inside the
+`is_menu_item` section — downstream of its decision point (C.1's "is there
+a dish at all?"), the exact v13 "lunch special lost 9/9" class. Anchoring a
+minimal exception at C.1 fixed the whole flicker family (D14/ML3/V15i
+PASS x5) but broke the OTHER C.1 families (V15f 0/6, G6 0/6, P2 flaky) —
+C.1 now carries eight rule clusters and is past its attention budget:
+every addition trades one family for another. Verdict: the fix is the
+FULL C.1 REDERIVATION (decision-tree shape, one pass through the named
+tests, inheritance at its decision point, wrapper/X-food/filler
+redistributed), constrained by BOTH gold families as paired pins. Queued
+as round 4's centerpiece; the anchor is reverted until then. D14 stays a
+band member documenting the mis-homing cost.
