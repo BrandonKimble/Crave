@@ -2,6 +2,7 @@ import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { ProjectionRebuildService } from './projection-rebuild.service';
+import { RescoreCoordinatorService } from '../public-crave-score/rescore-coordinator.service';
 import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
 import { resolveProcessRole } from '../../../shared/utils/process-role';
 
@@ -22,6 +23,7 @@ export class FullProjectionRebuildRunner implements OnApplicationBootstrap {
   constructor(
     private readonly prisma: PrismaService,
     private readonly projectionRebuild: ProjectionRebuildService,
+    private readonly rescoreCoordinator: RescoreCoordinatorService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('FullProjectionRebuildRunner');
@@ -80,9 +82,15 @@ export class FullProjectionRebuildRunner implements OnApplicationBootstrap {
         });
       }
     }
+    // FIRE THE MACHINERY THIS RUN MADE NECESSARY (lens-2 residual,
+    // 2026-08-17): this used to LOG an instruction to manually run
+    // rebuild-crave-scores — a manual two-step nobody is guaranteed to take.
+    // The projections feed the scores, so the runner marks the durable dirty
+    // flag itself and the hourly coordinator rebuilds.
+    await this.rescoreCoordinator.markDirty('full projection rebuild');
     this.logger.info('FULL PROJECTION REBUILD DONE', {
       places: ids.length,
-      note: 'Run scripts/rebuild-crave-scores.ts next; remove RUN_FULL_PROJECTION_REBUILD.',
+      note: 'Crave Scores marked dirty; the rescore coordinator rebuilds them on its next tick. Remove RUN_FULL_PROJECTION_REBUILD.',
     });
   }
 }

@@ -127,6 +127,16 @@ WHERE to_entity_id IN (SELECT entity_id FROM doomed_entities);
 DELETE FROM core_public_entity_scores
 WHERE subject_id IN (SELECT entity_id FROM doomed_entities);
 
+-- FIRE THE DEFERRED MACHINERY (lens-2 residual, 2026-08-17). This wipe just
+-- invalidated the score layer, and the rescore only ever runs on
+-- rescore_state.dirty — so the lifecycle tool that deletes scores sets the
+-- flag in the SAME transaction. A tool must fire the machinery it makes
+-- necessary; otherwise the app serves a silently short score table until an
+-- unrelated collection batch happens to mark dirty (the incident's state).
+UPDATE rescore_state
+SET dirty = true, dirty_since = COALESCE(dirty_since, now())
+WHERE id = 1;
+
 DELETE FROM core_restaurant_locations
 WHERE restaurant_id IN (SELECT entity_id FROM doomed_entities);
 

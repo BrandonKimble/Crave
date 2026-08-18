@@ -12,6 +12,8 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AdvisoryLockService, LoggerService } from '../../../shared';
+import { isSchedulerRuntime } from '../../../shared/utils/process-role';
+import { OpsAlertsService } from '../../external-integrations/shared/ops-alerts.service';
 import { PublicCraveScoreService } from './public-crave-score.service';
 
 /** Advisory lock key for the global rescore (single writer across replicas). */
@@ -27,10 +29,66 @@ export class RescoreCoordinatorService implements OnModuleInit {
     private readonly loggerService: LoggerService,
     private readonly craveScore: PublicCraveScoreService,
     private readonly advisoryLock: AdvisoryLockService,
+    private readonly opsAlerts: OpsAlertsService,
   ) {}
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('RescoreCoordinator');
+    // Boot arm of the emptiness self-heal (DerivedIndexJob's shape): an
+    // empty-or-short score table at boot is un-derived derivation, not a
+    // config state. Fire-and-forget — a parity audit must never block boot.
+    void this.healIfScoresShort('boot');
+  }
+
+  /**
+   * SCORE-LAYER EMPTINESS SELF-HEAL (lens-2 residual, 2026-08-17). The
+   * rescore fires only on rescore_state.dirty; nothing here used to notice a
+   * score table that is EMPTY or materially SHORT while the flag sits clean —
+   * exactly how the incident's wiped-scores state served silently. The
+   * invariant is count parity: every core_restaurant_items row has a
+   * connection score (lens-2 verified 14,980 = 14,980). A shortfall marks
+   * dirty (the durable flag the machinery already honors) and ALERTS.
+   *
+   * KILL-SWITCH HONESTY (DerivedIndexJob, F-infra 2026-08-11): on a
+   * cron-free runtime the hourly tick never runs, so "dirty" is a promise
+   * nobody will keep — the alert says so out loud instead of silently
+   * sitting, and repair stays forbidden while the gate is off.
+   */
+  async healIfScoresShort(when: 'boot' | 'tick'): Promise<void> {
+    try {
+      const [row] = await this.prisma.$queryRaw<
+        Array<{ items: number; scores: number }>
+      >`
+        SELECT
+          (SELECT count(*)::int FROM core_restaurant_items) AS items,
+          (SELECT count(*)::int FROM core_public_entity_scores
+            WHERE subject_type = 'connection') AS scores
+      `;
+      if (!row || row.scores >= row.items) return;
+      await this.markDirty(
+        `score layer short at ${when}: ${row.scores}/${row.items} connection scores`,
+      );
+      const willRebuild = isSchedulerRuntime();
+      this.opsAlerts.emit({
+        severity: 'critical',
+        kind: 'rescore-score-layer-short',
+        title: 'Crave score layer is short of the connection count',
+        body: [
+          `core_public_entity_scores holds ${row.scores} connection score(s) for ${row.items} core_restaurant_items row(s) (detected at ${when}). Readers fail open on missing scores, so nothing else will report this.`,
+          willRebuild
+            ? 'rescore_state.dirty is set; the hourly coordinator will rebuild on its next tick.'
+            : 'rescore_state.dirty is set, but THIS RUNTIME HAS CRONS DISABLED (CRONS_ENABLED / PROCESS_ROLE) — NOBODY will rebuild. Run the rescore deliberately, or enable crons on a runtime that can.',
+        ].join('\n\n'),
+        dedupeKey: 'rescore-score-layer-short',
+      });
+    } catch (error) {
+      this.logger.error('Score-layer parity audit failed', {
+        error:
+          error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : { message: String(error) },
+      });
+    }
   }
 
   /** Durable dirty mark — the ONLY thing collection paths may call. */
@@ -57,6 +115,9 @@ export class RescoreCoordinatorService implements OnModuleInit {
 
   /** Exposed for probes/specs; the cron calls this. */
   async tick(): Promise<'clean' | 'rebuilt' | 'locked' | 'failed'> {
+    // Hourly arm of the emptiness self-heal: a shortfall marks dirty here,
+    // so the very same tick proceeds to rebuild.
+    await this.healIfScoresShort('tick');
     const state = await this.prisma.rescoreState.findUnique({
       where: { id: 1 },
       select: { dirty: true },
