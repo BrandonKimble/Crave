@@ -123,3 +123,45 @@ the section's entry framing, not just its interior.
 | C.2 generic-classifier list (18 items + …) | v1 ancestor via Aug-5 rewrite | **KEEP, by measurement**: the principle+two-examples trim certified on the composition family but broke V15h 0/6 (HEAD x6 green) — pure positional knife-edging; two saved lines don't buy the owner's fit-assertion. POLICY ADOPTED: cosmetic-only trims are not free in this prompt; an edit must earn its risk semantically. |
 | C.3 common-parents mapping (cake→dessert, pho→soup, …) | Aug-5 rewrite | **KEEP + UNDER-PINNED FLAG**: parent categories feed browse, but the suite barely pins them — any edit here is currently unmeasurable. Add parent-category gold cases (both sides) before this cluster is ever touched. |
 | D.1 praise PASSES/FAILS catalogs | Aug-5 rewrite | **KEEP — canon-compliant**: the text already states the test and disclaims the lists ("not a word list to memorize — a test to run"); the examples calibrate a boundary that recurring real vocabulary actually walks. |
+
+## Round 7 — Step A (the emit boundary) + B.1 naming cluster: CLEAN BILLS
+
+**Step A verdict: ALREADY CANON-SHAPED — no edit.** The walk found what
+C.1 lacked before round 4: A is not an accreted pile but a decision
+structure that matches the model's actual process (clause → testimony? →
+which failure class → per-entry verdict → outcome). Every one of A.2's
+ten failure classes is incident-bought with living gold pins (plans →
+B-series; availability/findability → V14c/V14o; hedges + ratings → V14i
+and the score-scale rule; title-only → V14m/n; appearance → G6-era;
+adoption → V14e/G64; price-only → V14l; closures → the remembered-verdict
+boundary). The prose is long because the emit boundary is genuinely the
+most contested territory in the prompt — ten real false-positive families
+each bought a paragraph, and nearly every sentence has its case. Cutting
+here would be trading pinned behavior for page count: the round-6 policy
+(edits must earn risk semantically) rules it out. Cosmetic warts (the
+spliced no-genre sentence at ~line 92) stay, per the same policy.
+
+**B.1 naming cluster verdict: KEEP — audited this cycle.** The
+keep-frames / shorthand / answer-frame / never-split / shared-verb /
+misspelling rules were all re-derived or re-certified during v13-v15 and
+rounds 1-2 (article deletion, punctuation-as-observed, typo law); each
+carries recent incident provenance (the ghost census) and current pins.
+
+## Week-self-review closure
+The week's own edits have now each passed through the audit's own method:
+the v15 article exception was deleted by round 1's data; X-food,
+good-taco, and the scope clauses survived re-certification repeatedly and
+sit inside the round-4 gate structure; the ask-inheritance whack-a-mole
+was rederived into rounds 4-5's landed forms; the schema-description
+decisions were measured by the blank-descriptions experiment (blank
+loses; equilibrium frozen by fingerprint). No unreviewed edit remains.
+
+## AUDIT STATUS: every section carries a verdict
+Landed: article rule deleted (data), filler principle, punctuation as
+observed (+& identity bug killed), C.1 three-gate rederivation with dish
+inheritance homed, the fit assertion (restaurant-level ask inheritance).
+Protective verdicts: C.2 classifier list, C.3 parents (UNDER-PINNED debt),
+D.1 catalogs, Step A, B.1. Standing debts on the queue: parent-category
+gold pins (precondition for C.3), the drift band (V14j/G65/ML4/G6-class —
+model-side, re-controlled per run), and the pre-shadow re-cert at the
+rename+backfill boundary.
