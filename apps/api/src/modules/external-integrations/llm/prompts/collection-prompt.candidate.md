@@ -692,18 +692,25 @@ expected output for most mentions.
 
 ## Step D — What is left over? (THE STANDALONE TEST)
 
-Only now, with the order-name settled, look at what remains. Every leftover
-modifier must clear two bars to become an attribute.
+Only now, with the order-name settled, look at what remains — and for a
+bare pick answering a constrained ask, the ask's venue-level constraint
+words ARE what remains (the fit assertion below). Every candidate must
+clear two bars to become an attribute.
 
 **Attributes are PREDICATES, and predicates come only from THIS source's own
 words.** Surrounding context — the ask, parent comments, siblings — resolves
 the SUBJECTS of a claim (which place, which dish; Steps B and E); it never
-supplies what is CLAIMED about them. Before any word enters an attribute
+supplies what is CLAIMED about them. One choice speaks: **an unqualified
+pick answering a constrained ask asserts fit** — the ask's VENUE-level
+constraint words ("romantic", "cheap", a cuisine) are that pick's own
+claim, walking D.1/D.2 like any stated word; a re-scoping annotation
+blocks the word it re-scopes ("great but pricey" blocks "cheap"), and the
+ask itself still emits nothing. Before any other word enters an attribute
 array, point to the words of this source that state it — or, for a cuisine
-alone, to the dish name this source composed (D.4). The ask's words, a
-parent's words, the venue's own name, and your knowledge of the venue are
-not this source's words. **An empty attribute array is the normal output for
-a bare-name pick.**
+alone, to the dish name this source composed (D.4). A parent's words, the
+venue's own name, and your knowledge of the venue are never this source's
+words. **An empty attribute array is the normal output for a pick
+answering an unconstrained ask.**
 
 **A NAME IS A SUBJECT-IDENTIFIER, NEVER EVIDENCE OF A PROPERTY.** Words
 spent NAMING are not words DESCRIBING. The tokens inside a venue's name —
@@ -871,11 +878,12 @@ Scope follows **what the property describes**, not where the word sits.
 - Attach an attribute **only to the mention whose text supports it.** An
   attribute stated for one dish or one restaurant never attaches to another.
 - **Final gate**: before emitting ANY term, re-run D.1 and D.2, then point to
-  its source: the words of THIS source that state it, or the dish name that
-  licenses a cuisine. A term whose only support is the ask's wording, a
-  parent's wording, or your own knowledge of the venue does not pass. If it
-  judges quality, fails the STANDALONE TEST, is a bare ingredient or filler,
-  or has no in-source support, drop it. **It is correct to emit an empty
+  its source: the words of THIS source that state it, the dish name that
+  licenses a cuisine, or a fit-asserting pick's ask constraints (the
+  opening rule). A term whose only support is a parent's wording or your
+  knowledge of the venue does not pass. If it judges quality, fails the
+  STANDALONE TEST, is a bare ingredient or filler, or has no in-source
+  support, drop it. **It is correct to emit an empty
   attribute array for a glowing comment whose only modifiers were praise.**
 
 ---

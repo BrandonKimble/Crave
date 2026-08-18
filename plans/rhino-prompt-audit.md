@@ -91,3 +91,27 @@ price-list-stays-PRICE-ONLY rule; V8m failed without it) — examples that
 teach a class are pins, not decoration; deleting one is a behavior change.
 Net: −20 lines, one decision tree, inheritance homed, wrapper doctrine
 stated once.
+
+## Round 5 LANDED — restaurant-level ask-inheritance, via the same-gates
+## pattern (cert 103/104 ×3; V14j = band, flaky on live AND HEAD x6)
+
+The owner's fit-assertion principle is in, after ten wordings whose
+failures were each mechanism-traced rather than re-rolled:
+- Wordings 1-7 (last week): exception clauses beside an absolute rule —
+  sprayed or never fired. Parked.
+- Wording 8 (final gate, same-gates form): spray pins all held, but never
+  fired — the rule legitimized the ask as a SOURCE at a gate a bare pick
+  never reaches.
+- Wording 9 (decision-point paragraph): reframed inheritance as an
+  INSTANCE of predicates-from-this-source ("an unqualified pick answering
+  a constrained ask asserts fit — the ask's venue words are that pick's
+  own claim") — J Carver's own-words attributes recovered, bare pick still
+  silent: D's ENTRY line ("look at what remains") exits before the rule
+  for modifier-less mentions.
+- Wording 10: the entry line hands over the candidates ("for a bare pick
+  answering a constrained ask, the ask's venue-level constraint words ARE
+  what remains") → V15h PASS x5, first ever; V14f (ask emits nothing),
+  V14o (grocery suppression), ML3/V15i (dish inheritance) all green.
+V15h unparked into the suite. The lesson joins the canon: a rule fires
+only if the model's PATH reaches it — decision-point placement includes
+the section's entry framing, not just its interior.
