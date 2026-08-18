@@ -115,3 +115,11 @@ failures were each mechanism-traced rather than re-rolled:
 V15h unparked into the suite. The lesson joins the canon: a rule fires
 only if the model's PATH reaches it — decision-point placement includes
 the section's entry framing, not just its interior.
+
+## Round 6 — C.2/C.3/D.1 list verdicts (no prompt change lands)
+
+| Cluster | Provenance | Verdict |
+|---|---|---|
+| C.2 generic-classifier list (18 items + …) | v1 ancestor via Aug-5 rewrite | **KEEP, by measurement**: the principle+two-examples trim certified on the composition family but broke V15h 0/6 (HEAD x6 green) — pure positional knife-edging; two saved lines don't buy the owner's fit-assertion. POLICY ADOPTED: cosmetic-only trims are not free in this prompt; an edit must earn its risk semantically. |
+| C.3 common-parents mapping (cake→dessert, pho→soup, …) | Aug-5 rewrite | **KEEP + UNDER-PINNED FLAG**: parent categories feed browse, but the suite barely pins them — any edit here is currently unmeasurable. Add parent-category gold cases (both sides) before this cluster is ever touched. |
+| D.1 praise PASSES/FAILS catalogs | Aug-5 rewrite | **KEEP — canon-compliant**: the text already states the test and disclaims the lists ("not a word list to memorize — a test to run"); the examples calibrate a boundary that recurring real vocabulary actually walks. |
