@@ -1,5 +1,5 @@
 {
-  "ranAt": "2026-08-16T04:54:03.170Z",
+  "ranAt": "2026-08-16T21:50:44.168Z",
   "lang": "vi",
   "corpusVersion": 1,
   "scoreboard": {
@@ -30,8 +30,8 @@
       "grounded": [
         {
           "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "phở",
           "name": "pho",
           "tier": "gazetteer-exact",
@@ -64,8 +64,8 @@
       "grounded": [
         {
           "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pho",
           "name": "pho",
           "tier": "gazetteer-exact",
@@ -98,8 +98,8 @@
       "grounded": [
         {
           "entityId": "33c909c3-0de7-4cd6-aaea-ca05e968f0a0",
-          "bucket": "restaurants",
-          "type": "restaurant",
+          "bucket": "places",
+          "type": "place",
           "span": "bánh",
           "name": "Bánh",
           "tier": "linked",
@@ -107,8 +107,8 @@
         },
         {
           "entityId": "78d11036-478c-41bb-a78d-4a7320dde99c",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bánh mì",
           "name": "banh mi",
           "tier": "gazetteer-exact",
@@ -116,8 +116,8 @@
         },
         {
           "entityId": "9cd8f4aa-bb68-4bee-937f-45fee496d147",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bánh mì",
           "name": "viet sandwich",
           "tier": "gazetteer-exact",
@@ -150,8 +150,8 @@
       "grounded": [
         {
           "entityId": "33c909c3-0de7-4cd6-aaea-ca05e968f0a0",
-          "bucket": "restaurants",
-          "type": "restaurant",
+          "bucket": "places",
+          "type": "place",
           "span": "banh",
           "name": "Bánh",
           "tier": "linked",
@@ -159,8 +159,8 @@
         },
         {
           "entityId": "78d11036-478c-41bb-a78d-4a7320dde99c",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "banh mi",
           "name": "banh mi",
           "tier": "gazetteer-exact",
@@ -168,8 +168,8 @@
         },
         {
           "entityId": "9cd8f4aa-bb68-4bee-937f-45fee496d147",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "banh mi",
           "name": "viet sandwich",
           "tier": "gazetteer-exact",
@@ -202,8 +202,8 @@
       "grounded": [
         {
           "entityId": "fe7f0cae-ea39-4b2c-8aa4-b88adf3eea50",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bún chả",
           "name": "bun cha",
           "tier": "gazetteer-exact",
@@ -211,8 +211,8 @@
         },
         {
           "entityId": "38dd8008-11fd-4771-8203-7434a8040bd4",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bún",
           "name": "bun",
           "tier": "linked",
@@ -245,8 +245,8 @@
       "grounded": [
         {
           "entityId": "33c909c3-0de7-4cd6-aaea-ca05e968f0a0",
-          "bucket": "restaurants",
-          "type": "restaurant",
+          "bucket": "places",
+          "type": "place",
           "span": "bánh",
           "name": "Bánh",
           "tier": "linked",
@@ -254,8 +254,8 @@
         },
         {
           "entityId": "1823cd02-5e4f-4207-afa7-475aa101968b",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bánh xèo",
           "name": "banh xeo",
           "tier": "gazetteer-exact",
@@ -288,8 +288,8 @@
       "grounded": [
         {
           "entityId": "4e5ee601-a11b-4dfc-a83d-3d1685ee5c66",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm tấm",
           "name": "viet rice plate",
           "tier": "gazetteer-exact",
@@ -297,8 +297,8 @@
         },
         {
           "entityId": "bad1e222-175c-4473-8620-b95d021bab77",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm tấm",
           "name": "com tam",
           "tier": "gazetteer-exact",
@@ -306,8 +306,8 @@
         },
         {
           "entityId": "c0cdfe0a-e330-4bb8-b501-0c69066503ef",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm tấm",
           "name": "broken rice",
           "tier": "gazetteer-exact",
@@ -315,8 +315,8 @@
         },
         {
           "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm",
           "name": "rice",
           "tier": "linked",
@@ -349,8 +349,8 @@
       "grounded": [
         {
           "entityId": "33c909c3-0de7-4cd6-aaea-ca05e968f0a0",
-          "bucket": "restaurants",
-          "type": "restaurant",
+          "bucket": "places",
+          "type": "place",
           "span": "bánh",
           "name": "Bánh",
           "tier": "linked",
@@ -358,8 +358,8 @@
         },
         {
           "entityId": "6bcac9f5-0c59-4765-acaa-c68220465f41",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bánh cuốn",
           "name": "banh cuon",
           "tier": "gazetteer-exact",
@@ -367,8 +367,8 @@
         },
         {
           "entityId": "81639118-f216-4944-b4d3-01d32d8bc69e",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bánh cuốn",
           "name": "rice noodle wrap",
           "tier": "gazetteer-exact",
@@ -376,8 +376,8 @@
         },
         {
           "entityId": "e0b4a277-f273-4418-837b-c8a72ba4737c",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bánh cuốn",
           "name": "cheong fun",
           "tier": "gazetteer-exact",
@@ -410,8 +410,8 @@
       "grounded": [
         {
           "entityId": "77dd20cb-7574-477a-801f-f5394e3634c8",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "chả giò",
           "name": "spring roll",
           "tier": "gazetteer-exact",
@@ -419,8 +419,8 @@
         },
         {
           "entityId": "cda2daf1-f436-45b0-991b-574e8290d0ae",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "chả giò",
           "name": "egg roll",
           "tier": "gazetteer-exact",
@@ -453,8 +453,8 @@
       "grounded": [
         {
           "entityId": "494d6cb2-bf85-4200-9503-19a5ad6c0379",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bún bò huế",
           "name": "bun bo hue",
           "tier": "gazetteer-exact",
@@ -462,8 +462,8 @@
         },
         {
           "entityId": "d47a44f8-2ddf-4903-880b-a42451c8d226",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bún bò huế",
           "name": "spicy beef noodle soup",
           "tier": "gazetteer-exact",
@@ -496,8 +496,8 @@
       "grounded": [
         {
           "entityId": "12bcdfbd-7736-4d47-82e7-b7cf30b5fa93",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "gà",
           "name": "chicken",
           "tier": "gazetteer-exact",
@@ -530,8 +530,8 @@
       "grounded": [
         {
           "entityId": "7eeb7cb1-5653-46e7-a24b-af91cd5e85cd",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "tôm",
           "name": "shrimp",
           "tier": "gazetteer-exact",
@@ -564,8 +564,8 @@
       "grounded": [
         {
           "entityId": "bcb888b0-d59a-4c2f-956a-ab7374c4cfa5",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cá",
           "name": "fish",
           "tier": "gazetteer-exact",
@@ -598,8 +598,8 @@
       "grounded": [
         {
           "entityId": "7f5d3f9f-49fc-4c36-b4ab-a797e48495a8",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cua",
           "name": "crab",
           "tier": "gazetteer-exact",
@@ -632,8 +632,8 @@
       "grounded": [
         {
           "entityId": "f32c3a91-ef99-4ea1-9fca-aed14e137b1b",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "mực",
           "name": "squid",
           "tier": "gazetteer-exact",
@@ -666,8 +666,8 @@
       "grounded": [
         {
           "entityId": "ca0a692c-5b18-4acc-a3c7-ac7f9d081e0d",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "vịt",
           "name": "duck",
           "tier": "gazetteer-exact",
@@ -700,8 +700,8 @@
       "grounded": [
         {
           "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm",
           "name": "rice",
           "tier": "gazetteer-exact",
@@ -734,8 +734,8 @@
       "grounded": [
         {
           "entityId": "38dd8008-11fd-4771-8203-7434a8040bd4",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bún",
           "name": "bun",
           "tier": "gazetteer-exact",
@@ -743,8 +743,8 @@
         },
         {
           "entityId": "6e666716-a419-45b8-93fd-c0a2274af7cb",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bún",
           "name": "vermicelli bowl",
           "tier": "gazetteer-exact",
@@ -752,8 +752,8 @@
         },
         {
           "entityId": "e3a3aa75-60aa-4310-a06c-77a967fab87c",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bún",
           "name": "vermicelli",
           "tier": "gazetteer-exact",
@@ -786,8 +786,8 @@
       "grounded": [
         {
           "entityId": "9b12c271-a4eb-418c-9fe3-4c2cce425801",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "rau",
           "name": "veggies",
           "tier": "gazetteer-exact",
@@ -795,8 +795,8 @@
         },
         {
           "entityId": "a562dee6-7105-4d17-8b6c-7dd15a4ea018",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "rau",
           "name": "vegetable",
           "tier": "gazetteer-exact",
@@ -829,8 +829,8 @@
       "grounded": [
         {
           "entityId": "ce4c9ce8-8a7f-4789-b9e4-242beac3eb17",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "trứng",
           "name": "egg",
           "tier": "gazetteer-exact",
@@ -863,8 +863,8 @@
       "grounded": [
         {
           "entityId": "ef9a55b7-fd0a-4554-a3c4-dfc6ffbb09b1",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "xoài",
           "name": "mango",
           "tier": "gazetteer-exact",
@@ -897,8 +897,8 @@
       "grounded": [
         {
           "entityId": "7f5a885a-1c56-4a76-9af1-694e55aa1c4d",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "dưa hấu",
           "name": "watermelon",
           "tier": "gazetteer-exact",
@@ -931,8 +931,8 @@
       "grounded": [
         {
           "entityId": "dd390a0b-4199-4e1b-b1df-2fea78f11cc7",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "kem",
           "name": "ice cream",
           "tier": "gazetteer-exact",
@@ -965,8 +965,8 @@
       "grounded": [
         {
           "entityId": "926935db-c5d9-45f8-8618-05fb6a9fd3e9",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cà phê",
           "name": "coffee",
           "tier": "gazetteer-exact",
@@ -974,8 +974,8 @@
         },
         {
           "entityId": "e73a034c-649a-42e4-9e6b-606cfba63f1f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cà phê",
           "name": "cà phê",
           "tier": "gazetteer-exact",
@@ -1008,8 +1008,8 @@
       "grounded": [
         {
           "entityId": "926935db-c5d9-45f8-8618-05fb6a9fd3e9",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "ca phe",
           "name": "coffee",
           "tier": "gazetteer-exact",
@@ -1017,8 +1017,8 @@
         },
         {
           "entityId": "e73a034c-649a-42e4-9e6b-606cfba63f1f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "ca phe",
           "name": "cà phê",
           "tier": "gazetteer-exact",
@@ -1051,8 +1051,8 @@
       "grounded": [
         {
           "entityId": "84a94314-e3ed-47ec-a129-fa20ae5e6d9d",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "trà",
           "name": "tea",
           "tier": "gazetteer-exact",
@@ -1085,8 +1085,8 @@
       "grounded": [
         {
           "entityId": "50e4a58c-229d-42d8-9979-623ebc04074b",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bia",
           "name": "beer",
           "tier": "gazetteer-exact",
@@ -1119,8 +1119,8 @@
       "grounded": [
         {
           "entityId": "7d662533-e35f-47d0-8645-4bce3e9837b7",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "lẩu",
           "name": "hotpot",
           "tier": "gazetteer-exact",
@@ -1128,8 +1128,8 @@
         },
         {
           "entityId": "dc27d7c4-5b49-429d-9d11-ab65827fb6d9",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "lẩu",
           "name": "hot pot",
           "tier": "gazetteer-exact",
@@ -1162,8 +1162,8 @@
       "grounded": [
         {
           "entityId": "147de588-cd72-4f9b-a8df-872e776a91e3",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "xôi",
           "name": "sticky rice",
           "tier": "gazetteer-exact",
@@ -1196,8 +1196,8 @@
       "grounded": [
         {
           "entityId": "9824acb9-4b92-42fb-b84b-5c3cc5a54103",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "tôm hùm",
           "name": "lobster",
           "tier": "gazetteer-exact",
@@ -1230,8 +1230,8 @@
       "grounded": [
         {
           "entityId": "f43fa2e2-d94d-4ebe-8136-698ff755d869",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "hải sản",
           "name": "seafood",
           "tier": "gazetteer-exact",
@@ -1264,8 +1264,8 @@
       "grounded": [
         {
           "entityId": "e4abca51-a876-41b9-a3c7-4a718eba8f90",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "thịt heo",
           "name": "pork",
           "tier": "gazetteer-exact",
@@ -1298,8 +1298,8 @@
       "grounded": [
         {
           "entityId": "ab87265a-7d1a-4334-b851-93e41c0faeff",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "thịt bò",
           "name": "beef",
           "tier": "gazetteer-exact",
@@ -1332,8 +1332,8 @@
       "grounded": [
         {
           "entityId": "2d976861-9953-4264-a12c-19b7819b18a9",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "gà nướng",
           "name": "pollo al horno",
           "tier": "gazetteer-exact",
@@ -1341,8 +1341,8 @@
         },
         {
           "entityId": "d091b65c-ea76-4807-8c5b-d7270dd0fc6f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "gà nướng",
           "name": "grilled chicken",
           "tier": "gazetteer-exact",
@@ -1375,8 +1375,8 @@
       "grounded": [
         {
           "entityId": "e1079527-899c-4b34-886a-d7702ea9327f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bò kho",
           "name": "vietnamese beef stew",
           "tier": "gazetteer-exact",
@@ -1384,8 +1384,8 @@
         },
         {
           "entityId": "ab87265a-7d1a-4334-b851-93e41c0faeff",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bò",
           "name": "beef",
           "tier": "linked",
@@ -1418,8 +1418,8 @@
       "grounded": [
         {
           "entityId": "706fba13-166c-4237-9a39-096ed8fc488a",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cá kho tộ",
           "name": "ca kho to",
           "tier": "gazetteer-exact",
@@ -1452,8 +1452,8 @@
       "grounded": [
         {
           "entityId": "38dd8008-11fd-4771-8203-7434a8040bd4",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bánh bao",
           "name": "bun",
           "tier": "gazetteer-exact",
@@ -1461,8 +1461,8 @@
         },
         {
           "entityId": "9e2a9357-08f8-4524-b074-d5b20b290f83",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bánh bao",
           "name": "steamed bun",
           "tier": "gazetteer-exact",
@@ -1495,8 +1495,8 @@
       "grounded": [
         {
           "entityId": "44ab6d3b-4174-4506-a24b-3b35d2b76c6d",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "thịt nướng",
           "name": "grilled meat",
           "tier": "gazetteer-exact",
@@ -1504,8 +1504,8 @@
         },
         {
           "entityId": "c3b169ed-8b25-4c8e-8bdd-d3c700eca72c",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "thịt nướng",
           "name": "grilled protein",
           "tier": "gazetteer-exact",
@@ -1513,8 +1513,8 @@
         },
         {
           "entityId": "3b38ad58-7750-42c8-9363-0b2742f704b2",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "thịt",
           "name": "meat",
           "tier": "linked",
@@ -1522,8 +1522,8 @@
         },
         {
           "entityId": "5e7775c8-82bc-410a-bce3-7b5d05e49249",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "nướng",
           "name": "grilled",
           "tier": "linked",
@@ -1556,8 +1556,8 @@
       "grounded": [
         {
           "entityId": "33c909c3-0de7-4cd6-aaea-ca05e968f0a0",
-          "bucket": "restaurants",
-          "type": "restaurant",
+          "bucket": "places",
+          "type": "place",
           "span": "bahn",
           "name": "Bánh",
           "tier": "linked",
@@ -1565,8 +1565,8 @@
         },
         {
           "entityId": "78d11036-478c-41bb-a78d-4a7320dde99c",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bahn mi",
           "name": "banh mi",
           "tier": "gazetteer-exact",
@@ -1599,8 +1599,8 @@
       "grounded": [
         {
           "entityId": "33c909c3-0de7-4cd6-aaea-ca05e968f0a0",
-          "bucket": "restaurants",
-          "type": "restaurant",
+          "bucket": "places",
+          "type": "place",
           "span": "banh",
           "name": "Bánh",
           "tier": "gazetteer-exact",
@@ -1608,8 +1608,8 @@
         },
         {
           "entityId": "ad62b0e6-809c-47c3-8697-2d8b8fac91e2",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "my",
           "name": "american",
           "tier": "gazetteer-exact",
@@ -1642,8 +1642,8 @@
       "grounded": [
         {
           "entityId": "339c1fb2-99c2-428f-93d1-5fb526cb0545",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "phở bò",
           "name": "beef noodle soup",
           "tier": "gazetteer-exact",
@@ -1651,8 +1651,8 @@
         },
         {
           "entityId": "45ba08a7-ffc1-4394-bae8-99cca1f7db44",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "phở bò",
           "name": "beef pho",
           "tier": "gazetteer-exact",
@@ -1660,8 +1660,8 @@
         },
         {
           "entityId": "ab87265a-7d1a-4334-b851-93e41c0faeff",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bò",
           "name": "beef",
           "tier": "linked",
@@ -1694,8 +1694,8 @@
       "grounded": [
         {
           "entityId": "6a11b3e3-4150-433d-9a03-30c8908d1976",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "phở gà",
           "name": "chicken pho",
           "tier": "gazetteer-exact",
@@ -1703,8 +1703,8 @@
         },
         {
           "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "phở",
           "name": "pho",
           "tier": "linked",
@@ -1712,8 +1712,8 @@
         },
         {
           "entityId": "12bcdfbd-7736-4d47-82e7-b7cf30b5fa93",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "gà",
           "name": "chicken",
           "tier": "linked",
@@ -1746,8 +1746,8 @@
       "grounded": [
         {
           "entityId": "339c1fb2-99c2-428f-93d1-5fb526cb0545",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pho bo",
           "name": "beef noodle soup",
           "tier": "gazetteer-exact",
@@ -1755,8 +1755,8 @@
         },
         {
           "entityId": "45ba08a7-ffc1-4394-bae8-99cca1f7db44",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pho bo",
           "name": "beef pho",
           "tier": "gazetteer-exact",
@@ -1764,8 +1764,8 @@
         },
         {
           "entityId": "ab87265a-7d1a-4334-b851-93e41c0faeff",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bo",
           "name": "beef",
           "tier": "linked",
@@ -1798,8 +1798,8 @@
       "grounded": [
         {
           "entityId": "c5fb004b-984d-478f-99aa-cda7ad2677b1",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm gà",
           "name": "chicken and rice",
           "tier": "gazetteer-exact",
@@ -1807,8 +1807,8 @@
         },
         {
           "entityId": "faf0258b-3dad-4782-b194-a22fe0e7ea21",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm gà",
           "name": "chicken leg over rice",
           "tier": "gazetteer-exact",
@@ -1816,8 +1816,8 @@
         },
         {
           "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm",
           "name": "rice",
           "tier": "linked",
@@ -1825,8 +1825,8 @@
         },
         {
           "entityId": "12bcdfbd-7736-4d47-82e7-b7cf30b5fa93",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "gà",
           "name": "chicken",
           "tier": "linked",
@@ -1859,8 +1859,8 @@
       "grounded": [
         {
           "entityId": "15665f6f-0125-432d-b607-76f3f37248a5",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm chiên",
           "name": "fried rice",
           "tier": "gazetteer-exact",
@@ -1868,8 +1868,8 @@
         },
         {
           "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm",
           "name": "rice",
           "tier": "linked",
@@ -1877,8 +1877,8 @@
         },
         {
           "entityId": "08a8caf8-0758-4367-9f2a-c0a8f2ab9da9",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "chiên",
           "name": "fried",
           "tier": "linked",
@@ -1911,8 +1911,8 @@
       "grounded": [
         {
           "entityId": "044849f8-d1d7-45da-9b20-70ae01cb34bd",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "mì xào",
           "name": "sticky noodles",
           "tier": "gazetteer-exact",
@@ -1920,8 +1920,8 @@
         },
         {
           "entityId": "446eda73-141c-401d-b554-9cf72004ede8",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "mì xào",
           "name": "chow mein",
           "tier": "gazetteer-exact",
@@ -1963,8 +1963,8 @@
       "grounded": [
         {
           "entityId": "07b81166-8c2a-4cbc-a0fa-6712dfa9f17f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "gà rán",
           "name": "fried chicken",
           "tier": "gazetteer-exact",
@@ -1972,8 +1972,8 @@
         },
         {
           "entityId": "12bcdfbd-7736-4d47-82e7-b7cf30b5fa93",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "gà",
           "name": "chicken",
           "tier": "linked",
@@ -1981,8 +1981,8 @@
         },
         {
           "entityId": "08a8caf8-0758-4367-9f2a-c0a8f2ab9da9",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "rán",
           "name": "fried",
           "tier": "linked",
@@ -2015,8 +2015,8 @@
       "grounded": [
         {
           "entityId": "100d5f4c-7f2f-4f67-90a4-1b68ed394533",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cá chiên",
           "name": "fried fish",
           "tier": "gazetteer-exact",
@@ -2024,8 +2024,8 @@
         },
         {
           "entityId": "bcb888b0-d59a-4c2f-956a-ab7374c4cfa5",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cá",
           "name": "fish",
           "tier": "linked",
@@ -2033,8 +2033,8 @@
         },
         {
           "entityId": "08a8caf8-0758-4367-9f2a-c0a8f2ab9da9",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "chiên",
           "name": "fried",
           "tier": "linked",
@@ -2067,8 +2067,8 @@
       "grounded": [
         {
           "entityId": "0e62848a-a79b-4600-8342-0351c4021159",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "tôm nướng",
           "name": "grilled shrimp",
           "tier": "gazetteer-exact",
@@ -2076,8 +2076,8 @@
         },
         {
           "entityId": "7eeb7cb1-5653-46e7-a24b-af91cd5e85cd",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "tôm",
           "name": "shrimp",
           "tier": "linked",
@@ -2085,8 +2085,8 @@
         },
         {
           "entityId": "5e7775c8-82bc-410a-bce3-7b5d05e49249",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "nướng",
           "name": "grilled",
           "tier": "linked",
@@ -2119,8 +2119,8 @@
       "grounded": [
         {
           "entityId": "2aebb6b7-bd9c-432a-a07b-3964020a96f0",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bún thịt nướng",
           "name": "bun thit nuong",
           "tier": "gazetteer-exact",
@@ -2128,8 +2128,8 @@
         },
         {
           "entityId": "38dd8008-11fd-4771-8203-7434a8040bd4",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bún",
           "name": "bun",
           "tier": "linked",
@@ -2162,8 +2162,8 @@
       "grounded": [
         {
           "entityId": "625f7efc-70c1-4f02-aa27-99017396a47a",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm sườn",
           "name": "broken rice with pork chop",
           "tier": "gazetteer-exact",
@@ -2171,8 +2171,8 @@
         },
         {
           "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm",
           "name": "rice",
           "tier": "linked",
@@ -2205,8 +2205,8 @@
       "grounded": [
         {
           "entityId": "6f3bcdc6-fa1d-4afb-b0f9-c83f82484f1d",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bò lúc lắc",
           "name": "shaken beef",
           "tier": "gazetteer-exact",
@@ -2214,8 +2214,8 @@
         },
         {
           "entityId": "ab87265a-7d1a-4334-b851-93e41c0faeff",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bò",
           "name": "beef",
           "tier": "linked",
@@ -2248,8 +2248,8 @@
       "grounded": [
         {
           "entityId": "5cc64651-dcbf-4384-b14b-a55fd2f60905",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "gỏi cuốn tôm",
           "name": "shrimp rolls",
           "tier": "gazetteer-exact",
@@ -2257,8 +2257,8 @@
         },
         {
           "entityId": "7eeb7cb1-5653-46e7-a24b-af91cd5e85cd",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "tôm",
           "name": "shrimp",
           "tier": "linked",
@@ -2291,8 +2291,8 @@
       "grounded": [
         {
           "entityId": "8127c418-78ae-4504-859a-b4ff142ea9a0",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "phở bò tái",
           "name": "raw steak pho",
           "tier": "gazetteer-exact",
@@ -2325,8 +2325,8 @@
       "grounded": [
         {
           "entityId": "923b2073-b954-4f94-bfd1-234356025ecf",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "kem dừa",
           "name": "coconut ice cream",
           "tier": "gazetteer-exact",
@@ -2377,8 +2377,8 @@
       "grounded": [
         {
           "entityId": "33b8477e-27e9-4064-abc7-8b89b3a1fa75",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "trà sữa",
           "name": "milk tea",
           "tier": "gazetteer-exact",
@@ -2386,8 +2386,8 @@
         },
         {
           "entityId": "b646184d-0868-408e-a7e2-e82ae5595546",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "trà sữa",
           "name": "boba tea",
           "tier": "gazetteer-exact",
@@ -2438,8 +2438,8 @@
       "grounded": [
         {
           "entityId": "4e02fa2c-9f05-4397-badb-bea2eb50164b",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cà phê sữa đá",
           "name": "iced viet coffee",
           "tier": "gazetteer-exact",
@@ -2447,8 +2447,8 @@
         },
         {
           "entityId": "926935db-c5d9-45f8-8618-05fb6a9fd3e9",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cà phê",
           "name": "coffee",
           "tier": "linked",
@@ -2456,8 +2456,8 @@
         },
         {
           "entityId": "16d9b342-76f8-43b4-b913-d0b239d38ebd",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "đá",
           "name": "iced",
           "tier": "linked",
@@ -2490,8 +2490,8 @@
       "grounded": [
         {
           "entityId": "92e85a13-08df-4d34-9885-a3739e7a9b09",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bánh mì chay",
           "name": "veggie sandwich",
           "tier": "gazetteer-exact",
@@ -2524,8 +2524,8 @@
       "grounded": [
         {
           "entityId": "9f109755-4025-44ab-8cdc-5b8a9eb7ec73",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "Ý",
           "name": "italian",
           "tier": "gazetteer-exact",
@@ -2558,8 +2558,8 @@
       "grounded": [
         {
           "entityId": "39830fab-097a-4ea7-9591-fd623b737bdd",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "Việt Nam",
           "name": "vietnamese",
           "tier": "gazetteer-exact",
@@ -2592,8 +2592,8 @@
       "grounded": [
         {
           "entityId": "7f76e097-988f-4ae2-aff6-a4fdc177a2e4",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "ẩm thực Thái",
           "name": "thai",
           "tier": "gazetteer-exact",
@@ -2626,8 +2626,8 @@
       "grounded": [
         {
           "entityId": "53df955f-ec55-4392-ba46-e1184c52fafc",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "BBQ",
           "name": "bbq",
           "tier": "gazetteer-exact",
@@ -2635,8 +2635,8 @@
         },
         {
           "entityId": "d9667e84-717c-4329-ac55-3cf283ff345c",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "Hàn Quốc",
           "name": "korean",
           "tier": "gazetteer-exact",
@@ -2669,8 +2669,8 @@
       "grounded": [
         {
           "entityId": "ec4144aa-f351-4ccf-b6f9-9837f9afe217",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "ẩm thực Hy Lạp",
           "name": "greek",
           "tier": "gazetteer-exact",
@@ -2703,8 +2703,8 @@
       "grounded": [
         {
           "entityId": "f9b9c67a-249f-4e09-a33a-4aefb47ebc84",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "ẩm thực Địa Trung Hải",
           "name": "mediterranean",
           "tier": "gazetteer-exact",
@@ -2737,8 +2737,8 @@
       "grounded": [
         {
           "entityId": "38be14f9-ec49-4768-8874-8dfd16c56810",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "đồ ăn Trung Quốc",
           "name": "chinese food",
           "tier": "gazetteer-exact",
@@ -2771,8 +2771,8 @@
       "grounded": [
         {
           "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "phở",
           "name": "pho",
           "tier": "gazetteer-exact",
@@ -2780,8 +2780,8 @@
         },
         {
           "entityId": "042653d2-f070-45f0-aa1c-5da1caf6df2c",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "cay",
           "name": "spiced",
           "tier": "gazetteer-exact",
@@ -2814,8 +2814,8 @@
       "grounded": [
         {
           "entityId": "7d662533-e35f-47d0-8645-4bce3e9837b7",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "lẩu",
           "name": "hotpot",
           "tier": "gazetteer-exact",
@@ -2823,8 +2823,8 @@
         },
         {
           "entityId": "dc27d7c4-5b49-429d-9d11-ab65827fb6d9",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "lẩu",
           "name": "hot pot",
           "tier": "gazetteer-exact",
@@ -2832,8 +2832,8 @@
         },
         {
           "entityId": "f43fa2e2-d94d-4ebe-8136-698ff755d869",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "hải sản",
           "name": "seafood",
           "tier": "gazetteer-exact",
@@ -2866,8 +2866,8 @@
       "grounded": [
         {
           "entityId": "39830fab-097a-4ea7-9591-fd623b737bdd",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "Việt Nam",
           "name": "vietnamese",
           "tier": "gazetteer-exact",
@@ -2875,8 +2875,8 @@
         },
         {
           "entityId": "65a80396-ea4d-44d6-876c-b17a258a3326",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "lãng mạn",
           "name": "romantic",
           "tier": "gazetteer-exact",
@@ -2909,8 +2909,8 @@
       "grounded": [
         {
           "entityId": "7b4ffa91-0721-438e-936d-d769a3265e23",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "đồ ăn nhanh",
           "name": "fast food",
           "tier": "gazetteer-exact",
@@ -2918,8 +2918,8 @@
         },
         {
           "entityId": "b693becc-a4ce-4b31-b35e-c7f3218a816d",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "giá rẻ",
           "name": "affordable",
           "tier": "gazetteer-exact",
@@ -2952,8 +2952,8 @@
       "grounded": [
         {
           "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm",
           "name": "rice",
           "tier": "gazetteer-exact",
@@ -2961,8 +2961,8 @@
         },
         {
           "entityId": "2d976861-9953-4264-a12c-19b7819b18a9",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "gà nướng",
           "name": "pollo al horno",
           "tier": "gazetteer-exact",
@@ -2970,8 +2970,8 @@
         },
         {
           "entityId": "d091b65c-ea76-4807-8c5b-d7270dd0fc6f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "gà nướng",
           "name": "grilled chicken",
           "tier": "gazetteer-exact",
@@ -3004,8 +3004,8 @@
       "grounded": [
         {
           "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "phở",
           "name": "pho",
           "tier": "gazetteer-exact",
@@ -3013,8 +3013,8 @@
         },
         {
           "entityId": "3b38ad58-7750-42c8-9363-0b2742f704b2",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "thịt",
           "name": "meat",
           "tier": "gazetteer-exact",
@@ -3047,8 +3047,8 @@
       "grounded": [
         {
           "entityId": "38dd8008-11fd-4771-8203-7434a8040bd4",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bún",
           "name": "bun",
           "tier": "gazetteer-exact",
@@ -3056,8 +3056,8 @@
         },
         {
           "entityId": "6e666716-a419-45b8-93fd-c0a2274af7cb",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bún",
           "name": "vermicelli bowl",
           "tier": "gazetteer-exact",
@@ -3065,8 +3065,8 @@
         },
         {
           "entityId": "e3a3aa75-60aa-4310-a06c-77a967fab87c",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bún",
           "name": "vermicelli",
           "tier": "gazetteer-exact",
@@ -3074,8 +3074,8 @@
         },
         {
           "entityId": "ab87265a-7d1a-4334-b851-93e41c0faeff",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "thịt bò",
           "name": "beef",
           "tier": "gazetteer-exact",
@@ -3108,8 +3108,8 @@
       "grounded": [
         {
           "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "phở",
           "name": "pho",
           "tier": "gazetteer-exact",
@@ -3117,8 +3117,8 @@
         },
         {
           "entityId": "49c21044-3384-4940-8aa0-121da9892206",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "hành",
           "name": "onion",
           "tier": "gazetteer-exact",
@@ -3151,8 +3151,8 @@
       "grounded": [
         {
           "entityId": "33c909c3-0de7-4cd6-aaea-ca05e968f0a0",
-          "bucket": "restaurants",
-          "type": "restaurant",
+          "bucket": "places",
+          "type": "place",
           "span": "bánh",
           "name": "Bánh",
           "tier": "linked",
@@ -3160,8 +3160,8 @@
         },
         {
           "entityId": "78d11036-478c-41bb-a78d-4a7320dde99c",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bánh mì",
           "name": "banh mi",
           "tier": "gazetteer-exact",
@@ -3169,8 +3169,8 @@
         },
         {
           "entityId": "9cd8f4aa-bb68-4bee-937f-45fee496d147",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bánh mì",
           "name": "viet sandwich",
           "tier": "gazetteer-exact",
@@ -3178,8 +3178,8 @@
         },
         {
           "entityId": "33f5e5f1-5f8f-4f9e-b936-0aca3e442eed",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pate",
           "name": "pate",
           "tier": "gazetteer-exact",
@@ -3212,8 +3212,8 @@
       "grounded": [
         {
           "entityId": "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pizza",
           "name": "pizza pie",
           "tier": "gazetteer-exact",
@@ -3221,8 +3221,8 @@
         },
         {
           "entityId": "b33eb888-0acd-432b-bebd-e14d0699ec13",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pizza",
           "name": "pitzas",
           "tier": "gazetteer-exact",
@@ -3230,8 +3230,8 @@
         },
         {
           "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pizza",
           "name": "pizza",
           "tier": "gazetteer-exact",
@@ -3239,8 +3239,8 @@
         },
         {
           "entityId": "7b84ccf4-4b92-4795-85d5-6837e1df847e",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "không phô mai",
           "name": "cheeseless",
           "tier": "gazetteer-exact",
@@ -3273,8 +3273,8 @@
       "grounded": [
         {
           "entityId": "926935db-c5d9-45f8-8618-05fb6a9fd3e9",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cà phê",
           "name": "coffee",
           "tier": "gazetteer-exact",
@@ -3282,8 +3282,8 @@
         },
         {
           "entityId": "e73a034c-649a-42e4-9e6b-606cfba63f1f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cà phê",
           "name": "cà phê",
           "tier": "gazetteer-exact",
@@ -3291,8 +3291,8 @@
         },
         {
           "entityId": "0232d6b6-257b-49b3-aaa2-2e58cc12b8c8",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "không đường",
           "name": "sugar free",
           "tier": "gazetteer-exact",
@@ -3300,8 +3300,8 @@
         },
         {
           "entityId": "30416a46-5507-4114-8309-1ea935bf5dc2",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "không đường",
           "name": "unsweet",
           "tier": "gazetteer-exact",
@@ -3343,8 +3343,8 @@
       "grounded": [
         {
           "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "phở",
           "name": "pho",
           "tier": "gazetteer-exact",
@@ -3352,8 +3352,8 @@
         },
         {
           "entityId": "15568764-42ec-4345-ba26-18939ac3b915",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "không cay",
           "name": "mild",
           "tier": "gazetteer-exact",
@@ -3386,8 +3386,8 @@
       "grounded": [
         {
           "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm",
           "name": "rice",
           "tier": "gazetteer-exact",
@@ -3395,8 +3395,8 @@
         },
         {
           "entityId": "9b12c271-a4eb-418c-9fe3-4c2cce425801",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "rau",
           "name": "veggies",
           "tier": "gazetteer-exact",
@@ -3404,8 +3404,8 @@
         },
         {
           "entityId": "a562dee6-7105-4d17-8b6c-7dd15a4ea018",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "rau",
           "name": "vegetable",
           "tier": "gazetteer-exact",
@@ -3438,8 +3438,8 @@
       "grounded": [
         {
           "entityId": "12bcdfbd-7736-4d47-82e7-b7cf30b5fa93",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "gà",
           "name": "chicken",
           "tier": "gazetteer-exact",
@@ -3481,8 +3481,8 @@
       "grounded": [
         {
           "entityId": "7d662533-e35f-47d0-8645-4bce3e9837b7",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "lẩu",
           "name": "hotpot",
           "tier": "gazetteer-exact",
@@ -3490,8 +3490,8 @@
         },
         {
           "entityId": "dc27d7c4-5b49-429d-9d11-ab65827fb6d9",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "lẩu",
           "name": "hot pot",
           "tier": "gazetteer-exact",
@@ -3499,8 +3499,8 @@
         },
         {
           "entityId": "15568764-42ec-4345-ba26-18939ac3b915",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "không cay",
           "name": "mild",
           "tier": "gazetteer-exact",
@@ -3533,8 +3533,8 @@
       "grounded": [
         {
           "entityId": "33c909c3-0de7-4cd6-aaea-ca05e968f0a0",
-          "bucket": "restaurants",
-          "type": "restaurant",
+          "bucket": "places",
+          "type": "place",
           "span": "bánh",
           "name": "Bánh",
           "tier": "linked",
@@ -3542,8 +3542,8 @@
         },
         {
           "entityId": "1823cd02-5e4f-4207-afa7-475aa101968b",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bánh xèo",
           "name": "banh xeo",
           "tier": "gazetteer-exact",
@@ -3551,8 +3551,8 @@
         },
         {
           "entityId": "7eeb7cb1-5653-46e7-a24b-af91cd5e85cd",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "tôm",
           "name": "shrimp",
           "tier": "gazetteer-exact",
@@ -3584,18 +3584,9 @@
       "reasons": [],
       "grounded": [
         {
-          "entityId": "e6353850-c93c-4fc8-8b5a-6f929354fbd4",
-          "bucket": "restaurants",
-          "type": "restaurant",
-          "span": "mỡ",
-          "name": "Mos",
-          "tier": "linked",
-          "foldedName": "mos"
-        },
-        {
           "entityId": "4e5ee601-a11b-4dfc-a83d-3d1685ee5c66",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm tấm",
           "name": "viet rice plate",
           "tier": "gazetteer-exact",
@@ -3603,8 +3594,8 @@
         },
         {
           "entityId": "bad1e222-175c-4473-8620-b95d021bab77",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm tấm",
           "name": "com tam",
           "tier": "gazetteer-exact",
@@ -3612,8 +3603,8 @@
         },
         {
           "entityId": "c0cdfe0a-e330-4bb8-b501-0c69066503ef",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm tấm",
           "name": "broken rice",
           "tier": "gazetteer-exact",
@@ -3621,15 +3612,15 @@
         },
         {
           "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm",
           "name": "rice",
           "tier": "linked",
           "foldedName": "rice"
         }
       ],
-      "unresolved": [],
+      "unresolved": ["mỡ"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -3638,7 +3629,7 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": false,
+        "denseTierUsed": true,
         "browseMode": false
       },
       "misGroundings": [],
@@ -3655,8 +3646,8 @@
       "grounded": [
         {
           "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "phở",
           "name": "pho",
           "tier": "gazetteer-exact",
@@ -3664,8 +3655,8 @@
         },
         {
           "entityId": "9b12c271-a4eb-418c-9fe3-4c2cce425801",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "rau",
           "name": "veggies",
           "tier": "gazetteer-exact",
@@ -3673,8 +3664,8 @@
         },
         {
           "entityId": "a562dee6-7105-4d17-8b6c-7dd15a4ea018",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "rau",
           "name": "vegetable",
           "tier": "gazetteer-exact",
@@ -3707,8 +3698,8 @@
       "grounded": [
         {
           "entityId": "fe7f0cae-ea39-4b2c-8aa4-b88adf3eea50",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bún chả",
           "name": "bun cha",
           "tier": "gazetteer-exact",
@@ -3716,8 +3707,8 @@
         },
         {
           "entityId": "38dd8008-11fd-4771-8203-7434a8040bd4",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bún",
           "name": "bun",
           "tier": "linked",
@@ -3759,8 +3750,8 @@
       "grounded": [
         {
           "entityId": "dfcea5a8-359f-410c-9ca6-85f4196ff8b2",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "sushi",
           "name": "sushi",
           "tier": "gazetteer-exact",
@@ -3768,8 +3759,8 @@
         },
         {
           "entityId": "f2e2ce70-e8bf-4972-ad06-2f8a32400754",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "sushi",
           "name": "sushi prepared fish",
           "tier": "gazetteer-exact",
@@ -3777,8 +3768,8 @@
         },
         {
           "entityId": "bcb888b0-d59a-4c2f-956a-ab7374c4cfa5",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cá",
           "name": "fish",
           "tier": "linked",
@@ -3786,8 +3777,8 @@
         },
         {
           "entityId": "b371c5b1-b47a-4d44-9e78-35dee213111e",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "sống",
           "name": "raw",
           "tier": "linked",
@@ -3829,8 +3820,8 @@
       "grounded": [
         {
           "entityId": "33b8477e-27e9-4064-abc7-8b89b3a1fa75",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "trà sữa",
           "name": "milk tea",
           "tier": "gazetteer-exact",
@@ -3838,8 +3829,8 @@
         },
         {
           "entityId": "b646184d-0868-408e-a7e2-e82ae5595546",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "trà sữa",
           "name": "boba tea",
           "tier": "gazetteer-exact",
@@ -3847,8 +3838,8 @@
         },
         {
           "entityId": "0232d6b6-257b-49b3-aaa2-2e58cc12b8c8",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "không đường",
           "name": "sugar free",
           "tier": "gazetteer-exact",
@@ -3856,8 +3847,8 @@
         },
         {
           "entityId": "30416a46-5507-4114-8309-1ea935bf5dc2",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "không đường",
           "name": "unsweet",
           "tier": "gazetteer-exact",
@@ -3917,8 +3908,8 @@
       "grounded": [
         {
           "entityId": "3b38ad58-7750-42c8-9363-0b2742f704b2",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "thịt",
           "name": "meat",
           "tier": "gazetteer-exact",
@@ -3951,8 +3942,8 @@
       "grounded": [
         {
           "entityId": "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pizza",
           "name": "pizza pie",
           "tier": "gazetteer-exact",
@@ -3960,8 +3951,8 @@
         },
         {
           "entityId": "b33eb888-0acd-432b-bebd-e14d0699ec13",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pizza",
           "name": "pitzas",
           "tier": "gazetteer-exact",
@@ -3969,8 +3960,8 @@
         },
         {
           "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pizza",
           "name": "pizza",
           "tier": "gazetteer-exact",
@@ -3978,8 +3969,8 @@
         },
         {
           "entityId": "3b38ad58-7750-42c8-9363-0b2742f704b2",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "thịt",
           "name": "meat",
           "tier": "gazetteer-exact",
@@ -4012,8 +4003,8 @@
       "grounded": [
         {
           "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm",
           "name": "rice",
           "tier": "gazetteer-exact",
@@ -4021,8 +4012,8 @@
         },
         {
           "entityId": "b9e2ab23-0b4a-4f3c-aa1a-7ef692977d62",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "mặn",
           "name": "salty",
           "tier": "gazetteer-exact",
@@ -4030,8 +4021,8 @@
         },
         {
           "entityId": "cdcfb6df-29e1-4530-8f13-69c32fa8a68d",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "mặn",
           "name": "savory",
           "tier": "gazetteer-exact",
@@ -4064,8 +4055,8 @@
       "grounded": [
         {
           "entityId": "dd390a0b-4199-4e1b-b1df-2fea78f11cc7",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "kem",
           "name": "ice cream",
           "tier": "gazetteer-exact",
@@ -4073,8 +4064,8 @@
         },
         {
           "entityId": "d27f6643-bcdf-4375-af63-7830079e09a1",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "không sữa",
           "name": "dairy free",
           "tier": "gazetteer-exact",
@@ -4107,8 +4098,8 @@
       "grounded": [
         {
           "entityId": "042653d2-f070-45f0-aa1c-5da1caf6df2c",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "cay",
           "name": "spiced",
           "tier": "gazetteer-exact",
@@ -4141,8 +4132,8 @@
       "grounded": [
         {
           "entityId": "6f332d26-e126-462c-a58e-0b8954687be6",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "chay",
           "name": "vegetarian",
           "tier": "gazetteer-exact",
@@ -4175,8 +4166,8 @@
       "grounded": [
         {
           "entityId": "a1fafbb5-06bc-474d-9c47-65f7a7bd1716",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "thuần chay",
           "name": "vegan",
           "tier": "gazetteer-exact",
@@ -4209,8 +4200,8 @@
       "grounded": [
         {
           "entityId": "8409f136-de44-464e-852a-3362e113ebc7",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "không gluten",
           "name": "gluten free",
           "tier": "gazetteer-exact",
@@ -4252,8 +4243,8 @@
       "grounded": [
         {
           "entityId": "05708d69-10ff-4482-9818-fa8ec6931225",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "halal",
           "name": "halal",
           "tier": "gazetteer-exact",
@@ -4286,8 +4277,8 @@
       "grounded": [
         {
           "entityId": "15568764-42ec-4345-ba26-18939ac3b915",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "ít cay",
           "name": "mild",
           "tier": "gazetteer-exact",
@@ -4320,8 +4311,8 @@
       "grounded": [
         {
           "entityId": "c4d6c3c2-838c-4b2f-a72e-9596e390e86b",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "chiên giòn",
           "name": "crispy",
           "tier": "gazetteer-exact",
@@ -4354,8 +4345,8 @@
       "grounded": [
         {
           "entityId": "e7252c66-b456-48f1-99ab-e915597b3cc9",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "hun khói",
           "name": "smoked",
           "tier": "gazetteer-exact",
@@ -4388,8 +4379,8 @@
       "grounded": [
         {
           "entityId": "1dac912a-e7fb-42e1-8d90-3e1629380084",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "hấp",
           "name": "steamed",
           "tier": "gazetteer-exact",
@@ -4422,8 +4413,8 @@
       "grounded": [
         {
           "entityId": "65a80396-ea4d-44d6-876c-b17a258a3326",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "lãng mạn",
           "name": "romantic",
           "tier": "gazetteer-exact",
@@ -4456,8 +4447,8 @@
       "grounded": [
         {
           "entityId": "1b83fa1e-680d-4292-acf5-b8456d27e415",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "yên tĩnh",
           "name": "quiet",
           "tier": "gazetteer-exact",
@@ -4514,8 +4505,8 @@
       "grounded": [
         {
           "entityId": "d25c2905-f8e6-4de7-93f6-4bc6d04a6c07",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "chỗ ngồi ngoài trời",
           "name": "outdoor seating",
           "tier": "gazetteer-exact",
@@ -4548,8 +4539,8 @@
       "grounded": [
         {
           "entityId": "90677d09-9766-4089-8d62-b63d519271f8",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "giao hàng",
           "name": "delivery",
           "tier": "gazetteer-exact",
@@ -4582,8 +4573,8 @@
       "grounded": [
         {
           "entityId": "fbc17ea5-411d-4d23-a09d-5b44bc4f335d",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "ăn đêm",
           "name": "late night",
           "tier": "gazetteer-exact",
@@ -4616,8 +4607,8 @@
       "grounded": [
         {
           "entityId": "59e40b37-34d7-4556-bcca-53ead8a6bd17",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "cho phép mang chó",
           "name": "allows dogs",
           "tier": "gazetteer-exact",
@@ -4650,8 +4641,8 @@
       "grounded": [
         {
           "entityId": "458674e3-9093-464d-ae53-92f54bb55ec8",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "chỗ cho nhóm đông",
           "name": "good for groups",
           "tier": "gazetteer-exact",
@@ -4684,8 +4675,8 @@
       "grounded": [
         {
           "entityId": "092f9cb2-74c9-49da-92a6-3ffcf05d2245",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "wifi",
           "name": "wifi",
           "tier": "gazetteer-exact",
@@ -4718,33 +4709,24 @@
       "grounded": [
         {
           "entityId": "001a597e-bfd0-4f0a-a1ad-fe63289e1364",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "đậu",
           "name": "beans",
           "tier": "gazetteer-exact",
           "foldedName": "beans"
         },
         {
-          "entityId": "335932fe-5dfb-4f83-9bc7-aa59f20119d9",
-          "bucket": "food",
-          "type": "food",
-          "span": "xe",
-          "name": "king cake",
-          "tier": "linked",
-          "foldedName": "king cake"
-        },
-        {
           "entityId": "9466ee50-fefb-4fce-971a-5440e3e529ec",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "bãi",
           "name": "parking",
           "tier": "linked",
           "foldedName": "parking"
         }
       ],
-      "unresolved": [],
+      "unresolved": ["xe"],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -4770,8 +4752,8 @@
       "grounded": [
         {
           "entityId": "576599d0-17bd-421c-962a-6dc3c287eb03",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "chỉ nhận tiền mặt",
           "name": "cash only",
           "tier": "gazetteer-exact",
@@ -4804,8 +4786,8 @@
       "grounded": [
         {
           "entityId": "ab87265a-7d1a-4334-b851-93e41c0faeff",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bò",
           "name": "beef",
           "tier": "gazetteer-exact",
@@ -4838,8 +4820,8 @@
       "grounded": [
         {
           "entityId": "10c49ded-1303-4b6e-bd49-2bc0ca793b1e",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bơ",
           "name": "butter",
           "tier": "gazetteer-exact",
@@ -4847,8 +4829,8 @@
         },
         {
           "entityId": "5dbb584c-790e-4078-acb1-d60185968264",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bơ",
           "name": "avocado",
           "tier": "gazetteer-exact",
@@ -4939,8 +4921,8 @@
       "grounded": [
         {
           "entityId": "042de43d-2fb6-460d-bbea-b8779b79b52a",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "mì",
           "name": "noodles",
           "tier": "gazetteer-exact",
@@ -4948,8 +4930,8 @@
         },
         {
           "entityId": "86cc04ee-4fc8-4a8d-b49e-e3f5b06aac7f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "mì",
           "name": "noodle",
           "tier": "gazetteer-exact",
@@ -4957,8 +4939,8 @@
         },
         {
           "entityId": "db337785-109a-4c69-af3c-d5acc572eeec",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "mì",
           "name": "mian",
           "tier": "gazetteer-exact",
@@ -4991,8 +4973,8 @@
       "grounded": [
         {
           "entityId": "ad62b0e6-809c-47c3-8697-2d8b8fac91e2",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "mỹ",
           "name": "american",
           "tier": "gazetteer-exact",
@@ -5025,8 +5007,8 @@
       "grounded": [
         {
           "entityId": "85c4a787-2a89-460e-8443-470da5863061",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "phô mai",
           "name": "cheese",
           "tier": "gazetteer-exact",
@@ -5059,8 +5041,8 @@
       "grounded": [
         {
           "entityId": "bcb888b0-d59a-4c2f-956a-ab7374c4cfa5",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cá",
           "name": "fish",
           "tier": "gazetteer-exact",
@@ -5093,8 +5075,8 @@
       "grounded": [
         {
           "entityId": "821d07a6-0ec3-482c-a140-b6c103a152a4",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "canh",
           "name": "soup",
           "tier": "gazetteer-exact",
@@ -5161,8 +5143,8 @@
       "grounded": [
         {
           "entityId": "c560b1f8-e46b-47ee-a74f-19d3d2bdb25b",
-          "bucket": "restaurants",
-          "type": "restaurant",
+          "bucket": "places",
+          "type": "place",
           "span": "nem",
           "name": "Nems",
           "tier": "linked",
@@ -5231,8 +5213,8 @@
       "grounded": [
         {
           "entityId": "38dd8008-11fd-4771-8203-7434a8040bd4",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bún",
           "name": "bun",
           "tier": "gazetteer-exact",
@@ -5240,8 +5222,8 @@
         },
         {
           "entityId": "6e666716-a419-45b8-93fd-c0a2274af7cb",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bún",
           "name": "vermicelli bowl",
           "tier": "gazetteer-exact",
@@ -5249,8 +5231,8 @@
         },
         {
           "entityId": "e3a3aa75-60aa-4310-a06c-77a967fab87c",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bún",
           "name": "vermicelli",
           "tier": "gazetteer-exact",
@@ -5283,8 +5265,8 @@
       "grounded": [
         {
           "entityId": "a410a77f-d88a-4e92-bef2-067e0e16705a",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "thơm",
           "name": "pineapple",
           "tier": "gazetteer-exact",
@@ -5317,8 +5299,8 @@
       "grounded": [
         {
           "entityId": "484a73f1-51e1-4ada-8b75-8ec9bd031114",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm cháy",
           "name": "scorched rice",
           "tier": "gazetteer-exact",
@@ -5326,8 +5308,8 @@
         },
         {
           "entityId": "9d0de717-2767-4825-9e17-d803a77f42c7",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm cháy",
           "name": "crispy rice",
           "tier": "gazetteer-exact",
@@ -5335,8 +5317,8 @@
         },
         {
           "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm",
           "name": "rice",
           "tier": "linked",
@@ -5369,8 +5351,8 @@
       "grounded": [
         {
           "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm",
           "name": "rice",
           "tier": "gazetteer-exact",
@@ -5378,8 +5360,8 @@
         },
         {
           "entityId": "6f332d26-e126-462c-a58e-0b8954687be6",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "chay",
           "name": "vegetarian",
           "tier": "gazetteer-exact",
@@ -5516,8 +5498,8 @@
       "grounded": [
         {
           "entityId": "1d625b7c-0c47-437d-b2f4-a130ca76aae3",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "ngô",
           "name": "corn",
           "tier": "gazetteer-exact",
@@ -5550,8 +5532,8 @@
       "grounded": [
         {
           "entityId": "12bcdfbd-7736-4d47-82e7-b7cf30b5fa93",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "ga",
           "name": "chicken",
           "tier": "gazetteer-exact",
@@ -5584,8 +5566,8 @@
       "grounded": [
         {
           "entityId": "dfcea5a8-359f-410c-9ca6-85f4196ff8b2",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "sushi",
           "name": "sushi",
           "tier": "gazetteer-exact",
@@ -5593,15 +5575,15 @@
         },
         {
           "entityId": "f2e2ce70-e8bf-4972-ad06-2f8a32400754",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "sushi",
           "name": "sushi prepared fish",
           "tier": "gazetteer-exact",
           "foldedName": "sushi prepared fish"
         }
       ],
-      "unresolved": ["tôi muốn"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5610,7 +5592,7 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -5627,8 +5609,8 @@
       "grounded": [
         {
           "entityId": "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pizza",
           "name": "pizza pie",
           "tier": "gazetteer-exact",
@@ -5636,8 +5618,8 @@
         },
         {
           "entityId": "b33eb888-0acd-432b-bebd-e14d0699ec13",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pizza",
           "name": "pitzas",
           "tier": "gazetteer-exact",
@@ -5645,21 +5627,12 @@
         },
         {
           "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pizza",
           "name": "pizza",
           "tier": "gazetteer-exact",
           "foldedName": "pizza"
-        },
-        {
-          "entityId": "38f85a48-d950-4741-97ee-e02b24521230",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "tôi",
-          "name": "pigs ears",
-          "tier": "linked",
-          "foldedName": "pigs ears"
         }
       ],
       "unresolved": [],
@@ -5671,7 +5644,7 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -5688,8 +5661,8 @@
       "grounded": [
         {
           "entityId": "b01592d6-f94a-4b23-afdb-9764d21095ad",
-          "bucket": "restaurants",
-          "type": "restaurant",
+          "bucket": "places",
+          "type": "place",
           "span": "quán",
           "name": "Quan Sushi Grill",
           "tier": "linked",
@@ -5697,8 +5670,8 @@
         },
         {
           "entityId": "eb4a3bcc-0694-47aa-a700-d0c3e547a5d4",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "ramen",
           "name": "ramen",
           "tier": "gazetteer-exact",
@@ -5731,21 +5704,12 @@
       "grounded": [
         {
           "entityId": "2a2b6fe3-779b-42ad-9c1a-4cb88fa80815",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "burger",
           "name": "burger",
           "tier": "gazetteer-exact",
           "foldedName": "burger"
-        },
-        {
-          "entityId": "38f85a48-d950-4741-97ee-e02b24521230",
-          "bucket": "ingredients",
-          "type": "ingredient",
-          "span": "tôi",
-          "name": "pigs ears",
-          "tier": "linked",
-          "foldedName": "pigs ears"
         }
       ],
       "unresolved": [],
@@ -5757,7 +5721,7 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -5774,15 +5738,15 @@
       "grounded": [
         {
           "entityId": "53df955f-ec55-4392-ba46-e1184c52fafc",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "BBQ",
           "name": "bbq",
           "tier": "gazetteer-exact",
           "foldedName": "bbq"
         }
       ],
-      "unresolved": ["muốn"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5791,7 +5755,7 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -5807,9 +5771,18 @@
       "reasons": [],
       "grounded": [
         {
+          "entityId": "b01592d6-f94a-4b23-afdb-9764d21095ad",
+          "bucket": "places",
+          "type": "place",
+          "span": "quán",
+          "name": "Quan Sushi Grill",
+          "tier": "linked",
+          "foldedName": "quan sushi grill"
+        },
+        {
           "entityId": "cb2e4fac-a778-4c30-a95a-319e86a61f4f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "korean bbq",
           "name": "korean bbq",
           "tier": "gazetteer-exact",
@@ -5817,8 +5790,8 @@
         },
         {
           "entityId": "45d744fc-4c83-4a0d-9e23-616a83d70bc9",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "korean",
           "name": "korean",
           "tier": "linked",
@@ -5826,15 +5799,15 @@
         },
         {
           "entityId": "980f562b-e754-401f-8913-cae8befc7e66",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "bbq",
           "name": "bbq",
           "tier": "linked",
           "foldedName": "bbq"
         }
       ],
-      "unresolved": ["tìm quán"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5843,7 +5816,7 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -5860,8 +5833,8 @@
       "grounded": [
         {
           "entityId": "d3a9ad01-1827-4e33-a010-bdc17857b2fd",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "dim sum",
           "name": "dim sum",
           "tier": "gazetteer-exact",
@@ -5894,8 +5867,8 @@
       "grounded": [
         {
           "entityId": "dd390a0b-4199-4e1b-b1df-2fea78f11cc7",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "ice cream",
           "name": "ice cream",
           "tier": "gazetteer-exact",
@@ -5920,7 +5893,7 @@
           "foldedName": "cream"
         }
       ],
-      "unresolved": ["tôi muốn"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -5929,7 +5902,7 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -5946,8 +5919,8 @@
       "grounded": [
         {
           "entityId": "b01592d6-f94a-4b23-afdb-9764d21095ad",
-          "bucket": "restaurants",
-          "type": "restaurant",
+          "bucket": "places",
+          "type": "place",
           "span": "quán",
           "name": "Quan Sushi Grill",
           "tier": "linked",
@@ -5955,8 +5928,8 @@
         },
         {
           "entityId": "926935db-c5d9-45f8-8618-05fb6a9fd3e9",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "coffee",
           "name": "coffee",
           "tier": "gazetteer-exact",
@@ -5964,8 +5937,8 @@
         },
         {
           "entityId": "1b83fa1e-680d-4292-acf5-b8456d27e415",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "yên tĩnh",
           "name": "quiet",
           "tier": "gazetteer-exact",
@@ -5998,8 +5971,8 @@
       "grounded": [
         {
           "entityId": "f43fa2e2-d94d-4ebe-8136-698ff755d869",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "seafood",
           "name": "seafood",
           "tier": "gazetteer-exact",
@@ -6032,15 +6005,15 @@
       "grounded": [
         {
           "entityId": "daa26f2b-6367-4cd6-916d-1461b72168d4",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "brunch",
           "name": "brunch",
           "tier": "gazetteer-exact",
           "foldedName": "brunch"
         }
       ],
-      "unresolved": ["ở đâu"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -6049,7 +6022,7 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -6066,8 +6039,8 @@
       "grounded": [
         {
           "entityId": "042de43d-2fb6-460d-bbea-b8779b79b52a",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pasta",
           "name": "noodles",
           "tier": "gazetteer-exact",
@@ -6075,15 +6048,15 @@
         },
         {
           "entityId": "ea223900-5f0e-447f-83a2-74b23ca8b933",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pasta",
           "name": "pasta",
           "tier": "gazetteer-exact",
           "foldedName": "pasta"
         }
       ],
-      "unresolved": ["tôi muốn"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -6092,7 +6065,7 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -6109,8 +6082,8 @@
       "grounded": [
         {
           "entityId": "23e4908e-1d4c-49cd-9d28-469be262998e",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "quán sushi",
           "name": "sushi",
           "tier": "gazetteer-exact",
@@ -6118,8 +6091,8 @@
         },
         {
           "entityId": "b693becc-a4ce-4b31-b35e-c7f3218a816d",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "giá rẻ",
           "name": "affordable",
           "tier": "gazetteer-exact",
@@ -6152,15 +6125,15 @@
       "grounded": [
         {
           "entityId": "45d6ca0c-10c9-4ff8-9cb6-1322dca4966c",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "steak",
           "name": "steak",
           "tier": "gazetteer-exact",
           "foldedName": "steak"
         }
       ],
-      "unresolved": ["muốn"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -6169,7 +6142,7 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -6186,15 +6159,15 @@
       "grounded": [
         {
           "entityId": "8015f56b-c984-49d7-b031-c0037d542454",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "salad",
           "name": "salad",
           "tier": "gazetteer-exact",
           "foldedName": "salad"
         }
       ],
-      "unresolved": ["tìm"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -6203,7 +6176,7 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -6220,8 +6193,8 @@
       "grounded": [
         {
           "entityId": "1c629813-ffc1-4860-bf00-5ca06dccc4fb",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "rooftop",
           "name": "rooftop",
           "tier": "gazetteer-exact",
@@ -6254,8 +6227,8 @@
       "grounded": [
         {
           "entityId": "b01592d6-f94a-4b23-afdb-9764d21095ad",
-          "bucket": "restaurants",
-          "type": "restaurant",
+          "bucket": "places",
+          "type": "place",
           "span": "quán",
           "name": "Quan Sushi Grill",
           "tier": "linked",
@@ -6263,8 +6236,8 @@
         },
         {
           "entityId": "092f9cb2-74c9-49da-92a6-3ffcf05d2245",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "wifi",
           "name": "wifi",
           "tier": "gazetteer-exact",
@@ -6297,8 +6270,8 @@
       "grounded": [
         {
           "entityId": "7d662533-e35f-47d0-8645-4bce3e9837b7",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "hot pot",
           "name": "hotpot",
           "tier": "gazetteer-exact",
@@ -6306,15 +6279,15 @@
         },
         {
           "entityId": "dc27d7c4-5b49-429d-9d11-ab65827fb6d9",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "hot pot",
           "name": "hot pot",
           "tier": "gazetteer-exact",
           "foldedName": "hot pot"
         }
       ],
-      "unresolved": ["tôi muốn"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -6323,7 +6296,7 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -6340,8 +6313,8 @@
       "grounded": [
         {
           "entityId": "6bd6eab9-f8f4-4bf8-a662-7ad9e3e6b64a",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "sandwich",
           "name": "sandwich",
           "tier": "gazetteer-exact",
@@ -6349,15 +6322,15 @@
         },
         {
           "entityId": "8f26ae55-e27b-465c-bac5-ade9ee064905",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "sandwich",
           "name": "sub sandwich",
           "tier": "gazetteer-exact",
           "foldedName": "sub sandwich"
         }
       ],
-      "unresolved": ["muốn"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "vi-VN",
@@ -6366,7 +6339,7 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -6383,8 +6356,8 @@
       "grounded": [
         {
           "entityId": "b01592d6-f94a-4b23-afdb-9764d21095ad",
-          "bucket": "restaurants",
-          "type": "restaurant",
+          "bucket": "places",
+          "type": "place",
           "span": "quán",
           "name": "Quan Sushi Grill",
           "tier": "linked",
@@ -6392,8 +6365,8 @@
         },
         {
           "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pho",
           "name": "pho",
           "tier": "gazetteer-exact",
@@ -6426,8 +6399,8 @@
       "grounded": [
         {
           "entityId": "339c1fb2-99c2-428f-93d1-5fb526cb0545",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "phở bo",
           "name": "beef noodle soup",
           "tier": "gazetteer-exact",
@@ -6435,8 +6408,8 @@
         },
         {
           "entityId": "45ba08a7-ffc1-4394-bae8-99cca1f7db44",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "phở bo",
           "name": "beef pho",
           "tier": "gazetteer-exact",
@@ -6444,8 +6417,8 @@
         },
         {
           "entityId": "ab87265a-7d1a-4334-b851-93e41c0faeff",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bo",
           "name": "beef",
           "tier": "linked",
@@ -6478,8 +6451,8 @@
       "grounded": [
         {
           "entityId": "339c1fb2-99c2-428f-93d1-5fb526cb0545",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pho bò",
           "name": "beef noodle soup",
           "tier": "gazetteer-exact",
@@ -6487,8 +6460,8 @@
         },
         {
           "entityId": "45ba08a7-ffc1-4394-bae8-99cca1f7db44",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pho bò",
           "name": "beef pho",
           "tier": "gazetteer-exact",
@@ -6496,8 +6469,8 @@
         },
         {
           "entityId": "ab87265a-7d1a-4334-b851-93e41c0faeff",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bò",
           "name": "beef",
           "tier": "linked",
@@ -6530,8 +6503,8 @@
       "grounded": [
         {
           "entityId": "494d6cb2-bf85-4200-9503-19a5ad6c0379",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bún bò hue",
           "name": "bun bo hue",
           "tier": "gazetteer-exact",
@@ -6539,8 +6512,8 @@
         },
         {
           "entityId": "d47a44f8-2ddf-4903-880b-a42451c8d226",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bún bò hue",
           "name": "spicy beef noodle soup",
           "tier": "gazetteer-exact",
@@ -6573,8 +6546,8 @@
       "grounded": [
         {
           "entityId": "926935db-c5d9-45f8-8618-05fb6a9fd3e9",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cà phê",
           "name": "coffee",
           "tier": "gazetteer-exact",
@@ -6582,8 +6555,8 @@
         },
         {
           "entityId": "e73a034c-649a-42e4-9e6b-606cfba63f1f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cà phê",
           "name": "cà phê",
           "tier": "gazetteer-exact",
@@ -6591,8 +6564,8 @@
         },
         {
           "entityId": "89127e73-89c8-44a1-9f97-8b4a4c702f22",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "sữa",
           "name": "milk",
           "tier": "gazetteer-exact",
@@ -6634,8 +6607,8 @@
       "grounded": [
         {
           "entityId": "19014d88-a89f-451b-b2fa-ae98f3e02311",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cà phe sua da",
           "name": "cà phê sứa đá",
           "tier": "gazetteer-exact",
@@ -6643,8 +6616,8 @@
         },
         {
           "entityId": "e73a034c-649a-42e4-9e6b-606cfba63f1f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cà phe",
           "name": "cà phê",
           "tier": "linked",
@@ -6677,8 +6650,8 @@
       "grounded": [
         {
           "entityId": "77dd20cb-7574-477a-801f-f5394e3634c8",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "gỏi cuon",
           "name": "spring roll",
           "tier": "gazetteer-exact",
@@ -6686,8 +6659,8 @@
         },
         {
           "entityId": "67337677-e2ee-480b-9aa8-1b07354118cf",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cuon",
           "name": "rolls",
           "tier": "linked",
@@ -6720,8 +6693,8 @@
       "grounded": [
         {
           "entityId": "33c909c3-0de7-4cd6-aaea-ca05e968f0a0",
-          "bucket": "restaurants",
-          "type": "restaurant",
+          "bucket": "places",
+          "type": "place",
           "span": "bánh",
           "name": "Bánh",
           "tier": "linked",
@@ -6729,8 +6702,8 @@
         },
         {
           "entityId": "78d11036-478c-41bb-a78d-4a7320dde99c",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bánh mì",
           "name": "banh mi",
           "tier": "gazetteer-exact",
@@ -6738,8 +6711,8 @@
         },
         {
           "entityId": "9cd8f4aa-bb68-4bee-937f-45fee496d147",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bánh mì",
           "name": "viet sandwich",
           "tier": "gazetteer-exact",
@@ -6772,8 +6745,8 @@
       "grounded": [
         {
           "entityId": "ec4144aa-f351-4ccf-b6f9-9837f9afe217",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "ẩm thực Hy Lap",
           "name": "greek",
           "tier": "gazetteer-exact",
@@ -6806,8 +6779,8 @@
       "grounded": [
         {
           "entityId": "576599d0-17bd-421c-962a-6dc3c287eb03",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "chỉ nhận tiền mat",
           "name": "cash only",
           "tier": "gazetteer-exact",
@@ -6840,8 +6813,8 @@
       "grounded": [
         {
           "entityId": "4e5ee601-a11b-4dfc-a83d-3d1685ee5c66",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm tam",
           "name": "viet rice plate",
           "tier": "gazetteer-exact",
@@ -6849,8 +6822,8 @@
         },
         {
           "entityId": "bad1e222-175c-4473-8620-b95d021bab77",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm tam",
           "name": "com tam",
           "tier": "gazetteer-exact",
@@ -6858,8 +6831,8 @@
         },
         {
           "entityId": "c0cdfe0a-e330-4bb8-b501-0c69066503ef",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm tam",
           "name": "broken rice",
           "tier": "gazetteer-exact",
@@ -6867,8 +6840,8 @@
         },
         {
           "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm",
           "name": "rice",
           "tier": "linked",
@@ -6901,8 +6874,8 @@
       "grounded": [
         {
           "entityId": "33c909c3-0de7-4cd6-aaea-ca05e968f0a0",
-          "bucket": "restaurants",
-          "type": "restaurant",
+          "bucket": "places",
+          "type": "place",
           "span": "bánh",
           "name": "Bánh",
           "tier": "linked",
@@ -6910,8 +6883,8 @@
         },
         {
           "entityId": "1823cd02-5e4f-4207-afa7-475aa101968b",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bánh xeo",
           "name": "banh xeo",
           "tier": "gazetteer-exact",
@@ -6944,8 +6917,8 @@
       "grounded": [
         {
           "entityId": "2aebb6b7-bd9c-432a-a07b-3964020a96f0",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bun thịt nướng",
           "name": "bun thit nuong",
           "tier": "gazetteer-exact",
@@ -6987,8 +6960,8 @@
       "grounded": [
         {
           "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cơm",
           "name": "rice",
           "tier": "gazetteer-exact",
@@ -6996,8 +6969,8 @@
         },
         {
           "entityId": "6f332d26-e126-462c-a58e-0b8954687be6",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "chay",
           "name": "vegetarian",
           "tier": "gazetteer-exact",
@@ -7030,8 +7003,8 @@
       "grounded": [
         {
           "entityId": "878cabee-ce41-4018-8036-360ad02958f7",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "chảy",
           "name": "gooey",
           "tier": "gazetteer-exact",
@@ -7064,8 +7037,8 @@
       "grounded": [
         {
           "entityId": "33c909c3-0de7-4cd6-aaea-ca05e968f0a0",
-          "bucket": "restaurants",
-          "type": "restaurant",
+          "bucket": "places",
+          "type": "place",
           "span": "bánh",
           "name": "Bánh",
           "tier": "linked",
@@ -7073,8 +7046,8 @@
         },
         {
           "entityId": "78d11036-478c-41bb-a78d-4a7320dde99c",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bánh mì",
           "name": "banh mi",
           "tier": "gazetteer-exact",
@@ -7082,8 +7055,8 @@
         },
         {
           "entityId": "9cd8f4aa-bb68-4bee-937f-45fee496d147",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bánh mì",
           "name": "viet sandwich",
           "tier": "gazetteer-exact",
@@ -7091,8 +7064,8 @@
         },
         {
           "entityId": "9fe0e242-7248-491d-a2bc-8f0654825495",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "burger thực vật",
           "name": "veggie burger",
           "tier": "gazetteer-exact",
@@ -7100,8 +7073,8 @@
         },
         {
           "entityId": "539e3380-84a2-4d8c-a999-ee13f1818d09",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "burger",
           "name": "burger",
           "tier": "linked",
@@ -7134,8 +7107,8 @@
       "grounded": [
         {
           "entityId": "33c909c3-0de7-4cd6-aaea-ca05e968f0a0",
-          "bucket": "restaurants",
-          "type": "restaurant",
+          "bucket": "places",
+          "type": "place",
           "span": "bánh",
           "name": "Bánh",
           "tier": "gazetteer-exact",
@@ -7143,8 +7116,8 @@
         },
         {
           "entityId": "c13a461b-2d73-4c30-91d4-f451ba4cb50c",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pizza napoletana",
           "name": "neapolitan pizza",
           "tier": "gazetteer-exact",
@@ -7152,8 +7125,8 @@
         },
         {
           "entityId": "822c42f9-9e5f-4f5a-9df2-ad62ebebd46f",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "pizza",
           "name": "pizza",
           "tier": "linked",
@@ -7186,8 +7159,8 @@
       "grounded": [
         {
           "entityId": "33c909c3-0de7-4cd6-aaea-ca05e968f0a0",
-          "bucket": "restaurants",
-          "type": "restaurant",
+          "bucket": "places",
+          "type": "place",
           "span": "bánh",
           "name": "Bánh",
           "tier": "gazetteer-exact",
@@ -7195,8 +7168,8 @@
         },
         {
           "entityId": "77011adc-2ddc-4a72-9411-49e3d26b808e",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "taco callejero",
           "name": "street taco",
           "tier": "gazetteer-exact",
@@ -7204,8 +7177,8 @@
         },
         {
           "entityId": "18f5fa4d-51d0-4a50-a998-966bd12f76b9",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "taco",
           "name": "taco",
           "tier": "linked",

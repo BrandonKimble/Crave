@@ -1,12 +1,12 @@
 {
-  "ranAt": "2026-08-16T04:55:23.813Z",
+  "ranAt": "2026-08-16T21:50:32.877Z",
   "lang": "es",
   "corpusVersion": 1,
   "scoreboard": {
-    "overall": 88,
+    "overall": 89.33333333333333,
     "top1SingleConcept": 90,
     "negationNonInversion": 100,
-    "constraintPreservation": 91.66666666666667,
+    "constraintPreservation": 95,
     "homographMisGroundings": [
       "pan→pan[gazetteer-exact]",
       "тако→tako[linked]",
@@ -30,8 +30,8 @@
       "grounded": [
         {
           "entityId": "e2055664-c29c-4cb2-baaa-8565f2086504",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "birria",
           "name": "birria",
           "tier": "gazetteer-exact",
@@ -64,8 +64,8 @@
       "grounded": [
         {
           "entityId": "4390f15d-ab94-4786-a0e4-35621480a88f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pan dulce",
           "name": "pan dulce",
           "tier": "gazetteer-exact",
@@ -73,8 +73,8 @@
         },
         {
           "entityId": "984263e0-402b-434a-9320-d93b23bb0e0a",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pan",
           "name": "pan",
           "tier": "linked",
@@ -107,8 +107,8 @@
       "grounded": [
         {
           "entityId": "ebd7ff8b-1c0a-46d6-8441-2014acff9847",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "carnitas",
           "name": "carnitas",
           "tier": "gazetteer-exact",
@@ -141,8 +141,8 @@
       "grounded": [
         {
           "entityId": "5f29f44f-5c1e-47e6-9380-095d374abcf0",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "barbacoa",
           "name": "barbacoa",
           "tier": "gazetteer-exact",
@@ -175,8 +175,8 @@
       "grounded": [
         {
           "entityId": "5c15ce8f-0bac-496a-b733-cf7fd6d1c0a9",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "chilaquiles",
           "name": "chilaquiles",
           "tier": "gazetteer-exact",
@@ -209,8 +209,8 @@
       "grounded": [
         {
           "entityId": "b94b0118-1202-4070-8c9b-05aeb3f09e94",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "guacamole",
           "name": "guacamole",
           "tier": "gazetteer-exact",
@@ -243,8 +243,8 @@
       "grounded": [
         {
           "entityId": "62654f6c-aecf-4243-a83d-d65a1221e0c1",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "churros",
           "name": "churros",
           "tier": "gazetteer-exact",
@@ -277,8 +277,8 @@
       "grounded": [
         {
           "entityId": "8d5f2226-e417-47f3-bf49-4b4bd721e07a",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "horchata",
           "name": "horchata",
           "tier": "gazetteer-exact",
@@ -311,8 +311,8 @@
       "grounded": [
         {
           "entityId": "36434a0b-89a4-40fc-ac5a-f3b0466471bf",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "elote",
           "name": "elote",
           "tier": "gazetteer-exact",
@@ -345,8 +345,8 @@
       "grounded": [
         {
           "entityId": "a0c3d6c9-f2fa-439e-9747-4dca5d4be572",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pozole",
           "name": "pozole",
           "tier": "gazetteer-exact",
@@ -379,8 +379,8 @@
       "grounded": [
         {
           "entityId": "61d6bd93-61c8-4725-839b-2b393dcc94a0",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "menudo",
           "name": "menudo",
           "tier": "gazetteer-exact",
@@ -413,8 +413,8 @@
       "grounded": [
         {
           "entityId": "1f96e747-0837-496e-850f-d855fd2f9c40",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "torta",
           "name": "torte",
           "tier": "gazetteer-exact",
@@ -422,8 +422,8 @@
         },
         {
           "entityId": "bfb98856-d718-4d92-91f0-d91f95a44733",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "torta",
           "name": "torta",
           "tier": "gazetteer-exact",
@@ -456,8 +456,8 @@
       "grounded": [
         {
           "entityId": "da6035cd-687a-4baa-9ed2-34705a82848b",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "quesadilla",
           "name": "quesadilla",
           "tier": "gazetteer-exact",
@@ -490,8 +490,8 @@
       "grounded": [
         {
           "entityId": "21d00910-34ce-4f9f-8466-dd1abf717326",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "burrito",
           "name": "burrito",
           "tier": "gazetteer-exact",
@@ -524,8 +524,8 @@
       "grounded": [
         {
           "entityId": "a9e6e1af-9e1b-492f-8ea1-40918e6ea46f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "empanada",
           "name": "empanada",
           "tier": "gazetteer-exact",
@@ -558,8 +558,8 @@
       "grounded": [
         {
           "entityId": "d3f4befd-6398-4491-beee-7b4b7e438fdd",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "ceviche",
           "name": "ceviche",
           "tier": "gazetteer-exact",
@@ -592,8 +592,8 @@
       "grounded": [
         {
           "entityId": "a1639839-9828-41a3-8807-4c67a7b60648",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "paella",
           "name": "paella",
           "tier": "gazetteer-exact",
@@ -626,8 +626,8 @@
       "grounded": [
         {
           "entityId": "381cce63-a3fc-47bf-a96f-a62d6d917e8b",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "arepa",
           "name": "arepa",
           "tier": "gazetteer-exact",
@@ -660,8 +660,8 @@
       "grounded": [
         {
           "entityId": "79206e36-6c4a-46df-ada7-49a384648c41",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "aguachile",
           "name": "aguachile",
           "tier": "gazetteer-exact",
@@ -694,8 +694,8 @@
       "grounded": [
         {
           "entityId": "9b04595c-09b7-44f3-84cd-d937bf3396a0",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cochinita pibil",
           "name": "cochinita pibil",
           "tier": "gazetteer-exact",
@@ -728,8 +728,8 @@
       "grounded": [
         {
           "entityId": "d85c0a5f-475a-4cbd-9042-8c35c38be3a4",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pulpo",
           "name": "octopus",
           "tier": "gazetteer-exact",
@@ -762,8 +762,8 @@
       "grounded": [
         {
           "entityId": "5e019470-b050-48bb-9264-a16a383b82d8",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "camarones",
           "name": "camarones",
           "tier": "gazetteer-exact",
@@ -771,8 +771,8 @@
         },
         {
           "entityId": "7eeb7cb1-5653-46e7-a24b-af91cd5e85cd",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "camarones",
           "name": "shrimp",
           "tier": "gazetteer-exact",
@@ -805,8 +805,8 @@
       "grounded": [
         {
           "entityId": "5dbb584c-790e-4078-acb1-d60185968264",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "aguacate",
           "name": "avocado",
           "tier": "gazetteer-exact",
@@ -839,8 +839,8 @@
       "grounded": [
         {
           "entityId": "bcb888b0-d59a-4c2f-956a-ab7374c4cfa5",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pescado",
           "name": "fish",
           "tier": "gazetteer-exact",
@@ -873,8 +873,8 @@
       "grounded": [
         {
           "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "arroz",
           "name": "rice",
           "tier": "gazetteer-exact",
@@ -907,8 +907,8 @@
       "grounded": [
         {
           "entityId": "001a597e-bfd0-4f0a-a1ad-fe63289e1364",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "frijoles",
           "name": "beans",
           "tier": "gazetteer-exact",
@@ -916,8 +916,8 @@
         },
         {
           "entityId": "0a89b1a0-5601-41aa-a2a4-74b3bd2bb2d1",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "frijoles",
           "name": "frijoles",
           "tier": "gazetteer-exact",
@@ -950,8 +950,8 @@
       "grounded": [
         {
           "entityId": "9824acb9-4b92-42fb-b84b-5c3cc5a54103",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "langosta",
           "name": "lobster",
           "tier": "gazetteer-exact",
@@ -984,8 +984,8 @@
       "grounded": [
         {
           "entityId": "7f5d3f9f-49fc-4c36-b4ab-a797e48495a8",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cangrejo",
           "name": "crab",
           "tier": "gazetteer-exact",
@@ -1018,8 +1018,8 @@
       "grounded": [
         {
           "entityId": "dd390a0b-4199-4e1b-b1df-2fea78f11cc7",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "helado",
           "name": "ice cream",
           "tier": "gazetteer-exact",
@@ -1052,8 +1052,8 @@
       "grounded": [
         {
           "entityId": "ef0cdc27-b056-465e-9a57-a56b5e7d5693",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "fresa",
           "name": "strawberry",
           "tier": "gazetteer-exact",
@@ -1086,8 +1086,8 @@
       "grounded": [
         {
           "entityId": "7f5a885a-1c56-4a76-9af1-694e55aa1c4d",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "sandía",
           "name": "watermelon",
           "tier": "gazetteer-exact",
@@ -1120,8 +1120,8 @@
       "grounded": [
         {
           "entityId": "45d6ca0c-10c9-4ff8-9cb6-1322dca4966c",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bistec",
           "name": "steak",
           "tier": "gazetteer-exact",
@@ -1154,8 +1154,8 @@
       "grounded": [
         {
           "entityId": "1f96e747-0837-496e-850f-d855fd2f9c40",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pastel",
           "name": "torte",
           "tier": "gazetteer-exact",
@@ -1163,8 +1163,8 @@
         },
         {
           "entityId": "2049826a-2960-467f-b0e1-281611f0c7d7",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pastel",
           "name": "cake",
           "tier": "gazetteer-exact",
@@ -1197,8 +1197,8 @@
       "grounded": [
         {
           "entityId": "8015f56b-c984-49d7-b031-c0037d542454",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "ensalada",
           "name": "salad",
           "tier": "gazetteer-exact",
@@ -1231,8 +1231,8 @@
       "grounded": [
         {
           "entityId": "042de43d-2fb6-460d-bbea-b8779b79b52a",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "fideos",
           "name": "noodles",
           "tier": "gazetteer-exact",
@@ -1240,8 +1240,8 @@
         },
         {
           "entityId": "04479fba-1c2a-42bb-bb48-b34f35a0bdd8",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "fideos",
           "name": "fideo",
           "tier": "gazetteer-exact",
@@ -1249,8 +1249,8 @@
         },
         {
           "entityId": "86cc04ee-4fc8-4a8d-b49e-e3f5b06aac7f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "fideos",
           "name": "noodle",
           "tier": "gazetteer-exact",
@@ -1283,8 +1283,8 @@
       "grounded": [
         {
           "entityId": "28f42945-55e0-427c-9281-8fcfffdc6490",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "mariscos",
           "name": "shellfish",
           "tier": "gazetteer-exact",
@@ -1292,8 +1292,8 @@
         },
         {
           "entityId": "f43fa2e2-d94d-4ebe-8136-698ff755d869",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "mariscos",
           "name": "seafood",
           "tier": "gazetteer-exact",
@@ -1326,8 +1326,8 @@
       "grounded": [
         {
           "entityId": "ab672d04-3263-4080-9827-3f35a7a83c71",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "postre",
           "name": "dessert",
           "tier": "gazetteer-exact",
@@ -1360,8 +1360,8 @@
       "grounded": [
         {
           "entityId": "926935db-c5d9-45f8-8618-05fb6a9fd3e9",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "café",
           "name": "coffee",
           "tier": "gazetteer-exact",
@@ -1394,8 +1394,8 @@
       "grounded": [
         {
           "entityId": "12bcdfbd-7736-4d47-82e7-b7cf30b5fa93",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pollo",
           "name": "chicken",
           "tier": "gazetteer-exact",
@@ -1403,8 +1403,8 @@
         },
         {
           "entityId": "19c7cbed-43a9-4a8d-8096-eeeb99377eaa",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pollo",
           "name": "pollo",
           "tier": "gazetteer-exact",
@@ -1465,41 +1465,41 @@
       "query": "tacos vegetarianos baratos",
       "stratum": "compound",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0.5,
-      "reasons": ["NOT GROUNDED: tacos"],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
         {
           "entityId": "e01829f2-0a43-4ee9-ad75-857284eda918",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "tacos vegetarianos",
           "name": "vegetarian taco",
           "tier": "gazetteer-exact",
           "foldedName": "vegetarian taco"
         },
         {
-          "entityId": "18f5fa4d-51d0-4a50-a998-966bd12f76b9",
-          "bucket": "food",
-          "type": "food",
-          "span": "tacos",
-          "name": "taco",
-          "tier": "linked",
-          "foldedName": "taco"
-        },
-        {
           "entityId": "550daee9-22c0-4f37-8263-addf3d0e9b2c",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "vegetarianos",
           "name": "vegetarian",
           "tier": "linked",
           "foldedName": "vegetarian"
         },
         {
+          "entityId": "44f44d4c-1c87-4325-b8b9-6e68f996fafd",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
+          "span": "tacos",
+          "name": "tacos",
+          "tier": "linked",
+          "foldedName": "tacos"
+        },
+        {
           "entityId": "b693becc-a4ce-4b31-b35e-c7f3218a816d",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "baratos",
           "name": "affordable",
           "tier": "linked",
@@ -1532,8 +1532,8 @@
       "grounded": [
         {
           "entityId": "2e7a4935-78b6-4ead-b4cf-0012df8a3956",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pizza sin gluten",
           "name": "gluten free pizza",
           "tier": "gazetteer-exact",
@@ -1541,8 +1541,8 @@
         },
         {
           "entityId": "8409f136-de44-464e-852a-3362e113ebc7",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "sin gluten",
           "name": "gluten free",
           "tier": "linked",
@@ -1550,8 +1550,8 @@
         },
         {
           "entityId": "822c42f9-9e5f-4f5a-9df2-ad62ebebd46f",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "pizza",
           "name": "pizza",
           "tier": "linked",
@@ -1584,8 +1584,8 @@
       "grounded": [
         {
           "entityId": "645a6bdc-cb24-4404-89db-27579cc27a33",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "comida mexicana",
           "name": "mexican",
           "tier": "gazetteer-exact",
@@ -1593,8 +1593,8 @@
         },
         {
           "entityId": "9aaa952b-64ca-41e5-821c-615076f4168c",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "mexicana",
           "name": "mexican",
           "tier": "gazetteer-exact",
@@ -1627,8 +1627,8 @@
       "grounded": [
         {
           "entityId": "9f109755-4025-44ab-8cdc-5b8a9eb7ec73",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "restaurante italiano",
           "name": "italian",
           "tier": "gazetteer-exact",
@@ -1636,8 +1636,8 @@
         },
         {
           "entityId": "65a80396-ea4d-44d6-876c-b17a258a3326",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "romántico",
           "name": "romantic",
           "tier": "gazetteer-exact",
@@ -1664,36 +1664,36 @@
       "query": "tacos veganos",
       "stratum": "compound",
       "locale": "es-US",
-      "pass": false,
-      "preservation": 0.5,
-      "reasons": ["NOT GROUNDED: tacos"],
+      "pass": true,
+      "preservation": 1,
+      "reasons": [],
       "grounded": [
         {
           "entityId": "d5deecd4-a9b8-4875-8dba-495bb50f8306",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "tacos veganos",
           "name": "vegan taco",
           "tier": "gazetteer-exact",
           "foldedName": "vegan taco"
         },
         {
-          "entityId": "18f5fa4d-51d0-4a50-a998-966bd12f76b9",
-          "bucket": "food",
-          "type": "food",
-          "span": "tacos",
-          "name": "taco",
-          "tier": "linked",
-          "foldedName": "taco"
-        },
-        {
           "entityId": "a1fafbb5-06bc-474d-9c47-65f7a7bd1716",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "veganos",
           "name": "vegan",
           "tier": "linked",
           "foldedName": "vegan"
+        },
+        {
+          "entityId": "44f44d4c-1c87-4325-b8b9-6e68f996fafd",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
+          "span": "tacos",
+          "name": "tacos",
+          "tier": "linked",
+          "foldedName": "tacos"
         }
       ],
       "unresolved": [],
@@ -1722,8 +1722,8 @@
       "grounded": [
         {
           "entityId": "dfcea5a8-359f-410c-9ca6-85f4196ff8b2",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "sushi",
           "name": "sushi",
           "tier": "gazetteer-exact",
@@ -1731,8 +1731,8 @@
         },
         {
           "entityId": "f2e2ce70-e8bf-4972-ad06-2f8a32400754",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "sushi",
           "name": "sushi prepared fish",
           "tier": "gazetteer-exact",
@@ -1740,8 +1740,8 @@
         },
         {
           "entityId": "285cea4b-2eae-43af-bab5-ab3cf82ea5f7",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "japonés",
           "name": "japanese",
           "tier": "gazetteer-exact",
@@ -1774,8 +1774,8 @@
       "grounded": [
         {
           "entityId": "eb4a3bcc-0694-47aa-a700-d0c3e547a5d4",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "ramen",
           "name": "ramen",
           "tier": "gazetteer-exact",
@@ -1783,8 +1783,8 @@
         },
         {
           "entityId": "45d744fc-4c83-4a0d-9e23-616a83d70bc9",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "coreano",
           "name": "korean",
           "tier": "gazetteer-exact",
@@ -1817,8 +1817,8 @@
       "grounded": [
         {
           "entityId": "f8fa5dd1-8043-469d-bbb5-6af5ef8e819c",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pizza vegetariana",
           "name": "veggie pizza",
           "tier": "gazetteer-exact",
@@ -1826,8 +1826,8 @@
         },
         {
           "entityId": "822c42f9-9e5f-4f5a-9df2-ad62ebebd46f",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "pizza",
           "name": "pizza",
           "tier": "linked",
@@ -1860,8 +1860,8 @@
       "grounded": [
         {
           "entityId": "50866eb6-cd19-45bf-969f-16061dd85244",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "comida tailandesa",
           "name": "thai",
           "tier": "gazetteer-exact",
@@ -1869,8 +1869,8 @@
         },
         {
           "entityId": "ca15d0cc-13d5-4e38-8d2b-95dc4dd28808",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "picante",
           "name": "pungent",
           "tier": "gazetteer-exact",
@@ -1878,8 +1878,8 @@
         },
         {
           "entityId": "d5912bd2-54c8-41a1-86c5-d3328abeaca4",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "picante",
           "name": "spicy",
           "tier": "gazetteer-exact",
@@ -1887,8 +1887,8 @@
         },
         {
           "entityId": "7f76e097-988f-4ae2-aff6-a4fdc177a2e4",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "tailandesa",
           "name": "thai",
           "tier": "gazetteer-exact",
@@ -1921,8 +1921,8 @@
       "grounded": [
         {
           "entityId": "5582b739-817d-48e6-8a2c-8aa6ea2c6449",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "desayuno mexicano",
           "name": "mexican breakfast",
           "tier": "gazetteer-exact",
@@ -1930,8 +1930,8 @@
         },
         {
           "entityId": "cba1b61d-4997-42be-9360-1959cd9a26fc",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "desayuno",
           "name": "breakfast",
           "tier": "linked",
@@ -1939,8 +1939,8 @@
         },
         {
           "entityId": "9aaa952b-64ca-41e5-821c-615076f4168c",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "mexicano",
           "name": "mexican",
           "tier": "linked",
@@ -1973,8 +1973,8 @@
       "grounded": [
         {
           "entityId": "28f42945-55e0-427c-9281-8fcfffdc6490",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "mariscos",
           "name": "shellfish",
           "tier": "gazetteer-exact",
@@ -1982,8 +1982,8 @@
         },
         {
           "entityId": "f43fa2e2-d94d-4ebe-8136-698ff755d869",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "mariscos",
           "name": "seafood",
           "tier": "gazetteer-exact",
@@ -1991,8 +1991,8 @@
         },
         {
           "entityId": "a5ec9b4b-ef69-4b8b-a5a9-1ecaddd54a6f",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "peruanos",
           "name": "peruvian",
           "tier": "linked",
@@ -2025,8 +2025,8 @@
       "grounded": [
         {
           "entityId": "05708d69-10ff-4482-9818-fa8ec6931225",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "halal",
           "name": "halal",
           "tier": "linked",
@@ -2077,8 +2077,8 @@
       "grounded": [
         {
           "entityId": "dfcea5a8-359f-410c-9ca6-85f4196ff8b2",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "sushi",
           "name": "sushi",
           "tier": "gazetteer-exact",
@@ -2086,8 +2086,8 @@
         },
         {
           "entityId": "f2e2ce70-e8bf-4972-ad06-2f8a32400754",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "sushi",
           "name": "sushi prepared fish",
           "tier": "gazetteer-exact",
@@ -2095,8 +2095,8 @@
         },
         {
           "entityId": "cb919b76-8da1-4a2b-adb6-92cac7809ec0",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "kosher",
           "name": "kosher",
           "tier": "gazetteer-exact",
@@ -2129,8 +2129,8 @@
       "grounded": [
         {
           "entityId": "38be14f9-ec49-4768-8874-8dfd16c56810",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "comida china",
           "name": "chinese food",
           "tier": "gazetteer-exact",
@@ -2138,8 +2138,8 @@
         },
         {
           "entityId": "623bd393-b301-421e-abe9-4552866f3cc2",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "china",
           "name": "chinese",
           "tier": "gazetteer-exact",
@@ -2147,8 +2147,8 @@
         },
         {
           "entityId": "ed20b835-e451-4a80-96cd-92a12b4b88dc",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "para llevar",
           "name": "takeout",
           "tier": "gazetteer-exact",
@@ -2181,21 +2181,21 @@
       "grounded": [
         {
           "entityId": "2bf8e2a8-2837-4824-8c14-345690793f73",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "tacos de birria",
           "name": "birria tacos",
           "tier": "gazetteer-exact",
           "foldedName": "birria tacos"
         },
         {
-          "entityId": "18f5fa4d-51d0-4a50-a998-966bd12f76b9",
-          "bucket": "food",
-          "type": "food",
+          "entityId": "44f44d4c-1c87-4325-b8b9-6e68f996fafd",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "tacos",
-          "name": "taco",
+          "name": "tacos",
           "tier": "linked",
-          "foldedName": "taco"
+          "foldedName": "tacos"
         },
         {
           "entityId": "40abd5fe-5eb5-4b7a-ab60-75d2c50fec47",
@@ -2233,8 +2233,8 @@
       "grounded": [
         {
           "entityId": "bbd54e67-8b38-40a3-82b2-50cd4e3c4f4f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "helado de fresa",
           "name": "strawberry ice cream",
           "tier": "gazetteer-exact",
@@ -2242,8 +2242,8 @@
         },
         {
           "entityId": "dd390a0b-4199-4e1b-b1df-2fea78f11cc7",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "helado",
           "name": "ice cream",
           "tier": "linked",
@@ -2251,8 +2251,8 @@
         },
         {
           "entityId": "ef0cdc27-b056-465e-9a57-a56b5e7d5693",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "fresa",
           "name": "strawberry",
           "tier": "linked",
@@ -2285,8 +2285,8 @@
       "grounded": [
         {
           "entityId": "1a93266c-6377-4bde-96e9-77a7333d0334",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "sopa de pollo",
           "name": "chicken soup",
           "tier": "gazetteer-exact",
@@ -2294,8 +2294,8 @@
         },
         {
           "entityId": "821d07a6-0ec3-482c-a140-b6c103a152a4",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "sopa",
           "name": "soup",
           "tier": "linked",
@@ -2337,8 +2337,8 @@
       "grounded": [
         {
           "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "arroz",
           "name": "rice",
           "tier": "gazetteer-exact",
@@ -2346,8 +2346,8 @@
         },
         {
           "entityId": "12bcdfbd-7736-4d47-82e7-b7cf30b5fa93",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pollo",
           "name": "chicken",
           "tier": "gazetteer-exact",
@@ -2355,8 +2355,8 @@
         },
         {
           "entityId": "19c7cbed-43a9-4a8d-8096-eeeb99377eaa",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pollo",
           "name": "pollo",
           "tier": "gazetteer-exact",
@@ -2389,8 +2389,8 @@
       "grounded": [
         {
           "entityId": "c13a461b-2d73-4c30-91d4-f451ba4cb50c",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pizza napolitana",
           "name": "neapolitan pizza",
           "tier": "gazetteer-exact",
@@ -2398,8 +2398,8 @@
         },
         {
           "entityId": "822c42f9-9e5f-4f5a-9df2-ad62ebebd46f",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "pizza",
           "name": "pizza",
           "tier": "linked",
@@ -2407,8 +2407,8 @@
         },
         {
           "entityId": "c86c1609-0dcc-48fa-a2d8-ae3e4aefebe3",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "napolitana",
           "name": "neapolitan",
           "tier": "linked",
@@ -2441,8 +2441,8 @@
       "grounded": [
         {
           "entityId": "6f332d26-e126-462c-a58e-0b8954687be6",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "vegetariano",
           "name": "vegetarian",
           "tier": "gazetteer-exact",
@@ -2450,8 +2450,8 @@
         },
         {
           "entityId": "1b83fa1e-680d-4292-acf5-b8456d27e415",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "tranquilo",
           "name": "quiet",
           "tier": "gazetteer-exact",
@@ -2459,8 +2459,8 @@
         },
         {
           "entityId": "f8a60107-f84c-4c70-ab2a-d55045f3bb47",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "tranquilo",
           "name": "not too busy",
           "tier": "gazetteer-exact",
@@ -2493,8 +2493,8 @@
       "grounded": [
         {
           "entityId": "700e2265-234c-4a11-91b1-9dbc2820b5cd",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "comida india vegetariana",
           "name": "indian vegetarian",
           "tier": "gazetteer-exact",
@@ -2502,8 +2502,8 @@
         },
         {
           "entityId": "f684e3cb-9329-40bf-be83-8ab15293c48d",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "comida india",
           "name": "indian",
           "tier": "linked",
@@ -2511,8 +2511,8 @@
         },
         {
           "entityId": "6f332d26-e126-462c-a58e-0b8954687be6",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "vegetariana",
           "name": "vegetarian",
           "tier": "linked",
@@ -2545,8 +2545,8 @@
       "grounded": [
         {
           "entityId": "daa26f2b-6367-4cd6-916d-1461b72168d4",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "brunch",
           "name": "brunch",
           "tier": "gazetteer-exact",
@@ -2554,8 +2554,8 @@
         },
         {
           "entityId": "65a80396-ea4d-44d6-876c-b17a258a3326",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "romántico",
           "name": "romantic",
           "tier": "gazetteer-exact",
@@ -2588,8 +2588,8 @@
       "grounded": [
         {
           "entityId": "926935db-c5d9-45f8-8618-05fb6a9fd3e9",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "café",
           "name": "coffee",
           "tier": "gazetteer-exact",
@@ -2597,8 +2597,8 @@
         },
         {
           "entityId": "1c629813-ffc1-4860-bf00-5ca06dccc4fb",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "terraza",
           "name": "rooftop",
           "tier": "gazetteer-exact",
@@ -2606,8 +2606,8 @@
         },
         {
           "entityId": "d25c2905-f8e6-4de7-93f6-4bc6d04a6c07",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "terraza",
           "name": "outdoor seating",
           "tier": "gazetteer-exact",
@@ -2615,8 +2615,8 @@
         },
         {
           "entityId": "df305d0a-9668-4518-8a6e-42eb734042ca",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "terraza",
           "name": "outdoor bar",
           "tier": "gazetteer-exact",
@@ -2649,8 +2649,8 @@
       "grounded": [
         {
           "entityId": "45d744fc-4c83-4a0d-9e23-616a83d70bc9",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "comida coreana",
           "name": "korean",
           "tier": "gazetteer-exact",
@@ -2683,8 +2683,8 @@
       "grounded": [
         {
           "entityId": "edf4be4f-e56a-430f-b785-4b71acee9359",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pescado a la parrilla",
           "name": "grilled fish",
           "tier": "gazetteer-exact",
@@ -2692,8 +2692,8 @@
         },
         {
           "entityId": "5e7775c8-82bc-410a-bce3-7b5d05e49249",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "a la parrilla",
           "name": "grilled",
           "tier": "linked",
@@ -2735,8 +2735,8 @@
       "grounded": [
         {
           "entityId": "18f5fa4d-51d0-4a50-a998-966bd12f76b9",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "tacos",
           "name": "taco",
           "tier": "gazetteer-exact",
@@ -2744,8 +2744,8 @@
         },
         {
           "entityId": "5e019470-b050-48bb-9264-a16a383b82d8",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "camarones",
           "name": "camarones",
           "tier": "gazetteer-exact",
@@ -2753,8 +2753,8 @@
         },
         {
           "entityId": "7eeb7cb1-5653-46e7-a24b-af91cd5e85cd",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "camarones",
           "name": "shrimp",
           "tier": "gazetteer-exact",
@@ -2787,8 +2787,8 @@
       "grounded": [
         {
           "entityId": "ab672d04-3263-4080-9827-3f35a7a83c71",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "postre",
           "name": "dessert",
           "tier": "gazetteer-exact",
@@ -2796,8 +2796,8 @@
         },
         {
           "entityId": "a1fafbb5-06bc-474d-9c47-65f7a7bd1716",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "vegano",
           "name": "vegan",
           "tier": "gazetteer-exact",
@@ -2830,8 +2830,8 @@
       "grounded": [
         {
           "entityId": "f9b9c67a-249f-4e09-a33a-4aefb47ebc84",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "cocina mediterránea",
           "name": "mediterranean",
           "tier": "gazetteer-exact",
@@ -2864,8 +2864,8 @@
       "grounded": [
         {
           "entityId": "1c629813-ffc1-4860-bf00-5ca06dccc4fb",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "terraza",
           "name": "rooftop",
           "tier": "gazetteer-exact",
@@ -2873,8 +2873,8 @@
         },
         {
           "entityId": "d25c2905-f8e6-4de7-93f6-4bc6d04a6c07",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "terraza",
           "name": "outdoor seating",
           "tier": "gazetteer-exact",
@@ -2882,8 +2882,8 @@
         },
         {
           "entityId": "df305d0a-9668-4518-8a6e-42eb734042ca",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "terraza",
           "name": "outdoor bar",
           "tier": "gazetteer-exact",
@@ -2916,8 +2916,8 @@
       "grounded": [
         {
           "entityId": "a1fafbb5-06bc-474d-9c47-65f7a7bd1716",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "vegana",
           "name": "vegan",
           "tier": "gazetteer-exact",
@@ -2925,8 +2925,8 @@
         },
         {
           "entityId": "ed20b835-e451-4a80-96cd-92a12b4b88dc",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "para llevar",
           "name": "takeout",
           "tier": "gazetteer-exact",
@@ -2959,8 +2959,8 @@
       "grounded": [
         {
           "entityId": "eb4a3bcc-0694-47aa-a700-d0c3e547a5d4",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "ramen",
           "name": "ramen",
           "tier": "gazetteer-exact",
@@ -2968,8 +2968,8 @@
         },
         {
           "entityId": "e4abca51-a876-41b9-a3c7-4a718eba8f90",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cerdo",
           "name": "pork",
           "tier": "gazetteer-exact",
@@ -3002,8 +3002,8 @@
       "grounded": [
         {
           "entityId": "18f5fa4d-51d0-4a50-a998-966bd12f76b9",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "tacos",
           "name": "taco",
           "tier": "gazetteer-exact",
@@ -3011,8 +3011,8 @@
         },
         {
           "entityId": "7b84ccf4-4b92-4795-85d5-6837e1df847e",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "sin queso",
           "name": "cheeseless",
           "tier": "gazetteer-exact",
@@ -3045,8 +3045,8 @@
       "grounded": [
         {
           "entityId": "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pizza",
           "name": "pizza pie",
           "tier": "gazetteer-exact",
@@ -3054,8 +3054,8 @@
         },
         {
           "entityId": "b33eb888-0acd-432b-bebd-e14d0699ec13",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pizza",
           "name": "pitzas",
           "tier": "gazetteer-exact",
@@ -3063,8 +3063,8 @@
         },
         {
           "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pizza",
           "name": "pizza",
           "tier": "gazetteer-exact",
@@ -3072,8 +3072,8 @@
         },
         {
           "entityId": "7b84ccf4-4b92-4795-85d5-6837e1df847e",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "sin queso",
           "name": "cheeseless",
           "tier": "gazetteer-exact",
@@ -3106,8 +3106,8 @@
       "grounded": [
         {
           "entityId": "dfcea5a8-359f-410c-9ca6-85f4196ff8b2",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "sushi",
           "name": "sushi",
           "tier": "gazetteer-exact",
@@ -3115,8 +3115,8 @@
         },
         {
           "entityId": "f2e2ce70-e8bf-4972-ad06-2f8a32400754",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "sushi",
           "name": "sushi prepared fish",
           "tier": "gazetteer-exact",
@@ -3124,8 +3124,8 @@
         },
         {
           "entityId": "77490d5e-e33e-4f6e-b1b8-d370755faf1f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "arroz",
           "name": "rice",
           "tier": "gazetteer-exact",
@@ -3158,8 +3158,8 @@
       "grounded": [
         {
           "entityId": "eb4a3bcc-0694-47aa-a700-d0c3e547a5d4",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "ramen",
           "name": "ramen",
           "tier": "gazetteer-exact",
@@ -3167,8 +3167,8 @@
         },
         {
           "entityId": "12bcdfbd-7736-4d47-82e7-b7cf30b5fa93",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pollo",
           "name": "chicken",
           "tier": "gazetteer-exact",
@@ -3176,8 +3176,8 @@
         },
         {
           "entityId": "19c7cbed-43a9-4a8d-8096-eeeb99377eaa",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pollo",
           "name": "pollo",
           "tier": "gazetteer-exact",
@@ -3210,8 +3210,8 @@
       "grounded": [
         {
           "entityId": "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pizza",
           "name": "pizza pie",
           "tier": "gazetteer-exact",
@@ -3219,8 +3219,8 @@
         },
         {
           "entityId": "b33eb888-0acd-432b-bebd-e14d0699ec13",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pizza",
           "name": "pitzas",
           "tier": "gazetteer-exact",
@@ -3228,8 +3228,8 @@
         },
         {
           "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pizza",
           "name": "pizza",
           "tier": "gazetteer-exact",
@@ -3237,8 +3237,8 @@
         },
         {
           "entityId": "3b38ad58-7750-42c8-9363-0b2742f704b2",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "carne",
           "name": "meat",
           "tier": "gazetteer-exact",
@@ -3271,8 +3271,8 @@
       "grounded": [
         {
           "entityId": "8015f56b-c984-49d7-b031-c0037d542454",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "ensalada",
           "name": "salad",
           "tier": "gazetteer-exact",
@@ -3280,8 +3280,8 @@
         },
         {
           "entityId": "5dbb584c-790e-4078-acb1-d60185968264",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "aguacate",
           "name": "avocado",
           "tier": "gazetteer-exact",
@@ -3314,8 +3314,8 @@
       "grounded": [
         {
           "entityId": "18f5fa4d-51d0-4a50-a998-966bd12f76b9",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "tacos",
           "name": "taco",
           "tier": "gazetteer-exact",
@@ -3357,8 +3357,8 @@
       "grounded": [
         {
           "entityId": "21d00910-34ce-4f9f-8466-dd1abf717326",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "burrito",
           "name": "burrito",
           "tier": "gazetteer-exact",
@@ -3366,8 +3366,8 @@
         },
         {
           "entityId": "001a597e-bfd0-4f0a-a1ad-fe63289e1364",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "frijoles",
           "name": "beans",
           "tier": "gazetteer-exact",
@@ -3375,8 +3375,8 @@
         },
         {
           "entityId": "0a89b1a0-5601-41aa-a2a4-74b3bd2bb2d1",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "frijoles",
           "name": "frijoles",
           "tier": "gazetteer-exact",
@@ -3409,8 +3409,8 @@
       "grounded": [
         {
           "entityId": "da6035cd-687a-4baa-9ed2-34705a82848b",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "quesadilla",
           "name": "quesadilla",
           "tier": "gazetteer-exact",
@@ -3452,8 +3452,8 @@
       "grounded": [
         {
           "entityId": "12bcdfbd-7736-4d47-82e7-b7cf30b5fa93",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pollo",
           "name": "chicken",
           "tier": "gazetteer-exact",
@@ -3461,8 +3461,8 @@
         },
         {
           "entityId": "19c7cbed-43a9-4a8d-8096-eeeb99377eaa",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pollo",
           "name": "pollo",
           "tier": "gazetteer-exact",
@@ -3504,8 +3504,8 @@
       "grounded": [
         {
           "entityId": "042de43d-2fb6-460d-bbea-b8779b79b52a",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pasta",
           "name": "noodles",
           "tier": "gazetteer-exact",
@@ -3513,8 +3513,8 @@
         },
         {
           "entityId": "ea223900-5f0e-447f-83a2-74b23ca8b933",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pasta",
           "name": "pasta",
           "tier": "gazetteer-exact",
@@ -3556,8 +3556,8 @@
       "grounded": [
         {
           "entityId": "18f5fa4d-51d0-4a50-a998-966bd12f76b9",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "tacos",
           "name": "taco",
           "tier": "gazetteer-exact",
@@ -3565,8 +3565,8 @@
         },
         {
           "entityId": "3b38ad58-7750-42c8-9363-0b2742f704b2",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "carne",
           "name": "meat",
           "tier": "gazetteer-exact",
@@ -3599,8 +3599,8 @@
       "grounded": [
         {
           "entityId": "eb4a3bcc-0694-47aa-a700-d0c3e547a5d4",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "ramen",
           "name": "ramen",
           "tier": "gazetteer-exact",
@@ -3608,8 +3608,8 @@
         },
         {
           "entityId": "ab0a8661-0583-4732-8c7b-c7dc45bdc4b6",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "huevo",
           "name": "eggs^3",
           "tier": "gazetteer-exact",
@@ -3617,8 +3617,8 @@
         },
         {
           "entityId": "ce4c9ce8-8a7f-4789-b9e4-242beac3eb17",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "huevo",
           "name": "egg",
           "tier": "gazetteer-exact",
@@ -3651,8 +3651,8 @@
       "grounded": [
         {
           "entityId": "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pizza",
           "name": "pizza pie",
           "tier": "gazetteer-exact",
@@ -3660,8 +3660,8 @@
         },
         {
           "entityId": "b33eb888-0acd-432b-bebd-e14d0699ec13",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pizza",
           "name": "pitzas",
           "tier": "gazetteer-exact",
@@ -3669,8 +3669,8 @@
         },
         {
           "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pizza",
           "name": "pizza",
           "tier": "gazetteer-exact",
@@ -3678,8 +3678,8 @@
         },
         {
           "entityId": "6f332d26-e126-462c-a58e-0b8954687be6",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "vegetariana",
           "name": "vegetarian",
           "tier": "gazetteer-exact",
@@ -3712,8 +3712,8 @@
       "grounded": [
         {
           "entityId": "b4ca12f0-869b-4d50-8d3a-f874141501ae",
-          "bucket": "restaurants",
-          "type": "restaurant",
+          "bucket": "places",
+          "type": "place",
           "span": "sea",
           "name": "Sea",
           "tier": "gazetteer-exact",
@@ -3721,8 +3721,8 @@
         },
         {
           "entityId": "dfcea5a8-359f-410c-9ca6-85f4196ff8b2",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "sushi",
           "name": "sushi",
           "tier": "gazetteer-exact",
@@ -3730,8 +3730,8 @@
         },
         {
           "entityId": "f2e2ce70-e8bf-4972-ad06-2f8a32400754",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "sushi",
           "name": "sushi prepared fish",
           "tier": "gazetteer-exact",
@@ -3739,8 +3739,8 @@
         },
         {
           "entityId": "08630647-825b-439d-8a47-461cf61a7f3d",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "caro",
           "name": "expensive",
           "tier": "gazetteer-exact",
@@ -3773,8 +3773,8 @@
       "grounded": [
         {
           "entityId": "ca15d0cc-13d5-4e38-8d2b-95dc4dd28808",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "picante",
           "name": "pungent",
           "tier": "gazetteer-exact",
@@ -3782,8 +3782,8 @@
         },
         {
           "entityId": "d5912bd2-54c8-41a1-86c5-d3328abeaca4",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "picante",
           "name": "spicy",
           "tier": "gazetteer-exact",
@@ -3816,8 +3816,8 @@
       "grounded": [
         {
           "entityId": "ab672d04-3263-4080-9827-3f35a7a83c71",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "postre",
           "name": "dessert",
           "tier": "gazetteer-exact",
@@ -3825,8 +3825,8 @@
         },
         {
           "entityId": "0232d6b6-257b-49b3-aaa2-2e58cc12b8c8",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "sin azúcar",
           "name": "sugar free",
           "tier": "gazetteer-exact",
@@ -3868,8 +3868,8 @@
       "grounded": [
         {
           "entityId": "926935db-c5d9-45f8-8618-05fb6a9fd3e9",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "café",
           "name": "coffee",
           "tier": "gazetteer-exact",
@@ -3877,8 +3877,8 @@
         },
         {
           "entityId": "89127e73-89c8-44a1-9f97-8b4a4c702f22",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "leche",
           "name": "milk",
           "tier": "gazetteer-exact",
@@ -3911,8 +3911,8 @@
       "grounded": [
         {
           "entityId": "e2055664-c29c-4cb2-baaa-8565f2086504",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "birria",
           "name": "birria",
           "tier": "gazetteer-exact",
@@ -3963,8 +3963,8 @@
       "grounded": [
         {
           "entityId": "ed20b835-e451-4a80-96cd-92a12b4b88dc",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "para llevar",
           "name": "takeout",
           "tier": "gazetteer-exact",
@@ -3997,8 +3997,8 @@
       "grounded": [
         {
           "entityId": "1c629813-ffc1-4860-bf00-5ca06dccc4fb",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "terraza",
           "name": "rooftop",
           "tier": "gazetteer-exact",
@@ -4006,8 +4006,8 @@
         },
         {
           "entityId": "d25c2905-f8e6-4de7-93f6-4bc6d04a6c07",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "terraza",
           "name": "outdoor seating",
           "tier": "gazetteer-exact",
@@ -4015,8 +4015,8 @@
         },
         {
           "entityId": "df305d0a-9668-4518-8a6e-42eb734042ca",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "terraza",
           "name": "outdoor bar",
           "tier": "gazetteer-exact",
@@ -4049,8 +4049,8 @@
       "grounded": [
         {
           "entityId": "65a80396-ea4d-44d6-876c-b17a258a3326",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "romántico",
           "name": "romantic",
           "tier": "gazetteer-exact",
@@ -4083,8 +4083,8 @@
       "grounded": [
         {
           "entityId": "59e40b37-34d7-4556-bcca-53ead8a6bd17",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "acepta mascotas",
           "name": "allows dogs",
           "tier": "gazetteer-exact",
@@ -4117,8 +4117,8 @@
       "grounded": [
         {
           "entityId": "1b83fa1e-680d-4292-acf5-b8456d27e415",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "tranquilo",
           "name": "quiet",
           "tier": "gazetteer-exact",
@@ -4126,8 +4126,8 @@
         },
         {
           "entityId": "f8a60107-f84c-4c70-ab2a-d55045f3bb47",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "tranquilo",
           "name": "not too busy",
           "tier": "gazetteer-exact",
@@ -4160,8 +4160,8 @@
       "grounded": [
         {
           "entityId": "458674e3-9093-464d-ae53-92f54bb55ec8",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "ideal para grupos",
           "name": "good for groups",
           "tier": "gazetteer-exact",
@@ -4194,8 +4194,8 @@
       "grounded": [
         {
           "entityId": "8409f136-de44-464e-852a-3362e113ebc7",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "sin gluten",
           "name": "gluten free",
           "tier": "gazetteer-exact",
@@ -4237,8 +4237,8 @@
       "grounded": [
         {
           "entityId": "a1fafbb5-06bc-474d-9c47-65f7a7bd1716",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "vegano",
           "name": "vegan",
           "tier": "gazetteer-exact",
@@ -4271,8 +4271,8 @@
       "grounded": [
         {
           "entityId": "6f332d26-e126-462c-a58e-0b8954687be6",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "vegetariano",
           "name": "vegetarian",
           "tier": "gazetteer-exact",
@@ -4305,8 +4305,8 @@
       "grounded": [
         {
           "entityId": "05708d69-10ff-4482-9818-fa8ec6931225",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "halal",
           "name": "halal",
           "tier": "gazetteer-exact",
@@ -4339,8 +4339,8 @@
       "grounded": [
         {
           "entityId": "cb919b76-8da1-4a2b-adb6-92cac7809ec0",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "kosher",
           "name": "kosher",
           "tier": "gazetteer-exact",
@@ -4373,8 +4373,8 @@
       "grounded": [
         {
           "entityId": "645a6bdc-cb24-4404-89db-27579cc27a33",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "mexicana",
           "name": "mexican",
           "tier": "gazetteer-exact",
@@ -4407,8 +4407,8 @@
       "grounded": [
         {
           "entityId": "18218014-dba6-4a77-84bc-3c7b958b6e52",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "japonesa",
           "name": "japanese",
           "tier": "gazetteer-exact",
@@ -4441,8 +4441,8 @@
       "grounded": [
         {
           "entityId": "5ac2a9cf-156a-4917-98f8-de3cd4031f85",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "italiana",
           "name": "italian",
           "tier": "gazetteer-exact",
@@ -4475,8 +4475,8 @@
       "grounded": [
         {
           "entityId": "50866eb6-cd19-45bf-969f-16061dd85244",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "tailandesa",
           "name": "thai",
           "tier": "gazetteer-exact",
@@ -4509,8 +4509,8 @@
       "grounded": [
         {
           "entityId": "45d744fc-4c83-4a0d-9e23-616a83d70bc9",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "coreana",
           "name": "korean",
           "tier": "gazetteer-exact",
@@ -4543,8 +4543,8 @@
       "grounded": [
         {
           "entityId": "90677d09-9766-4089-8d62-b63d519271f8",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "entrega a domicilio",
           "name": "delivery",
           "tier": "gazetteer-exact",
@@ -4577,8 +4577,8 @@
       "grounded": [
         {
           "entityId": "1c629813-ffc1-4860-bf00-5ca06dccc4fb",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "azotea",
           "name": "rooftop",
           "tier": "gazetteer-exact",
@@ -4611,8 +4611,8 @@
       "grounded": [
         {
           "entityId": "fbc17ea5-411d-4d23-a09d-5b44bc4f335d",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "abierto hasta tarde",
           "name": "late night",
           "tier": "gazetteer-exact",
@@ -4645,8 +4645,8 @@
       "grounded": [
         {
           "entityId": "3eceef52-8b24-423b-910b-4a8966fa15c7",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "vinos",
           "name": "wine",
           "tier": "linked",
@@ -4654,8 +4654,8 @@
         },
         {
           "entityId": "982963ff-1e83-4689-8edc-b6a717f131ec",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "bar de vinos",
           "name": "wine bar",
           "tier": "gazetteer-exact",
@@ -4663,8 +4663,8 @@
         },
         {
           "entityId": "f26bc48f-ce90-4979-bb67-d69c6ef25e20",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "bar",
           "name": "bar",
           "tier": "linked",
@@ -4697,8 +4697,8 @@
       "grounded": [
         {
           "entityId": "984263e0-402b-434a-9320-d93b23bb0e0a",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pan",
           "name": "pan",
           "tier": "gazetteer-exact",
@@ -4706,8 +4706,8 @@
         },
         {
           "entityId": "d0cee3f7-5e48-4efc-86ce-dfbf8f3ca5eb",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pan",
           "name": "bread",
           "tier": "gazetteer-exact",
@@ -4743,8 +4743,8 @@
       "grounded": [
         {
           "entityId": "dc9677ea-1f26-421d-ac1a-2411513f7bc5",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "тако",
           "name": "tako",
           "tier": "linked",
@@ -4773,8 +4773,8 @@
       "grounded": [
         {
           "entityId": "821d07a6-0ec3-482c-a140-b6c103a152a4",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "sopa",
           "name": "soup",
           "tier": "gazetteer-exact",
@@ -4841,8 +4841,8 @@
       "grounded": [
         {
           "entityId": "5546be91-c8a2-4d69-aa4a-e645ce6fbda8",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "chile",
           "name": "chili",
           "tier": "gazetteer-exact",
@@ -4875,8 +4875,8 @@
       "grounded": [
         {
           "entityId": "1d14cf7a-6c36-4b92-aa35-1811e0005127",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "salsa",
           "name": "salsa",
           "tier": "gazetteer-exact",
@@ -4909,8 +4909,8 @@
       "grounded": [
         {
           "entityId": "5d106efa-c405-4fc2-8ad1-5bb0fad4bca9",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "tuna",
           "name": "tuna",
           "tier": "gazetteer-exact",
@@ -4943,8 +4943,8 @@
       "grounded": [
         {
           "entityId": "bc563494-a8cb-4993-b9df-2469f5a2a2c7",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pie",
           "name": "pie",
           "tier": "gazetteer-exact",
@@ -4977,8 +4977,8 @@
       "grounded": [
         {
           "entityId": "3eceef52-8b24-423b-910b-4a8966fa15c7",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "vino",
           "name": "wine",
           "tier": "gazetteer-exact",
@@ -5011,8 +5011,8 @@
       "grounded": [
         {
           "entityId": "7e9e2672-1bc5-4ad9-8834-bfd184662955",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "col",
           "name": "cabbage",
           "tier": "gazetteer-exact",
@@ -5045,8 +5045,8 @@
       "grounded": [
         {
           "entityId": "2109e187-c6da-41a1-b97b-71af33824bfe",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "miel",
           "name": "honey",
           "tier": "gazetteer-exact",
@@ -5147,8 +5147,8 @@
       "grounded": [
         {
           "entityId": "ef9a55b7-fd0a-4554-a3c4-dfc6ffbb09b1",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "mango",
           "name": "mango",
           "tier": "gazetteer-exact",
@@ -5181,8 +5181,8 @@
       "grounded": [
         {
           "entityId": "18f5fa4d-51d0-4a50-a998-966bd12f76b9",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "taco",
           "name": "taco",
           "tier": "gazetteer-exact",
@@ -5249,8 +5249,8 @@
       "grounded": [
         {
           "entityId": "d1bc44e8-3897-4b90-b586-49b6ae2a26ee",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "ave",
           "name": "averna amaro",
           "tier": "linked",
@@ -5283,8 +5283,8 @@
       "grounded": [
         {
           "entityId": "03a7d01e-dd88-4cf7-ad82-107602ea930f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "caldo",
           "name": "broth",
           "tier": "gazetteer-exact",
@@ -5292,8 +5292,8 @@
         },
         {
           "entityId": "78d7bd8a-97e7-44ae-8a7d-48216af252db",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "caldo",
           "name": "caldo",
           "tier": "gazetteer-exact",
@@ -5326,8 +5326,8 @@
       "grounded": [
         {
           "entityId": "1c3e5d0d-1bba-4a6d-8755-1af6dff3e458",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "masa",
           "name": "masa",
           "tier": "gazetteer-exact",
@@ -5335,8 +5335,8 @@
         },
         {
           "entityId": "3b0eb120-1882-4fee-a167-8b1b20be2105",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "masa",
           "name": "dough",
           "tier": "gazetteer-exact",
@@ -5393,33 +5393,33 @@
       "grounded": [
         {
           "entityId": "c62e8da3-1995-42b6-8029-f236701c3cd8",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "breakfast tacos",
           "name": "breakfast taco",
           "tier": "gazetteer-exact",
           "foldedName": "breakfast taco"
         },
         {
-          "entityId": "18f5fa4d-51d0-4a50-a998-966bd12f76b9",
-          "bucket": "food",
-          "type": "food",
-          "span": "tacos",
-          "name": "taco",
-          "tier": "linked",
-          "foldedName": "taco"
-        },
-        {
           "entityId": "5142b80a-80ca-4017-8cf8-08f867463134",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "breakfast",
           "name": "breakfast",
           "tier": "linked",
           "foldedName": "breakfast"
+        },
+        {
+          "entityId": "44f44d4c-1c87-4325-b8b9-6e68f996fafd",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
+          "span": "tacos",
+          "name": "tacos",
+          "tier": "linked",
+          "foldedName": "tacos"
         }
       ],
-      "unresolved": ["quiero"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5428,7 +5428,7 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -5445,15 +5445,15 @@
       "grounded": [
         {
           "entityId": "daa26f2b-6367-4cd6-916d-1461b72168d4",
-          "bucket": "foodAttributes",
-          "type": "food_attribute",
+          "bucket": "itemAttributes",
+          "type": "item_attribute",
           "span": "brunch",
           "name": "brunch",
           "tier": "gazetteer-exact",
           "foldedName": "brunch"
         }
       ],
-      "unresolved": ["en downtown"],
+      "unresolved": ["downtown"],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5479,15 +5479,15 @@
       "grounded": [
         {
           "entityId": "eb4a3bcc-0694-47aa-a700-d0c3e547a5d4",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "ramen",
           "name": "ramen",
           "tier": "gazetteer-exact",
           "foldedName": "ramen"
         }
       ],
-      "unresolved": ["busco"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5496,7 +5496,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -5513,8 +5513,8 @@
       "grounded": [
         {
           "entityId": "dfcea5a8-359f-410c-9ca6-85f4196ff8b2",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "sushi",
           "name": "sushi",
           "tier": "gazetteer-exact",
@@ -5522,8 +5522,8 @@
         },
         {
           "entityId": "f2e2ce70-e8bf-4972-ad06-2f8a32400754",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "sushi",
           "name": "sushi prepared fish",
           "tier": "gazetteer-exact",
@@ -5531,15 +5531,15 @@
         },
         {
           "entityId": "b693becc-a4ce-4b31-b35e-c7f3218a816d",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "barato",
           "name": "affordable",
           "tier": "gazetteer-exact",
           "foldedName": "affordable"
         }
       ],
-      "unresolved": ["quiero"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5548,7 +5548,7 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -5565,15 +5565,15 @@
       "grounded": [
         {
           "entityId": "08f45e9c-abf7-4db2-bbc9-d772538ca720",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pho",
           "name": "pho",
           "tier": "gazetteer-exact",
           "foldedName": "pho"
         }
       ],
-      "unresolved": ["ciudad"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5582,7 +5582,7 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -5599,15 +5599,15 @@
       "grounded": [
         {
           "entityId": "d3a9ad01-1827-4e33-a010-bdc17857b2fd",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "dim sum",
           "name": "dim sum",
           "tier": "gazetteer-exact",
           "foldedName": "dim sum"
         }
       ],
-      "unresolved": ["dónde hay"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5616,7 +5616,7 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -5633,8 +5633,8 @@
       "grounded": [
         {
           "entityId": "18f5fa4d-51d0-4a50-a998-966bd12f76b9",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "tacos",
           "name": "taco",
           "tier": "gazetteer-exact",
@@ -5642,15 +5642,15 @@
         },
         {
           "entityId": "85c4a787-2a89-460e-8443-470da5863061",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "cheese",
           "name": "cheese",
           "tier": "gazetteer-exact",
           "foldedName": "cheese"
         }
       ],
-      "unresolved": ["with"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5676,15 +5676,15 @@
       "grounded": [
         {
           "entityId": "53df955f-ec55-4392-ba46-e1184c52fafc",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bbq",
           "name": "bbq",
           "tier": "gazetteer-exact",
           "foldedName": "bbq"
         }
       ],
-      "unresolved": ["quiero"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5693,7 +5693,7 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -5710,21 +5710,21 @@
       "grounded": [
         {
           "entityId": "1c629813-ffc1-4860-bf00-5ca06dccc4fb",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "rooftop",
           "name": "rooftop",
           "tier": "gazetteer-exact",
           "foldedName": "rooftop"
         },
         {
-          "entityId": "9e50abab-b138-4b6f-ab56-65efa1f6789f",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "entityId": "63bd8472-4d3d-4d9c-9eff-d0cfc0dd375f",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "restaurantes",
-          "name": "restaurant week",
+          "name": "restaurant",
           "tier": "linked",
-          "foldedName": "restaurant week"
+          "foldedName": "restaurant"
         }
       ],
       "unresolved": [],
@@ -5736,7 +5736,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -5753,8 +5753,8 @@
       "grounded": [
         {
           "entityId": "dd390a0b-4199-4e1b-b1df-2fea78f11cc7",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "ice cream",
           "name": "ice cream",
           "tier": "gazetteer-exact",
@@ -5779,7 +5779,7 @@
           "foldedName": "cream"
         }
       ],
-      "unresolved": ["gusta"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5788,7 +5788,7 @@
           "confidence": 0.23529411764705882,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -5805,8 +5805,8 @@
       "grounded": [
         {
           "entityId": "982963ff-1e83-4689-8edc-b6a717f131ec",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "wine bar",
           "name": "wine bar",
           "tier": "gazetteer-exact",
@@ -5814,8 +5814,8 @@
         },
         {
           "entityId": "f26bc48f-ce90-4979-bb67-d69c6ef25e20",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "bar",
           "name": "bar",
           "tier": "linked",
@@ -5831,7 +5831,7 @@
           "foldedName": "wine"
         }
       ],
-      "unresolved": ["hay algún"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5840,7 +5840,7 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -5857,15 +5857,15 @@
       "grounded": [
         {
           "entityId": "3dec8084-e689-4d4a-8a70-d8e7bcd0b1bb",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "bagel",
           "name": "bagel",
           "tier": "gazetteer-exact",
           "foldedName": "bagel"
         }
       ],
-      "unresolved": ["quiero"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5874,7 +5874,7 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -5891,8 +5891,8 @@
       "grounded": [
         {
           "entityId": "6b829aa2-4a1f-45b1-b304-eb3ace7ba11b",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pizza",
           "name": "pizza pie",
           "tier": "gazetteer-exact",
@@ -5900,8 +5900,8 @@
         },
         {
           "entityId": "b33eb888-0acd-432b-bebd-e14d0699ec13",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pizza",
           "name": "pitzas",
           "tier": "gazetteer-exact",
@@ -5909,8 +5909,8 @@
         },
         {
           "entityId": "b3a4c3e8-307f-4694-89b2-9160fcaa0436",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pizza",
           "name": "pizza",
           "tier": "gazetteer-exact",
@@ -5918,8 +5918,8 @@
         },
         {
           "entityId": "ed20b835-e451-4a80-96cd-92a12b4b88dc",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "takeout",
           "name": "takeout",
           "tier": "gazetteer-exact",
@@ -5952,8 +5952,8 @@
       "grounded": [
         {
           "entityId": "64ff9303-1978-49d4-80a4-88cf7d8ab997",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "curry tailandés",
           "name": "thai curry",
           "tier": "gazetteer-exact",
@@ -5969,7 +5969,7 @@
           "foldedName": "curry"
         }
       ],
-      "unresolved": ["busco"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -5978,7 +5978,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -5995,15 +5995,15 @@
       "grounded": [
         {
           "entityId": "743913b0-8180-4ca2-91dd-0a505eaaea81",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "pancakes",
           "name": "pancakes",
           "tier": "gazetteer-exact",
           "foldedName": "pancakes"
         }
       ],
-      "unresolved": ["quiero"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -6012,7 +6012,7 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -6029,15 +6029,15 @@
       "grounded": [
         {
           "entityId": "45d6ca0c-10c9-4ff8-9cb6-1322dca4966c",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "steak",
           "name": "steak",
           "tier": "gazetteer-exact",
           "foldedName": "steak"
         }
       ],
-      "unresolved": ["dónde"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -6046,7 +6046,7 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -6063,21 +6063,12 @@
       "grounded": [
         {
           "entityId": "8015f56b-c984-49d7-b031-c0037d542454",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "salad",
           "name": "salad",
           "tier": "gazetteer-exact",
           "foldedName": "salad"
-        },
-        {
-          "entityId": "d36ae232-1a26-4b26-a2d5-ec142009ab43",
-          "bucket": "food",
-          "type": "food",
-          "span": "buen",
-          "name": "bueno burger",
-          "tier": "linked",
-          "foldedName": "bueno burger"
         }
       ],
       "unresolved": [],
@@ -6089,7 +6080,7 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -6106,8 +6097,8 @@
       "grounded": [
         {
           "entityId": "cb2e4fac-a778-4c30-a95a-319e86a61f4f",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "korean bbq",
           "name": "korean bbq",
           "tier": "gazetteer-exact",
@@ -6115,8 +6106,8 @@
         },
         {
           "entityId": "45d744fc-4c83-4a0d-9e23-616a83d70bc9",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "korean",
           "name": "korean",
           "tier": "linked",
@@ -6124,15 +6115,15 @@
         },
         {
           "entityId": "980f562b-e754-401f-8913-cae8befc7e66",
-          "bucket": "restaurantAttributes",
-          "type": "restaurant_attribute",
+          "bucket": "placeAttributes",
+          "type": "place_attribute",
           "span": "bbq",
           "name": "bbq",
           "tier": "linked",
           "foldedName": "bbq"
         }
       ],
-      "unresolved": ["quiero probar"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -6141,7 +6132,7 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -6158,15 +6149,15 @@
       "grounded": [
         {
           "entityId": "f43fa2e2-d94d-4ebe-8136-698ff755d869",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "seafood",
           "name": "seafood",
           "tier": "gazetteer-exact",
           "foldedName": "seafood"
         }
       ],
-      "unresolved": ["algo"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -6175,7 +6166,7 @@
           "confidence": 0.5,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
@@ -6192,8 +6183,8 @@
       "grounded": [
         {
           "entityId": "6bd6eab9-f8f4-4bf8-a662-7ad9e3e6b64a",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "sandwich",
           "name": "sandwich",
           "tier": "gazetteer-exact",
@@ -6201,8 +6192,8 @@
         },
         {
           "entityId": "8f26ae55-e27b-465c-bac5-ade9ee064905",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "sandwich",
           "name": "sub sandwich",
           "tier": "gazetteer-exact",
@@ -6210,15 +6201,15 @@
         },
         {
           "entityId": "a27bd632-a0eb-4d0f-83e1-41a444a05276",
-          "bucket": "food",
-          "type": "food",
+          "bucket": "items",
+          "type": "item",
           "span": "sandwich",
           "name": "sando",
           "tier": "gazetteer-exact",
           "foldedName": "sando"
         }
       ],
-      "unresolved": ["quiero"],
+      "unresolved": [],
       "analysis": {
         "script": "latin",
         "requestLocale": "es-US",
@@ -6227,7 +6218,7 @@
           "confidence": 1,
           "source": "request-prior"
         },
-        "denseTierUsed": true,
+        "denseTierUsed": false,
         "browseMode": false
       },
       "misGroundings": [],
