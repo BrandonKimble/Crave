@@ -481,77 +481,62 @@ judged once you know what it was modifying; peeling first is what turns
 
 ### C.1 Is there a dish at all?
 
-Ask THE ORDER TEST of the food language: _could you say this to a server as the
-thing you want to order?_ A food here is anything orderable — drinks included:
-an espresso or a cocktail is a dish exactly like a taco.
+Find this source's own FOOD LANGUAGE and walk it through three gates, in
+order. The venue's name is never food language: praising the truck
+"Birria-Landia" praises no dish called "birria"; "Ramen Del Barrio" names
+no ramen claim.
 
-If nothing does — the source named a cuisine, a style, a property, or filler
-but no orderable item — **there is no dish.** Leave `item` and
-`item_categories` null; the mention is restaurant-only and the cuisine or style
-lands as an attribute in Step D. **Never manufacture a dish** from a cuisine
-word, a style word, or the kind of place it is: a cocktail bar does not thereby
-serve a dish called "cocktail", and "great Indian place" names no food.
-Neither does "<cuisine> food", however modified — "red sauce italian food"
-names a tradition, not an order (irreducible "comfort food" is the
-exception: carry it whole to Step D).
-Two more sources that never yield a dish:
+**Gate 1 — THE HEAD NOUN.** Find the head noun of the food phrase — the
+last noun, the one the modifiers hang off. A DELIVERY WRAPPER head
+(`menu`, `tasting menu`, `course`/`N-course`, `prix fixe`, `buffet`,
+`special`, `deal`, `combo`) is never the dish, and a modifier cannot
+rescue it — triage the modifier instead:
 
-- **The venue's own name.** A food token inside a restaurant's name is part
-  of the name and nothing more: praising the truck "Birria-Landia" has not
-  thereby praised a dish called "birria", and "Ramen Del Barrio" names no
-  ramen claim. A dish exists only when the source's own FOOD LANGUAGE names
-  one.
-- **A when-word praised holistically.** "Dinner is super solid there" names
-  no dish — dinner is any food at all (C.3). The mention is restaurant-only.
+- Modifier NAMES A FOOD ("wagyu tasting menu", "nigiri special", "dumpling
+  combo"): `item` is `wagyu`, `nigiri`, `dumpling` — the food itself,
+  never the compound. The venue may earn the BARE wrapper as a
+  `place_attributes` entry per Step D.
+- Modifier NAMES A TIME, PRICE, COUNT, OR OCCASION ("lunch special", "3/4
+  course menu", "happy hour deal", "$25 combo") — or the wrapper is bare
+  ("the tasting menu"): no dish — **but the mention still EMITS**,
+  restaurant-only with `general_praise: true`: praise of a deal is VALUE
+  testimony, however strong the verb — "their lunch specials are big
+  hits", "my go-to", "great weekday lunch special - 2 tacos, rice y beans,
+  iced tea like $10" all emit — and `good value` rides in
+  `place_attributes` where the text supports it. Never mint an item named "lunch special", "combo", or
+  "daily special"; components listed inside a deal ("2 tacos, rice y
+  beans") are the deal's contents, not this source's dish claims.
+- A format that PASSES the PREDICTION TEST is FOOD, not a wrapper:
+  "omakase" and "dim sum" predict what arrives and go through Step C
+  normally (usually a FAMILY, `is_menu_item: false` — Step E). The
+  asymmetry: "salmon omakase" composes as a dish; "salmon tasting menu"
+  redirects to `salmon`.
 
-**A format or deal that fails the PREDICTION TEST is not a dish, even when
-the writer praises it by name, and even when it carries a modifier.**
-"It is our newest favorite tasting menu" praises the venue's offering, but
-"tasting menu" predicts nothing about what arrives — there is NO dish and no
-`item_categories`; the mention is restaurant-only, the praise is holistic
-(`general_praise: true`), and the format may ride as a `place_attributes`
-entry per Step D.
+**Gate 2 — THE ORDER TEST.** _Could you say this to a server as the thing
+you want to order?_ Anything orderable is a dish, drinks included — an
+espresso or a cocktail exactly like a taco. Failing by definition:
 
-**JUDGE THE HEAD NOUN FIRST.** Before composing anything, find the head noun
-of the food phrase — the last noun, the one the modifiers hang off. If that
-head noun is a DELIVERY WRAPPER — `menu`, `tasting menu`, `course` /
-`N-course`, `prix fixe`, `buffet`, `special`, `deal`, `combo` — the wrapper
-predicts nothing about what arrives, and **the wrapper is never the dish.** A
-modifier cannot rescue it. Ask instead what the modifier is:
+- wanting-anything words — "food", "a meal", "the food here" name the
+  desire to eat, not a thing the server could bring;
+- traditions and styles, however modified — "great Indian place", "red
+  sauce italian food" name no order (irreducible "comfort food" is the
+  exception: carry it whole to Step D, where it is a style attribute);
+- a when-word praised holistically — "Dinner is super solid there" names
+  no dish (C.3);
+- the kind of place it is — a cocktail bar does not thereby serve a dish
+  called "cocktail".
 
-- **The modifier NAMES A FOOD** ("wagyu tasting menu", "nigiri special",
-  "dumpling combo"): extract THE FOOD ITSELF and throw the wrapper away —
-  `item` is `wagyu`, `nigiri`, `dumpling`, never the compound. The venue may
-  earn the BARE wrapper as a `place_attributes` entry per Step D.
-- **The modifier NAMES A TIME, PRICE, COUNT, OR OCCASION** ("lunch special",
-  "3/4 course menu", "happy hour deal", "tuesday special", "lunch tasting
-  menu", "$25 combo"): the whole phrase predicts only WHEN, HOW MUCH, or HOW
-  MANY. There is no dish and no `item_categories` — leave both null.
-- **A BARE wrapper** ("the tasting menu", "their buffet"): same — no dish.
+What fails here is not lost: the cuisine or style lands in Step D as an
+attribute where it describes.
 
-**MEAL DEALS ARE VALUE TESTIMONY.** "their lunch specials are some of their
-big hits", "great weekday lunch special - 2 tacos, rice y beans, iced tea
-like $10" are genuine testimony — about PRICE and VALUE, not about an
-identifiable food. Do not read the strength of the verb as evidence that a
-food exists: "is good", "big hits", "my go-to" applied to a deal are still
-about the deal. Emit a restaurant-only mention (`general_praise: true`, food
-null, `good value` in `place_attributes` where the text supports it).
-Never mint a food named "lunch special", "combo", or "daily special".
-Components listed inside a deal ("2 tacos, rice y beans") are the deal's
-contents, not this source's dish claims — do not compose a dish from them.
-
-(Formats that PASS prediction — omakase, dim sum — are FOOD and go through
-Step C normally: they behave like "breakfast", a recognizable kind — usually
-a FAMILY with `is_menu_item: false`, becoming a specific item only where Step
-E's sameness test holds, e.g. "the omakase" at one sushi-ya is a single fixed
-offering, while dim sum is always many plates. Note the asymmetry with a
-wrapper head: "salmon omakase" composes normally as a dish, because `omakase`
-predicts the food; "salmon tasting menu" redirects to `salmon`, because
-`tasting menu` does not.)
-
-**A wanting-anything word fails by definition**: "food", "a meal", "the
-food here" name the desire to eat, not a thing a server could bring. There
-is no dish.
+**Gate 3 — THE VERDICT.** Something survived → compose it in C.2. Nothing
+survived → the mention is restaurant-only (`item` and `item_categories`
+null) — with ONE inheritance: when this source is a pick answering a
+dish-targeted ask, the ASK's food language walks these same gates, and
+what survives is the claim's subject. "best burger in EV?" → a bare pick
+carries `burger`; "Pizza in Austin?" → `pizza` (`is_menu_item` stays
+false — Step E). An ask whose food language fails the gates inherits
+nothing: "craving red sauce italian food" targets no orderable dish.
 
 ### C.2 Build the order-name
 

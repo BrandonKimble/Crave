@@ -63,3 +63,31 @@ tests, inheritance at its decision point, wrapper/X-food/filler
 redistributed), constrained by BOTH gold families as paired pins. Queued
 as round 4's centerpiece; the anchor is reverted until then. D14 stays a
 band member documenting the mis-homing cost.
+
+## Round 4 LANDED — C.1 rederived as THREE GATES (cert 100/103 ×3; the 3
+## flaky are band members that each passed ≥x5 on identical text same hour)
+
+The section's eight accreted rule-piles became one ordered walk:
+Gate 1 HEAD NOUN (wrapper triage: food-modifier extracts the food;
+time/price/bare = value testimony that still EMITS restaurant-only;
+prediction-passing formats are food) → Gate 2 ORDER TEST (drinks included;
+failing by definition: wanting-anything words, traditions/styles however
+modified w/ comfort-food exception, holistic when-words, venue kinds — all
+landing in Step D as attributes) → Gate 3 VERDICT (survivor → C.2; nothing
+→ restaurant-only, with THE INHERITANCE stated at its decision point: a
+pick answering a dish-targeted ask walks the ASK's food language through
+THESE SAME GATES — what survives inherits as `item`, what fails inherits
+nothing). The same-gates formulation is what dissolved the round-3
+trade-off: "inherit the ask's dish" and "that's not a dish" stopped being
+adjacent opposed rules and became one rule applied twice — both gold
+families green simultaneously (11-case paired probe x4, first time ever;
+D14 exits the band).
+Two compression casualties caught by cert and repaired, each a lesson:
+(1) the meal-deal "mention still EMITS" consequence lost prominence when
+subordinated into a bullet (V8l/V8m dropped whole mentions) — promoted to
+bold; (2) the "great weekday lunch special - 2 tacos…" verbatim example
+was LOAD-BEARING (it disambiguates value-testimony from A's
+price-list-stays-PRICE-ONLY rule; V8m failed without it) — examples that
+teach a class are pins, not decoration; deleting one is a behavior change.
+Net: −20 lines, one decision tree, inheritance homed, wrapper doctrine
+stated once.
