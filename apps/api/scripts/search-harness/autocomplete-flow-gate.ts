@@ -93,6 +93,8 @@ const FLOWS: FlowEntry[] = [
     locale: 'es',
     query: 'pastel de arroz',
     mustInclude: [{ name: 'rice cake' }],
+    expectRed:
+      'baseline red since 93290eb1c — the es "pastel de arroz" surface is missing from the LOCAL corpus (localized-surface backfill is wave-bound); closes with the localized-surfaces wave',
     note: 'es surface reaches the English concept (localized lane, proven)',
   },
   {
@@ -173,6 +175,8 @@ const FLOWS: FlowEntry[] = [
     locale: 'vi',
     query: 'hải sản',
     mustInclude: [{ name: 'seafood', type: 'ingredient' }],
+    expectRed:
+      'baseline red since 93290eb1c — the vi "hải sản" surface is missing from the LOCAL corpus (localized-surface backfill is wave-bound); closes with the localized-surfaces wave',
     note: 'multiword vi surface reaches the English food concept',
   },
   {
