@@ -70,11 +70,17 @@ type Obligation = {
 };
 
 /**
- * KNOWN DRIFT, each entry with its death date. The only admissible reason:
- * the schema follows the CANDIDATE prompt's doctrine while the LIVE prompt
- * is an older registered version that activation will replace — live prompt
- * files are never edited outside the shadow->activation flow. An entry that
- * STOPS drifting fails the check too (a stale allowlist is its own lie).
+ * KNOWN DRIFT, each entry with its death date. Two admissible reasons:
+ * (1) the schema follows the CANDIDATE prompt's doctrine while the LIVE
+ * prompt is an older registered version that activation will replace —
+ * live prompt files are never edited outside the shadow->activation flow;
+ * (2) the description belongs to a CERTIFIED prompt+schema pairing and
+ * re-mirroring it is itself a behavior change that must wait for the next
+ * certification window (proven 2026-08-17: aligning the item quote to the
+ * rhino's rephrased C.1 line flipped V15h 6/6 -> 0/6 deterministically —
+ * schema descriptions are load-bearing prompt text, which is why they are
+ * folded into the fingerprint). An entry that STOPS drifting fails the
+ * check too (a stale allowlist is its own lie).
  */
 const KNOWN_DRIFT: ReadonlyArray<{
   path: string;
@@ -99,6 +105,12 @@ const KNOWN_DRIFT: ReadonlyArray<{
     file: 'collection-prompt.md',
     needle: 'anything orderable — drinks included',
     dies: 'v15 activation replaces the v1 live prompt, which predates the inclusive-scope clauses (owner/⭐05 consensus 2026-08-15)',
+  },
+  {
+    path: 'COLLECTION_RESPONSE_JSON_SCHEMA.properties.mentions.items.properties.item',
+    file: 'collection-prompt.candidate.md',
+    needle: 'anything orderable — drinks included',
+    dies: 'v15 activation certifies the re-mirrored pairing as a whole (reason 2: the rhino C.1 rewrite rephrased this line; aligning the description now would change certified behavior — V15h 6/6 -> 0/6 measured 2026-08-17)',
   },
   {
     path: 'COLLECTION_RESPONSE_JSON_SCHEMA.properties.mentions.items.properties.place',

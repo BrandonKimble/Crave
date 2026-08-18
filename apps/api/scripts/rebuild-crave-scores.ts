@@ -39,6 +39,9 @@ async function main(): Promise<void> {
       consoleLogger as never,
       scorer,
       new AdvisoryLockService(),
+      // Interactive run: the operator IS the alert channel; emptiness alerts
+      // are the scheduler runtime's concern.
+      { emit: () => {} } as never,
     );
     coordinator.onModuleInit();
     await coordinator.markDirty('manual rebuild-crave-scores script');

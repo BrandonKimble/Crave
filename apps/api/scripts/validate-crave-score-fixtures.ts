@@ -725,6 +725,9 @@ async function runDbSmokeCheck(): Promise<void> {
     noopLogger as never,
     scorer,
     new AdvisoryLockService(),
+    // Fixture run: alerts would be noise from a sandbox; noop matches the
+    // noopLogger above.
+    { emit: () => {} } as never,
   );
   coordinator.onModuleInit();
   await coordinator.markDirty('validate-crave-score-fixtures --with-db');

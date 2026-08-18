@@ -264,3 +264,70 @@ homograph flips. Romanization endgame landed their side (110bd999f);
 one HELD_FOR_RULING for owner: coctel→es re-tag costs 21 groundings
 (ca-phe trade class). normalizeCuisineName delete-not-fold bug FIXED
 (Niçoise→nicoise not nioise; canonicalFold, verified on built output).
+
+## P7 — FLEET ARCHITECTURE RED TEAM (2026-08-17, pre-shadow; full-lane pass)
+
+Method: fresh per-lane inventory (caller profiles, prompt source, schema,
+verdict memory, gold, batch) verified against code end-to-end, plus
+empirical DB/invariant probes run directly. Extraction-prompt TEXT was
+covered by the rhino audit; this pass is the fleet as a SYSTEM.
+
+### Found and FIXED tonight (both were red on the clean tree)
+
+- **`yarn invariants` was failing on a clean tree, twice.** (a) The rhino
+  C.1 rewrite rephrased the line the item schema-description quotes →
+  quote-mirror drift nobody saw because commits don't run invariants.
+  (b) RescoreCoordinatorService grew an OpsAlertsService param and the two
+  interactive scoring scripts (rebuild-crave-scores,
+  validate-crave-score-fixtures) were left at 4 args → tsc-based
+  invariants all red. Both fixed; suite back to 39/39 green.
+- **The mirror fix produced the campaign's hardest schema datum:**
+  aligning the description to the rhino's phrasing — semantically nil —
+  flipped V15h 6/6 → 0/6 DETERMINISTICALLY (pre-edit control 6/6).
+  Schema descriptions are knife-edge load-bearing prompt text. The
+  certified quote is restored verbatim; KNOWN_DRIFT doctrine gains
+  admissible reason (2): a re-mirror that is itself a behavior change
+  waits for the next certification window (death date: v15 activation).
+  LAW GOING FORWARD: a schema-description edit gets the same cert
+  treatment as a prompt edit — no exceptions for "cosmetic".
+
+### Confirmed healthy (big movement since the 08-11 inventory)
+
+photos.is_food schema-enforced ({answer: YES|NO}, throws on garbage);
+residue.interpret ceiling reads its caller profile; every judge lane at
+temp 0; five lanes carry fingerprint-derived rule versions with
+re-openable claim_verdicts memory (entity_match/entity_dedupe,
+place_grounding — including remembered rejections, concept-satisfies,
+word_claim, restaurant_name) plus genericness/negation/word_role, all
+budget-gated through ClaimRehearingBudgetService. ⭐05's word courts get a
+clean architectural bill: fingerprint versions, mandatory reasons,
+rehearing budget — the healthiest corner of the fleet.
+
+### Residual docket (ranked; none block the shadow)
+
+1. **Relevance-gate memory cannot re-open — decide BEFORE the archive
+   load.** Empirically confirmed: PK (platform, post_id), reuse query
+   ignores the stored prompt_hash; 8,846 verdicts already permanent. The
+   ~117k-doc archive completion will write tens of thousands more
+   permanent verdicts; a later gate-prompt improvement can never re-hear
+   its drops. Ideal shape = the pattern the five versioned lanes use:
+   version in the key + due predicate. Owner call: land before the load,
+   or accept the frozen-verdict cost knowingly.
+2. **vocabulary.word_role_judge has NO caller profile** → silently rides
+   the session model with content/LOW thinking while its two sibling
+   facets run query/MINIMAL; the taxonomy completeness spec text-scans
+   llm.service.ts only, so generateForCaller callers escape coverage.
+   Fix = profile entry + spec widened to the wrapper.
+3. **VOCABULARY_PROMPT_VERSION = 7 is the last hand-maintained version**
+   and buildVocabularyPrompt has no fingerprint — an edit without a bump
+   is undetectable and the due predicate would see nothing owed. Migrate
+   to resolvePromptRule like the other five.
+4. **dish.knowledge_synthesize due predicate is a bare timestamp**
+   (knowledgeSynthesizedAt, no version) — a prompt bump never re-opens
+   old syntheses.
+5. llm_decision_records: 203,507 rows, zero readers — standing stance
+   confirmed (fold into hearing lanes as each is touched, no big-bang).
+6. Process: invariants run neither at commit nor on any schedule — the
+   two clean-tree breaks above lived undetected across multiple commits.
+   Cheapest durable fix: a nightly/pre-shadow `yarn invariants` rung, or
+   a lefthook entry for the fast subset.
