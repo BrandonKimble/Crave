@@ -119,13 +119,20 @@ describe('scanForKnownEntityGroups: an accented es alias is reachable by its fol
     expect(ids).toContain(ENTITY_ID);
   });
 
-  it('does NOT ground it when no request locale is given (arm is locale-chained, chain is [und])', async () => {
+  it('grounds it identically when NO request locale is given (grounding is locale-blind — 5a1098a64)', async () => {
+    // RULING (commit 5a1098a64, 2026-08-12): the locale-chained alias arm was
+    // deliberately removed — `analysis.requestLocale` no longer changes what
+    // the scan returns (the service's own comment states the property, and the
+    // Mandarin battery pins it: the same query from an es-MX and a zh-CN
+    // request grounds the same entities). This test previously pinned the
+    // OPPOSITE, pre-ruling law (no-locale => chain ['und'] => no ground) and
+    // was re-authored 2026-08-17 to pin the current one.
     const groups = await service.scanForKnownEntityGroups(
       ALIAS_FORM,
       ['item_attribute'],
       {},
     );
     const ids = groups.flatMap((g) => g.entities.map((e) => e.entityId));
-    expect(ids).not.toContain(ENTITY_ID);
+    expect(ids).toContain(ENTITY_ID);
   });
 });
