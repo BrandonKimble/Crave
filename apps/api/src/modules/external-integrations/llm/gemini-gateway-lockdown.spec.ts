@@ -73,6 +73,19 @@ describe('Gemini gateway lockdown', () => {
       )) {
         seen.add(match[1]);
       }
+      // INDIRECTED CALLERS (blind spot found 2026-08-17): the word-court
+      // lanes carry their caller string in a lane-config object far from the
+      // generateForCaller call, so neither pattern above ever saw them —
+      // vocabulary.word_role_judge ran 32k hearings unprofiled while this
+      // spec stayed green. Convention: every generation-judge caller ends in
+      // `_judge`; a `caller: 'x_judge'` string ANYWHERE is a generation
+      // caller and must be profiled. Non-generation vendor tags (Places,
+      // TomTom, embeddings) never use the suffix.
+      for (const match of source.matchAll(
+        /caller:\s*'([a-z0-9_.-]+_judge)'/g,
+      )) {
+        seen.add(match[1]);
+      }
     }
     // Red team F2: the gate's caller was wrongly exempted here, which meant
     // deleting its profile kept CI green (the only guard left was a boot

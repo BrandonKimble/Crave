@@ -241,6 +241,18 @@ export const GEMINI_CALLER_PROFILES: Record<string, GeminiCallerProfile> = {
     context: 'query',
     maxOutputTokens: MODEL_MAX_OUTPUT,
   },
+  // The third word-court facet (particular / venue-category / frame). Same
+  // FLASH reasoning as its siblings — and this lane's own history proves it:
+  // v1's frame test swallowed venue qualities (romántico ruled frame, es gold
+  // -10pts) on judgment subtlety, not vocabulary. MISSED AT BIRTH: the lane
+  // shipped without this profile and the completeness spec's scan couldn't
+  // see lane-config callers, so 32k word-role hearings ran on session
+  // defaults (caught 2026-08-17; the spec's scan is now indirection-aware).
+  'vocabulary.word_role_judge': {
+    model: FLASH,
+    context: 'query',
+    maxOutputTokens: MODEL_MAX_OUTPUT,
+  },
   'photos.is_food': {
     // gemini-2.5 tier: no thinking control exists (and no HIGH default to
     // guard against); a yes/no on a thumbnail needs no more model than this.
