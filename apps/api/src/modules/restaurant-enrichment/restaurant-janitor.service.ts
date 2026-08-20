@@ -8,6 +8,7 @@ import { PlaceLocationEnrichmentService } from './restaurant-location-enrichment
 
 export interface JanitorSummary {
   archivedClosed: number;
+  archivedUngroundable: number;
   reEnrichedMoved: number;
   /**
    * The entity ids each arm SELECTED, before any action was taken on them.
@@ -19,6 +20,7 @@ export interface JanitorSummary {
    */
   selected: {
     closed: string[];
+    ungroundable: string[];
     moved: string[];
   };
 }
@@ -31,24 +33,28 @@ export interface JanitorSummary {
  * every location is CLOSED_PERMANENTLY; re-enrich through the redirect when a
  * location carries movedPlaceId.
  *
- * THE UNGROUNDED ARMS ARE GONE (owner ruling 2026-08-08, ghost campaign
- * close-out). This service used to also retry ungrounded placeholders weekly
- * and archive the hopeless ones past a strike threshold. Both jobs had better
- * homes, so both arms were deleted rather than switched on:
- *   - RETRY is mention-driven: every processing batch enqueues enrichment for
- *     every restaurant it mentions, and the worker skips already-grounded
- *     ones — so an ungrounded restaurant re-attempts the next time anyone
- *     talks about it, with fresher context than a cron could supply, and one
- *     nobody mentions again is by definition not worth a weekly Places bill.
- *   - THE MONEY GUARD lives at the spend chokepoint: enrichment refuses
- *     (status: skipped) once enrichment_failure_count reaches the threshold,
- *     so a much-discussed but ungroundable food truck stops buying lookups
- *     while staying ACTIVE, name-searchable, and evidence-bearing — archiving
- *     it was always the wrong verb for a real place Google merely can't pin.
+ * THE UNGROUNDED RETRY ARM IS GONE (owner ruling 2026-08-08): retry is
+ * mention-driven — an ungrounded restaurant re-attempts the next time anyone
+ * talks about it; one nobody mentions again is not worth a weekly bill. THE
+ * MONEY GUARD stays at the spend chokepoint (enrichment refuses once
+ * enrichment_failure_count reaches the threshold).
  *
- * Everything that still archives here does so on GOOGLE'S OWN verdict
- * (CLOSED_PERMANENTLY on every location), status-flip only — reversible, and
- * consistent with how cuisine hubs and leaked entities are retired.
+ * THE UNGROUNDABLE-SURVIVAL GATE IS BACK, BY LATER RULING (2026-08-12
+ * "don't create anything we can't hook to a real restaurant" + SD-3,
+ * 2026-08-16, which ruled the ghost-'Best' case specifically: a name-court
+ * UPHELD name still dies here — "ungrounded-after-attempt must not be
+ * searchable; the defect is lifecycle, not name-hood"). The 08-08 posture
+ * ("stays ACTIVE, name-searchable") is SUPERSEDED for the terminal case:
+ * once the money guard's own threshold says a place has definitively failed
+ * grounding, the same line now also says it stops being searchable — one
+ * constant, one meaning, two consumers. USER-ANCHORED entities are never
+ * touched (the standing anchor law), and archiving is a status flip —
+ * events retained, revivable, and a future force/retryTerminal grounding
+ * can resurrect it.
+ *
+ * Everything here archives by status-flip only — reversible, and consistent
+ * with how cuisine hubs and leaked entities are retired; the closed arm
+ * still acts on GOOGLE'S OWN verdict (CLOSED_PERMANENTLY everywhere).
  */
 @Injectable()
 export class PlaceJanitorService {
@@ -137,8 +143,9 @@ export class PlaceJanitorService {
     const dryRun = options.dryRun ?? false;
     const summary: JanitorSummary = {
       archivedClosed: 0,
+      archivedUngroundable: 0,
       reEnrichedMoved: 0,
-      selected: { closed: [], moved: [] },
+      selected: { closed: [], ungroundable: [], moved: [] },
     };
 
     // 1. Every location closed permanently → archive the restaurant.
@@ -164,6 +171,39 @@ export class PlaceJanitorService {
     }
     summary.archivedClosed = closed.length;
     summary.selected.closed = closed.map((row) => row.entity_id);
+
+    // 1b. THE UNGROUNDABLE-SURVIVAL GATE (2026-08-12 ruling + SD-3; see the
+    // header). Terminal = the money guard's own threshold — the counter only
+    // increments on DEFINITIVE no-match verdicts, so this is "Google said no,
+    // N separate times", never a transient. User anchors are inviolable.
+    const terminalThreshold = this.config.get<number>(
+      'locationLifecycle.noMatchAttemptThreshold',
+    )!;
+    const ungroundable = await this.prisma.$queryRaw<{ entity_id: string }[]>`
+      SELECT e.entity_id FROM core_entities e
+      WHERE e.type = 'place' AND e.status = 'active'
+        AND e.enrichment_failure_count >= ${terminalThreshold}
+        AND NOT EXISTS (
+          SELECT 1 FROM core_restaurant_locations l
+          WHERE l.restaurant_id = e.entity_id
+            AND l.google_place_id IS NOT NULL
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM user_list_items uli
+          WHERE uli.restaurant_id = e.entity_id
+             OR uli.connection_id IN (
+                 SELECT ri.connection_id FROM core_restaurant_items ri
+                  WHERE ri.restaurant_id = e.entity_id)
+        )
+    `;
+    if (!dryRun && ungroundable.length) {
+      await this.prisma.entity.updateMany({
+        where: { entityId: { in: ungroundable.map((row) => row.entity_id) } },
+        data: { status: EntityStatus.archived },
+      });
+    }
+    summary.archivedUngroundable = ungroundable.length;
+    summary.selected.ungroundable = ungroundable.map((row) => row.entity_id);
 
     // 2. Moved → re-enrich through the redirect target (force: the identity
     // changed; enrichRestaurantById follows movedPlaceId internally).

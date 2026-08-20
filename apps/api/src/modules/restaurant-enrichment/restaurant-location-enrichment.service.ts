@@ -884,8 +884,10 @@ export class PlaceLocationEnrichmentService {
     // otherwise re-purchase autocomplete (+ the expensive textSearch
     // fallback) on EVERY future mention of an ungroundable name, forever.
     // Only DEFINITIVE failures increment the counter (transient errors retry
-    // free), the entity stays ACTIVE and name-searchable, and the ghost
-    // recovery sweep bypasses with retryTerminal after a root-cause fix.
+    // free). At this same threshold the janitor's ungroundable-survival gate
+    // ARCHIVES the entity (2026-08-12 ruling + SD-3 — the old "stays ACTIVE
+    // and name-searchable" posture is superseded); the ghost recovery sweep
+    // bypasses with retryTerminal after a root-cause fix.
     // Threshold is a boot-validated positive int (F365) — no unset case
     // exists in a running process, so no unset branch exists here (F9965:
     // the earlier typeof check asserted a state prod cannot reach).
