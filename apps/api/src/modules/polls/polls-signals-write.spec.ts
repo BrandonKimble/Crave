@@ -61,6 +61,9 @@ function createHarness(
   );
   const pollsPrisma = {
     poll: {
+      // markPollInteraction: the interaction touch that makes the safety-net
+      // sweep's updatedAt filter able to see comment/vote activity.
+      update: jest.fn().mockResolvedValue({}),
       findUnique: jest.fn().mockResolvedValue({
         state: 'active',
         question: 'Best birria in Austin?',

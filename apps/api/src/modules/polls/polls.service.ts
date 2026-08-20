@@ -1393,6 +1393,33 @@ export class PollsService {
     }
   }
 
+  /**
+   * Mark an interaction on the poll ROW so the hourly safety-net sweep can
+   * see it. PollAggregationService selects `state=active AND updatedAt >=
+   * since` (the (state, updated_at) index exists FOR that read), but
+   * comments/likes/endorsements live in their own tables and never touched
+   * polls.updated_at — so the "rebuild what changed" filter matched nothing
+   * the sweep exists to catch, and a failed inline rebuild was never retried.
+   * Called BEFORE the inline rebuild so a rebuild crash still leaves the
+   * trace; best-effort, because bookkeeping must never fail the interaction.
+   */
+  private async markPollInteraction(pollId: string): Promise<void> {
+    try {
+      await this.prisma.poll.update({
+        where: { pollId },
+        data: { updatedAt: new Date() },
+      });
+    } catch (error) {
+      this.logger.warn(
+        'Poll interaction touch failed (safety-net sweep may miss this poll)',
+        {
+          pollId,
+          detail: error instanceof Error ? error.message : String(error),
+        },
+      );
+    }
+  }
+
   async postComment(pollId: string, dto: CreateCommentDto, userId: string) {
     const poll = await this.prisma.poll.findUnique({
       where: { pollId },
@@ -1462,6 +1489,7 @@ export class PollsService {
       },
     });
 
+    await this.markPollInteraction(pollId);
     await this.rebuildPollLeaderboard(pollId);
     this.gateway.emitPollUpdate(pollId);
     // §3 signals: the poll_comment act (the pre-ledger user_events
@@ -1515,6 +1543,7 @@ export class PollsService {
         extractionStatus: PollCommentExtractionStatus.highlighted,
       },
     });
+    await this.markPollInteraction(comment.pollId);
     await this.rebuildPollLeaderboard(comment.pollId);
     this.gateway.emitPollUpdate(comment.pollId);
     return updated;
@@ -1526,6 +1555,7 @@ export class PollsService {
       where: { commentId },
       data: { deletedAt: new Date() },
     });
+    await this.markPollInteraction(comment.pollId);
     await this.rebuildPollLeaderboard(comment.pollId);
     this.gateway.emitPollUpdate(comment.pollId);
     return { commentId, deleted: true };
@@ -1610,6 +1640,7 @@ export class PollsService {
       return { liked: true, score: updated.score };
     });
 
+    await this.markPollInteraction(comment.pollId);
     await this.rebuildPollLeaderboard(comment.pollId);
     this.gateway.emitPollUpdate(comment.pollId);
     return result;
@@ -1642,6 +1673,13 @@ export class PollsService {
       where: {
         pollId,
         deletedAt: null,
+        // Approved only — the same visibility law every sibling reader of
+        // this table states (listCommentsByUser, the leaderboard rebuild,
+        // graduation, place mentions). Today all writes are sync-moderated
+        // to `approved`, but `pending` is documented as reserved for a
+        // future async/soft-hold — this thread must not be the one surface
+        // that renders it.
+        moderationStatus: PollCommentModerationStatus.approved,
         ...(blockedPeers.size
           ? { userId: { notIn: Array.from(blockedPeers) } }
           : {}),
@@ -2390,6 +2428,7 @@ export class PollsService {
         });
     }
 
+    await this.markPollInteraction(pollId);
     await this.rebuildPollLeaderboard(pollId);
     const leaderboard = await this.getPollLeaderboard(pollId, userId);
     return { endorsed, leaderboard };
