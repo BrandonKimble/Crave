@@ -154,6 +154,27 @@ export class PrismaService
       return;
     }
 
+    // STAGING IS THE SANCTIONED LAPTOP TARGET (red team 2026-08-19). The law
+    // this guard encodes is never-point-local-at-PROD; staging is the
+    // operator's own sandbox by standing ruling, and three rig scripts
+    // already write it via psql (push-local-db-to-staging, the scrub,
+    // refresh-staging-from-prod). Refusing it here only forced the
+    // reextract choreography's push/estimate verbs — which must write the
+    // SHADOW target's registry and campaign rows — into raw-SQL detours
+    // around the very services that own those rows. The exception is a
+    // PINNED HOST, the same shape as push-local-db-to-staging's
+    // PROD_HOST_GUARD: a named constant, not an env var anyone can point
+    // elsewhere. Prod hosts still refuse unconditionally below.
+    const STAGING_DB_HOST = 'tokaido.proxy.rlwy.net';
+    if (url.includes(`@${STAGING_DB_HOST}:`)) {
+      this.logger?.warn(
+        'Non-deployed process holds a WRITE handle on the STAGING database ' +
+          '(pinned host) — sanctioned for reextract/rig operations.',
+        { operation: 'staging_write_session', appEnv },
+      );
+      return;
+    }
+
     if (await this.connectionIsReadOnly()) {
       this.logger?.warn(
         'A non-deployed process is connected to a HOSTED database with a ' +
