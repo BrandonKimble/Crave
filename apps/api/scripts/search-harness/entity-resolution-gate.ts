@@ -81,8 +81,15 @@
  * und/active/role='display' surface and an und/active/role='recall' surface
  * whose folded key differs from its verbatim form. The seed is idempotent and
  * the rows are LEFT in place — they are inspectable in SQL like every other
- * fixture here, and `zzgate` collides with nothing a user can type. This is
- * the one thing this probe writes; everything else is read-only.
+ * fixture here, and `zzgate` collides with nothing a user can type.
+ *
+ * PLUS THE loc-05 CARRIER (2026-08-19), seeded AND torn down every run: the
+ * fixture pins the RULED name-only claim arm, and after the SD retro shadow
+ * sweep archived the last corpus entity that exercised it (every surviving
+ * active item has an active und self-surface), no natural row remained. See
+ * the fixture and `seedLoc05Carrier` for why this one, unlike the zzgate
+ * scratch, must not linger. These are the only things this probe writes;
+ * everything else is read-only.
  *
  * Run: npx ts-node -T scripts/search-harness/entity-resolution-gate.ts
  */
@@ -159,6 +166,20 @@ const SCRATCH_EN_FORM = 'zzgate freshly banked word';
  */
 const SCRATCH_ACCENT_FORM = 'zzgate bánh scratch';
 const SCRATCH_ACCENT_PLAIN = 'zzgate banh scratch';
+
+/**
+ * loc-05's SELF-MINTED CARRIER (2026-08-19). The fixture used to ride the
+ * live corpus entity NAMED 'picante', which the SD retro shadow sweep
+ * correctly archived (5b1e75f2, dead-run-only) — and no natural replacement
+ * exists: every active item now has an active und self-surface, so no corpus
+ * entity can show RED when the NAME-ONLY claim arm breaks. So the gate mints
+ * one, shaped exactly like the ruling's subject: an item entity named a
+ * Spanish-only word ('picoso' = spicy), with its identity key, PLUS a
+ * DEPRECATED es surface of the same form, and NO active self-surface — the
+ * claim can only ride the NAME.
+ */
+const LOC05_ENTITY_ID = '2222220a-0000-4000-8000-00000000c105';
+const LOC05_NAME = 'zzq picoso';
 
 const FIXTURES: Fixture[] = [
   // ── Tier 1: exact name ──────────────────────────────────────────────────
@@ -506,9 +527,9 @@ const FIXTURES: Fixture[] = [
   {
     id: 'loc-05',
     type: EntityType.item,
-    mention: 'picante',
-    expect: { entity: 'picante', tier: 'exact' },
-    note: "RULED 2026-08-10 (search lane): tier-1 NAME claims are locale-UNSCOPED — an entity NAMED picante is claimable from any document, because a name is source-faithful and universal; locale chains scope LEARNED SURFACES, never a concept's own name (scoping names would recreate the F2 narrowing disease). The deprecated es SURFACE of hot-sauce stays inert — this claim rides the NAME. C3 audit adversarially re-probes this ruling.",
+    mention: LOC05_NAME,
+    expect: { entity: LOC05_NAME, tier: 'exact' },
+    note: "RULED 2026-08-10 (search lane): tier-1 NAME claims are locale-UNSCOPED — an entity NAMED picante is claimable from any document, because a name is source-faithful and universal; locale chains scope LEARNED SURFACES, never a concept's own name (scoping names would recreate the F2 narrowing disease). The deprecated es SURFACE of hot-sauce stays inert — this claim rides the NAME. C3 audit adversarially re-probes this ruling. CORPUS-STALE HISTORY (2026-08-19): was 'picante', archived by the SD retro shadow sweep (5b1e75f2, dead-run-only) — and no active entity exercises the name-only arm any more, so the gate self-mints its carrier (the samples-lie / fixtures-ride-corpus lesson): a Spanish-only-named item with a deprecated es surface and NO active self-surface, torn down after every run.",
   },
   {
     id: 'loc-06',
@@ -775,6 +796,72 @@ async function seedScratchFixtures(prisma: PrismaService): Promise<void> {
   );
 }
 
+/**
+ * loc-05's carrier: seeded per run, DELETED per run — the opposite lifecycle
+ * from the zzgate scratch above, on purpose. The zzgate rows are stable
+ * POSITIVE fixtures, safe to inspect at rest. This carrier's premise is a
+ * NEGATIVE — "no active self-surface, only the NAME can carry the claim" —
+ * and a row left at rest is exactly what the background repair/vocabulary
+ * sweeps exist to "fix" (the same retro sweep family that archived the
+ * original 'picante' carrier). An entity that exists only for the
+ * milliseconds of the probe cannot drift, so the fixture's premise is
+ * re-established from nothing on every run instead of assumed.
+ *
+ * Idempotent against a crashed previous run: the upsert restores name,
+ * identity key and ACTIVE status, the surface upsert restores 'deprecated',
+ * and the trailing DELETE enforces "no other surface exists".
+ */
+async function seedLoc05Carrier(prisma: PrismaService): Promise<void> {
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO core_entities (entity_id, name, type, status, identity_key, identity_key_sorted)
+     VALUES ($1::uuid, $2, 'item'::entity_type, 'active'::entity_status, $3, $3)
+     ON CONFLICT (entity_id) DO UPDATE
+       SET name = EXCLUDED.name,
+           status = 'active'::entity_status,
+           identity_key = EXCLUDED.identity_key,
+           identity_key_sorted = EXCLUDED.identity_key_sorted`,
+    LOC05_ENTITY_ID,
+    LOC05_NAME,
+    canonicalFold(LOC05_NAME),
+  );
+  // The DEPRECATED es surface of the entity's own name — the ruling's foil:
+  // it must stay inert on both axes (locale AND status), so the exact-tier
+  // claim demonstrably rides the NAME alone.
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO entity_surface
+       (entity_id, form, form_folded, locale, role, source, confidence, status)
+     VALUES ($1::uuid, $2, $3, 'es', 'recall', 'seed', 1, 'deprecated')
+     ON CONFLICT (entity_id, locale, form) DO UPDATE
+       SET role = EXCLUDED.role, status = EXCLUDED.status`,
+    LOC05_ENTITY_ID,
+    LOC05_NAME,
+    canonicalFold(LOC05_NAME),
+  );
+  // NO active self-surface, enforced not assumed (the zzgate seed learned
+  // this the hard way — see its own-rows comment above).
+  await prismaExecute(
+    prisma,
+    `DELETE FROM entity_surface
+      WHERE entity_id = $1::uuid AND (form, locale) NOT IN (($2, 'es'))`,
+    LOC05_ENTITY_ID,
+    LOC05_NAME,
+  );
+}
+
+/** Leaves ZERO rows: the gate must be re-runnable and residue-free here. */
+async function teardownLoc05Carrier(prisma: PrismaService): Promise<void> {
+  await prismaExecute(
+    prisma,
+    `DELETE FROM entity_surface WHERE entity_id = $1::uuid`,
+    LOC05_ENTITY_ID,
+  );
+  await prismaExecute(
+    prisma,
+    `DELETE FROM core_entities WHERE entity_id = $1::uuid`,
+    LOC05_ENTITY_ID,
+  );
+}
+
 const prismaExecute = (
   prisma: PrismaService,
   sql: string,
@@ -787,69 +874,82 @@ async function main(): Promise<void> {
     const resolver = app.get(EntityResolutionService);
     const prisma = app.get(PrismaService);
     await seedScratchFixtures(prisma);
+    await seedLoc05Carrier(prisma);
 
-    const batch = await resolver.resolveBatch(
-      FIXTURES.map((fixture) => ({
-        tempId: fixture.id,
-        normalizedName: fixture.mention,
-        originalText: fixture.mention,
-        entityType: fixture.type,
-        engineId: null,
-        documentLocale: fixture.documentLocale ?? null,
-      })),
-      {
-        // READ-ONLY + DETERMINISTIC: no creation, no recall/LLM tier. This
-        // gate measures the two tiers the surgery touches and nothing else.
-        allowEntityCreation: false,
-        enableFuzzyMatching: false,
-        useLlmMatcher: false,
-      },
-    );
-
-    const byTempId = new Map(
-      batch.resolutionResults.map((result) => [result.tempId, result]),
-    );
-    const entityIds = Array.from(
-      new Set(
-        batch.resolutionResults
-          .map((result) => result.entityId)
-          .filter((id): id is string => Boolean(id)),
-      ),
-    );
-    const names = new Map(
-      (
-        await prisma.entity.findMany({
-          where: { entityId: { in: entityIds } },
-          select: { entityId: true, name: true },
-        })
-      ).map((row) => [row.entityId, row.name]),
-    );
-
-    let green = 0;
-    let red = 0;
-
-    for (const fixture of FIXTURES) {
-      const result = byTempId.get(fixture.id);
-      const observed: Outcome = {
-        entity: result?.entityId ? (names.get(result.entityId) ?? '?') : null,
-        tier: (result?.resolutionTier as Tier) ?? 'unmatched',
-      };
-
-      if (sameOutcome(observed, fixture.expect)) {
-        green += 1;
-        continue;
-      }
-      red += 1;
-      out(
-        `RED ${fixture.id} "${fixture.mention}" got ${render(observed)} want ${render(fixture.expect)} — ${fixture.note}`,
-      );
+    try {
+      await runFixtures(resolver, prisma);
+    } finally {
+      // Even a RED run leaves no loc-05 rows behind.
+      await teardownLoc05Carrier(prisma);
     }
-
-    out(`\nRESOLUTION GATE: green=${green} red=${red} of ${FIXTURES.length}`);
-    if (red > 0) process.exitCode = 1;
   } finally {
     await app.close();
   }
+}
+
+async function runFixtures(
+  resolver: EntityResolutionService,
+  prisma: PrismaService,
+): Promise<void> {
+  const batch = await resolver.resolveBatch(
+    FIXTURES.map((fixture) => ({
+      tempId: fixture.id,
+      normalizedName: fixture.mention,
+      originalText: fixture.mention,
+      entityType: fixture.type,
+      engineId: null,
+      documentLocale: fixture.documentLocale ?? null,
+    })),
+    {
+      // READ-ONLY + DETERMINISTIC: no creation, no recall/LLM tier. This
+      // gate measures the two tiers the surgery touches and nothing else.
+      allowEntityCreation: false,
+      enableFuzzyMatching: false,
+      useLlmMatcher: false,
+    },
+  );
+
+  const byTempId = new Map(
+    batch.resolutionResults.map((result) => [result.tempId, result]),
+  );
+  const entityIds = Array.from(
+    new Set(
+      batch.resolutionResults
+        .map((result) => result.entityId)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  const names = new Map(
+    (
+      await prisma.entity.findMany({
+        where: { entityId: { in: entityIds } },
+        select: { entityId: true, name: true },
+      })
+    ).map((row) => [row.entityId, row.name]),
+  );
+
+  let green = 0;
+  let red = 0;
+
+  for (const fixture of FIXTURES) {
+    const result = byTempId.get(fixture.id);
+    const observed: Outcome = {
+      entity: result?.entityId ? (names.get(result.entityId) ?? '?') : null,
+      tier: (result?.resolutionTier as Tier) ?? 'unmatched',
+    };
+
+    if (sameOutcome(observed, fixture.expect)) {
+      green += 1;
+      continue;
+    }
+    red += 1;
+    out(
+      `RED ${fixture.id} "${fixture.mention}" got ${render(observed)} want ${render(fixture.expect)} — ${fixture.note}`,
+    );
+  }
+
+  out(`\nRESOLUTION GATE: green=${green} red=${red} of ${FIXTURES.length}`);
+  if (red > 0) process.exitCode = 1;
 }
 
 main().catch((error) => {
