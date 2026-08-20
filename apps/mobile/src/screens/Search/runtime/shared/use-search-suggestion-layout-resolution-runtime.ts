@@ -14,6 +14,7 @@ type UseSearchSuggestionLayoutResolutionRuntimeArgs = {
   cachedSearchShortcutsFrame: LayoutRectangle | null;
   searchShortcutChipFrames: Record<string, LayoutRectangle>;
   cachedSearchShortcutChipFrames: Record<string, LayoutRectangle>;
+  searchShortcutsScrollOffsetX: number;
 };
 
 type SearchSuggestionLayoutResolutionRuntime = {
@@ -36,6 +37,7 @@ export const useSearchSuggestionLayoutResolutionRuntime = ({
   cachedSearchShortcutsFrame,
   searchShortcutChipFrames,
   cachedSearchShortcutChipFrames,
+  searchShortcutsScrollOffsetX,
 }: UseSearchSuggestionLayoutResolutionRuntimeArgs): SearchSuggestionLayoutResolutionRuntime => {
   const shouldFreezeSuggestionHeader =
     shouldDriveSuggestionLayout && !isSuggestionPanelActive && query.trim().length > 0;
@@ -50,12 +52,47 @@ export const useSearchSuggestionLayoutResolutionRuntime = ({
     return searchShortcutsFrame ?? cachedSearchShortcutsFrame;
   }, [cachedSearchShortcutsFrame, searchShortcutsFrame, shouldUseSearchShortcutFrames]);
 
+  // R7 groundwork: chip onLayout frames are relative to the shortcut row's SCROLL
+  // CONTENT, so the current scroll offset shifts them into the row viewport here —
+  // the single place both consumers (native hit-target regions, suggestion-header
+  // hole mask) read from. Frames scrolled fully out of the viewport are dropped;
+  // partially visible ones are clipped to the row bounds so neither a hit region
+  // nor a mask hole can land on a chip pixel that is not on screen.
   const resolvedSearchShortcutChipFrames = React.useMemo(() => {
     if (!shouldUseSearchShortcutFrames) {
       return {};
     }
-    return { ...cachedSearchShortcutChipFrames, ...searchShortcutChipFrames };
-  }, [cachedSearchShortcutChipFrames, searchShortcutChipFrames, shouldUseSearchShortcutFrames]);
+    const contentFrames = { ...cachedSearchShortcutChipFrames, ...searchShortcutChipFrames };
+    if (searchShortcutsScrollOffsetX === 0) {
+      return contentFrames;
+    }
+    const rowFrame = searchShortcutsFrame ?? cachedSearchShortcutsFrame;
+    const viewportWidth = rowFrame?.width ?? Number.POSITIVE_INFINITY;
+    const viewportFrames: Record<string, LayoutRectangle> = {};
+    for (const [chipId, frame] of Object.entries(contentFrames)) {
+      const shiftedX = frame.x - searchShortcutsScrollOffsetX;
+      const clippedX = Math.max(0, shiftedX);
+      const clippedRight = Math.min(shiftedX + frame.width, viewportWidth);
+      const clippedWidth = clippedRight - clippedX;
+      if (clippedWidth <= 0) {
+        continue;
+      }
+      viewportFrames[chipId] = {
+        x: clippedX,
+        y: frame.y,
+        width: clippedWidth,
+        height: frame.height,
+      };
+    }
+    return viewportFrames;
+  }, [
+    cachedSearchShortcutChipFrames,
+    cachedSearchShortcutsFrame,
+    searchShortcutChipFrames,
+    searchShortcutsFrame,
+    searchShortcutsScrollOffsetX,
+    shouldUseSearchShortcutFrames,
+  ]);
 
   const hasResolvedSearchShortcutsFrame = Boolean(resolvedSearchShortcutsFrame);
   const shouldIncludeShortcutCutout =

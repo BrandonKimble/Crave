@@ -8,6 +8,7 @@ import {
   type TextInput,
 } from 'react-native';
 import Reanimated, { type SharedValue } from 'react-native-reanimated';
+import { Store } from 'lucide-react-native';
 
 import { Text } from '../../../components';
 import {
@@ -18,7 +19,7 @@ import { usePerfScenarioRuntimeStore } from '../../../perf/perf-scenario-runtime
 import { ACTIVE_TAB_COLOR } from '../constants/search';
 import styles from '../styles';
 import SearchHeader from './SearchHeader';
-import SearchShortcutsRow from './SearchShortcutsRow';
+import SearchShortcutsRow, { type SearchShortcutChip } from './SearchShortcutsRow';
 import type { SearchHeaderVisualModel } from '../runtime/shared/use-results-presentation-runtime-owner';
 
 type SearchHeaderChromeModel = Pick<
@@ -57,7 +58,8 @@ type SearchOverlayHeaderChromeProps = {
   shortcutsInteractionEnabledRef: React.RefObject<boolean>;
   handleBestRestaurantsHere: () => void;
   handleSearchShortcutsRowLayout: (layout: LayoutRectangle) => void;
-  handleRestaurantsShortcutLayout: (layout: LayoutRectangle) => void;
+  handleShortcutChipLayout: (chipId: string, layout: LayoutRectangle) => void;
+  handleSearchShortcutsScroll: (offsetX: number) => void;
   shouldShowSearchThisArea: boolean;
   searchThisAreaTop: number;
   searchThisAreaAnimatedStyle: React.ComponentProps<typeof Reanimated.View>['style'];
@@ -88,7 +90,8 @@ const SearchOverlayHeaderChrome = ({
   shortcutsInteractionEnabledRef,
   handleBestRestaurantsHere,
   handleSearchShortcutsRowLayout,
-  handleRestaurantsShortcutLayout,
+  handleShortcutChipLayout,
+  handleSearchShortcutsScroll,
   shouldShowSearchThisArea,
   searchThisAreaTop,
   searchThisAreaAnimatedStyle,
@@ -150,6 +153,26 @@ const SearchOverlayHeaderChrome = ({
     }
   }, [shouldShowSearchThisArea]);
 
+  // R7 groundwork: the shortcut row renders chips as DATA. A future chip (Food, Drinks,
+  // time-of-day, Restaurants, Bars, Coffee Shops, Dessert, Bakeries, Food Trucks —
+  // gated on the venue axis + consumable pilot) is one more array entry carrying its
+  // own submit intent; the scroll container, layout reporting, and hit-region plumbing
+  // need no new layout work. The chip id keys the frame maps in the layout runtimes and
+  // the native hit-target/hole consumers ('restaurants' is the wired key today).
+  const shortcutChips = React.useMemo<SearchShortcutChip[]>(
+    () => [
+      {
+        id: 'restaurants',
+        label: 'All',
+        accessibilityLabel: 'Show all results here',
+        Icon: Store,
+        onPress: handleBestRestaurantsHere,
+        testID: 'search-shortcut-restaurants',
+      },
+    ],
+    [handleBestRestaurantsHere]
+  );
+
   React.useEffect(() => {
     if (!shouldShowSearchThisArea || searchThisAreaLayoutRef.current == null) {
       return;
@@ -198,9 +221,10 @@ const SearchOverlayHeaderChrome = ({
         chipAnimatedStyle={searchShortcutChipAnimatedStyle}
         contentAnimatedStyle={searchShortcutContentAnimatedStyle}
         interactionEnabledRef={shortcutsInteractionEnabledRef}
-        onPressBestRestaurants={handleBestRestaurantsHere}
+        chips={shortcutChips}
         onRowLayout={handleSearchShortcutsRowLayout}
-        onRestaurantsChipLayout={handleRestaurantsShortcutLayout}
+        onChipLayout={handleShortcutChipLayout}
+        onScrollOffsetChange={handleSearchShortcutsScroll}
       />
       <Reanimated.View
         pointerEvents={shouldShowSearchThisArea ? 'box-none' : 'none'}

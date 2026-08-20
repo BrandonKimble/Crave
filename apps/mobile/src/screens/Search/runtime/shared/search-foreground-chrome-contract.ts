@@ -163,7 +163,8 @@ export type SearchForegroundHeaderShortcutsInputs = Pick<
   | 'searchShortcutContentAnimatedStyle'
   | 'handleBestRestaurantsHere'
   | 'handleSearchShortcutsRowLayout'
-  | 'handleRestaurantsShortcutLayout'
+  | 'handleShortcutChipLayout'
+  | 'handleSearchShortcutsScroll'
 > & {
   shouldMountSearchShortcuts: boolean;
   shouldEnableSearchShortcutsInteraction: boolean;
@@ -185,7 +186,7 @@ export type SearchForegroundHeaderShortcutsInteractionInputs = Pick<
 
 export type SearchForegroundHeaderShortcutsLayoutInputs = Pick<
   SearchForegroundHeaderShortcutsInputs,
-  'handleSearchShortcutsRowLayout' | 'handleRestaurantsShortcutLayout'
+  'handleSearchShortcutsRowLayout' | 'handleShortcutChipLayout' | 'handleSearchShortcutsScroll'
 >;
 
 export type SearchForegroundHeaderSearchThisAreaInputs = Pick<

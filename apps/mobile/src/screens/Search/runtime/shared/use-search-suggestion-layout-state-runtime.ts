@@ -42,6 +42,8 @@ export const useSearchSuggestionLayoutStateRuntime = ({
     searchShortcutChipFrames: searchSuggestionShortcutLayoutRuntime.searchShortcutChipFrames,
     cachedSearchShortcutChipFrames:
       searchSuggestionShortcutLayoutRuntime.cachedSearchShortcutChipFrames,
+    searchShortcutsScrollOffsetX:
+      searchSuggestionShortcutLayoutRuntime.searchShortcutsScrollOffsetX,
   });
 
   /**
@@ -62,8 +64,9 @@ export const useSearchSuggestionLayoutStateRuntime = ({
       handleSearchContainerLayout: searchSuggestionSearchLayoutRuntime.handleSearchContainerLayout,
       handleSearchShortcutsRowLayout:
         searchSuggestionShortcutLayoutRuntime.handleSearchShortcutsRowLayout,
-      handleRestaurantsShortcutLayout:
-        searchSuggestionShortcutLayoutRuntime.handleRestaurantsShortcutLayout,
+      handleShortcutChipLayout: searchSuggestionShortcutLayoutRuntime.handleShortcutChipLayout,
+      handleSearchShortcutsScroll:
+        searchSuggestionShortcutLayoutRuntime.handleSearchShortcutsScroll,
       suggestionContentHeight: suggestionContentHeightRuntime.suggestionContentHeight,
       shouldFreezeSuggestionHeader:
         searchSuggestionLayoutResolutionRuntime.shouldFreezeSuggestionHeader,
@@ -89,7 +92,8 @@ export const useSearchSuggestionLayoutStateRuntime = ({
       searchSuggestionSearchLayoutRuntime.handleSearchHeaderLayout,
       searchSuggestionSearchLayoutRuntime.searchBarFrame,
       searchSuggestionSearchLayoutRuntime.searchLayout,
-      searchSuggestionShortcutLayoutRuntime.handleRestaurantsShortcutLayout,
+      searchSuggestionShortcutLayoutRuntime.handleShortcutChipLayout,
+      searchSuggestionShortcutLayoutRuntime.handleSearchShortcutsScroll,
       searchSuggestionShortcutLayoutRuntime.handleSearchShortcutsRowLayout,
       shouldDriveSuggestionLayout,
       suggestionContentHeightRuntime.handleSuggestionContentSizeChange,

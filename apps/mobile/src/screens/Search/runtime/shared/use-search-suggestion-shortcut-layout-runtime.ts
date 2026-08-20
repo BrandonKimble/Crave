@@ -11,8 +11,10 @@ type SearchSuggestionShortcutLayoutRuntime = {
   cachedSearchShortcutsFrame: LayoutRectangle | null;
   searchShortcutChipFrames: Record<string, LayoutRectangle>;
   cachedSearchShortcutChipFrames: Record<string, LayoutRectangle>;
+  searchShortcutsScrollOffsetX: number;
   handleSearchShortcutsRowLayout: (layout: LayoutRectangle) => void;
-  handleRestaurantsShortcutLayout: (layout: LayoutRectangle) => void;
+  handleShortcutChipLayout: (chipId: string, layout: LayoutRectangle) => void;
+  handleSearchShortcutsScroll: (offsetX: number) => void;
 };
 
 const cloneSearchLayoutRectangle = (layout: LayoutRectangle): LayoutRectangle => ({
@@ -30,6 +32,10 @@ export const useSearchSuggestionShortcutLayoutRuntime =
     const [searchShortcutChipFrames, setSearchShortcutChipFrames] = React.useState<
       Record<string, LayoutRectangle>
     >({});
+    // R7 groundwork: the shortcut row is a horizontal scroll surface; chip onLayout
+    // coordinates are content-relative, so the current scroll offset is state the
+    // layout-resolution runtime needs to shift chip frames into the row viewport.
+    const [searchShortcutsScrollOffsetX, setSearchShortcutsScrollOffsetX] = React.useState(0);
     const searchShortcutsLayoutCacheRef = React.useRef<SearchSuggestionShortcutLayoutCache>({
       frame: null,
       chipFrames: {},
@@ -55,29 +61,36 @@ export const useSearchSuggestionShortcutLayoutRuntime =
       });
     }, []);
 
-    const handleRestaurantsShortcutLayout = React.useCallback((layout: LayoutRectangle) => {
-      setSearchShortcutChipFrames((prev) => {
-        const nextLayout = cloneSearchLayoutRectangle(layout);
-        const prevLayout = prev.restaurants;
-        if (
-          prevLayout &&
-          Math.abs(prevLayout.x - layout.x) < 0.5 &&
-          Math.abs(prevLayout.y - layout.y) < 0.5 &&
-          Math.abs(prevLayout.width - layout.width) < 0.5 &&
-          Math.abs(prevLayout.height - layout.height) < 0.5
-        ) {
-          return prev;
-        }
-        const next = { ...prev, restaurants: nextLayout };
-        searchShortcutsLayoutCacheRef.current = {
-          ...searchShortcutsLayoutCacheRef.current,
-          chipFrames: {
-            ...searchShortcutsLayoutCacheRef.current.chipFrames,
-            restaurants: nextLayout,
-          },
-        };
-        return next;
-      });
+    const handleShortcutChipLayout = React.useCallback(
+      (chipId: string, layout: LayoutRectangle) => {
+        setSearchShortcutChipFrames((prev) => {
+          const nextLayout = cloneSearchLayoutRectangle(layout);
+          const prevLayout = prev[chipId];
+          if (
+            prevLayout &&
+            Math.abs(prevLayout.x - layout.x) < 0.5 &&
+            Math.abs(prevLayout.y - layout.y) < 0.5 &&
+            Math.abs(prevLayout.width - layout.width) < 0.5 &&
+            Math.abs(prevLayout.height - layout.height) < 0.5
+          ) {
+            return prev;
+          }
+          const next = { ...prev, [chipId]: nextLayout };
+          searchShortcutsLayoutCacheRef.current = {
+            ...searchShortcutsLayoutCacheRef.current,
+            chipFrames: {
+              ...searchShortcutsLayoutCacheRef.current.chipFrames,
+              [chipId]: nextLayout,
+            },
+          };
+          return next;
+        });
+      },
+      []
+    );
+
+    const handleSearchShortcutsScroll = React.useCallback((offsetX: number) => {
+      setSearchShortcutsScrollOffsetX((prev) => (Math.abs(prev - offsetX) < 0.5 ? prev : offsetX));
     }, []);
 
     return React.useMemo(
@@ -86,14 +99,18 @@ export const useSearchSuggestionShortcutLayoutRuntime =
         cachedSearchShortcutsFrame: searchShortcutsLayoutCacheRef.current.frame,
         searchShortcutChipFrames,
         cachedSearchShortcutChipFrames: searchShortcutsLayoutCacheRef.current.chipFrames,
+        searchShortcutsScrollOffsetX,
         handleSearchShortcutsRowLayout,
-        handleRestaurantsShortcutLayout,
+        handleShortcutChipLayout,
+        handleSearchShortcutsScroll,
       }),
       [
-        handleRestaurantsShortcutLayout,
+        handleSearchShortcutsScroll,
+        handleShortcutChipLayout,
         handleSearchShortcutsRowLayout,
         searchShortcutChipFrames,
         searchShortcutsFrame,
+        searchShortcutsScrollOffsetX,
       ]
     );
   };

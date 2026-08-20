@@ -70,14 +70,24 @@ const styles = StyleSheet.create({
     zIndex: 50,
   },
   searchShortcutsRow: {
-    paddingHorizontal: SEARCH_HORIZONTAL_PADDING,
     paddingTop: 2,
     marginBottom: SEARCH_SHORTCUTS_BOTTOM_MARGIN,
     marginTop: 10,
+    zIndex: 55,
+  },
+  // The chip strip is a horizontal scroll surface (R7 groundwork). `overflow: visible`
+  // keeps the chip shadows from being clipped by the scroll view's bounds; the row's
+  // horizontal padding lives on the CONTENT so chip onLayout x-coordinates keep the
+  // same padding-inclusive origin the plain row reported, and chips scroll to the
+  // screen edge Google-Maps style.
+  searchShortcutsScroll: {
+    overflow: 'visible',
+  },
+  searchShortcutsScrollContent: {
+    paddingHorizontal: SEARCH_HORIZONTAL_PADDING,
     flexDirection: 'row',
     alignItems: 'center',
     columnGap: 8,
-    zIndex: 55,
   },
   searchShortcutChip: {
     // Mirrors the toggle-strip control box (SegmentedToggle option: 32-high,
