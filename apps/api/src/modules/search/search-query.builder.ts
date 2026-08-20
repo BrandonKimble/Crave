@@ -449,8 +449,12 @@ LEFT JOIN LATERAL (
 	    json_agg(
 	      json_build_object(
 	        'connectionId', sub.connection_id,
-	        'foodId', sub.food_id,
-	        'foodName', sub.food_name,
+	        -- Keys are the executor's parse contract (parseTopDishesJson):
+	        -- the R14 rename moved the parser to itemId/itemName while these
+	        -- SQL literals kept the old names, so every ranked restaurant's
+	        -- top_dishes parsed to [] (found + fixed 2026-08-19).
+	        'itemId', sub.food_id,
+	        'itemName', sub.food_name,
 	        'craveScore', sub.crave_score,
 	        'scoreSubjectType', 'connection',
 	        'scoreSubjectId', sub.connection_id,

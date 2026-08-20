@@ -291,10 +291,12 @@ export class AutocompleteService {
    * N10 — THE DISPLAY BOUNDARY FOR TYPE-AHEAD.
    *
    * Applied AFTER the response cache in both directions (fresh build and
-   * cache hit), which is why the cache key does not carry a locale: what is
-   * cached is the CANONICAL response, and localization is a pure projection
-   * of it. Caching per locale instead would multiply the hottest cache in the
-   * product by the language count for no gain.
+   * cache hit): what is cached is the CANONICAL response, and localization is
+   * a pure projection of it. (The cache key DOES carry the locale since
+   * AC-P2a — recall itself became locale-dependent via the localized-surface
+   * lane and the dense prefix, so the old locale-less key served the wrong
+   * locale's candidate set; the projection claim survives only for the
+   * DISPLAY half, which is why localizing after the cache is still correct.)
    *
    * `submitToken` is the load-bearing half. The mobile attribute-tap submits
    * the row's text as the next search string — so the moment `name` becomes

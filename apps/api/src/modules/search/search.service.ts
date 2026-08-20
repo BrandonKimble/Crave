@@ -3555,9 +3555,11 @@ export class SearchService {
       }
     };
 
-    sanitizeList(request.entities.places);
-    sanitizeList(request.entities.items);
-    sanitizeList(request.entities.itemAttributes);
-    sanitizeList(request.entities.placeAttributes);
+    // Lanes DERIVED from the one group vocabulary (F3800/D79, re-hit here
+    // 2026-08-19): the hand-copied four-lane list skipped `ingredients`, so
+    // ingredient-lane text was the one lane that never passed the sanitizer.
+    for (const key of QUERY_ENTITY_GROUP_KEYS) {
+      sanitizeList(request.entities[key]);
+    }
   }
 }

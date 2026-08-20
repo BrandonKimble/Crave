@@ -1,8 +1,9 @@
 import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
-import type {
-  QueryEntityDto,
-  QueryEntityGroupDto,
-  UnresolvedEntityGroupDto,
+import {
+  QUERY_ENTITY_GROUP_KEYS,
+  type QueryEntityDto,
+  type QueryEntityGroupDto,
+  type UnresolvedEntityGroupDto,
 } from '../dto/search-query.dto';
 
 export type SearchDebugMode = 'off' | 'summary' | 'verbose';
@@ -48,12 +49,12 @@ export function summarizeEntities(
     };
   };
 
-  return {
-    places: summarizeGroup(entities.places),
-    item: summarizeGroup(entities.items),
-    itemAttributes: summarizeGroup(entities.itemAttributes),
-    placeAttributes: summarizeGroup(entities.placeAttributes),
-  };
+  // Lanes DERIVED from the one group vocabulary (F3800/D79): the hand list
+  // here forgot `ingredients` (and mislabeled `items` as 'item'), so debug
+  // output silently reported on a subset of what the gates consulted.
+  return Object.fromEntries(
+    QUERY_ENTITY_GROUP_KEYS.map((key) => [key, summarizeGroup(entities[key])]),
+  );
 }
 
 export function summarizeUnresolvedEntities(

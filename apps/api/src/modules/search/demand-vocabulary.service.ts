@@ -238,12 +238,17 @@ export class DemandVocabularyService {
 
       const candidates = await this.entityTextSearch.retrieveCandidates(
         term,
+        // Real enum members, never a cast-hidden string: the R14 rename left
+        // a literal 'food' here inside an `as EntityType[]` cast, so every
+        // sweep pass sent 'food'::entity_type to Postgres — an invalid enum
+        // that errored the probe and killed the whole learn-a-word lane
+        // (found + fixed 2026-08-19).
         [
-          'food',
-          'ingredient',
-          'item_attribute',
-          'place_attribute',
-        ] as EntityType[],
+          EntityType.item,
+          EntityType.ingredient,
+          EntityType.item_attribute,
+          EntityType.place_attribute,
+        ],
         CANDIDATE_POOL,
         {
           denseMode: 'always',
