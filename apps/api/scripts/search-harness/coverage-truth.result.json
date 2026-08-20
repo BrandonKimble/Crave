@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-20T02:16:13.489Z",
+  "generatedAt": "2026-08-20T04:18:46.293Z",
   "pageSize": 25,
   "maxPages": 60,
   "mutation": null,
@@ -10,12 +10,12 @@
     "maxAnchors": 3
   },
   "corpus": {
-    "mustAppear": 2344,
+    "mustAppear": 2354,
     "missing": 33,
-    "served": 3821,
+    "served": 3831,
     "leaks": 387,
     "judgedRejectsServed": 2,
-    "coverage": 0.9859215017064846,
+    "coverage": 0.985981308411215,
     "unexplainedMisses": 0
   },
   "cases": [
@@ -33,16 +33,16 @@
         "expansionFired": false,
         "pages": 19,
         "exhausted": true,
-        "dishes": 439,
-        "places": 316,
+        "dishes": 440,
+        "places": 317,
         "reportedTotals": {
-          "dishes": 439,
-          "places": 316
+          "dishes": 440,
+          "places": 317
         }
       },
       "truth": {
-        "candidates": 439,
-        "mustAppear": 418,
+        "candidates": 440,
+        "mustAppear": 419,
         "mayAppear": 21
       },
       "coverage": 1,
@@ -71,16 +71,16 @@
         "expansionFired": false,
         "pages": 19,
         "exhausted": true,
-        "dishes": 439,
-        "places": 316,
+        "dishes": 440,
+        "places": 317,
         "reportedTotals": {
-          "dishes": 439,
-          "places": 316
+          "dishes": 440,
+          "places": 317
         }
       },
       "truth": {
-        "candidates": 439,
-        "mustAppear": 418,
+        "candidates": 440,
+        "mustAppear": 419,
         "mayAppear": 21
       },
       "coverage": 1,
@@ -708,18 +708,18 @@
       "dietaryWallActive": false,
       "served": {
         "expansionFired": false,
-        "pages": 7,
+        "pages": 8,
         "exhausted": true,
-        "dishes": 150,
-        "places": 111,
+        "dishes": 151,
+        "places": 112,
         "reportedTotals": {
-          "dishes": 150,
-          "places": 111
+          "dishes": 151,
+          "places": 112
         }
       },
       "truth": {
-        "candidates": 183,
-        "mustAppear": 150,
+        "candidates": 184,
+        "mustAppear": 151,
         "mayAppear": 33
       },
       "coverage": 1,
@@ -819,16 +819,16 @@
         "expansionFired": false,
         "pages": 20,
         "exhausted": true,
-        "dishes": 458,
-        "places": 262,
+        "dishes": 464,
+        "places": 266,
         "reportedTotals": {
-          "dishes": 458,
-          "places": 262
+          "dishes": 464,
+          "places": 266
         }
       },
       "truth": {
-        "candidates": 467,
-        "mustAppear": 450,
+        "candidates": 473,
+        "mustAppear": 456,
         "mayAppear": 17
       },
       "coverage": 1,
@@ -1547,16 +1547,16 @@
         "expansionFired": false,
         "pages": 23,
         "exhausted": true,
-        "dishes": 531,
-        "places": 237,
+        "dishes": 532,
+        "places": 238,
         "reportedTotals": {
-          "dishes": 531,
-          "places": 237
+          "dishes": 532,
+          "places": 238
         }
       },
       "truth": {
-        "candidates": 532,
-        "mustAppear": 529,
+        "candidates": 533,
+        "mustAppear": 530,
         "mayAppear": 3
       },
       "coverage": 1,
