@@ -1280,7 +1280,11 @@ export class PlaceLocationEnrichmentService {
         if (this.isGooglePlaceConflict(error)) {
           const collision = await this.handleGooglePlaceCollision({
             entity,
-            details,
+            // POST-redirect details (red team 2026-08-19 F2): the D2 rebind
+            // missed the two conflict arms — a moved-place collision looked
+            // up the CLOSED pre-redirect id, found nothing, and hard-errored
+            // every retry exactly where a merge was owed.
+            details: latestDetails,
             matchMetadata,
             score: best.score,
             googlePlaceAttributeIds,
@@ -1301,7 +1305,7 @@ export class PlaceLocationEnrichmentService {
           const conflict = await this.handleEntityNameConflict({
             entity,
             canonicalName: targetNameForUpdate,
-            details,
+            details: latestDetails, // F2, same rebind as the collision arm
             matchMetadata,
             score: best.score,
             googlePlaceAttributeIds,
@@ -1967,6 +1971,9 @@ export class PlaceLocationEnrichmentService {
             placeDetails,
             locationUpsert,
             targetLocation,
+            // The duplicate's own row re-points to the canonical instead of
+            // aborting the whole merge with a P2002 (F1 follow-through).
+            reassignFrom: entity.entityId,
           });
           return {
             primaryLocation: { connect: { locationId: location.locationId } },
@@ -3766,9 +3773,19 @@ export class PlaceLocationEnrichmentService {
       update: Prisma.PlaceLocationUncheckedUpdateInput;
     };
     targetLocation?: PlaceLocation | null;
+    /** Merge context only: a row owned by THIS entity (the duplicate being
+     *  merged away) re-points to placeId instead of raising the collision —
+     *  the merge IS the authorization to move it (F1 follow-through). */
+    reassignFrom?: string;
   }): Promise<PlaceLocation> {
-    const { tx, placeId, placeDetails, locationUpsert, targetLocation } =
-      params;
+    const {
+      tx,
+      placeId,
+      placeDetails,
+      locationUpsert,
+      targetLocation,
+      reassignFrom,
+    } = params;
     const googlePlaceId = placeDetails.id;
 
     if (!googlePlaceId) {
@@ -3778,6 +3795,21 @@ export class PlaceLocationEnrichmentService {
     const placeholderLocation =
       targetLocation && !targetLocation.googlePlaceId ? targetLocation : null;
 
+    // THE KEY IS THE GOOGLE ID (red team 2026-08-19 F1, pre-R14 residue):
+    // this upsert was keyed on `placeId` — the ENTITY uuid — so the where
+    // never matched, the update arm was dead code, and a FORCE re-ground of
+    // an already-grounded restaurant onto its own place id P2002'd against
+    // its OWN row and no-op'd through the self-merge guard after paying
+    // autocomplete + chooser + full-SKU details. Semantics preserved
+    // deliberately: same-entity → update (force-refresh finally works);
+    // row owned by ANOTHER entity → the create raises the genuine P2002 the
+    // callers' collision/merge handlers have always owned; no row → create.
+    const ownedByGoogleId = placeholderLocation
+      ? null
+      : await tx.placeLocation.findUnique({
+          where: { googlePlaceId },
+          select: { locationId: true, placeId: true },
+        });
     const location = placeholderLocation
       ? await tx.placeLocation.update({
           where: { locationId: placeholderLocation.locationId },
@@ -3788,20 +3820,25 @@ export class PlaceLocationEnrichmentService {
             updatedAt: new Date(),
           } as Prisma.PlaceLocationUncheckedUpdateInput,
         })
-      : await tx.placeLocation.upsert({
-          where: { googlePlaceId: placeId },
-          update: {
-            ...locationUpsert.update,
-            placeId,
-            isPrimary: true,
-            updatedAt: new Date(),
-          } as Prisma.PlaceLocationUncheckedUpdateInput,
-          create: {
-            ...locationUpsert.create,
-            placeId,
-            isPrimary: true,
-          } as Prisma.PlaceLocationUncheckedCreateInput,
-        });
+      : ownedByGoogleId &&
+          (ownedByGoogleId.placeId === placeId ||
+            (reassignFrom != null && ownedByGoogleId.placeId === reassignFrom))
+        ? await tx.placeLocation.update({
+            where: { locationId: ownedByGoogleId.locationId },
+            data: {
+              ...locationUpsert.update,
+              placeId,
+              isPrimary: true,
+              updatedAt: new Date(),
+            } as Prisma.PlaceLocationUncheckedUpdateInput,
+          })
+        : await tx.placeLocation.create({
+            data: {
+              ...locationUpsert.create,
+              placeId,
+              isPrimary: true,
+            } as Prisma.PlaceLocationUncheckedCreateInput,
+          });
 
     await tx.placeLocation.deleteMany({
       where: {
