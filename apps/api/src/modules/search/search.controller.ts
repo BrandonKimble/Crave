@@ -190,7 +190,12 @@ export class SearchController {
 
   @Get('restaurants/:restaurantId/dishes')
   async placeDishes(
-    @Param('placeId', new ParseUUIDPipe({ version: '4' }))
+    // Param name MUST match the route segment (':restaurantId' is the URL
+    // contract) — the R14 rename left this binding on 'placeId', so
+    // req.params['placeId'] was undefined and ParseUUIDPipe 400'd every
+    // call. Found by scripts/check-route-param-binding.ts on its first
+    // clean-tree run (2026-08-19), same class as polls-D1/photos-D1.
+    @Param('restaurantId', new ParseUUIDPipe({ version: '4' }))
     placeId: string,
   ): Promise<ItemResultDto[]> {
     return this.searchService.listPlaceDishes(placeId);
@@ -198,7 +203,9 @@ export class SearchController {
 
   @Get('restaurants/:restaurantId/profile')
   async placeProfile(
-    @Param('placeId', new ParseUUIDPipe({ version: '4' }))
+    // Param name MUST match the route segment — same R14 residue as
+    // placeDishes above; found by scripts/check-route-param-binding.ts.
+    @Param('restaurantId', new ParseUUIDPipe({ version: '4' }))
     placeId: string,
   ): Promise<PlaceProfileDto> {
     // NOTE: clients may still send ?marketKey= during the Leg 2 mobile
