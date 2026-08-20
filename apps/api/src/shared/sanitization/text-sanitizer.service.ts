@@ -19,8 +19,12 @@ export interface TextSanitizerOptions {
 const URL_REGEX = /\b(?:https?:\/\/|www\.)\S+/gi;
 const CONTROL_CHAR_PATTERN = '\\x00-\\x1F\\x7F-\\x9F';
 const CONTROL_CHAR_REGEX = new RegExp(`[${CONTROL_CHAR_PATTERN}]`, 'g');
+// NO `g` flag: this regex is used with `.test()`, and a global regex keeps
+// `lastIndex` between calls — so a service-lifetime singleton would ALTERNATE
+// verdicts, letting every second injection-bearing input through. `i` alone
+// carries the intent.
 const PROMPT_INJECTION_REGEX =
-  /<<|>>|{{|}}|<\s*script|\bBEGIN\s+PROMPT\b|\bSYSTEM:|```/gi;
+  /<<|>>|{{|}}|<\s*script|\bBEGIN\s+PROMPT\b|\bSYSTEM:|```/i;
 const EMOJI_REGEX = /\p{Extended_Pictographic}/gu;
 
 @Injectable()

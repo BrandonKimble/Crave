@@ -117,59 +117,6 @@ export class WinstonLoggerService extends LoggerService {
     });
   }
 
-  database(
-    operation: string,
-    entityType: string,
-    duration: number,
-    success: boolean,
-    metadata?: LogMetadata,
-  ): void {
-    const level = success ? 'debug' : 'error';
-    const message = `Database ${operation} on ${entityType} ${
-      success ? 'completed' : 'failed'
-    } (${duration}ms)`;
-    this.log(level, message, {
-      ...metadata,
-      operation,
-      entityType,
-      duration,
-      success,
-    });
-  }
-
-  performance(
-    operation: string,
-    duration: number,
-    success: boolean,
-    metadata?: LogMetadata,
-  ): void {
-    const level = duration > 1000 ? 'warn' : 'info';
-    const message = `Performance: ${operation} took ${duration}ms`;
-    this.log(level, message, {
-      ...metadata,
-      operation,
-      duration,
-      success,
-    });
-  }
-
-  audit(
-    action: string,
-    userId?: string,
-    entityType?: string,
-    entityId?: string,
-    metadata?: LogMetadata,
-  ): void {
-    this.log('info', `Audit: ${action}`, {
-      ...metadata,
-      action,
-      userId,
-      entityType,
-      entityId,
-      auditLog: true,
-    });
-  }
-
   child(context: Partial<LogMetadata>): LoggerService {
     const sanitizedContext = this.sanitizeMetadata(context, {
       includeBase: false,

@@ -42,25 +42,5 @@ export abstract class LoggerService {
     duration?: number,
     metadata?: LogMetadata,
   ): void;
-  abstract database(
-    operation: string,
-    entityType: string,
-    duration: number,
-    success: boolean,
-    metadata?: LogMetadata,
-  ): void;
-  abstract performance(
-    operation: string,
-    duration: number,
-    success: boolean,
-    metadata?: LogMetadata,
-  ): void;
-  abstract audit(
-    action: string,
-    userId?: string,
-    entityType?: string,
-    entityId?: string,
-    metadata?: LogMetadata,
-  ): void;
   abstract child(context: Partial<LogMetadata>): LoggerService;
 }

@@ -59,8 +59,3 @@ function extractValidationMessages(errors: ValidationError[]): string[] {
 
   return messages;
 }
-
-/**
- * Custom validation decorators for enhanced security
- */
-export * from './custom-validators';

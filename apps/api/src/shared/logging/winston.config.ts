@@ -204,36 +204,3 @@ export function createWinstonConfig(
     exitOnError: false,
   };
 }
-
-/**
- * Request logging middleware configuration
- */
-export const requestLoggingConfig = {
-  // Log all requests at HTTP level
-  level: 'http',
-  meta: true,
-  msg: 'HTTP {{req.method}} {{req.url}}',
-  expressFormat: true,
-  colorize: false,
-  // Skip logging for health check endpoints
-  skip: (req: { url?: string }) => {
-    return req.url?.includes('/health');
-  },
-  // Custom request/response logging
-  requestWhitelist: ['url', 'method', 'httpVersion', 'originalUrl', 'query'],
-  responseWhitelist: ['statusCode'],
-  dynamicMeta: (
-    req: {
-      ip?: string;
-      get?: (header: string) => string;
-      headers?: Record<string, string>;
-    },
-    res: { responseTime?: number; get?: (header: string) => string },
-  ) => ({
-    ip: req.ip,
-    userAgent: req.get?.('User-Agent'),
-    responseTime: res.responseTime,
-    correlationId:
-      req.headers?.['x-correlation-id'] || res.get?.('x-correlation-id'),
-  }),
-};
