@@ -154,7 +154,7 @@ type ListDetailParams = {
 };
 
 const VIRTUAL_LIST_TYPE_BY_ID: Record<string, UserListType> = {
-  'all:places': 'restaurant',
+  'all:restaurants': 'restaurant',
   'all:dishes': 'dish',
 };
 

@@ -66,7 +66,7 @@ export const resolveTypedReturnRestaurantPromotion = ({
   }
 
   const [candidate] = exactNameMatches;
-  if (candidate.entityType !== 'restaurant') {
+  if (candidate.entityType !== 'place') {
     return null;
   }
   if (candidate.evidenceTier !== 'exact') {

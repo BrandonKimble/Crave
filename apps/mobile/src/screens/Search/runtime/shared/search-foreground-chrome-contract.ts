@@ -170,25 +170,6 @@ export type SearchForegroundHeaderShortcutsInputs = Pick<
   shouldEnableSearchShortcutsInteraction: boolean;
 };
 
-export type SearchForegroundHeaderShortcutsVisualInputs = Pick<
-  SearchForegroundHeaderShortcutsInputs,
-  | 'shouldMountSearchShortcuts'
-  | 'shouldEnableSearchShortcutsInteraction'
-  | 'searchShortcutsAnimatedStyle'
-  | 'searchShortcutChipAnimatedStyle'
-  | 'searchShortcutContentAnimatedStyle'
->;
-
-export type SearchForegroundHeaderShortcutsInteractionInputs = Pick<
-  SearchForegroundHeaderShortcutsInputs,
-  'handleBestRestaurantsHere'
->;
-
-export type SearchForegroundHeaderShortcutsLayoutInputs = Pick<
-  SearchForegroundHeaderShortcutsInputs,
-  'handleSearchShortcutsRowLayout' | 'handleShortcutChipLayout' | 'handleSearchShortcutsScroll'
->;
-
 export type SearchForegroundHeaderSearchThisAreaInputs = Pick<
   SearchForegroundChromeHeaderSurfaceProps,
   | 'shouldShowSearchThisArea'

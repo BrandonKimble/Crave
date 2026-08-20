@@ -849,7 +849,7 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
               typedPrefix: trimmedQuery,
               matchType: 'entity',
               selectedEntityId: intent.entry.selectedEntityId,
-              selectedEntityType: 'restaurant',
+              selectedEntityType: 'place',
             },
           })
           .catch(() => undefined);
@@ -896,7 +896,7 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
           typedPrefix,
           matchType: 'entity',
           selectedEntityId: placeId,
-          selectedEntityType: 'restaurant',
+          selectedEntityType: 'place',
         },
       })
       .catch(() => undefined);

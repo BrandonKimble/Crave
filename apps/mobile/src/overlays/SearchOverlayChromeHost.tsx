@@ -174,7 +174,6 @@ const SearchOverlayHeaderHost = React.memo(
         searchShortcutContentAnimatedStyle={
           headerChromePropsForRender.searchShortcutContentAnimatedStyle
         }
-        shortcutsInteractionEnabledRef={headerProps.shortcutsInteractionEnabledRef}
         shouldShowSearchThisArea={headerChromePropsForRender.shouldShowSearchThisArea}
         searchThisAreaTop={headerChromePropsForRender.searchThisAreaTop}
         searchThisAreaAnimatedStyle={headerChromePropsForRender.searchThisAreaAnimatedStyle}

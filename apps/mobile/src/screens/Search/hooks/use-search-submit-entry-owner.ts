@@ -90,10 +90,10 @@ export const resolveSubmissionDefaultTab = (
       ? (submissionContext as Record<string, unknown>)
       : null;
   const selectedEntityType = contextRecord?.selectedEntityType;
-  if (selectedEntityType === 'restaurant' || selectedEntityType === 'place_attribute') {
+  if (selectedEntityType === 'place' || selectedEntityType === 'place_attribute') {
     return 'restaurants';
   }
-  if (selectedEntityType === 'food') {
+  if (selectedEntityType === 'item') {
     return 'dishes';
   }
   return null;
