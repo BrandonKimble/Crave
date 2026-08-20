@@ -246,19 +246,16 @@ export class DishKnowledgeSynthesisService {
         const newAliases = result.aliases.filter(
           (alias) => alias !== dishNameLower,
         );
-        await this.prisma.entity.update({
-          where: { entityId: dish.entityId },
-          data: {
-            canonicalIngredients: Array.from(new Set(ingredientIds)),
-            knowledgeSynthesizedAt: new Date(),
-            knowledgePromptVersion: DISH_KNOWLEDGE_RULE.version,
-          },
-        });
         // A1: established shorthand goes through THE surface writer, which
         // marks the dense doc stale for the reconciler.
         // Locale UNSET ('und'): this prompt bans translation and works on
         // an English corpus, so a language tag here would be fabricated —
         // and these are SURFACES, never labels (the plan's NEVER list).
+        // ORDER (red team 2026-08-19 M6): surfaces land BEFORE the done-
+        // stamp. The old order stamped first — a crash between the two left
+        // paid aliases unlanded on a dish marked done forever (verdict-
+        // before-effect, inverted). addSurfaces is idempotent, so a crash
+        // after surfaces but before the stamp just re-offers next pass.
         if (newAliases.length) {
           await this.prisma.$transaction((tx) =>
             addSurfaces(
@@ -271,6 +268,14 @@ export class DishKnowledgeSynthesisService {
             ),
           );
         }
+        await this.prisma.entity.update({
+          where: { entityId: dish.entityId },
+          data: {
+            canonicalIngredients: Array.from(new Set(ingredientIds)),
+            knowledgeSynthesizedAt: new Date(),
+            knowledgePromptVersion: DISH_KNOWLEDGE_RULE.version,
+          },
+        });
         summary.dishesProcessed += 1;
         summary.ingredientsLinked += ingredientIds.length;
         summary.aliasesAdded += newAliases.length;
@@ -304,8 +309,16 @@ export class DishKnowledgeSynthesisService {
       SELECT e.entity_id
         FROM core_entities e
        WHERE e.type = 'ingredient'::entity_type
+         -- ACTIVE only (red team 2026-08-19 M5): this second mint door used
+         -- to link archived/rehearsal rows into canonicalIngredients —
+         -- entities no live reader can see.
+         AND e.status = 'active'::entity_status
          AND (
            e.name = ${normalized}
+           -- identity-key match closes the fold-twin gap (M5): two spellings
+           -- with one canonical fold must reuse one row, same law as the
+           -- collection resolver's tier 1.
+           OR e.identity_key = ${folded}
            OR EXISTS (
              SELECT 1 FROM entity_surface s
               WHERE s.entity_id = e.entity_id
@@ -331,7 +344,11 @@ export class DishKnowledgeSynthesisService {
       // Unique partial index on (name) WHERE type='ingredient' makes the
       // find-then-create race lose loudly instead of duplicating — refetch.
       const winner = await this.prisma.entity.findFirst({
-        where: { type: EntityType.ingredient, name: normalized },
+        where: {
+          type: EntityType.ingredient,
+          name: normalized,
+          status: EntityStatus.active,
+        },
         select: { entityId: true },
       });
       if (winner) {

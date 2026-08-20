@@ -7,6 +7,7 @@ import {
   RECENCY_FLAT_DAYS,
 } from '../polls/supply/poll-supply.constants';
 import { dailyActsCteSql } from './act-identity';
+import { redirectJoinSql, resolvedSubjectSql } from './subject-identity';
 import { ECHO_SIGNAL_KINDS } from './signals.service';
 
 /**
@@ -165,10 +166,15 @@ export class UserTasteProfileBuilder {
           // builder's doc warns about is the reverse case.
           { expr: Prisma.sql`a.kind`, as: 'kind' },
           { expr: Prisma.sql`a.subject_type`, as: 'subject_type' },
-          { expr: Prisma.sql`a.subject_id`, as: 'subject_id' },
+          // MERGE-SURVIVOR id, not the raw recorded id (red team 2026-08-19
+          // H1): the profile was redirect-blind — acts on merge losers
+          // (archived) vanished from taste and curated personalization
+          // PERMANENTLY, and the loss compounds with every dedupe merge.
+          // Same one-hop law as every demand reader (subject-identity.ts).
+          { expr: resolvedSubjectSql('a'), as: 'subject_id' },
           { expr: Prisma.sql`a.subject_text`, as: 'subject_text' },
         ],
-        from: Prisma.sql`signal_demand_daily a`,
+        from: Prisma.sql`signal_demand_daily a ${redirectJoinSql('a')}`,
         where: Prisma.sql`a.actor_id = ANY(${actorIds}::uuid[])
           -- The GLOBAL tile only: every act lands there exactly once. Summing
           -- over place tiles would count one act as many (§3 attribution

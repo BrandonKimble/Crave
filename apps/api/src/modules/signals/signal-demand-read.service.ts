@@ -1274,20 +1274,16 @@ export class SignalDemandReadService {
     if (!userId) {
       return null;
     }
-    try {
-      const actor = await this.prisma.signalActor.findUnique({
-        where: { userId },
-        select: { actorId: true },
-      });
-      return actor?.actorId ?? null;
-    } catch (error) {
-      this.logger.debug('Actor lookup failed', {
-        error: {
-          message: error instanceof Error ? error.message : String(error),
-        },
-      });
-      return null;
-    }
+    // No catch (red team 2026-08-19 M1, the F207 class this file already
+    // banished from expansions): a DB error is not "this user has no
+    // history" — swallowing it silently served un-personalized results.
+    // Callers' own error handling owns the failure; null means only the
+    // honest fact that no actor row exists.
+    const actor = await this.prisma.signalActor.findUnique({
+      where: { userId },
+      select: { actorId: true },
+    });
+    return actor?.actorId ?? null;
   }
 
   private windowKeys(windowDays: number): {

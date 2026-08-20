@@ -370,10 +370,8 @@ export class ItemDedupeMergeService {
       WHERE a.type = 'item' AND b.type = 'item'
         AND a.status = 'active' AND b.status = 'active'
         AND (
-          EXISTS (SELECT 1 FROM core_restaurant_items ca
-                  WHERE a.entity_id IN (ca.restaurant_id, ca.food_id))
-          OR EXISTS (SELECT 1 FROM core_restaurant_items cb
-                     WHERE b.entity_id IN (cb.restaurant_id, cb.food_id))
+          ${Prisma.raw(activeSupportExistsSql('a.entity_id'))}
+          OR ${Prisma.raw(activeSupportExistsSql('b.entity_id'))}
         )
         AND a.identity_key_sorted IS NOT NULL
         AND a.identity_key_sorted = b.identity_key_sorted
