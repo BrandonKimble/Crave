@@ -284,6 +284,18 @@ export const GOOGLE_PLACE_TYPE_IGNORED_TYPES: ReadonlySet<string> = new Set([
   'internet_cafe',
   'art_gallery',
   'museum',
+  // First catch of the unmapped-types census alarm (2026-08-19): the
+  // reground campaign's grounding pass landed seven never-seen types on
+  // night one. All noise — venues that HOST food service without being a
+  // food venue kind (nobody searches "stadium" hungry for a kind of place
+  // the way they search "bakery").
+  'auditorium',
+  'concert_hall',
+  'garden_center',
+  'mosque',
+  'non_profit_organization',
+  'stadium',
+  'womens_clothing_store',
   'cultural_center',
   'cultural_landmark',
   'community_center',
