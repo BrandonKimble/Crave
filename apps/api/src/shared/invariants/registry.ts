@@ -1479,6 +1479,60 @@ export const INVARIANTS: readonly Invariant[] = [
       },
     ],
   },
+  {
+    // A ROUTE'S URL AND ITS @Param BINDING ARE ONE FACT (R14 residue class,
+    // 2026-08-19). Both sides are strings, so tsc sees nothing; unit specs
+    // mock the params, so they see nothing either. The only observer used to
+    // be a client getting 400 on every call.
+    id: 'routes.every-param-binding-names-a-route-segment',
+    statement:
+      "Every @Param('name') in every controller names a ':name' segment of its method's route template (route decorator path + controller prefix) — a binding to a segment that does not exist is a dead endpoint, not a compile error.",
+    incident:
+      "The R14 vocabulary rename changed route segments without the @Param strings (polls mentions) and the @Param without the segment (photos gallery): req.params[name] was undefined, ParseUUIDPipe 400'd EVERY call, and both endpoints were dead for three days with tsc and all specs green. The scanner's own first clean-tree run then caught the SAME live defect on search's dishes + profile endpoints (2026-08-19).",
+    level: 'behaviour',
+    mechanism:
+      "scripts/check-route-param-binding.ts — parses every *.controller.ts (comment-stripped), refuses on any decorator form outside its proven reach and on a scan that saw fewer controllers/routes/params than the tree is known to carry, and requires each @Param('name') to name a live segment.",
+    check: {
+      command: 'npx ts-node -T scripts/check-route-param-binding.ts',
+      reads:
+        'every controller: route templates (verb decorator path + @Controller prefix) cross-checked against every @Param binding in the method region',
+    },
+    mutations: [
+      {
+        // Shape 1, exactly as shipped (polls-D1): the @Param string renamed,
+        // the route segment not.
+        file: 'src/modules/polls/polls.controller.ts',
+        find: "@Param('restaurantId', new ParseUUIDPipe()) placeId: string,",
+        replace: "@Param('placeId', new ParseUUIDPipe()) placeId: string,",
+      },
+      {
+        // Shape 2, the inverse (photos-D1): the route segment renamed, the
+        // @Param string not.
+        file: 'src/modules/photos/photos.controller.ts',
+        find: "@Get('restaurants/:restaurantId/gallery')",
+        replace: "@Get('restaurants/:placeId/gallery')",
+      },
+    ],
+    legitimate: [
+      {
+        // A rename of a NON-param path segment is an ordinary route change
+        // and must pass — the scanner keys on the ':name' contract, not on
+        // path stability.
+        file: 'src/modules/polls/polls.controller.ts',
+        find: "@Get('restaurants/:restaurantId/mentions')",
+        replace: "@Get('venues/:restaurantId/mentions')",
+      },
+      {
+        // Dropping a pipe leaves the binding consistent — the scanner reads
+        // the name, not the pipe list. (@Param-less @Query/@Body methods are
+        // the tree's own standing control: most of the 123 routes carry no
+        // @Param at all and the clean run is green over all of them.)
+        file: 'src/modules/photos/photos.controller.ts',
+        find: "@Param('restaurantId', new ParseUUIDPipe()) placeId: string,",
+        replace: "@Param('restaurantId') placeId: string,",
+      },
+    ],
+  },
 ];
 
 export const SCRATCH_FILE = SCRATCH;
