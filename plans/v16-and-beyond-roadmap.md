@@ -89,6 +89,32 @@ OWNER CHECKPOINT ⑤: the session itself.
 - Austin archive load: DEFERRED indefinitely by owner; relevance-gate
   versioning already in place for whenever.
 
+## TOTAL RED TEAM 2026-08-19/20 (owner-ordered; campaign record)
+Six lenses + module auditors; session-limit killed 4 agents mid-work
+(salvage completed). LANDED: plans reconciliation (9b4fcc96e — 228
+entries audited, 19 files corrected; UI queue rediscovered in the
+orphaned open-items-ledger; stale 08-07 track verdicts flagged
+PRE-fix — retest rides checkpoint ⑥); courts fixes (d433accea:
+satisfies-starvation, unattended resume, lane-count lie); polls
+interactions-sweep fix (fa8919576); mobile rename seams (fcabc7d39);
+teaser prototype-key 500 (33f6cd063 via sweep); ⭐04's F1/F2 grounding
+fixes (c525c67e8, shaped by the enrichment audit). CLEAN BILLS:
+identity/billing/ops ("no fixable defects"), money-spine one-gateway
+law, courts "healthiest layer", collection spine "unusually
+well-hardened", signals law modules coherent, timeZone dead-chain
+DISPROVEN (3 independent angles). MAJOR FINDINGS ROUTED: H1
+taste-profile redirect-blind → ⭐04 PRE-DEDUPE-UN-GATE; M5/M6/M3
+dish-knowledge+dedupe → ⭐04 before next nightly; M2/L1/L5 vocab
+meter/drain/locale-key → my fix agent (in flight); money-spine batch
+mispricing + truncation-repair + prod-disarm backstop → queued;
+enrichment F3 lifecycle gate = ⭐04's standing mechanism (janitor
+doctrine rewrite rides it). REGROUND DRAIN COMPLETE: 2,389 grounded
+(58.9%), 1,661 definitive no-match, 3 errors, 1,857 ungrounded remain
+= the lifecycle-gate population. INCOMPLETE (limit casualties, work
+landed but reports lost): lens-2 search synthesis, lens-6 mobile
+synthesis — both territories heavily covered by prior red teams;
+follow-up pass optional post-quiesce.
+
 ## STANDING LAWS FOR EVERY PHASE
 Executed proof over claimed proof; exhaustive audits before destructive
 verdicts; migrations apply at code-commit time; description edits are
