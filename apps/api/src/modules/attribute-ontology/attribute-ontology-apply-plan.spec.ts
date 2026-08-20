@@ -94,8 +94,41 @@ describe('applyPlan rename derives identity from plan.type (F4947)', () => {
     );
     expect(renameUpdate).toBeDefined();
     const expected = identityInsertData('new label', 'place_attribute');
-    // args: (sql, entityId, to, identityKey, identityKeySorted)
+    // args: (sql, entityId, to, identityKey, identityKeySorted, foldVersion)
     expect(renameUpdate?.[3]).toBe(expected.identityKey);
     expect(renameUpdate?.[4]).toBe(expected.identityKeySorted);
+  });
+
+  it('stamps the CURRENT fold_version alongside the re-keyed identity (one-fold law)', async () => {
+    const tx = {
+      $executeRawUnsafe: jest.fn().mockResolvedValue(1),
+      $queryRawUnsafe: jest.fn().mockResolvedValue([]),
+    };
+    const prisma = {
+      $transaction: jest.fn((cb: (t: typeof tx) => unknown) => cb(tx)),
+    };
+    const service = new AttributeOntologyService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      logger,
+    );
+
+    const rename = { entityId: 'e-1', from: 'old label', to: 'new label' };
+    await service.applyPlan(makePlan('item_attribute', rename), {
+      apply: true,
+    });
+
+    const calls = tx.$executeRawUnsafe.mock.calls as unknown[][];
+    const renameUpdate = calls.find((call) =>
+      String(call[0]).includes('identity_key ='),
+    );
+    expect(renameUpdate).toBeDefined();
+    // The UPDATE must SET fold_version — a raw re-key that writes new keys
+    // under the row's old version mislabels which algorithm spelled them.
+    expect(String(renameUpdate?.[0])).toContain('fold_version = $5');
+    expect(renameUpdate?.[5]).toBe(
+      identityInsertData('new label', 'item_attribute').foldVersion,
+    );
   });
 });

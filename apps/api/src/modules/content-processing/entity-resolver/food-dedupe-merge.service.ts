@@ -5,8 +5,8 @@ import { itemNameVariants, isSameItemUpToNumber } from './food-lemma';
 import {
   accentsAgreeUnbanked,
   canonicalFold,
-  entityIdentityKey,
   entityLockKey,
+  identityInsertData,
 } from './entity-identity';
 import {
   acquireIdentityMergeLocks,
@@ -182,10 +182,12 @@ export class ItemDedupeMergeService {
             type: string;
             key: string | null;
             sorted: string | null;
+            foldVersion: number;
           }>
         >`
           SELECT entity_id AS "entityId", name, type::text AS type,
-                 identity_key AS key, identity_key_sorted AS sorted
+                 identity_key AS key, identity_key_sorted AS sorted,
+                 fold_version AS "foldVersion"
           FROM core_entities
         `
       : await this.prisma.$queryRaw<
@@ -195,10 +197,12 @@ export class ItemDedupeMergeService {
             type: string;
             key: string | null;
             sorted: string | null;
+            foldVersion: number;
           }>
         >`
           SELECT entity_id AS "entityId", name, type::text AS type,
-                 identity_key AS key, identity_key_sorted AS sorted
+                 identity_key AS key, identity_key_sorted AS sorted,
+                 fold_version AS "foldVersion"
           FROM core_entities
           WHERE identity_key IS NULL
              OR identity_key_sorted IS NULL
@@ -210,14 +214,25 @@ export class ItemDedupeMergeService {
              OR created_at >= (${cutoff}::timestamptz AT TIME ZONE 'UTC')
         `;
     for (const row of rows) {
-      const expectedKey = canonicalFold(row.name) || null;
-      const expectedSorted = entityIdentityKey(row.name, row.type as never);
-      if (row.key !== expectedKey || row.sorted !== expectedSorted) {
+      // THE ONE IDENTITY HELPER (one-fold law): the heal re-keys through
+      // identityInsertData — the same helper every create path spreads — so
+      // a re-keyed row carries fold_version like any other written key. This
+      // UPDATE used to stamp the keys and NOT the version, leaving the
+      // { full: true } post-fold-bump backfill writing current-algorithm keys
+      // labeled with the OLD version — the exact provenance lie the column
+      // exists to expose.
+      const expected = identityInsertData(row.name, row.type as never);
+      if (
+        row.key !== expected.identityKey ||
+        row.sorted !== expected.identityKeySorted ||
+        row.foldVersion !== expected.foldVersion
+      ) {
         try {
           await this.prisma.$executeRaw`
             UPDATE core_entities
-            SET identity_key = ${expectedKey},
-                identity_key_sorted = ${expectedSorted}
+            SET identity_key = ${expected.identityKey},
+                identity_key_sorted = ${expected.identityKeySorted},
+                fold_version = ${expected.foldVersion}
             WHERE entity_id = ${row.entityId}::uuid`;
         } catch {
           // 23505 = this row IS a duplicate of an already-keyed twin. The

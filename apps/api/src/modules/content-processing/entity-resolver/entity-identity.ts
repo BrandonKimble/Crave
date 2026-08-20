@@ -142,9 +142,10 @@ const COMBINING_DIACRITICS =
  *    check bites by mutating the fold);
  *  - the identity.fold-version-recorded invariant fails when the fold
  *    implementation changes without this constant moving (hash pin).
- * A `fold_version` column beside identity_key is authored create-only
- * (unapplied) — see the migration README — so per-row provenance can land
- * with the next applied migration window.
+ * The `fold_version` column beside identity_key (applied 20260812090000)
+ * records per-row provenance; identityInsertData stamps it on every create,
+ * and the two raw re-key paths (the ontology rename, the identity-key heal)
+ * stamp it alongside the keys they rewrite.
  */
 export const FOLD_ALGORITHM_VERSION = 1;
 

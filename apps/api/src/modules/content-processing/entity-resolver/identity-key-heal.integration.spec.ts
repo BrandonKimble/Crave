@@ -20,7 +20,11 @@
 import { PrismaClient } from '@prisma/client';
 import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
 import { ItemDedupeMergeService } from './food-dedupe-merge.service';
-import { canonicalFold, entityIdentityKey } from './entity-identity';
+import {
+  canonicalFold,
+  entityIdentityKey,
+  FOLD_ALGORITHM_VERSION,
+} from './entity-identity';
 
 const TEST_TAG = 'itest-identity-heal';
 
@@ -55,11 +59,14 @@ async function seedItem(
   opts: { key: string | null; sorted: string | null; ageDays: number },
 ): Promise<string> {
   const name = `${TEST_TAG} ${label}`;
+  // fold_version 0 = "spelled by some pre-recording fold": the heal must
+  // stamp the CURRENT version when it re-keys (and must NOT touch rows it
+  // deliberately skips).
   const [row] = await prisma.$queryRawUnsafe<Array<{ entity_id: string }>>(
     `INSERT INTO core_entities
-       (name, type, status, identity_key, identity_key_sorted,
+       (name, type, status, identity_key, identity_key_sorted, fold_version,
         created_at, last_updated)
-     VALUES ($1, 'item', 'active', $2, $3,
+     VALUES ($1, 'item', 'active', $2, $3, 0,
              (now() AT TIME ZONE 'UTC') - ($4 * interval '1 day'),
              now() - ($4 * interval '1 day'))
      RETURNING entity_id`,
@@ -71,13 +78,16 @@ async function seedItem(
   return row.entity_id;
 }
 
-async function keysOf(
-  entityId: string,
-): Promise<{ key: string | null; sorted: string | null }> {
+async function keysOf(entityId: string): Promise<{
+  key: string | null;
+  sorted: string | null;
+  foldVersion: number;
+}> {
   const [row] = await prisma.$queryRawUnsafe<
-    Array<{ key: string | null; sorted: string | null }>
+    Array<{ key: string | null; sorted: string | null; foldVersion: number }>
   >(
-    `SELECT identity_key AS key, identity_key_sorted AS sorted
+    `SELECT identity_key AS key, identity_key_sorted AS sorted,
+            fold_version AS "foldVersion"
      FROM core_entities WHERE entity_id = $1::uuid`,
     entityId,
   );
@@ -138,6 +148,9 @@ describe('the narrowed nightly heal', () => {
     expect(await keysOf(recentDrifted)).toEqual({
       key: canonicalFold(name),
       sorted: entityIdentityKey(name, 'item' as never),
+      // A re-keyed row carries the CURRENT fold version (one-fold law):
+      // the heal writes through identityInsertData, keys AND provenance.
+      foldVersion: FOLD_ALGORITHM_VERSION,
     });
   });
 
@@ -146,6 +159,7 @@ describe('the narrowed nightly heal', () => {
     expect(await keysOf(ancientNullKey)).toEqual({
       key: canonicalFold(name),
       sorted: entityIdentityKey(name, 'item' as never),
+      foldVersion: FOLD_ALGORITHM_VERSION,
     });
   });
 
@@ -153,6 +167,7 @@ describe('the narrowed nightly heal', () => {
     expect(await keysOf(ancientDrifted)).toEqual({
       key: DRIFT_KEY,
       sorted: DRIFT_KEY,
+      foldVersion: 0,
     });
   });
 });
@@ -164,6 +179,20 @@ describe('the explicit full lever', () => {
     expect(await keysOf(ancientDrifted)).toEqual({
       key: canonicalFold(name),
       sorted: entityIdentityKey(name, 'item' as never),
+      // The { full: true } lever IS the post-fold-bump backfill — it must
+      // relabel provenance, not just rewrite keys.
+      foldVersion: FOLD_ALGORITHM_VERSION,
     });
+  });
+
+  it('stamps fold_version even when the KEYS are already correct (a version-only backfill is real work)', async () => {
+    const name = `${TEST_TAG} version-only pho`;
+    const id = await seedItem('version-only pho', {
+      key: canonicalFold(name),
+      sorted: entityIdentityKey(name, 'item' as never),
+      ageDays: 1,
+    });
+    await service.refreshSortedIdentityKeys();
+    expect((await keysOf(id)).foldVersion).toBe(FOLD_ALGORITHM_VERSION);
   });
 });

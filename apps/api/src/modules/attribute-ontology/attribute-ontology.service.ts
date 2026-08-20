@@ -772,16 +772,23 @@ export class AttributeOntologyService {
             // EntityType, so no cast and no fallback is representable.
             const identity = identityInsertData(rename.to, plan.type);
             counts.renames += await tx.$executeRawUnsafe(
+              // fold_version travels WITH the keys (one-fold law): this raw
+              // re-key writes everything identityInsertData computed,
+              // version included — a rename used to stamp new keys under the
+              // row's OLD fold_version, mislabeling which algorithm spelled
+              // them.
               `UPDATE core_entities
                SET name = $2,
                    identity_key = $3,
                    identity_key_sorted = $4,
+                   fold_version = $5,
                    name_embedding_stale = true
                WHERE entity_id = $1::uuid`,
               rename.entityId,
               rename.to,
               identity.identityKey,
               identity.identityKeySorted,
+              identity.foldVersion,
             );
             // A1 + N10: the demoted OLD DISPLAY NAME becomes a tagged,
             // sourced alias ROW instead of being laundered anonymously
