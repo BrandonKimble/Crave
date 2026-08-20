@@ -104,7 +104,10 @@ esac
 # the baked DEPLOYED_GIT_SHA, so "is the RUNNING commit the one I shipped" is
 # answerable. The other two are UNSMOKEABLE FROM HERE, and this says so in code
 # rather than by silently reusing the api's URL:
-#   worker — serves no HTTP at all (a queue consumer).
+#   worker — runs the same main.ts (it DOES listen; railway.worker.json even
+#   health-checks /health) — corrected 2026-08-19; the Railway-status
+#   fallback below remains valid, and a commit-assert smoke like the api one
+#   is a possible future upgrade.
 #   site   — answers /healthz, but that endpoint reports liveness only and
 #            carries no commit, so a 200 cannot distinguish the new build from
 #            the old one. Its Railway host is also not recorded in this repo.

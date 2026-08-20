@@ -70,6 +70,15 @@ const GRANDFATHERED = new Map([
   // ALTER COLUMN ... TYPE hazard is real on a fresh prod-shaped replay; the
   // AUTHORING.md session-GUC workaround applies.
   ['20260816120000_rehearsal_generation', 'b97fad45f7f1c52323137f3122a2530862638417'],
+  // 2026-08-19: found by the red team's fix to this gate's own comment
+  // blindness — the corpus-wide UPDATE (claim_verdicts.source, ~97k rows)
+  // was invisible because a leading comment block defeated the ^UPDATE
+  // anchor. Applied history, so frozen; the /dev/shm hazard applies on a
+  // fresh prod-shaped replay (session-GUC workaround per AUTHORING.md).
+  [
+    '20260815090000_vocabulary_hearing_queue_and_verdict_source',
+    '500d54e0250a79d077cdee9bcdbbfc064b9ad8b9',
+  ],
   // AUTHORING.md named TWO unguarded heavy migrations. This gate found SIX —
   // four were absent from that inventory, and one of them
   // (`poll_subject_id_text`) also slipped a hand-scan done while writing this
@@ -123,7 +132,13 @@ function unboundedUpdateOffsets(sql) {
   const out = [];
   let at = 0;
   for (const chunk of sql.split(';')) {
-    if (/^\s*UPDATE\s+[\s\S]*?\bSET\b/i.test(chunk) && !/\bWHERE\b/i.test(chunk)) {
+    // Strip leading `--` comment lines before anchoring: a comment block in
+    // the same chunk defeated the ^\s*UPDATE anchor, and an unguarded
+    // corpus-wide UPDATE (20260815090000, ~97k rows) sailed through unseen
+    // — the exact "regex matches only the already-fixed shape" scanner
+    // class (red team 2026-08-19).
+    const body = chunk.replace(/^(\s*--[^\n]*\n)+/, '');
+    if (/^\s*UPDATE\s+[\s\S]*?\bSET\b/i.test(body) && !/\bWHERE\b/i.test(body)) {
       out.push(at + (/\S/.exec(chunk)?.index ?? 0));
     }
     at += chunk.length + 1;

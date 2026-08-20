@@ -91,6 +91,22 @@ async function main(): Promise<void> {
 
   const results: Record<string, Record<string, Row[]>> = {};
   try {
+    // CRASH MARKER (red team 2026-08-19): the permanent backup tables ARE
+    // the crash-recovery mechanism (a TEMP table would die with the crashed
+    // session) — so their prior existence means an earlier run died mid-
+    // mutation and the corpus may still be floored. Refuse to stack a new
+    // mutation on an unreconciled one; restore or drop the backups first.
+    const priorBackup = await prisma.$queryRawUnsafe<{ n: number }[]>(
+      `SELECT count(*)::int AS n FROM information_schema.tables
+        WHERE table_name IN ('probe_upv_backup_m','probe_upv_backup_e')`,
+    );
+    if (priorBackup[0] && priorBackup[0].n > 0) {
+      throw new Error(
+        'probe_upv_backup_* tables already exist — a prior run crashed ' +
+          'mid-mutation. Restore from them (UPDATE ... FROM backup) or drop ' +
+          'them deliberately before running again.',
+      );
+    }
     console.log('backing up upvote columns…');
     await prisma.$executeRawUnsafe(
       `CREATE TABLE probe_upv_backup_m AS

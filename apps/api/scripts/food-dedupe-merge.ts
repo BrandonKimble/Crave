@@ -31,7 +31,11 @@ async function main(): Promise<void> {
   try {
     const service = app.get(ItemDedupeMergeService);
     const summary = await service.run({
-      dryRun: process.env.DEDUPE_DRY_RUN === '1',
+      // Dry-run by DEFAULT (red team 2026-08-19): a destructive default on
+      // a self-declared deletion-candidate script was the worst pairing in
+      // the directory — acting now requires the explicit --apply every
+      // other writer uses.
+      dryRun: !process.argv.includes('--apply'),
       similarityFloor: Number(process.env.DEDUPE_SIMILARITY_FLOOR ?? 0.72),
     });
     process.stdout.write(`${JSON.stringify(summary)}\n`);

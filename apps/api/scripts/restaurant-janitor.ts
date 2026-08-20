@@ -31,7 +31,11 @@ async function main(): Promise<void> {
   try {
     const janitor = app.get(PlaceJanitorService);
     const summary = await janitor.run({
-      dryRun: process.env.JANITOR_DRY_RUN === '1',
+      // Dry-run by DEFAULT (red team 2026-08-19): a destructive default on
+      // a self-declared deletion-candidate script was the worst pairing in
+      // the directory — acting now requires the explicit --apply every
+      // other writer uses.
+      dryRun: !process.argv.includes('--apply'),
       movedRetryLimit: Number(process.env.JANITOR_RETRY_LIMIT ?? 25),
     });
     process.stdout.write(`${JSON.stringify(summary)}\n`);
