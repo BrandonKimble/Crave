@@ -82,8 +82,9 @@ export class KeywordSearchOrchestratorService {
     this.keywordSearchSorts = this.resolveKeywordSearchSorts();
   }
 
-  // Cadence is driven by the collector pacer off collection_schedules rows —
-  // this orchestrator only executes/enqueues keyword work. (F478: the old
+  // Cadence is driven by the collector pacer off source_collection_lanes
+  // rows (collection_schedules was dropped with the scheduler) — this
+  // orchestrator only executes/enqueues keyword work. (F478: the old
   // CollectionSchedulerService that used to plan here was exterminated.)
 
   /**

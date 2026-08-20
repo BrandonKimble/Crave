@@ -1846,6 +1846,22 @@ export class UnifiedProcessingService implements OnModuleInit {
                 name: { in: probeNames, mode: 'insensitive' },
                 type: entityType,
                 status: { not: EntityStatus.archived },
+                // Rehearsal visibility (red team 2026-08-19 D3): a live run
+                // must never adopt a concurrent shadow's quarantined mint —
+                // only a rehearsal run sees its own (mirrors the P2002
+                // winner probe below).
+                ...(rehearsalRunId
+                  ? {
+                      OR: [
+                        { status: { not: EntityStatus.rehearsal } },
+                        { bornExtractionRunId: rehearsalRunId },
+                      ],
+                    }
+                  : {
+                      status: {
+                        notIn: [EntityStatus.archived, EntityStatus.rehearsal],
+                      },
+                    }),
               },
               select: {
                 entityId: true,
@@ -1880,6 +1896,8 @@ export class UnifiedProcessingService implements OnModuleInit {
                 SELECT entity_id, name FROM core_entities
                 WHERE type = ${entityType}::entity_type
                   AND status <> 'archived'
+                  AND (status <> 'rehearsal'::entity_status
+                       OR born_extraction_run_id = ${rehearsalRunId ?? null}::uuid)
                   AND identity_key_sorted = ${sortedKey}
                 ORDER BY created_at
                 LIMIT 1
@@ -1933,6 +1951,8 @@ export class UnifiedProcessingService implements OnModuleInit {
                 SELECT e.entity_id, e.name FROM core_entities e
                 WHERE e.type = ${entityType}::entity_type
                   AND e.status <> 'archived'
+                  AND (e.status <> 'rehearsal'::entity_status
+                       OR e.born_extraction_run_id = ${rehearsalRunId ?? null}::uuid)
                   AND e.identity_key = ${strippedKey}
                   AND (
                     EXISTS (
@@ -1974,6 +1994,8 @@ export class UnifiedProcessingService implements OnModuleInit {
                 SELECT entity_id, name FROM core_entities
                 WHERE type = ${entityType}::entity_type
                   AND status <> 'archived'
+                  AND (status <> 'rehearsal'::entity_status
+                       OR born_extraction_run_id = ${rehearsalRunId ?? null}::uuid)
                   AND identity_key = ${strippedKey}
                 ORDER BY created_at
                 LIMIT 1
@@ -2004,6 +2026,23 @@ export class UnifiedProcessingService implements OnModuleInit {
                     where: {
                       entityId: redirect.toEntityId,
                       status: { not: EntityStatus.archived },
+                      // Rehearsal visibility (D3): a redirect target that is
+                      // a foreign shadow's quarantined mint is invisible.
+                      ...(rehearsalRunId
+                        ? {
+                            OR: [
+                              { status: { not: EntityStatus.rehearsal } },
+                              { bornExtractionRunId: rehearsalRunId },
+                            ],
+                          }
+                        : {
+                            status: {
+                              notIn: [
+                                EntityStatus.archived,
+                                EntityStatus.rehearsal,
+                              ],
+                            },
+                          }),
                     },
                     select: { entityId: true, name: true },
                   });

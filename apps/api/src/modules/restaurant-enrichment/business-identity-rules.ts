@@ -56,6 +56,16 @@ export const AGGREGATOR_DOMAIN_PATTERNS: readonly string[] = [
   'linktr',
   'facebook',
   'instagram',
+  // Shared site-builder / listing platforms (red team 2026-08-19: all four
+  // classes below were found as live canonical_domain values — a domain
+  // thousands of businesses share carries no ownership signal).
+  'squarespace',
+  'wixsite',
+  'weebly',
+  'yelp',
+  'opentable',
+  'resy\\.com',
+  'sevenrooms',
 ];
 
 /** The bare alternation pattern — identical bytes feed the SQL literal and

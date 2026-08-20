@@ -640,11 +640,17 @@ export class PublicCraveScoreService {
           -- configuration, so "gate-rejected" means the LATEST judgment
           -- says drop — a re-heard post rejoins A(τ) the moment a newer
           -- verdict keeps it. No verdict at all fails open (kept).
+          -- Fetch-outcome sentinels (prompt_hash 'unfetchable': the
+          -- orphan-parent and batch-fetch tombstones) are NOT judgments and
+          -- rank BELOW every real one (red team 2026-08-19 D8): a later
+          -- re-fetch 404 must not evict already-collected, gate-kept
+          -- documents from the room. A sentinel speaks only when it is all
+          -- a post has.
           AND COALESCE((
             SELECT v.keep FROM collection_relevance_verdicts v
             WHERE v.platform = sd.platform
               AND v.post_id = COALESCE(sd.parent_source_id, sd.source_id)
-            ORDER BY v.judged_at DESC
+            ORDER BY (v.prompt_hash = 'unfetchable') ASC, v.judged_at DESC
             LIMIT 1
           ), true)
       ) d ON TRUE

@@ -862,9 +862,13 @@ export async function foldSurfacesFromMerge(
   await tx.$executeRaw`
     INSERT INTO entity_surface
       (entity_id, form, form_folded, locale, role, source, confidence, status,
-       prompt_version, claim_judge_version)
+       prompt_version, claim_judge_version, born_extraction_run_id)
     SELECT ${canonicalId}::uuid, a.form, a.form_folded, a.locale, a.role, a.source, a.confidence, a.status,
-           a.prompt_version, a.claim_judge_version
+           a.prompt_version, a.claim_judge_version,
+           -- Rehearsal provenance rides the fold (red team 2026-08-19
+           -- entity-D4): a loser's in-flight rehearsal row without its run
+           -- id could never be flipped or rejected — permanently invisible.
+           a.born_extraction_run_id
     FROM entity_surface a
     WHERE a.entity_id = ${duplicateId}::uuid
     ON CONFLICT (entity_id, locale, form) DO UPDATE SET

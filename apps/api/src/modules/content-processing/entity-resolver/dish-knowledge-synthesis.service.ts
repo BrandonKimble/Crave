@@ -112,7 +112,11 @@ export class DishKnowledgeSynthesisService {
         // outdated population; a bare timestamp made a dish done forever.
         OR: [
           { knowledgeSynthesizedAt: null },
-          { knowledgePromptVersion: { lt: DISH_KNOWLEDGE_RULE.version } },
+          // '=' law, not '<' (claim-verdict-ledger doctrine; red team
+          // 2026-08-19 D1): a hearing is answered by the rule IN FORCE, so
+          // a rollback to a lower ledgered version re-opens work the wrong
+          // newer rule stamped — `lt` would leave it invisible forever.
+          { knowledgePromptVersion: { not: DISH_KNOWLEDGE_RULE.version } },
         ],
       },
       select: { entityId: true, name: true },

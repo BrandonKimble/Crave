@@ -213,6 +213,11 @@ export class ReplayService implements OnModuleInit {
       parentJobId: null,
       collectionRunScopeKey: `replay:date-range:${params.platform}:${params.start.toISOString()}:${params.end.toISOString()}`,
       activateDocumentsBeforeProcessing: params.activate === true,
+      // Sibling parity (red team 2026-08-19 D9): a non-activating date-range
+      // replay quarantines its mints exactly like the run/collection replays
+      // — without this line it minted LIVE entities from docs that never
+      // activate, the leak class the rehearsal sandbox exists to close.
+      rehearsal: params.activate !== true,
       skipSourceLedgerDedupe: true,
       runMetadata: {
         replaySource: 'date_range',

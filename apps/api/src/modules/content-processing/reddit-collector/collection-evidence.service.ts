@@ -63,6 +63,8 @@ export function mapPipelineToLane(pipeline: string | null): string | null {
   return null;
 }
 
+const ANCIENT_UNKNOWN_DATE = new Date('1970-01-01T00:00:00.000Z');
+
 @Injectable()
 export class CollectionEvidenceService implements OnModuleInit {
   private logger!: LoggerService;
@@ -942,7 +944,7 @@ export class CollectionEvidenceService implements OnModuleInit {
         title: post.title ?? null,
         body: post.content ?? null,
         url: post.url ?? null,
-        sourceCreatedAt: this.parseDate(post.created_at, now),
+        sourceCreatedAt: this.parseDate(post.created_at, ANCIENT_UNKNOWN_DATE),
         collectedAt: now,
         scoreSnapshot: Number.isFinite(post.score) ? post.score : null,
         lane,
@@ -969,7 +971,10 @@ export class CollectionEvidenceService implements OnModuleInit {
           title: null,
           body: comment.content ?? null,
           url: comment.url ?? null,
-          sourceCreatedAt: this.parseDate(comment.created_at, now),
+          sourceCreatedAt: this.parseDate(
+            comment.created_at,
+            ANCIENT_UNKNOWN_DATE,
+          ),
           collectedAt: now,
           scoreSnapshot: Number.isFinite(comment.score) ? comment.score : null,
           lane,
@@ -1063,6 +1068,11 @@ export class CollectionEvidenceService implements OnModuleInit {
     return links;
   }
 
+  /** Unknown/garbage created_at floors to the ANCIENT sentinel, never to
+   *  NOW (red team 2026-08-19 D5, same F4905/F9201 law as the mention
+   *  path's UNKNOWN_SOURCE_CREATED_AT_SENTINEL): source_created_at feeds
+   *  calibration room mass A(τ) and decay, and a fabricated maximal-recency
+   *  date inflates its room. Epoch-0 de-weights to ~0 instead. */
   private parseDate(value: string | null | undefined, fallback: Date): Date {
     const parsed = value ? new Date(value) : fallback;
     return Number.isNaN(parsed.getTime()) ? fallback : parsed;

@@ -44,7 +44,11 @@ import { PlaceEntityMergeService } from './restaurant-entity-merge.service';
 import { PlaceCuisineExtractionQueueService } from './restaurant-cuisine-extraction-queue.service';
 import { PlaceSecondaryLocationExpansionQueueService } from './restaurant-secondary-location-expansion-queue.service';
 import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
-import { brandClusterPurity, placeNamesAgree } from './business-identity-rules';
+import {
+  brandClusterPurity,
+  identityDomain,
+  placeNamesAgree,
+} from './business-identity-rules';
 import { ClaimVerdictLedgerService } from '../content-processing/entity-resolver/claim-verdict-ledger.service';
 import {
   PLACE_GROUNDING_LANE,
@@ -788,7 +792,7 @@ export class PlaceLocationEnrichmentService {
       name: displayName,
       type: EntityType.place,
       canonicalDomain:
-        this.normalizeWebsiteDomain(params.place.websiteUri) ?? undefined,
+        this.trustedIdentityDomain(params.place.websiteUri) ?? undefined,
       // NOT a Prisma column any more (§11 item 4 / I-2 retired
       // core_entities.aliases[]). The caller creates the row, then banks
       // these through addSurfaces in the SAME transaction — one store for
@@ -1337,9 +1341,9 @@ export class PlaceLocationEnrichmentService {
       });
 
       const trustedCanonicalDomain =
-        this.normalizeWebsiteDomain(placeDetails.websiteUri) ??
-        this.normalizeWebsiteDomain(combinedUpdateData.canonicalDomain) ??
-        this.normalizeWebsiteDomain(entity.canonicalDomain);
+        this.trustedIdentityDomain(placeDetails.websiteUri) ??
+        this.trustedIdentityDomain(combinedUpdateData.canonicalDomain) ??
+        this.trustedIdentityDomain(entity.canonicalDomain);
       const entityForSecondary: PlaceEntity = {
         ...entity,
         canonicalDomain: trustedCanonicalDomain ?? entity.canonicalDomain,
@@ -1859,8 +1863,8 @@ export class PlaceLocationEnrichmentService {
 
     const placeDetails = details.place;
     const trustedCanonicalDomain =
-      this.normalizeWebsiteDomain(placeDetails.websiteUri) ??
-      this.normalizeWebsiteDomain(entity.canonicalDomain);
+      this.trustedIdentityDomain(placeDetails.websiteUri) ??
+      this.trustedIdentityDomain(entity.canonicalDomain);
     const canonical: PlaceEntityWithLocations | null = trustedCanonicalDomain
       ? await this.prisma.entity.findFirst({
           where: {
@@ -2047,8 +2051,8 @@ export class PlaceLocationEnrichmentService {
     updatedFields: string[];
   } | null> {
     const canonicalDomain =
-      this.normalizeWebsiteDomain(params.placeDetails.websiteUri) ??
-      this.normalizeWebsiteDomain(params.entity.canonicalDomain);
+      this.trustedIdentityDomain(params.placeDetails.websiteUri) ??
+      this.trustedIdentityDomain(params.entity.canonicalDomain);
     if (!canonicalDomain) {
       return null;
     }
@@ -2305,6 +2309,22 @@ export class PlaceLocationEnrichmentService {
     return domain.startsWith('www.') ? domain.slice(4) : domain;
   }
 
+  /**
+   * THE ONE DERIVATION for `Entity.canonicalDomain` writes (red team
+   * 2026-08-19). `canonicalDomain` is an OWNERSHIP claim — the identity
+   * spine the domain-first merge and secondary expansion trust — so an
+   * aggregator/social/ordering domain (instagram, doordash, toasttab,
+   * square.site …) must never be written there: it asserts a brand
+   * identity the venue does not own. The rollup plan's §B trust rule was
+   * enforced only at downstream readers; 168 entities accumulated
+   * aggregator canonical_domains before this authority existed (scrubbed
+   * the same day). Parsing stays in normalizeWebsiteDomain; trust lives in
+   * identityDomain; every write site calls THIS.
+   */
+  trustedIdentityDomain(value: unknown): string | null {
+    return identityDomain(this.normalizeWebsiteDomain(value));
+  }
+
   /** The highest-upvote mention body for this restaurant — the community's
    *  own words, fed to the place chooser as source text when the caller has
    *  none. Returns null for entities with no usable mention (new entities in
@@ -2397,8 +2417,8 @@ export class PlaceLocationEnrichmentService {
     locationBias?: { lat: number; lng: number; radiusMeters?: number },
   ): Promise<void> {
     const canonicalDomain =
-      this.normalizeWebsiteDomain(placeDetails.websiteUri) ??
-      this.normalizeWebsiteDomain(entity.canonicalDomain);
+      this.trustedIdentityDomain(placeDetails.websiteUri) ??
+      this.trustedIdentityDomain(entity.canonicalDomain);
     if (!canonicalDomain) {
       return;
     }
@@ -2462,7 +2482,7 @@ export class PlaceLocationEnrichmentService {
         if (!place?.id) {
           continue;
         }
-        const candidateDomain = this.normalizeWebsiteDomain(place.websiteUri);
+        const candidateDomain = this.trustedIdentityDomain(place.websiteUri);
         if (!candidateDomain || candidateDomain !== canonicalDomain) {
           continue;
         }
@@ -3445,9 +3465,7 @@ export class PlaceLocationEnrichmentService {
       details,
       matchMetadata,
     );
-    const trustedWebsiteDomain = this.normalizeWebsiteDomain(
-      details.websiteUri,
-    );
+    const trustedWebsiteDomain = this.trustedIdentityDomain(details.websiteUri);
     const metadata = this.mergePlaceMetadata(
       entity.placeMetadata,
       googlePlacesMetadata,

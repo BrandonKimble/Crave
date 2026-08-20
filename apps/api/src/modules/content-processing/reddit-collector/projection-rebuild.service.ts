@@ -1038,7 +1038,7 @@ export class ProjectionRebuildService implements OnModuleInit {
         WHERE ev.event_id = candidates.event_id
         RETURNING ev.restaurant_id
       )
-      SELECT DISTINCT restaurant_id FROM moved
+      SELECT DISTINCT restaurant_id AS place_id FROM moved
     `;
     // Delete ONLY redundant copies: rows whose redirect points at an ACTIVE
     // winner (the claim either just moved or already exists there). Events
@@ -1064,7 +1064,7 @@ export class ProjectionRebuildService implements OnModuleInit {
           AND winner.status = 'active'
         RETURNING ev.restaurant_id
       )
-      SELECT DISTINCT restaurant_id FROM gone
+      SELECT DISTINCT restaurant_id AS place_id FROM gone
     `;
     // RESTAURANT DIMENSION (round 2 ③): events keyed to a merged-away
     // RESTAURANT id are the same open tail — the projection loads by
@@ -1102,7 +1102,7 @@ export class ProjectionRebuildService implements OnModuleInit {
         WHERE ev.event_id = candidates.event_id
         RETURNING candidates.to_entity_id AS restaurant_id
       )
-      SELECT DISTINCT restaurant_id FROM moved
+      SELECT DISTINCT restaurant_id AS place_id FROM moved
     `;
     await this.prismaService.$executeRaw`
       DELETE FROM core_restaurant_entity_events ev
@@ -1143,7 +1143,7 @@ export class ProjectionRebuildService implements OnModuleInit {
         WHERE ev.event_id = candidates.event_id
         RETURNING candidates.to_entity_id AS restaurant_id
       )
-      SELECT DISTINCT restaurant_id FROM moved
+      SELECT DISTINCT restaurant_id AS place_id FROM moved
     `;
     await this.prismaService.$executeRaw`
       DELETE FROM core_restaurant_events ev
@@ -1169,7 +1169,7 @@ export class ProjectionRebuildService implements OnModuleInit {
           WHERE e.status = 'archived') AS entity_dim,
         (SELECT count(*)::int FROM core_restaurant_entity_events ev
           JOIN core_entities e ON e.entity_id = ev.restaurant_id
-          WHERE e.status = 'archived') AS restaurant_dim,
+          WHERE e.status = 'archived') AS place_dim,
         (SELECT count(*)::int FROM core_restaurant_events ev
           JOIN core_entities e ON e.entity_id = ev.restaurant_id
           WHERE e.status = 'archived') AS praise_dim

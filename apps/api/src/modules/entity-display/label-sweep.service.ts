@@ -166,7 +166,7 @@ export class LabelSweepService {
               AND l.role <> 'recall'
               AND LOWER(l.locale) = ANY(${localeLookupChain(locale)}::text[])
               AND l.status IN ('active', 'candidate')
-              AND l.prompt_version >= ${VOCABULARY_PROMPT_VERSION}
+              AND l.prompt_version = ${VOCABULARY_PROMPT_VERSION} -- '=' not '>=': answered by the rule IN FORCE; a rollback re-opens (ledger law, red team 2026-08-19 D2)
           )
           -- ...AND WE HAVE NOT ALREADY ASKED (audit KL-A, applied to the
           -- sweep). An output watermark alone conflates "no label needed" with
@@ -182,7 +182,7 @@ export class LabelSweepService {
             SELECT 1 FROM knowledge_pass_runs r
             WHERE r.pass = ${sweepPass(locale)}
               AND r.subject_id = e.entity_id
-              AND r.prompt_version >= ${VOCABULARY_PROMPT_VERSION}
+              AND r.prompt_version = ${VOCABULARY_PROMPT_VERSION} -- '=' not '>=': answered by the rule IN FORCE; a rollback re-opens (ledger law, red team 2026-08-19 D2)
           )
       `,
     );
@@ -216,7 +216,7 @@ export class LabelSweepService {
               AND l.role <> 'recall'
               AND LOWER(l.locale) = ANY(${localeLookupChain(locale)}::text[])
               AND l.status IN ('active', 'candidate')
-              AND l.prompt_version >= ${VOCABULARY_PROMPT_VERSION}
+              AND l.prompt_version = ${VOCABULARY_PROMPT_VERSION} -- '=' not '>=': answered by the rule IN FORCE; a rollback re-opens (ledger law, red team 2026-08-19 D2)
           )
           -- ...AND WE HAVE NOT ALREADY ASKED (audit KL-A, applied to the
           -- sweep). An output watermark alone conflates "no label needed" with
@@ -232,7 +232,7 @@ export class LabelSweepService {
             SELECT 1 FROM knowledge_pass_runs r
             WHERE r.pass = ${sweepPass(locale)}
               AND r.subject_id = e.entity_id
-              AND r.prompt_version >= ${VOCABULARY_PROMPT_VERSION}
+              AND r.prompt_version = ${VOCABULARY_PROMPT_VERSION} -- '=' not '>=': answered by the rule IN FORCE; a rollback re-opens (ledger law, red team 2026-08-19 D2)
           )
         -- MOST-REFERENCED FIRST. A sweep is always budget-bounded, so the
         -- concepts users actually encounter must be labelled first. This

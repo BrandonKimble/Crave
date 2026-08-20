@@ -114,7 +114,7 @@ async function showStatus(redis: Redis) {
     } (${jobsEnabled ? 'ENABLED' : 'DISABLED'})`,
   );
   console.log(
-    `   ↳ Collection cadence is planned by CollectionSchedulerService (COLLECTION_SCHEDULER_ENABLED); this flag additionally gates job dispatch.`,
+    `   ↳ Collection cadence is planned by CollectorPacerService off source_collection_lanes (COLLECTION_SCHEDULER_ENABLED gates the pacer); this flag additionally gates job dispatch.`,
   );
   console.log(`\n🧭 REDIS PREFIXES:`);
   console.log(`   - Bull prefix: ${bullPrefix}`);

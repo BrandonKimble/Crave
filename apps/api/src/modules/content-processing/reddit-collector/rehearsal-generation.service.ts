@@ -101,9 +101,16 @@ export class RehearsalGenerationService {
            SET status = 'archived'::entity_status, last_updated = now()
          WHERE status = 'rehearsal'::entity_status
            AND born_extraction_run_id = ANY(${ids}::uuid[])`;
+      // DELETE, never 'deprecated' (red team 2026-08-19 entity-D3):
+      // 'deprecated' means "a recall claim that LOST a hearing", and the
+      // surface writer honors it as remembered-wrong forever — but a
+      // rejected rehearsal's surfaces (including ones proposed on LIVE
+      // entities) were never judged; they simply never happened. Deleting
+      // them leaves later, activated runs free to bank the same form.
+      // Rehearsal rows are invisible-by-status and referenced by nothing,
+      // so the delete is safe by construction.
       const surfaces = await tx.$executeRaw`
-        UPDATE entity_surface
-           SET status = 'deprecated', updated_at = now()
+        DELETE FROM entity_surface
          WHERE status = 'rehearsal'
            AND born_extraction_run_id = ANY(${ids}::uuid[])`;
       const sources = ids.map((id) => `rehearsal:${id}`);

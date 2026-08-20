@@ -17,6 +17,7 @@ import {
   type BatchIngestItem,
 } from '../../external-integrations/llm/gemini-batch.service';
 import { RelevanceGateService } from './relevance-gate.service';
+import { RescoreCoordinatorService } from '../public-crave-score';
 import {
   EnrichedLLMMention,
   EnrichedLLMOutputStructure,
@@ -197,6 +198,7 @@ export class ExtractionPipelineService implements OnModuleInit {
     private readonly geminiBatchService: GeminiBatchService,
     private readonly relevanceGate: RelevanceGateService,
     private readonly promptRegistry: PromptRegistryService,
+    private readonly rescoreCoordinator: RescoreCoordinatorService,
   ) {}
 
   /** VERSIONED PROMPTS: a shadow replay pins a registered candidate
@@ -937,6 +939,14 @@ export class ExtractionPipelineService implements OnModuleInit {
       chunks: chunkResults.length,
       failures,
     });
+    // §12.6 — and batch is the DEFAULT mode: submission-time markDirty
+    // (reddit-batch-processing) fires hours before this ingest lands, and
+    // the hourly tick clears it long before the mentions exist. The ingest
+    // is the moment score inputs actually changed, so it marks dirty too
+    // (red team 2026-08-19 D4; idempotent flag, best-effort like its twin).
+    await this.rescoreCoordinator
+      .markDirty(`batch ingest ${jobId}`)
+      .catch(() => undefined);
   }
 
   /** POST-LLM half of the chunk plan — shared by the interactive path and the
