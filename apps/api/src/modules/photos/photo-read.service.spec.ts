@@ -11,7 +11,7 @@ import { PhotoReadService } from './photo-read.service';
 const rawRow = (over: Partial<Record<string, unknown>>) => ({
   photo_id: 'p1',
   user_id: 'u1',
-  place_id: 'r1',
+  restaurant_id: 'r1',
   connection_id: null,
   public_id: 'crave/test/photos/p1',
   caption: null,
@@ -76,7 +76,7 @@ describe('PhotoReadService.cardStrips', () => {
         }),
         rawRow({ photo_id: 'pd2', connection_id: 'c1' }),
       ],
-      placeRows: [rawRow({ photo_id: 'pr1', place_id: 'r2' })],
+      placeRows: [rawRow({ photo_id: 'pr1', restaurant_id: 'r2' })],
       connectionCounts: [{ connectionId: 'c1', _count: { photoId: 14 } }],
       placeCounts: [{ placeId: 'r2', _count: { photoId: 3 } }],
     });
@@ -97,7 +97,7 @@ describe('PhotoReadService.cardStrips', () => {
   it('a dish ref NEVER falls back to restaurant photos; empty refs come back as empty strips', async () => {
     const { service } = makeService({
       connectionRows: [],
-      placeRows: [rawRow({ photo_id: 'pr1', place_id: 'r1' })],
+      placeRows: [rawRow({ photo_id: 'pr1', restaurant_id: 'r1' })],
       placeCounts: [{ placeId: 'r1', _count: { photoId: 1 } }],
     });
     const { strips } = await service.cardStrips([

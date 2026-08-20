@@ -175,7 +175,11 @@ export class PhotosController {
   @Get('restaurants/:restaurantId/gallery')
   async placeGallery(
     @CurrentUser() viewer: User,
-    @Param('placeId', new ParseUUIDPipe()) placeId: string,
+    // Param name MUST match the route segment (':restaurantId' is the URL
+    // contract the mobile client calls) — the R14 rename changed the
+    // binding without the segment and 400'd every gallery request (red
+    // team 2026-08-19 photos-D1, same class as polls-D1).
+    @Param('restaurantId', new ParseUUIDPipe()) placeId: string,
     @Query() query: PlaceGalleryQueryDto,
   ) {
     return this.photoReads.forViewer(viewer.userId).placeGallery(placeId, {

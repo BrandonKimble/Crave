@@ -71,6 +71,8 @@ function makeService(pages: Array<() => Promise<unknown>>) {
     $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
       fn({
         placeLocation: {
+          // Ownership refusal (D4): no existing owner in these fixtures.
+          findUnique: jest.fn(async () => null),
           upsert: jest.fn(
             async (args: { where: { googlePlaceId: string } }) => {
               upserts.push(args.where.googlePlaceId);

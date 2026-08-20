@@ -41,7 +41,7 @@ export class PlaceTypeCensusService {
     const rows = await this.prisma.$queryRaw<
       Array<{ type: string; places: number }>
     >`
-      SELECT t.value AS type, count(DISTINCT e.entity_id)::int AS restaurants
+      SELECT t.value AS type, count(DISTINCT e.entity_id)::int AS places
         FROM core_entities e
         CROSS JOIN LATERAL jsonb_array_elements_text(
           e.restaurant_metadata->'googlePlaces'->'types'

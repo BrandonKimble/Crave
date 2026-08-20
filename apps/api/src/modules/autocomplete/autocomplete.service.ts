@@ -711,7 +711,11 @@ export class AutocompleteService {
     const survivors = await this.prisma.entity.findMany({
       where: {
         entityId: { in: survivorIds },
-        status: { not: EntityStatus.archived },
+        // ACTIVE only (red team 2026-08-19 D3): `not archived` also admits
+        // pending/rehearsal — and rehearsal rows are documented as invisible
+        // to every live reader. A redirect landing on a quarantined mint
+        // must not surface in type-ahead.
+        status: EntityStatus.active,
       },
       select: { entityId: true, name: true },
     });
@@ -1611,7 +1615,9 @@ export class AutocompleteService {
                 // below already skips a match with no name.
                 where: {
                   entityId: { in: resolvedIds },
-                  status: { not: EntityStatus.archived },
+                  // ACTIVE only (D3): see the survivor fetch above — the
+                  // rehearsal/pending tiers are as unservable as archived.
+                  status: EntityStatus.active,
                 },
                 select: { entityId: true, name: true },
               })

@@ -1333,15 +1333,21 @@ export class PlaceLocationEnrichmentService {
         );
       }
 
+      // POST-GROUNDING TAIL SPEAKS THE RESOLVED PLACE (red team 2026-08-19
+      // D2): the 2026-08-02 redirect fix stopped at the location/entity
+      // writes — this tail still consumed the pre-redirect `placeDetails`,
+      // so a moved restaurant's domain merge judged the CLOSED place's
+      // website, secondary expansion was enqueued (and paid full-SKU) for
+      // the dead Google id, and the result reported the stale id.
       this.logger.info('Restaurant enriched with Google Places', {
         entityId: entity.entityId,
-        placeId: placeDetails.id,
+        placeId: resolvedPlaceDetails.id,
         score: best.score,
         updatedFields: combinedUpdatedFields,
       });
 
       const trustedCanonicalDomain =
-        this.trustedIdentityDomain(placeDetails.websiteUri) ??
+        this.trustedIdentityDomain(resolvedPlaceDetails.websiteUri) ??
         this.trustedIdentityDomain(combinedUpdateData.canonicalDomain) ??
         this.trustedIdentityDomain(entity.canonicalDomain);
       const entityForSecondary: PlaceEntity = {
@@ -1351,8 +1357,8 @@ export class PlaceLocationEnrichmentService {
 
       const domainMerge = await this.mergeIntoCanonicalDomainEntityIfNeeded({
         entity: entityForSecondary,
-        placeDetails,
-        details,
+        placeDetails: resolvedPlaceDetails,
+        details: latestDetails,
         matchMetadata,
         score: best.score,
         googlePlaceAttributeIds,
@@ -1368,7 +1374,10 @@ export class PlaceLocationEnrichmentService {
 
       await this.secondaryLocationExpansionQueue.queueExpansion(
         secondaryLocationTarget.entityId,
-        placeDetails.id,
+        // The redirect target's id; a redirect that somehow lost its id
+        // falls back to the original (pre-2026-08-19 behavior) rather than
+        // failing the whole enrichment over an expansion side effect.
+        resolvedPlaceDetails.id ?? placeDetails.id,
         {
           source: domainMerge
             ? 'google_places_domain_merge'
@@ -1389,7 +1398,7 @@ export class PlaceLocationEnrichmentService {
           entityId: entity.entityId,
           mergedInto: domainMerge.mergedInto,
           status: 'updated',
-          placeId: placeDetails.id,
+          placeId: resolvedPlaceDetails.id ?? placeDetails.id,
           score: best.score,
           updatedFields: this.mergeUpdatedFieldLists(
             combinedUpdatedFields,
@@ -1400,7 +1409,7 @@ export class PlaceLocationEnrichmentService {
       return {
         entityId: entity.entityId,
         status: 'updated',
-        placeId: placeDetails.id,
+        placeId: resolvedPlaceDetails.id ?? placeDetails.id,
         score: best.score,
         updatedFields: combinedUpdatedFields,
       };
@@ -2523,6 +2532,28 @@ export class PlaceLocationEnrichmentService {
 
         const ownedPlaceId = place.id;
         await this.prisma.$transaction(async (tx) => {
+          // OWNERSHIP REFUSAL (red team 2026-08-19 D4, mirroring
+          // applyGroundingEffect): googlePlaceId is globally unique, so this
+          // upsert's update arm could silently RE-POINT a location row owned
+          // by a DIFFERENT restaurant — no merge, no lock, no hearing — and
+          // strand the victim's primary_location_id FK. Cross-entity
+          // ownership conflicts belong to the merge/domain lanes, never to
+          // a branch-expansion side effect.
+          const currentOwner = await tx.placeLocation.findUnique({
+            where: { googlePlaceId: ownedPlaceId },
+            select: { placeId: true },
+          });
+          if (currentOwner && currentOwner.placeId !== entity.entityId) {
+            this.logger.warn(
+              'Secondary expansion refused: place already owned by another entity',
+              {
+                googlePlaceId: ownedPlaceId,
+                owner: currentOwner.placeId,
+                expanding: entity.entityId,
+              },
+            );
+            return;
+          }
           await tx.placeLocation.upsert({
             where: { googlePlaceId: ownedPlaceId },
             update: {

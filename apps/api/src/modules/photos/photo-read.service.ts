@@ -250,7 +250,12 @@ export class PhotoReadService {
     return {
       photoId: row.photo_id,
       userId: row.user_id,
-      placeId: row.place_id,
+      // The raw SQL selects the REAL column `restaurant_id` (storage name;
+      // R14 renamed the TS field only). Reading `place_id` here returned
+      // undefined for every raw strip row — every restaurant card strip and
+      // list tile gallery rendered empty while counts stayed honest (red
+      // team 2026-08-19 photos-D2).
+      placeId: row.restaurant_id,
       connectionId: row.connection_id,
       publicId: row.public_id,
       caption: row.caption,
@@ -417,7 +422,7 @@ const PHOTO_STRIP_SELECT = {
 interface RawStripRow {
   photo_id: string;
   user_id: string;
-  place_id: string;
+  restaurant_id: string;
   connection_id: string | null;
   public_id: string;
   caption: string | null;

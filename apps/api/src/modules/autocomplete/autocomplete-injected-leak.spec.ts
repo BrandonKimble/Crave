@@ -114,7 +114,9 @@ describe('autocomplete injected-lane leak closure (F570/F571)', () => {
     const where = (
       prisma.entity.findMany.mock.calls[0] as [{ where: { status: unknown } }]
     )[0].where;
-    expect(where.status).toEqual({ not: 'archived' });
+    // D3 (2026-08-19): the guard tightened from not-archived to ACTIVE-only
+    // — pending/rehearsal are as unservable as archived.
+    expect(where.status).toEqual('active');
   });
 
   it('dedupes two saved rows that collapse onto one survivor', async () => {
@@ -170,6 +172,8 @@ describe('autocomplete resolver name-refetch archived guard (F572)', () => {
     const where = (
       prisma.entity.findMany.mock.calls[0] as [{ where: { status: unknown } }]
     )[0].where;
-    expect(where.status).toEqual({ not: 'archived' });
+    // D3 (2026-08-19): the guard tightened from not-archived to ACTIVE-only
+    // — pending/rehearsal are as unservable as archived.
+    expect(where.status).toEqual('active');
   });
 });
