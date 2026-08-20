@@ -21,8 +21,15 @@ for input only at the named checkpoints below.
       abstraction; "All" sole member until gates open.
 - [ ] ⭐04 tonight (theirs, text-frozen): VOCABULARY_PROMPT_VERSION →
       fingerprint; dish-knowledge due predicate versioned.
-- [ ] OWNER CHECKPOINT ①: nightly-invariants rung yes/no (⭐04 presenting
-      the two clean-tree breaks as evidence; my +1 on record).
+- [x] OWNER CHECKPOINT ① RESOLVED (2026-08-20): nightly invariants run
+      LIVE with PUSH-ON-RED consultation — the owner's challenge ("if we
+      don't check CI, why would we check the nightly report?") killed
+      pull-based reporting. Shape: one scheduled task (03:30, diagnose-
+      never-patch); GREEN = total silence; RED = phone notification +
+      untracked INVARIANTS-RED.md at repo root (lands in every agent
+      session's git status until resolved). Machinery inventory verified:
+      ONE task updated in place, zero orphans, nothing to clean. CI keeps
+      the same suite as the deploy belt. No owner action open.
 
 ## PHASE 1 — THE v16 SHADOW (fires on owner's word; both GO-checklists green)
 Same-corpus shadow (~$30, pre-approved) under the P6 sandbox: every write
