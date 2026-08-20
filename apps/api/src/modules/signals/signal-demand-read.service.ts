@@ -949,8 +949,11 @@ export class SignalDemandReadService {
           COALESCE(s.meta->>'reason', '') AS reason,
           s.actor_id,
           COALESCE(s.meta->>'askSearchRequestId', s.signal_id::text) AS ask_key,
-          (s.meta->>'resultRestaurantCount')::int AS result_restaurant_count,
-          (s.meta->>'resultFoodCount')::int AS result_food_count,
+          -- COALESCE both spellings (red team 2026-08-19 signals-D2): the
+          -- writer emits resultPlaceCount/resultItemCount since R14; the
+          -- pre-rename spellings survive only in historical rows.
+          COALESCE(s.meta->>'resultPlaceCount', s.meta->>'resultRestaurantCount')::int AS result_place_count,
+          COALESCE(s.meta->>'resultItemCount', s.meta->>'resultFoodCount')::int AS result_item_count,
           s.detected_locale,
           s.occurred_at
         FROM signals s
@@ -988,8 +991,8 @@ export class SignalDemandReadService {
         -- search collapse here (§3 judge-at-read).
         SELECT
           term, entity_type, entity_id, reason, actor_id, ask_key,
-          MIN(result_restaurant_count) AS result_restaurant_count,
-          MIN(result_food_count) AS result_food_count,
+          MIN(result_place_count) AS result_place_count,
+          MIN(result_item_count) AS result_item_count,
           MAX(occurred_at) AS last_seen_at
         FROM asks
         GROUP BY 1, 2, 3, 4, 5, 6
@@ -998,8 +1001,8 @@ export class SignalDemandReadService {
         SELECT
           term, entity_type, entity_id, reason, actor_id,
           COUNT(*)::float8 AS ask_count,
-          MIN(result_restaurant_count) AS result_restaurant_count,
-          MIN(result_food_count) AS result_food_count,
+          MIN(result_place_count) AS result_place_count,
+          MIN(result_item_count) AS result_item_count,
           MAX(last_seen_at) AS last_seen_at
         FROM per_request
         GROUP BY 1, 2, 3, 4, 5
@@ -1011,8 +1014,8 @@ export class SignalDemandReadService {
         reason,
         COUNT(*)::bigint AS distinct_user_count,
         SUM(LN(1 + ask_count) / LN(2))::float8 AS demand_score,
-        MIN(result_restaurant_count)::int AS result_restaurant_count,
-        MIN(result_food_count)::int AS result_food_count,
+        MIN(result_place_count)::int AS result_place_count,
+        MIN(result_item_count)::int AS result_item_count,
         MAX(last_seen_at) AS last_seen_at,
         SUM(ask_count)::bigint AS ask_count,
         MAX(tl.detected_locale) AS detected_locale

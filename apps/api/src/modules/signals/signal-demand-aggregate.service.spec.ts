@@ -67,7 +67,9 @@ function createHarness(
             },
           ]);
         }
-        if (text.includes('DISTINCT (s.occurred_at::date)')) {
+        if (
+          text.includes("DISTINCT ((s.occurred_at AT TIME ZONE 'UTC')::date)")
+        ) {
           return Promise.resolve(
             (options.rebuildDays ?? []).map((day) => ({ day })),
           );
@@ -324,7 +326,7 @@ describe('SignalDemandAggregateService — the §3 day-slice rebuild', () => {
 
     // The day scan filters on recorded_at > watermark.
     const dayScan = queries.find((q) =>
-      q.text.includes('DISTINCT (s.occurred_at::date)'),
+      q.text.includes("DISTINCT ((s.occurred_at AT TIME ZONE 'UTC')::date)"),
     );
     expect(dayScan).toBeDefined();
     expect(flatten(dayScan!)).toContain('s.recorded_at >');
@@ -383,7 +385,7 @@ describe('SignalDemandAggregateService — the §3 day-slice rebuild', () => {
     const first = createHarness({ watermark: null, rebuildDays: [] });
     await first.service.refreshFromWatermark();
     const dayScan = first.queries.find((q) =>
-      q.text.includes('DISTINCT (s.occurred_at::date)'),
+      q.text.includes("DISTINCT ((s.occurred_at AT TIME ZONE 'UTC')::date)"),
     );
     expect(flatten(dayScan!)).not.toContain('s.recorded_at >');
     // No day rebuilds — only the watermark upsert.

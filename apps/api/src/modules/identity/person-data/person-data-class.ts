@@ -812,6 +812,10 @@ export const COLUMN_COVERAGE: readonly ColumnCoverageEntry[] = [
       ['llm_batch_job_items', 'Batch item payloads (corpus extraction).'],
       ['llm_decision_records', 'LLM decision audit trail.'],
       ['llm_prompts', 'Versioned prompt text we wrote.'],
+      [
+        'source_table_high_water',
+        'Ops bookkeeping: row-count high-water marks for the collapse alarm.',
+      ],
       ['metro_location_probes', 'Which restaurants we probed for a metro.'],
       ['notifications', 'The push DELIVERY ledger: type, status, retry state.'],
       ['ops_alerts', 'Operator alerts about the system.'],

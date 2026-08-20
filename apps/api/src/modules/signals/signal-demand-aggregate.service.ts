@@ -65,7 +65,8 @@ import { UserTasteProfileBuilder } from './user-taste-profile.builder';
  *   one act of every selected search. Backfilled legacy rows carry
  *   meta.eventCount (the old tables' pre-dedup counters); it weighs into
  *   signalCount.
- * - TIME ZONE LAW (red-team 1a): signals.occurred_at is a NAIVE-UTC
+ * - TIME ZONE LAW (red-team 1a; premise updated 2026-08-19 — the column
+ *   is timestamptz now, so bare ::date is session-zone-dependent): occurred_at was a NAIVE-UTC
  *   timestamp; signal_demand_daily.last_occurred_at is timestamptz. Every
  *   rebuild transaction runs under SET LOCAL TIME ZONE 'UTC' so the coercion
  *   reads the wall-clock as the UTC instant it is. SET LOCAL (vs AT TIME
@@ -166,9 +167,15 @@ export class SignalDemandAggregateService {
       const watermarkFilter = watermark
         ? Prisma.sql`WHERE s.recorded_at > ${watermark.toISOString()}::timestamptz`
         : Prisma.empty;
-      // occurred_at is naive UTC; ::date is its UTC day in any session zone.
+      // occurred_at is timestamptz (the naive-UTC era ended with the
+      // timestamptz rebuild), so a bare ::date resolves in the SESSION zone
+      // — proven live: '...01:30:00+00'::date under America/Chicago yields
+      // the PREVIOUS day, the act's true UTC day never enters this list,
+      // and the watermark advances past it (red team 2026-08-19 signals-D1).
+      // AT TIME ZONE 'UTC' pins the day label to the same UTC bounds
+      // rebuildDay uses.
       const dayRows = await this.prisma.$queryRaw<{ day: string }[]>`
-        SELECT DISTINCT (s.occurred_at::date)::text AS day
+        SELECT DISTINCT ((s.occurred_at AT TIME ZONE 'UTC')::date)::text AS day
         FROM signals s
         ${watermarkFilter}
         ORDER BY day
