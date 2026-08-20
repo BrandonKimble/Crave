@@ -549,8 +549,11 @@ export function laneWiring(lane: string): LaneWiring {
   const wiring = VOCABULARY_LANES[lane];
   if (!wiring) {
     throw new Error(
-      `'${lane}' is not a judged-vocabulary lane. The two lanes are ` +
-        `'${WORD_GENERICNESS_LANE}' and '${WORD_NEGATION_LANE}'.`,
+      `'${lane}' is not a judged-vocabulary lane. The lanes are ` +
+        Object.keys(VOCABULARY_LANES)
+          .map((name) => `'${name}'`)
+          .join(', ') +
+        `.`,
     );
   }
   return wiring;

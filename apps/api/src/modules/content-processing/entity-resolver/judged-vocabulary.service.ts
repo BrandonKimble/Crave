@@ -720,6 +720,21 @@ export class JudgedVocabularyService implements OnModuleInit {
     heard: number;
     remaining: number;
   }> {
+    // FINISH BEFORE BUYING (the H5 resume seam, closed for the steady rail
+    // 2026-08-19). A crash between `record` and `markExecuted` leaves a
+    // verdict whose executed stamp never landed; the judge's
+    // `resumePendingEffects` existed, but only the operator's
+    // certify-vocabulary script ever called it — the nightly, the one caller
+    // that runs unattended, let the resume queue grow forever. The effect
+    // here is cheap (re-notify the cache, stamp the row), so the drain
+    // settles yesterday's books before opening today's docket.
+    for (const lane of [
+      WORD_GENERICNESS_LANE,
+      WORD_NEGATION_LANE,
+      WORD_ROLE_LANE,
+    ]) {
+      await this.judge.resumePendingEffects(lane);
+    }
     const rows = await this.prisma.$queryRaw<
       Array<{ lane: string; claim_key: string; word: string; locale: string }>
     >`

@@ -322,8 +322,13 @@ export class ConceptSatisfiesService {
             // load-bearing — they are what stops a pair being judged twice —
             // so writing one the model never returned would permanently
             // record a decision nobody made. Leave it unjudged; the
-            // watermark re-offers it.
+            // watermark re-offers it — which requires the run NOT to be
+            // recorded 'judged' below (red team 2026-08-19): the comment on
+            // the run row already promised this for unreturned verdicts,
+            // but only failed batches set the flag, so an omitted pair was
+            // stamped done and starved forever.
             summary.unreturned += 1;
+            incomplete = true;
             continue;
           }
           const relation =
