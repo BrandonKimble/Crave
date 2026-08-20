@@ -169,17 +169,20 @@ export class TeaserService {
     contextIds: string[] = [],
     cuisineIds: string[] = [],
   ): Promise<TeaserPreviewPayload | null> {
-    const cities = CITY_LOCATION_NAMES[city as LiveCityValue] as
-      | string[]
-      | undefined;
+    // Object.hasOwn on every record keyed by RAW request strings: a plain
+    // lookup resolves prototype keys ('__proto__', 'constructor', 'toString')
+    // to truthy non-data values, which then reach SQL params / .map and throw
+    // — a 500 on the one public, unauthenticated endpoint.
+    const cities = Object.hasOwn(CITY_LOCATION_NAMES, city)
+      ? CITY_LOCATION_NAMES[city as LiveCityValue]
+      : undefined;
     if (!cities) {
       return null;
     }
 
     let base: TeaserPreviewPayload | null = null;
-    const orderedDishIds = dishIds.filter(
-      (id): id is CravingOptionId =>
-        DISHES_BY_CRAVING_ID[id as CravingOptionId] !== undefined,
+    const orderedDishIds = dishIds.filter((id): id is CravingOptionId =>
+      Object.hasOwn(DISHES_BY_CRAVING_ID, id),
     );
     for (const dishId of orderedDishIds) {
       const cacheKey = `${city}:${dishId}`;
@@ -217,7 +220,13 @@ export class TeaserService {
       contextIds.includes(entry.contextId),
     );
     const cuisine = cuisineIds
-      .map((id) => CUISINE_ATTRS[id as CuisineOptionId])
+      // Object.hasOwn: see preview() — raw request strings must never reach
+      // the prototype chain.
+      .map((id) =>
+        Object.hasOwn(CUISINE_ATTRS, id)
+          ? CUISINE_ATTRS[id as CuisineOptionId]
+          : undefined,
+      )
       .find(Boolean);
     const key = `${city}:rs:${context?.contextId ?? '-'}:${cuisine?.attrName ?? '-'}`;
 
