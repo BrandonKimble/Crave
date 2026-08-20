@@ -284,6 +284,56 @@ export const INVARIANTS: readonly Invariant[] = [
     ],
   },
   {
+    // A9b(12b): the completeness half of the caller-profile law. The
+    // lockdown spec is a SEPARATE-ARTIFACT scanner (three regexes over the
+    // tree) — exactly the population whose silent death this registry
+    // exists to catch: its `_judge` indirection arm was ADDED because
+    // vocabulary.word_role_judge ran 32k hearings unprofiled while the spec
+    // stayed green (ad52ab2e2). Each mutation plants one caller shape the
+    // scan must see; if a regex rots, its mutation stops failing the same day.
+    id: 'spend.every-gemini-generation-caller-is-profiled',
+    statement:
+      'Every Gemini generation call site — usageCaller, generateForCaller, or an indirected *_judge lane config — names a caller that resolves to a GEMINI_CALLER_PROFILES entry.',
+    incident:
+      "The word-court lanes carried their caller string in a lane-config object far from the generateForCaller call, so the lockdown scan never saw them: vocabulary.word_role_judge ran ~32k hearings with no profile (default thinking budget, no context class) while the completeness spec stayed green (fixed ad52ab2e2, 2026-08-17). Earlier, red team F2 found the spend gate's own caller wrongly exempted — deleting its profile kept CI green.",
+    level: 'behaviour',
+    mechanism:
+      'gemini-gateway-lockdown.spec.ts — the completeness scan (usageCaller / generateForCaller / caller: *_judge regexes over src/ and scripts/) against GEMINI_CALLER_PROFILES, with a liveness floor so an empty scan cannot pass blind',
+    check: {
+      command:
+        'npx jest src/modules/external-integrations/llm/gemini-gateway-lockdown.spec.ts --silent',
+      reads: 'every caller string in the tree against the profile table',
+    },
+    mutations: [
+      {
+        // A direct generation call site with an unprofiled caller.
+        file: SCRATCH,
+        // The probe text is CONCATENATED so the scan does not read this
+        // registry file itself as the unprofiled call site.
+        content:
+          'export const opts = { usageCaller' +
+          ": 'invariant.probe-unprofiled' };\n",
+      },
+      {
+        // The indirected shape that actually shipped unprofiled: a caller
+        // string in a lane-config object, nowhere near a generate call. The
+        // `_judge` suffix convention is what makes it visible at all.
+        file: SCRATCH,
+        content:
+          'export const laneConfig = { caller' +
+          ": 'invariant_probe_judge' };\n",
+      },
+    ],
+    legitimate: [
+      {
+        // A profiled caller is the correct shape — the scan must not refuse it.
+        file: SCRATCH,
+        content:
+          'export const opts = { usageCaller' + ": 'content.extract' };\n",
+      },
+    ],
+  },
+  {
     id: 'spend.a-ceiling-counts-billed-dollars',
     statement:
       'A spend ceiling or campaign envelope may only be given BilledMicros, never a raw ledger figure.',
@@ -1387,6 +1437,45 @@ export const INVARIANTS: readonly Invariant[] = [
         find: 'if (!row || row.scores >= row.items) return;',
         replace:
           'if (!row || true) return; // MUTATED: a short score table reads as parity.',
+      },
+    ],
+  },
+  {
+    // THE SOURCE TABLES CANNOT SILENTLY COLLAPSE (08-16 incident). Every
+    // derived table has an emptiness self-heal; the tables those heals
+    // REBUILD FROM had no guard at all, so a wipe of the unrebuildable
+    // layer was indistinguishable from a small database. Alarm, never
+    // self-heal: source data has no upstream.
+    id: 'source.tables-cannot-silently-collapse',
+    statement:
+      'The unrebuildable source tables (core_entities, entity_surface, core_restaurant_locations, collection_source_documents, core_restaurant_events) are censused at boot and nightly against a persisted high-water count; a drop to zero or a >20% single-step drop raises a critical deduped ops alert naming the table.',
+    incident:
+      'The 2026-08-16 silent wipe: source tables were emptied and NOTHING said a word — every emptiness guard in the repo watches a derived table, because derived tables can self-heal. The source layer, the one layer that cannot be rebuilt, was the one layer nobody watched.',
+    level: 'behaviour',
+    mechanism:
+      'SourceTableCollapseAlarmService — boot (onApplicationBootstrap, every runtime) + nightly (@Cron, scheduler runtimes) census against source_table_high_water; high water only ratchets up, kill-switch honesty in the alert body on cron-free runtimes.',
+    check: {
+      command:
+        'npx jest src/modules/external-integrations/shared/source-table-collapse-alarm.service.spec.ts --silent',
+      reads:
+        'the RED cases (a wipe to zero and a past-threshold drop must alert) and the GREEN cases (baseline, ratchet, in-margin churn stay silent)',
+    },
+    mutations: [
+      {
+        // Disarm the verdict wholesale: every collapse reads as steady — the
+        // exact pre-alarm world the incident happened in.
+        file: 'src/modules/external-integrations/shared/source-table-collapse-alarm.service.ts',
+        find: '    const collapsed = highWater > 0 && (current === 0 || current < floor);',
+        replace:
+          '    const collapsed = false as boolean; // MUTATED: a collapse reads as steady.',
+      },
+      {
+        // Soften only the fractional arm (zero still alarms): a 99% drop
+        // that stops short of empty must still bite.
+        file: 'src/modules/external-integrations/shared/source-table-collapse-alarm.service.ts',
+        find: '    const floor = Math.ceil(highWater * (1 - COLLAPSE_DROP_FRACTION));',
+        replace:
+          '    const floor = 0; // MUTATED: only a wipe to exactly zero alarms.',
       },
     ],
   },

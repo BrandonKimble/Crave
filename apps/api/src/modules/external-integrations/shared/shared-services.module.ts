@@ -11,6 +11,7 @@ import { ReconciliationMultiplierService } from './reconciliation-multiplier.ser
 import { SpendExpectationMonitorService } from './spend-expectation-monitor.service';
 import { VendorQuotaWatcherService } from './vendor-quota-watcher.service';
 import { BootSpendGuardAlertService } from '../../../shared/queues/boot-spend-guard-alert.service';
+import { SourceTableCollapseAlarmService } from './source-table-collapse-alarm.service';
 
 /**
  * Shared services module for external integrations
@@ -37,6 +38,9 @@ import { BootSpendGuardAlertService } from '../../../shared/queues/boot-spend-gu
     // The SCREAM half of the worker-boot spend guard. Lives here because it
     // needs OpsAlertsService; the guard itself runs pre-Nest in main.ts.
     BootSpendGuardAlertService,
+    // Source-table row-collapse alarm (08-16 silent-wipe incident): boot +
+    // nightly census of the unrebuildable tables against persisted high water.
+    SourceTableCollapseAlarmService,
   ],
   exports: [
     ReconciliationMultiplierService,
@@ -48,6 +52,7 @@ import { BootSpendGuardAlertService } from '../../../shared/queues/boot-spend-gu
     SpendExpectationMonitorService,
     VendorQuotaWatcherService,
     BootSpendGuardAlertService,
+    SourceTableCollapseAlarmService,
   ],
 })
 export class SharedServicesModule {}

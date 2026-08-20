@@ -748,6 +748,20 @@ model Engine {
 /// §12.6 singleton rescorer state: collection sets dirty; ONE debounced,
 /// advisory-locked rescorer owns global rebuilds (kills racing rebuilds and
 /// the final-batch proxy). Single row by CHECK (id = 1).
+/// SOURCE-TABLE ROW-COLLAPSE ALARM (08-16 silent-wipe incident): the persisted
+/// high-water row count per unrebuildable source table. The alarm service
+/// compares live counts against these and raises a critical ops alert on a
+/// collapse — source data cannot be rebuilt, so this is an alarm, never a
+/// self-heal. High water only ratchets UP; a deliberate legitimate shrink is
+/// accepted by updating the row by hand (the alert body says so).
+model SourceTableHighWater {
+  tableName      String   @id @map("table_name")
+  highWaterCount BigInt   @map("high_water_count")
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("source_table_high_water")
+}
+
 model RescoreState {
   id            Int       @id @default(1)
   dirty         Boolean   @default(false)
