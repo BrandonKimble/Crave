@@ -5,9 +5,15 @@ import {
   type BilledMicros,
   type LedgerMicros,
 } from './spend-currency';
-import { Injectable, OnModuleDestroy, Optional } from '@nestjs/common';
+import {
+  Injectable,
+  OnApplicationBootstrap,
+  OnModuleDestroy,
+  Optional,
+} from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CorrelationUtils, LoggerService } from '../../../shared';
+import { isWorkerRuntime } from '../../../shared/utils/process-role';
 import { GovernanceService } from '../governance/governance.service';
 import { currentCampaignId, currentAttribution } from './work-context';
 import {
@@ -220,7 +226,56 @@ function campaignSpendMicros(event: UsageEvent): number {
 }
 
 @Injectable()
-export class UsageLedgerService implements OnModuleDestroy {
+export class UsageLedgerService
+  implements OnModuleDestroy, OnApplicationBootstrap
+{
+  /**
+   * THE WORKER-BOOT BUDGET-OWNER REFUSAL (ledger 12d residual, lens-D).
+   *
+   * governance/spendCampaigns are @Optional() below so SLIM SCRIPT GRAPHS
+   * (a one-off backfill that boots three modules) can still record ledger
+   * rows without hauling in the whole governance module — a script is not a
+   * worker, and its spend is a human at a keyboard. But that same optionality
+   * is a fail-open class for the process whose entire job is unattended
+   * spend: a WORKER whose module graph quietly stopped providing the
+   * governance/campaign services would keep running every spend lane with
+   * rows that drain no pool and debit no envelope — ungoverned by silence,
+   * the exact shape of the $25 fossil-backlog incident's flag-on-the-tap.
+   *
+   * So a worker-runtime boot REFUSES to complete unless the ledger owns its
+   * budget machinery. Scripts (PROCESS_ROLE=api, the convention every
+   * script header sets) never hit this; the full AppModule always provides
+   * both, so this throw only ever fires when the wiring has regressed —
+   * which is precisely when a loud boot failure is worth infinitely more
+   * than a silent ungoverned month.
+   */
+  onApplicationBootstrap(): void {
+    this.assertBudgetOwnership(isWorkerRuntime());
+  }
+
+  /** Exposed with an explicit runtime flag so the spec can prove BOTH
+   *  directions without fighting the process-role memoization. */
+  assertBudgetOwnership(spendCapableRuntime: boolean): void {
+    if (!spendCapableRuntime) {
+      return;
+    }
+    const missing = [
+      this.governance ? null : 'GovernanceService (pool metering)',
+      this.spendCampaigns ? null : 'SpendCampaignService (envelope drains)',
+    ].filter((entry): entry is string => entry !== null);
+    if (missing.length > 0) {
+      throw new Error(
+        'REFUSING TO BOOT: this process runs in a worker-capable role ' +
+          '(PROCESS_ROLE=worker|all) with spend lanes, but the usage ledger ' +
+          `is missing its budget owner(s): ${missing.join(', ')}. A worker ` +
+          'without them writes ledger rows that drain no pool and debit no ' +
+          'campaign envelope — unattended spend with no governor. Provide ' +
+          'the governance module in this graph, or run as PROCESS_ROLE=api ' +
+          'if this is a script that spends under human supervision.',
+      );
+    }
+  }
+
   /** In-flight fire-and-forget writes, awaited on shutdown so short-lived
    *  scripts and deploys can't drop records. */
   private readonly pending = new Set<Promise<unknown>>();
