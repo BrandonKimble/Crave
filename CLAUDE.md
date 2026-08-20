@@ -209,9 +209,15 @@ gets its effects dropped; the SAME hook reached through a mounted writer-runtime
 normally. So before calling an effect in a spec hook "dead," trace the caller: is the
 owning component actually mounted? `useBottomSheetSceneStackBodyContentRuntime` looks
 like a spec hook but is a MOUNTED consumer (`SceneStackBodyContentHost` is real JSX) —
-its effects commit. The polls/home list-parts hooks currently carry ZERO effects (all
-moved to the feed runtime), so nothing is stranded today; the trap is only the false
-POSITIVE now — don't delete a committing effect thinking it's dead.
+its effects commit. RE-REFINED 2026-08-19 (panels red team): the polls/home
+list-parts hooks DO carry effects TRANSITIVELY (their feed-runtime controllers
+subscribe sockets, settle edges, toggles) and those effects COMMIT — the
+track-leg resolver's caller (`UnifiedTrackScenePage`) is a real mounted
+component. Worse: the scene-input writer host mounts the same hooks a SECOND
+time, so every effect runs TWICE (2x fetches/sockets/toggle consequences —
+plans/red-team-2026-08-19.md P0, fix needs an owner ruling). Six code comments
+still assert the old "never commits" law — don't cite them, and don't delete a
+committing effect thinking it's dead.
 
 ---
 
