@@ -296,6 +296,12 @@ export const GOOGLE_PLACE_TYPE_IGNORED_TYPES: ReadonlySet<string> = new Set([
   'non_profit_organization',
   'stadium',
   'womens_clothing_store',
+  // Second tranche from the same reground drain (2026-08-19, later batch):
+  'art_studio',
+  'general_contractor',
+  'ranch',
+  'resort_hotel',
+  'wellness_center',
   'cultural_center',
   'cultural_landmark',
   'community_center',
