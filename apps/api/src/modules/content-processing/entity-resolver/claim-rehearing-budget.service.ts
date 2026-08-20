@@ -81,39 +81,70 @@ export const STANDING_REHEARING_CAP = 2_000;
 export const STANDING_WINDOW_HOURS = 24;
 
 /**
- * WHAT A HEARING COSTS IS A PROPERTY OF THE LANE, NOT OF THIS SERVICE.
+ * WHAT A HEARING COSTS IS A PROPERTY OF THE METER, NOT OF THIS SERVICE — and
+ * a CO-BATCHED call has ONE meter (M2, entity-resolver red team 2026-08-19).
  *
- * The rate and the rolling allowance are both metered from `api_usage_ledger`
- * rows tagged with the CALLER that pays for the hearing, and divided by how
- * many claims that lane packs into one LLM call. Those two numbers were module
- * constants while exactly one lane existed; the judged-vocabulary lanes
- * (2026-08-13) made them per-lane, and a plausible default would have been the
- * worst possible answer — a vocabulary drain metered against the word-judge's
- * caller reads its spend as someone else's and prices itself off a rate no
- * hearing of its own ever produced.
+ * The rate is measured from `api_usage_ledger` rows tagged with the caller(s)
+ * that pay for the hearings, divided by the VERDICT ROWS that spend actually
+ * bought. Two prior shapes each lied in a way this one cannot:
  *
- * So every lane STATES its meter here, once, and `authorizeDrain` looks it up
- * by the lane it was given. A lane with no entry cannot be quoted: that is a
- * lane whose spend nobody attributed, and guessing is the failure this whole
- * file exists to prevent.
+ *   - PER-LANE CALLERS UNDER A SHARED CALL. `certifyFacets` co-batches every
+ *     due facet into one LLM call and bills it to one caller; while the three
+ *     vocabulary lanes each declared their OWN caller here, the batch always
+ *     billed the first facet's — so negation and word-role accrued ~zero
+ *     ledger rows (their over-cap drains could never be quoted: perpetual
+ *     NoMeasuredHearingRateError) while genericness carried three facets'
+ *     tokens and read ~3x expensive. Facets that share a call share a METER.
+ *   - CALLS x claimsPerCall AS THE DIVISOR. The batch's nominal SIZE is not
+ *     its FILL (the A2 lesson, re-learned at the rate this time), and under
+ *     co-batching one call buys a variable number of verdicts across lanes.
+ *     One verdict row is one hearing bought; dividing the meter's spend by
+ *     the meter's verdict rows is the exact answer and needs no nominal
+ *     batch size at all.
+ *
+ * So every lane STATES its meter here, once — lanes that share a call point
+ * at the SAME meter object — and `authorizeDrain` looks it up by the lane it
+ * was given. A lane with no entry cannot be quoted: that is a lane whose
+ * spend nobody attributed, and guessing is the failure this whole file exists
+ * to prevent. (The rolling ALLOWANCE stays per-lane, counted from that lane's
+ * own verdict rows — sharing a call still does not share a budget.)
  */
 export interface HearingMeter {
-  /** The `api_usage_ledger.caller` this lane's hearings bill to. */
-  caller: string;
-  /** Claims packed into one LLM call — the divisor that turns a measured
-   *  cost-per-CALL into a cost-per-HEARING. */
-  claimsPerCall: number;
+  /** The `api_usage_ledger.caller` tags whose spend this meter owns. The
+   *  first is what new hearings bill to; the rest are historical billing
+   *  tags whose rows still sit inside the rate window. */
+  callers: readonly string[];
+  /** The `claim_verdicts.lane` values this meter's spend buys rows in — the
+   *  divisor that turns metered spend into a cost-per-HEARING. */
+  lanes: readonly string[];
 }
 
-const HEARING_METERS: ReadonlyMap<string, HearingMeter> = new Map([
-  ['word_claim', { caller: 'aliases.claim_judge', claimsPerCall: 10 }],
-  [
-    'word-genericness',
-    { caller: 'vocabulary.genericness_judge', claimsPerCall: 40 },
+/**
+ * The three vocabulary facets are heard in ONE co-batched LLM call
+ * (`certifyFacets`), so they share one meter: the batch caller's spend over
+ * the verdict rows it wrote across all three lanes. The legacy per-facet
+ * callers are listed because their rows are this same work billed under the
+ * pre-shared-meter tags; they age out of the rate window on their own.
+ */
+const VOCABULARY_HEARING_METER: HearingMeter = {
+  callers: [
+    'vocabulary.word_judge',
+    'vocabulary.genericness_judge',
+    'vocabulary.negation_judge',
+    'vocabulary.word_role_judge',
   ],
-  ['word-negation', { caller: 'vocabulary.negation_judge', claimsPerCall: 40 }],
-  ['word-role', { caller: 'vocabulary.word_role_judge', claimsPerCall: 40 }],
-  ['restaurant_name', { caller: 'aliases.place_name_judge', claimsPerCall: 8 }],
+  lanes: ['word-genericness', 'word-negation', 'word-role'],
+};
+
+const HEARING_METERS: ReadonlyMap<string, HearingMeter> = new Map([
+  ['word_claim', { callers: ['aliases.claim_judge'], lanes: ['word_claim'] }],
+  ['word-genericness', VOCABULARY_HEARING_METER],
+  ['word-negation', VOCABULARY_HEARING_METER],
+  ['word-role', VOCABULARY_HEARING_METER],
+  [
+    'restaurant_name',
+    { callers: ['aliases.place_name_judge'], lanes: ['restaurant_name'] },
+  ],
 ]);
 
 /** The lane this service was born for, and the meter every legacy call site
@@ -199,7 +230,8 @@ export class StaleDrainApprovalError extends Error {
 export class NoMeasuredHearingRateError extends Error {
   constructor(windowDays: number, meter: HearingMeter) {
     super(
-      `No '${meter.caller}' spend is metered in the last ${windowDays} days, so a ` +
+      `No '${meter.callers.join(`'/'`)}' spend (or no bought hearing on ` +
+        `'${meter.lanes.join(`'/'`)}') is metered in the last ${windowDays} days, so a ` +
         `hearing has no measured price and a large drain cannot be quoted. Run a ` +
         `drain within the standing cap of ${STANDING_REHEARING_CAP} first — it needs ` +
         `no estimate and it measures the rate.`,
@@ -216,8 +248,15 @@ export class ClaimRehearingBudgetService {
   ) {}
 
   /**
-   * What one hearing costs, from this lane's own metered spend. Micro-USD.
+   * What one hearing costs, from this meter's own metered spend. Micro-USD.
    * Throws rather than guessing when nothing has been metered.
+   *
+   * The divisor is VERDICT ROWS ACROSS THE METER'S LANES, not calls x a
+   * nominal batch size: under a co-batched call one billed row buys a
+   * variable number of hearings on several lanes, and the rows it wrote are
+   * the exact count of what the money bought (source-blind on purpose — a
+   * certification's spend and its verdicts both land in the window, so the
+   * rate stays a true average; only the ALLOWANCE filters to 'steady').
    */
   async microUsdPerHearing(
     meter: HearingMeter = WORD_CLAIM_METER,
@@ -226,14 +265,19 @@ export class ClaimRehearingBudgetService {
       RATE_WINDOW_DAYS * 24,
       meter,
     );
-    if (!calls) throw new NoMeasuredHearingRateError(RATE_WINDOW_DAYS, meter);
-    return micros / calls / meter.claimsPerCall;
+    const hearings = await this.ledger.hearingsRecordedSince(
+      meter.lanes,
+      RATE_WINDOW_DAYS * 24,
+    );
+    if (!calls || !hearings) {
+      throw new NoMeasuredHearingRateError(RATE_WINDOW_DAYS, meter);
+    }
+    return micros / hearings;
   }
 
-  /** This lane's OWN billed spend over a trailing window, priced from the
-   *  metering chokepoint. The one number both the rate and the rolling
-   *  allowance are built from, so they can never disagree about what a
-   *  hearing costs. */
+  /** This METER's own billed spend over a trailing window, priced from the
+   *  metering chokepoint — every caller tag the meter owns, because a shared
+   *  call's rows and the pre-shared-meter rows are the same work. */
   private async meteredSpend(
     windowHours: number,
     meter: HearingMeter,
@@ -253,7 +297,7 @@ export class ClaimRehearingBudgetService {
              sum(cached_tokens) AS cached_tokens,
              count(*)           AS calls
         FROM api_usage_ledger
-       WHERE service = 'gemini' AND caller = ${meter.caller}
+       WHERE service = 'gemini' AND caller = ANY(${[...meter.callers]}::text[])
          AND created_at > now() - make_interval(hours => ${windowHours}::int)
        GROUP BY model`;
     let micros = 0;

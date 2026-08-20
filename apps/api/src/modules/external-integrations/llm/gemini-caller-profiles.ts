@@ -231,24 +231,14 @@ export const GEMINI_CALLER_PROFILES: Record<string, GeminiCallerProfile> = {
   // against `chưa` (not yet), `it` in English against `ít` in Vietnamese —
   // and every verdict is PERSISTED, so a tier regression is bought once and
   // read forever.
-  'vocabulary.genericness_judge': {
-    model: FLASH,
-    context: 'query',
-    maxOutputTokens: MODEL_MAX_OUTPUT,
-  },
-  'vocabulary.negation_judge': {
-    model: FLASH,
-    context: 'query',
-    maxOutputTokens: MODEL_MAX_OUTPUT,
-  },
-  // The third word-court facet (particular / venue-category / frame). Same
-  // FLASH reasoning as its siblings — and this lane's own history proves it:
-  // v1's frame test swallowed venue qualities (romántico ruled frame, es gold
-  // -10pts) on judgment subtlety, not vocabulary. MISSED AT BIRTH: the lane
-  // shipped without this profile and the completeness spec's scan couldn't
-  // see lane-config callers, so 32k word-role hearings ran on session
-  // defaults (caught 2026-08-17; the spec's scan is now indirection-aware).
-  'vocabulary.word_role_judge': {
+  // ONE profile, because the facets share ONE co-batched LLM call and one
+  // billing tag (M2, 2026-08-19). The per-facet tags this replaced
+  // (vocabulary.genericness_judge / negation_judge / word_role_judge) live on
+  // only as historical rows the rehearing budget's shared meter still reads
+  // inside its rate window. The word_role_judge history is why the caller
+  // ends in `_judge`: the lockdown scan's suffix convention is what catches
+  // an unprofiled word-court caller (32k unprofiled hearings, 2026-08-17).
+  'vocabulary.word_judge': {
     model: FLASH,
     context: 'query',
     maxOutputTokens: MODEL_MAX_OUTPUT,

@@ -34,10 +34,18 @@ import {
   type WordVocabularyClaim,
 } from './word-vocabulary-lanes';
 
-/** Words packed into one LLM call. Must equal the lane's `claimsPerCall` in
- *  HEARING_METERS, or the rolling allowance counts the wrong number of
- *  hearings per billed row — the spec below pins them together. */
+/** Words packed into one LLM call. A sizing choice, not a pricing input:
+ *  the budget prices a hearing from spend ÷ verdict rows, so a batch's
+ *  nominal size never enters the rate. */
 export const VOCABULARY_CLAIMS_PER_CALL = 40;
+
+/** THE ONE BILLING TAG for the co-batched facet hearing (M2, 2026-08-19).
+ *  Every facet in a `certifyFacets` call shares one LLM call, so the call
+ *  bills to one caller — this one — and HEARING_METERS points all three
+ *  vocabulary lanes at it. Billing the batch to the leading facet's own
+ *  caller starved the other facets' meters (~zero ledger rows, so their
+ *  over-cap drains could never be quoted) while inflating the leader's. */
+export const VOCABULARY_WORD_JUDGE_CALLER = 'vocabulary.word_judge';
 
 /** Judge calls in flight at once during a drain. */
 export const VOCABULARY_HEARING_CONCURRENCY = 8;
@@ -48,7 +56,6 @@ interface LaneWiring {
   prompt: string;
   ruleVersion: number;
   ruleFingerprint: string;
-  caller: string;
   /** The field the judge answers this facet in. */
   answerField: string;
   /** Judge answer → stored outcome. A boolean facet maps 'true'/'false'; an
@@ -66,7 +73,6 @@ export const VOCABULARY_LANES: Readonly<Record<string, LaneWiring>> = {
     prompt: WORD_GENERICNESS_PROMPT,
     ruleVersion: WORD_GENERICNESS_RULE_VERSION,
     ruleFingerprint: WORD_GENERICNESS_RULE_FINGERPRINT,
-    caller: 'vocabulary.genericness_judge',
     answerField: 'carries_concept',
     answers: { true: CARRIES_CONCEPT, false: GRAMMATICAL_WORK },
     answerSchema: { type: 'boolean' },
@@ -77,7 +83,6 @@ export const VOCABULARY_LANES: Readonly<Record<string, LaneWiring>> = {
     prompt: WORD_NEGATION_PROMPT,
     ruleVersion: WORD_NEGATION_RULE_VERSION,
     ruleFingerprint: WORD_NEGATION_RULE_FINGERPRINT,
-    caller: 'vocabulary.negation_judge',
     answerField: 'negates',
     answers: { true: NEGATES, false: DOES_NOT_NEGATE },
     answerSchema: { type: 'boolean' },
@@ -88,7 +93,6 @@ export const VOCABULARY_LANES: Readonly<Record<string, LaneWiring>> = {
     prompt: WORD_ROLE_PROMPT,
     ruleVersion: WORD_ROLE_RULE_VERSION,
     ruleFingerprint: WORD_ROLE_RULE_FINGERPRINT,
-    caller: 'vocabulary.word_role_judge',
     answerField: 'word_role',
     answers: {
       particular: ROLE_PARTICULAR,
@@ -488,11 +492,13 @@ export class WordVocabularyJudgeService {
     }
 
     const text = await this.llm.generateForCaller({
-      // The call bills to the FIRST due facet's caller. Every facet's meter
-      // names its own caller, and a shared call has one; attributing it to
-      // the facet that led the batch keeps the rate measurable rather than
-      // splitting one row across two meters it cannot be divided between.
-      caller: wirings[0].caller,
+      // ONE SHARED CALL, ONE SHARED BILLING TAG (M2, 2026-08-19). It used to
+      // bill the first due facet's own caller, which starved every other
+      // facet's meter and inflated the leader's rate; the shared meter in
+      // HEARING_METERS owns this tag and prices a hearing from the verdict
+      // rows the spend actually bought. Literal string on purpose — the
+      // gateway lockdown completeness scan reads it here.
+      caller: 'vocabulary.word_judge',
       systemInstruction,
       prompt,
       generationConfig: {

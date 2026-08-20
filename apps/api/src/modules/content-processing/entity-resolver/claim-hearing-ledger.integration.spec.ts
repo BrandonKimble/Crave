@@ -510,6 +510,46 @@ describe('the one hearing abstraction — live database', () => {
       runKey,
     );
     try {
+      // THE METER COUNTS WORDS JUDGED, NOT CALLS BILLED (A2/A3, 2026-08-15).
+      // It used to read `billed calls x the lane's nominal claimsPerCall`,
+      // which over-reported a partly-filled batch by up to 40x and could not
+      // tell a one-time operator certification from the nightly trickle —
+      // together, 97,400 phantom hearings in front of a cap of 200. One
+      // verdict row is one word judged, and only the UNATTENDED ones are
+      // charged to the standing allowance. (Recorded up front since M2: the
+      // RATE below divides this lane's spend by these same verdict rows.)
+      const meterKeys = [
+        `zzq-meter-steady-${randomUUID().slice(0, 8)}`,
+        `zzq-meter-cert-${randomUUID().slice(0, 8)}`,
+      ];
+      madeKeys.push(...meterKeys);
+      const before = await budget.hearingsSpentInWindow(WORD_CLAIM_LANE);
+      await ledger.record({
+        lane: WORD_CLAIM_LANE,
+        claimKey: meterKeys[0],
+        ruleVersion: CLAIM_JUDGE_PROMPT_VERSION,
+        foldVersion: 1,
+        outcome: 'bothUpheld',
+        reason: 'the steady rail bought this one',
+        subject: {},
+        source: 'steady',
+      });
+      await ledger.record({
+        lane: WORD_CLAIM_LANE,
+        claimKey: meterKeys[1],
+        ruleVersion: CLAIM_JUDGE_PROMPT_VERSION,
+        foldVersion: 1,
+        outcome: 'bothUpheld',
+        reason: 'an operator certification bought this one',
+        subject: {},
+        source: 'certification',
+      });
+      // Exactly ONE more: the steady hearing counts, the certification does
+      // not — and neither is inflated to a batch size nobody filled.
+      expect(await budget.hearingsSpentInWindow(WORD_CLAIM_LANE)).toBe(
+        before + 1,
+      );
+
       const dueCount = STANDING_REHEARING_CAP * 10;
       let refusal: DrainExceedsStandingCapError | null = null;
       try {
@@ -590,43 +630,74 @@ describe('the one hearing abstraction — live database', () => {
           })
         ).allowed,
       ).toBe(10);
-      // AND THE REAL METER COUNTS WORDS JUDGED, NOT CALLS BILLED (A2/A3,
-      // 2026-08-15). It used to read `billed calls x the lane's nominal
-      // claimsPerCall`, which over-reported a partly-filled batch by up to
-      // 40x and could not tell a one-time operator certification from the
-      // nightly trickle — together, 97,400 phantom hearings in front of a cap
-      // of 200. One verdict row is one word judged, and only the UNATTENDED
-      // ones are charged to the standing allowance.
-      const meterKeys = [
-        `zzq-meter-steady-${randomUUID().slice(0, 8)}`,
-        `zzq-meter-cert-${randomUUID().slice(0, 8)}`,
-      ];
-      madeKeys.push(...meterKeys);
-      const before = await budget.hearingsSpentInWindow(WORD_CLAIM_LANE);
+    } finally {
+      await prisma.$executeRawUnsafe(
+        `DELETE FROM api_usage_ledger WHERE run_key = $1`,
+        runKey,
+      );
+    }
+  });
+
+  /**
+   * PROOF 3c — co-batched facets are quotable on their OWN lanes (M2,
+   * 2026-08-19). The vocabulary facets share one LLM call billed to one tag;
+   * when each lane declared its own caller, negation and word-role accrued
+   * ~zero ledger rows and their over-cap drains threw
+   * NoMeasuredHearingRateError forever. With the shared meter, spend under
+   * the batch caller (current tag OR the legacy per-facet tags) divided by
+   * verdict rows across all three lanes prices EVERY facet — and prices them
+   * identically, because one call has one cost.
+   */
+  it('quotes word-role and word-negation drains from the shared vocabulary meter', async () => {
+    const runKey = `zzq-vocab-meter-${randomUUID().slice(0, 8)}`;
+    const vocabKeys = [
+      `zzq-vocab-role-${randomUUID().slice(0, 8)}`,
+      `zzq-vocab-neg-${randomUUID().slice(0, 8)}`,
+    ];
+    madeKeys.push(...vocabKeys);
+    // Spend split across the CURRENT shared tag and a LEGACY per-facet tag:
+    // the pre-shared-meter rows are the same work and still price hearings
+    // until they age out of the rate window.
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO api_usage_ledger
+         (service, operation, model, mode, input_tokens, output_tokens,
+          cached_tokens, caller, run_key)
+       VALUES ('gemini', 'generateContent', 'gemini-3-flash-preview',
+               'interactive', 40000, 4000, 0, 'vocabulary.word_judge', $1),
+              ('gemini', 'generateContent', 'gemini-3-flash-preview',
+               'interactive', 40000, 4000, 0, 'vocabulary.genericness_judge', $1)`,
+      runKey,
+    );
+    try {
       await ledger.record({
-        lane: WORD_CLAIM_LANE,
-        claimKey: meterKeys[0],
-        ruleVersion: CLAIM_JUDGE_PROMPT_VERSION,
+        lane: 'word-role',
+        claimKey: vocabKeys[0],
+        ruleVersion: 2,
         foldVersion: 1,
-        outcome: 'bothUpheld',
-        reason: 'the steady rail bought this one',
+        outcome: 'frame',
+        reason: 'the co-batched call bought this row',
         subject: {},
         source: 'steady',
       });
       await ledger.record({
-        lane: WORD_CLAIM_LANE,
-        claimKey: meterKeys[1],
-        ruleVersion: CLAIM_JUDGE_PROMPT_VERSION,
+        lane: 'word-negation',
+        claimKey: vocabKeys[1],
+        ruleVersion: 3,
         foldVersion: 1,
-        outcome: 'bothUpheld',
-        reason: 'an operator certification bought this one',
+        outcome: 'negates',
+        reason: 'the same call bought this one on its own lane',
         subject: {},
-        source: 'certification',
+        source: 'steady',
       });
-      // Exactly ONE more: the steady hearing counts, the certification does
-      // not — and neither is inflated to a batch size nobody filled.
-      expect(await budget.hearingsSpentInWindow(WORD_CLAIM_LANE)).toBe(
-        before + 1,
+      const roleQuote = await budget.estimate('word-role', 2, 5_000);
+      const negationQuote = await budget.estimate('word-negation', 3, 5_000);
+      // A REAL measured rate on the lanes that used to be unquotable...
+      expect(roleQuote.microUsdPerHearing).toBeGreaterThan(0);
+      expect(negationQuote.microUsdPerHearing).toBeGreaterThan(0);
+      expect(roleQuote.estimateMicros).toBeGreaterThan(0);
+      // ...and the SAME rate, because facets of one call share one meter.
+      expect(negationQuote.microUsdPerHearing).toBe(
+        roleQuote.microUsdPerHearing,
       );
     } finally {
       await prisma.$executeRawUnsafe(

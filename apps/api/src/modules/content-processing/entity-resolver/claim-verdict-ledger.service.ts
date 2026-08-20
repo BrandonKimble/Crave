@@ -290,6 +290,26 @@ export class ClaimVerdictLedgerService {
   }
 
   /**
+   * HEARINGS A METER'S SPEND BOUGHT, across lanes and across sources — the
+   * RATE's divisor (M2, 2026-08-19), where `hearingsBoughtSince` above is the
+   * ALLOWANCE's. The rate is spend ÷ what it bought, and a co-batched call
+   * buys verdict rows on several lanes at once; filtering by source here
+   * would divide all of the window's spend by only some of its rows and
+   * inflate the quote.
+   */
+  async hearingsRecordedSince(
+    lanes: readonly string[],
+    windowHours: number,
+  ): Promise<number> {
+    if (!lanes.length) return 0;
+    const rows = await this.prisma.$queryRaw<Array<{ hearings: bigint }>>`
+      SELECT count(*) AS hearings FROM claim_verdicts
+       WHERE lane = ANY(${[...lanes]}::text[])
+         AND decided_at > now() - make_interval(hours => ${windowHours}::int)`;
+    return Number(rows[0]?.hearings ?? 0);
+  }
+
+  /**
    * The newest decision timestamp across these lanes — the CHEAP VERSION
    * STAMP a read cache polls to notice that another process ruled something
    * (A6, 2026-08-15). Null when the lanes hold no verdicts at all.

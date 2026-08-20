@@ -27,7 +27,8 @@ import {
   hearingMeterFor,
 } from './claim-rehearing-budget.service';
 import { JudgedVocabularyService } from './judged-vocabulary.service';
-import { VOCABULARY_CLAIMS_PER_CALL } from './word-vocabulary-judge.service';
+import { VOCABULARY_WORD_JUDGE_CALLER } from './word-vocabulary-judge.service';
+import { wordClaimLane } from './word-claim-lane';
 
 /**
  * THE JUDGED VOCABULARY, AND THE TWO HAND LISTS IT REPLACED.
@@ -97,6 +98,23 @@ describe('the claim unit: one word, one language, accents intact', () => {
     );
   });
 
+  it('spells the word-CLAIM key with the same locale normalizer — es-MX is es (L5)', () => {
+    // The word-ownership lane's key interpolated its locale raw, so an es-MX
+    // or uppercased caller would have minted a parallel claim identity for a
+    // word already judged under es — one claim, two hearings, two verdicts
+    // free to disagree.
+    const base = { form: 'chamoy', entityId: 'ent-1' };
+    expect(wordClaimLane.canonicalClaimKey({ ...base, locale: 'es-MX' })).toBe(
+      wordClaimLane.canonicalClaimKey({ ...base, locale: 'es' }),
+    );
+    expect(wordClaimLane.canonicalClaimKey({ ...base, locale: 'ES' })).toBe(
+      wordClaimLane.canonicalClaimKey({ ...base, locale: 'es' }),
+    );
+    expect(wordClaimLane.canonicalClaimKey({ ...base, locale: 'es' })).toBe(
+      'es|chamoy|ent-1',
+    );
+  });
+
   it('never collides two different lanes onto one answer', () => {
     expect(wordGenericnessLane.lane).not.toBe(wordNegationLane.lane);
   });
@@ -135,19 +153,37 @@ describe('the rule is versioned by its own text', () => {
   });
 });
 
-describe('the meter and the batch size cannot disagree', () => {
-  it('bills each lane to its own caller, at the size it actually batches', () => {
-    // A lane metered against another lane's caller reads that lane's spend as
-    // its own and prices itself off a rate no hearing of its own produced.
-    for (const lane of [WORD_GENERICNESS_LANE, WORD_NEGATION_LANE]) {
-      expect(hearingMeterFor(lane).claimsPerCall).toBe(
-        VOCABULARY_CLAIMS_PER_CALL,
-      );
-    }
-    expect(hearingMeterFor(WORD_GENERICNESS_LANE).caller).not.toBe(
-      hearingMeterFor(WORD_NEGATION_LANE).caller,
+describe('facets that share a call share a meter (M2)', () => {
+  it('points every co-batched vocabulary lane at ONE meter, billed to the batch caller', () => {
+    // `certifyFacets` co-batches every due facet into one LLM call, billed to
+    // one caller. Per-lane callers under that shared call starved two meters
+    // (negation and word-role accrued ~zero ledger rows, so their over-cap
+    // drains could never be quoted) while genericness carried three facets'
+    // tokens. One call, one meter — the SAME meter object, so the rate can
+    // never fork between facets of one call.
+    const meter = hearingMeterFor(WORD_GENERICNESS_LANE);
+    expect(hearingMeterFor(WORD_NEGATION_LANE)).toBe(meter);
+    expect(hearingMeterFor(WORD_ROLE_LANE)).toBe(meter);
+    // ...billed to the tag the judge actually stamps on the shared call...
+    expect(meter.callers[0]).toBe(VOCABULARY_WORD_JUDGE_CALLER);
+    // ...and divided by verdict rows across ALL the lanes that call buys.
+    expect([...meter.lanes].sort()).toEqual(
+      [WORD_GENERICNESS_LANE, WORD_NEGATION_LANE, WORD_ROLE_LANE].sort(),
     );
-    expect(hearingMeterFor('word_claim').caller).toBe('aliases.claim_judge');
+    // Solo lanes keep their own meters.
+    expect(hearingMeterFor('word_claim').callers).toEqual([
+      'aliases.claim_judge',
+    ]);
+  });
+
+  it('stamps the shared billing tag on the literal generateForCaller site the lockdown scan reads', () => {
+    // The completeness scan matches quoted `caller:` strings; a constant
+    // reference at the call site would be invisible to it. Pin the exported
+    // constant to the literal the judge actually sends.
+    const judgeSource = stripComments(
+      readFileSync(join(__dirname, 'word-vocabulary-judge.service.ts'), 'utf8'),
+    );
+    expect(judgeSource).toContain(`caller: '${VOCABULARY_WORD_JUDGE_CALLER}'`);
   });
 
   it('refuses to price a lane nobody declared a meter for', () => {
@@ -668,5 +704,78 @@ describe('the bounded first-search hearing (real class)', () => {
     );
     expect(outcome).toBe('none');
     expect(certifyFacets).not.toHaveBeenCalled();
+  });
+});
+
+describe('the backlog drain co-batches across lanes (L1, real class)', () => {
+  it('drains a word queued on two lanes with ONE judge call', async () => {
+    // drainPending used to group the backlog BY LANE and call the judge once
+    // per lane — the same forty words sent twice, the exact 2x spend
+    // `certifyFacets` co-batching removed. The backlog dedupes to SUBJECTS
+    // and offers them once; per-lane dueness is the judge pipeline's job.
+    const service = Object.create(
+      JudgedVocabularyService.prototype,
+    ) as JudgedVocabularyService;
+    const verdicts = new Map([
+      [WORD_GENERICNESS_LANE, new Map<string, string>()],
+      [WORD_NEGATION_LANE, new Map<string, string>()],
+      [WORD_ROLE_LANE, new Map<string, string>()],
+    ]);
+    const certifyFacets = jest.fn().mockImplementation(() => {
+      // The real judge writes verdicts and notifies the cache; the stub does
+      // the cache half so the drain sees the word as answered on every lane.
+      verdicts.get(WORD_GENERICNESS_LANE)!.set('vi|chưa', GRAMMATICAL_WORK);
+      verdicts.get(WORD_NEGATION_LANE)!.set('und|chưa', NEGATES);
+      verdicts.get(WORD_ROLE_LANE)!.set('vi|chưa', 'frame');
+      return Promise.resolve(new Map());
+    });
+    const internals = service as unknown as {
+      verdicts: typeof verdicts;
+      negatingForms: Set<string>;
+      pending: Map<string, unknown>;
+      loaded: boolean;
+      logger: { info: () => void; warn: () => void };
+      judge: { certifyFacets: jest.Mock; resumePendingEffects: jest.Mock };
+      prisma: { $queryRaw: jest.Mock; $executeRaw: jest.Mock };
+    };
+    internals.verdicts = verdicts;
+    internals.negatingForms = new Set();
+    internals.pending = new Map();
+    internals.loaded = true;
+    internals.logger = { info: () => undefined, warn: () => undefined };
+    internals.judge = {
+      certifyFacets,
+      resumePendingEffects: jest.fn().mockResolvedValue(0),
+    };
+    internals.prisma = {
+      // The durable queue holds the SAME word owed on two lanes.
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
+          lane: WORD_GENERICNESS_LANE,
+          claim_key: 'vi|chưa',
+          word: 'chưa',
+          locale: 'vi',
+        },
+        {
+          lane: WORD_NEGATION_LANE,
+          claim_key: 'und|chưa',
+          word: 'chưa',
+          locale: 'vi',
+        },
+      ]),
+      $executeRaw: jest.fn().mockResolvedValue(1),
+    };
+
+    const result = await service.drainPending();
+
+    expect(certifyFacets).toHaveBeenCalledTimes(1);
+    // One SUBJECT offered, not one claim per queued lane.
+    const [, offeredClaims] = certifyFacets.mock.calls[0] as [
+      unknown,
+      Array<{ word: string; locale: string }>,
+    ];
+    expect(offeredClaims).toEqual([{ word: 'chưa', locale: 'vi' }]);
+    // Both queue rows counted as heard, so both get deleted.
+    expect(result).toEqual({ queued: 2, heard: 2, remaining: 0 });
   });
 });
