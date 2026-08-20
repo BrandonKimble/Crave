@@ -302,6 +302,11 @@ export const GOOGLE_PLACE_TYPE_IGNORED_TYPES: ReadonlySet<string> = new Set([
   'ranch',
   'resort_hotel',
   'wellness_center',
+  // Third tranche, same drain (2026-08-19): outdoors/retail noise.
+  'discount_supermarket',
+  'hiking_area',
+  'picnic_ground',
+  'scenic_spot',
   'cultural_center',
   'cultural_landmark',
   'community_center',
