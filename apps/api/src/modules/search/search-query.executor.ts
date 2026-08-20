@@ -532,6 +532,7 @@ LIMIT 3
       full_connections?: bigint | null;
       similar_connections?: bigint | null;
       soft_word_counts?: Record<string, number> | null;
+      open_now_supported?: boolean | null;
     };
     const runDishQueries = (
       query: NonNullable<typeof dishQuery>,
@@ -570,7 +571,16 @@ LIMIT 3
     // open-now dish pagination only approximately right).
     const filteredPlaceRows = placeRows;
     const filteredDishRows = dishRows;
-    const openNowApplied = needsOpenFilter;
+    // FLAG HONESTY (⭐05 finding (e)): openNowApplied reports what ACTUALLY
+    // constrained the results, not what was requested. When the predicate's
+    // graceful-degradation arm admitted the whole hours-less pool, the count
+    // query's open_now_supported probe (the arm's exact negation) comes back
+    // false and the flag says so. OR across the axes that ran, matching the
+    // boundsApplied convention below.
+    const openNowApplied =
+      needsOpenFilter &&
+      (Boolean(placeAxis.openNowSupported) ||
+        Boolean(dishCountResult[0]?.open_now_supported));
 
     // Map results
     const mapPlaceStart = performance.now();
@@ -1060,6 +1070,10 @@ LIMIT 3
     total: number;
     softWordCounts?: Record<string, number> | null;
     fullPlaces?: number;
+    /** Present only when open-now was requested: did the pool hold ANY
+     *  hours (i.e. did the filter actually constrain, vs the graceful-
+     *  degradation arm admitting everything)? */
+    openNowSupported?: boolean | null;
   }> {
     const { placeQuery } = params;
     if (!placeQuery) {
@@ -1072,6 +1086,7 @@ LIMIT 3
           total_restaurants: bigint;
           full_restaurants?: bigint | null;
           soft_word_counts?: Record<string, number> | null;
+          open_now_supported?: boolean | null;
         }>
       >(placeQuery.countSql),
     ]);
@@ -1080,6 +1095,7 @@ LIMIT 3
       total: Number(countResult[0]?.total_restaurants ?? 0),
       softWordCounts: countResult[0]?.soft_word_counts ?? null,
       fullPlaces: Number(countResult[0]?.full_restaurants ?? 0),
+      openNowSupported: countResult[0]?.open_now_supported ?? null,
     };
   }
 

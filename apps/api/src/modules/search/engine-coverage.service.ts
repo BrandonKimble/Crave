@@ -51,6 +51,20 @@ export class EngineCoverageService {
     this.logger = loggerService.setContext('EngineCoverageService');
   }
 
+  /** Bounds-keyed memo (⭐05 finding (f)): one natural search resolved the
+   *  SAME viewport's coverage three times (gazetteer territory scoping,
+   *  residue engine ids, response metadata) — three identical recursive
+   *  PostGIS round trips per search. The promise is cached by exact bounds
+   *  for a few seconds (concurrent same-bounds callers share the in-flight
+   *  resolution), so a request resolves once and every consumer reads the
+   *  same value. Degraded (error-path) results are evicted immediately —
+   *  the fail-open EMPTY answer is never remembered. */
+  private readonly coverageMemo = new Map<
+    string,
+    { promise: Promise<EngineViewportCoverage>; expiresAt: number }
+  >();
+  private static readonly COVERAGE_MEMO_TTL_MS = 10_000;
+
   /**
    * Never throws — a coverage failure must not fail the search (mirrors the
    * old context resolver's stance); it degrades to the uncovered state.
@@ -62,15 +76,50 @@ export class EngineCoverageService {
     if (!envelope) {
       return EMPTY_COVERAGE;
     }
-    try {
-      const rows = await this.prisma.$queryRaw<
-        Array<{
-          engineId: string;
-          name: string;
-          share: number;
-          totalShare: number;
-        }>
-      >(Prisma.sql`
+    const key = [
+      bounds!.southWest.lat,
+      bounds!.southWest.lng,
+      bounds!.northEast.lat,
+      bounds!.northEast.lng,
+    ].join(',');
+    const now = Date.now();
+    const cached = this.coverageMemo.get(key);
+    if (cached && cached.expiresAt > now) {
+      return cached.promise;
+    }
+    // Sweep expired entries so the map never grows beyond live viewports.
+    for (const [k, entry] of this.coverageMemo) {
+      if (entry.expiresAt <= now) this.coverageMemo.delete(k);
+    }
+    const promise = this.resolveViewportCoverageUncached(envelope).catch(
+      (error: unknown) => {
+        this.coverageMemo.delete(key);
+        this.logger.warn('Engine viewport coverage failed', {
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        });
+        return EMPTY_COVERAGE;
+      },
+    );
+    this.coverageMemo.set(key, {
+      promise,
+      expiresAt: now + EngineCoverageService.COVERAGE_MEMO_TTL_MS,
+    });
+    return promise;
+  }
+
+  private async resolveViewportCoverageUncached(
+    envelope: Prisma.Sql,
+  ): Promise<EngineViewportCoverage> {
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        engineId: string;
+        name: string;
+        share: number;
+        totalShare: number;
+      }>
+    >(Prisma.sql`
         WITH RECURSIVE view AS (
           SELECT ${envelope} AS g
         ),
@@ -103,32 +152,24 @@ export class EngineCoverageService {
         FROM clips c
         JOIN engines e ON e.engine_id = c.engine_id
       `);
-      if (!rows.length) {
-        return EMPTY_COVERAGE;
-      }
-      const clamp01 = (value: unknown): number => {
-        const n = Number(value);
-        if (!Number.isFinite(n) || n <= 0) return 0;
-        return n >= 1 ? 1 : n;
-      };
-      return {
-        share: clamp01(rows[0].totalShare),
-        engines: rows
-          .map((row) => ({
-            engineId: row.engineId,
-            name: row.name,
-            share: clamp01(row.share),
-          }))
-          .sort((a, b) => b.share - a.share),
-      };
-    } catch (error) {
-      this.logger.warn('Engine viewport coverage failed', {
-        error: {
-          message: error instanceof Error ? error.message : String(error),
-        },
-      });
+    if (!rows.length) {
       return EMPTY_COVERAGE;
     }
+    const clamp01 = (value: unknown): number => {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n <= 0) return 0;
+      return n >= 1 ? 1 : n;
+    };
+    return {
+      share: clamp01(rows[0].totalShare),
+      engines: rows
+        .map((row) => ({
+          engineId: row.engineId,
+          name: row.name,
+          share: clamp01(row.share),
+        }))
+        .sort((a, b) => b.share - a.share),
+    };
   }
 
   private viewportEnvelopeSql(bounds?: MapBoundsDto | null): Prisma.Sql | null {

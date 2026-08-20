@@ -519,6 +519,7 @@ LEFT JOIN LATERAL (
   ) tag_rows
 ) tm ON ${signalMatch.hasConditions ? Prisma.sql`TRUE` : Prisma.sql`FALSE`}`;
 
+    const openNowSupportedSelectSql = this.buildOpenNowSupportedSelectSql(plan);
     const countSql = pooledGateActive
       ? Prisma.sql`
 WITH
@@ -547,7 +548,7 @@ WITH
             ', ',
           )})`
         : Prisma.sql`NULL`
-    } AS soft_word_counts
+    } AS soft_word_counts${openNowSupportedSelectSql}
 	FROM (
 	  SELECT fr.entity_id AS restaurant_id,
 	    ${restTierExpr!} AS match_tier,
@@ -588,7 +589,7 @@ WITH
 	  ${selectedLocationsCte.sql},
 	  ${placeVoteTotalsCte.sql},
 	  ${publicPlaceScoresCte.sql}
-	SELECT COUNT(DISTINCT fr.entity_id)::bigint AS total_restaurants
+	SELECT COUNT(DISTINCT fr.entity_id)::bigint AS total_restaurants${openNowSupportedSelectSql}
 	FROM filtered_restaurants fr
 	JOIN public_restaurant_scores prs ON prs.subject_id = fr.entity_id
 	JOIN selected_locations sl ON sl.restaurant_id = fr.entity_id
@@ -877,6 +878,7 @@ LIMIT ${pagination.take}`;
           ', ',
         )})`
       : Prisma.sql`NULL`;
+    const openNowSupportedSelectSql = this.buildOpenNowSupportedSelectSql(plan);
     const countSql = pooledGate
       ? Prisma.sql`
 ${withClause}
@@ -885,7 +887,7 @@ SELECT
   COUNT(DISTINCT fc.restaurant_id)::bigint AS total_restaurants,
   COALESCE(MAX(fc.pooled_full_count), 0)::bigint AS full_connections,
   COALESCE(MAX(fc.similar_count), 0)::bigint AS similar_connections,
-  ${dishSoftWordCountsSql} AS soft_word_counts
+  ${dishSoftWordCountsSql} AS soft_word_counts${openNowSupportedSelectSql}
 FROM (
   SELECT fci.*,
     count(*) FILTER (WHERE fci.pooled_tier = 0) OVER () AS pooled_full_count,
@@ -898,7 +900,7 @@ ${pooledGateWhereSql}`
 ${withClause}
 SELECT
   COUNT(*)::bigint AS total_connections,
-  COUNT(DISTINCT fc.restaurant_id)::bigint AS total_restaurants
+  COUNT(DISTINCT fc.restaurant_id)::bigint AS total_restaurants${openNowSupportedSelectSql}
 FROM filtered_connections fc`;
 
     return {
@@ -1413,6 +1415,26 @@ filtered_locations AS (
         JOIN derived_location_open_intervals oi_any ON oi_any.location_id = fl_any.location_id
       )
     )`;
+  }
+
+  /** OPEN-NOW FLAG HONESTY (⭐05 finding (e), 2026-08-19): the predicate
+   *  above degrades gracefully — when NO location in the pool carries hours,
+   *  its second arm admits everything and nothing was actually constrained.
+   *  The executor used to report openNowApplied = "the filter was
+   *  REQUESTED"; this select rides the count query and reports whether the
+   *  pool held any hours at all — the exact negation of the degradation arm,
+   *  so the flag states what actually constrained the results. Empty when
+   *  open-now was not requested (column absent, executor reads undefined). */
+  private buildOpenNowSupportedSelectSql(plan: QueryPlan): Prisma.Sql {
+    if (!this.planRequestsOpenNow(plan)) {
+      return Prisma.sql``;
+    }
+    return Prisma.sql`,
+  EXISTS (
+    SELECT 1 FROM filtered_locations fl_hours
+    JOIN derived_location_open_intervals oi_hours
+      ON oi_hours.location_id = fl_hours.location_id
+  ) AS open_now_supported`;
   }
 
   private planRequestsOpenNow(plan: QueryPlan): boolean {

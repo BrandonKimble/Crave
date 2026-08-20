@@ -19,6 +19,8 @@ import {
   ItemResultDto,
   QueryEntityDto,
   QueryPlan,
+  QUERY_ENTITY_GROUP_KEYS,
+  countQueryEntityGroupEntries,
   SearchQueryRequestDto,
   PlaceResultDto,
   PlaceProfileDto,
@@ -821,6 +823,7 @@ export class SearchService {
         totalItemResults,
         totalPlaceResults,
         triggeredOnDemand: onDemandQueued,
+        hasUnresolvedTerms,
       });
 
       // OUT-OF-VIEWPORT HONESTY (R15 defect 3, 2026-08-16): a query that
@@ -2133,10 +2136,11 @@ export class SearchService {
     if (placeCount >= this.onDemandMinResults) {
       return false;
     }
-    return Boolean(
-      request.entities.items?.length ||
-        request.entities.itemAttributes?.length ||
-        request.entities.placeAttributes?.length,
+    // Food-driven lanes = the group vocabulary minus the restaurants lane —
+    // derived from QUERY_ENTITY_GROUP_KEYS, never hand-listed (the hand list
+    // forgot `ingredients`; see hasEntityTargets).
+    return QUERY_ENTITY_GROUP_KEYS.some(
+      (key) => key !== 'places' && Boolean(request.entities[key]?.length),
     );
   }
 
@@ -2665,27 +2669,35 @@ export class SearchService {
     totalItemResults: number;
     totalPlaceResults: number;
     triggeredOnDemand: boolean;
+    hasUnresolvedTerms: boolean;
   }): 'full' | 'partial' | 'unresolved' {
-    const { request, totalItemResults, totalPlaceResults, triggeredOnDemand } =
-      params;
+    const {
+      request,
+      totalItemResults,
+      totalPlaceResults,
+      triggeredOnDemand,
+      hasUnresolvedTerms,
+    } = params;
 
     const totalResults = totalItemResults + totalPlaceResults;
     const hasTargets = this.hasEntityTargets(request);
 
     if (!hasTargets) {
-      return 'full';
+      // PARTIAL-HONESTY (C4e): even a no-targets serve is not 'full' when
+      // the query carried terms nothing resolved — the page answers less
+      // than what was asked.
+      return hasUnresolvedTerms ? 'partial' : 'full';
     }
 
     // A NAMED term that resolved to ZERO ids is unresolved — not a
     // generic browse wearing full coverage (final-final red team
     // MEDIUM-2: {normalizedName:'unicorn meat', entityIds:[]} returned
     // the same top-25 as an empty request and called it full).
-    const lanes = [
-      ...(request.entities.items ?? []),
-      ...(request.entities.itemAttributes ?? []),
-      ...(request.entities.places ?? []),
-      ...(request.entities.placeAttributes ?? []),
-    ];
+    // Lane list DERIVED from the one group vocabulary (F3800/D79) — the
+    // hand-copied four-lane list here forgot `ingredients`.
+    const lanes = QUERY_ENTITY_GROUP_KEYS.flatMap(
+      (key) => request.entities[key] ?? [],
+    );
     const hasNamedUnresolvedLane = lanes.some(
       (lane) =>
         (lane.normalizedName ?? '').trim().length > 0 &&
@@ -2699,7 +2711,13 @@ export class SearchService {
       return 'unresolved';
     }
 
-    if (triggeredOnDemand) {
+    // PARTIAL-HONESTY (C4e, 2026-08-19): an unresolved term beside grounded
+    // ones used to serve with coverage 'full' — only
+    // metadata.unresolvedEntities flagged it. 'zorblatt pudding' serves the
+    // pudding page, but the page is PARTIAL: part of what the user asked
+    // for is not represented. Serving semantics unchanged (honesty-only fix;
+    // any serving change needs an owner ruling).
+    if (triggeredOnDemand || hasUnresolvedTerms) {
       return 'partial';
     }
 
@@ -3186,13 +3204,17 @@ export class SearchService {
     };
   }
 
+  /** THE ENTITY-LANE ENUMERATION IS DERIVED, NEVER HAND-LISTED (F3800/D79,
+   *  re-hit 2026-08-19): this predicate and its two lane-enumerating
+   *  siblings (shouldTriggerOnDemand, calculateCoverageStatus) each carried
+   *  a hand-copied four-lane list and all three forgot `ingredients` — an
+   *  ingredient-only search ('camarones') reported coverage 'full' on zero
+   *  results, never became expansion-eligible, and never triggered
+   *  on-demand. All three now read QUERY_ENTITY_GROUP_KEYS (the one
+   *  exhaustive group vocabulary), so a sixth group is counted here by
+   *  construction. */
   private hasEntityTargets(request: SearchQueryRequestDto): boolean {
-    return Boolean(
-      request.entities.items?.length ||
-        request.entities.itemAttributes?.length ||
-        request.entities.places?.length ||
-        request.entities.placeAttributes?.length,
-    );
+    return countQueryEntityGroupEntries(request.entities) > 0;
   }
 
   private isPrimaryItemAttributeQuery(request: SearchQueryRequestDto): boolean {

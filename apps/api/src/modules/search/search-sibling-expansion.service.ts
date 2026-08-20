@@ -233,7 +233,10 @@ export class SearchSiblingExpansionService {
    * to id+edge recall. A hungry customer typing "carbonara" wants anything
    * carbonara-shaped; the dish literally SAYING the word is the strongest
    * possible evidence. Word-boundary containment (space-padded LIKE — no
-   * regex injection surface), base names ≥ 4 chars, BASE ids only (the same
+   * regex injection surface) is the WHOLE law: the old ≥4-char base-name
+   * floor was a length guard in front of a rule that had already won
+   * (' sal ' can never occur inside 'salsa verde') and was deleted
+   * (ffd863cf7). BASE ids only (the same
    * one-hop law as categories: never expand an expansion). Fails open to [].
    */
   /**
