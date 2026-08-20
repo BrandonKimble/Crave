@@ -1,6 +1,7 @@
 import { BaseClaimLaneAdapter } from './claim-lane-adapter';
 import { surfaceClaimKey } from './entity-surface.service';
 import { FOLD_ALGORITHM_VERSION } from './entity-identity';
+import { normalizeClaimLocale } from './word-vocabulary-lanes';
 
 /** The lane name stored in `claim_verdicts.lane`. */
 export const WORD_CLAIM_LANE = 'word_claim';
@@ -58,7 +59,15 @@ export class WordClaimLaneAdapter extends BaseClaimLaneAdapter<WordClaimIdentity
   readonly keyFoldVersion = FOLD_ALGORITHM_VERSION;
 
   canonicalClaimKey(claim: WordClaimIdentity): string {
-    return `${claim.locale}|${surfaceClaimKey(claim.form)}|${claim.entityId}`;
+    // THE LOCALE IS SPELLED BY THE SAME NORMALIZER AS EVERY VOCABULARY KEY
+    // (L5, entity-resolver red team 2026-08-19). Raw interpolation meant an
+    // es-MX or ES caller would mint a parallel claim identity for a word
+    // already judged under es — a second hearing for the same claim, and two
+    // verdict rows that could disagree. A region is not part of the question
+    // here either. (Verified before this change landed: zero stored
+    // word_claim keys carried a regioned or uppercased locale, so no
+    // key-migration was owed.)
+    return `${normalizeClaimLocale(claim.locale)}|${surfaceClaimKey(claim.form)}|${claim.entityId}`;
   }
 }
 
