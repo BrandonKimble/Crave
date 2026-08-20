@@ -1,5 +1,12 @@
 # Strip choreography — line-by-line rederivation (2026-08-08)
 
+> **FIXES LANDED (noted 2026-08-19, plans reconciliation).** The three witnessed symptoms
+> were fixed by 018542e8e ("plate-first strip, skeleton with a face, chromeHeight on the
+> commit clock") with regression spec
+> apps/mobile/src/tracksheet/__render__/strip-choreography.render-spec.tsx. The owner's
+> 2026-08-07 "strip/choreography still bad" verdict PREDATES the fix and awaits re-test at
+> the track-visual punchlist sitting (v16 roadmap Phase 6, owner checkpoint ⑥).
+
 Read-only investigation of the owner's three witnessed symptoms (strip pops after page,
 gap on the outgoing page, skeleton never seen). Every claim below is grounded in a
 file:line read this pass, not logs, not prior memory. Deliverable of the owner directive:

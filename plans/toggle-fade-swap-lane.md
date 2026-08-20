@@ -1,5 +1,11 @@
 # Toggle Fade-Swap Lane — the ideal toggle transition
 
+> **SUPERSEDED (noted 2026-08-19, plans reconciliation).** The "BUILD STILL NEEDED /
+> blocked" status below is a June-21 snapshot and is dead: this lane was superseded by
+> `toggle-unified-fade-spec.md` (v6 reveal-lane seeding) and finally by the OA12 toggle
+> primitive (`toggle-primitive-rederivation.md`, landed 09416cd4e —
+> apps/mobile/src/toggles/toggle-awaiting-face*.ts). Do not build from this file.
+
 **Status:** designed (2026-06-21). BUILD STILL NEEDED — the residency owner's reveal-deadlock fix
 landed (`467b14c5`) but did NOT fix the toggle (re-verified 2026-06-22, see below). Blocked only
 by their ACTIVE editing of the file (a clean build window is needed). Root cause proven via

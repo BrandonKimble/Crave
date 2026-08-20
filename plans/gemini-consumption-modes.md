@@ -1,5 +1,9 @@
 # Gemini Consumption Modes — Flex, Priority, Webhooks (verdicts + adoption plan)
 
+> **STATUS (noted 2026-08-19, plans reconciliation): UNBUILT AND UNTRACKED.** Zero
+> `service_tier`/`serviceTier` hits in apps/api/src; no batch-webhook controller. The
+> ~$7/load prize sits in no active ledger — adopt into a docket or close it explicitly.
+
 Research date: 2026-07-11. Sources (official):
 
 - Flex: https://ai.google.dev/gemini-api/docs/flex-inference

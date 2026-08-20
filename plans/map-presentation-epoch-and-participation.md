@@ -1,5 +1,9 @@
 # Map presentation: epoch-keyed derivation + derived collision participation
 
+> **STATUS (added 2026-08-19, plans reconciliation): SHIPPED — commit 209f8e008.**
+> `presentationEpoch` / `setPresentedWorldLayersVisible` are live in the controller.
+> Nothing here is open work; kept for provenance.
+
 Ground-up shape from requirements (2026-07-11), replacing the memory-enforced lifecycle
 choreography that produced the twin bug, the stale-signature bug, and the immortal dot
 colliders — three costumes on one defect: participants and caches enrolled by hand at

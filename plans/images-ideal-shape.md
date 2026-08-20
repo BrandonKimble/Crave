@@ -1,5 +1,12 @@
 # Images — audit verdict + ideal-shape build plan
 
+> **BUILT (noted 2026-08-19, plans reconciliation).** The "greenfield / no storage, no
+> CDN, no upload endpoint" audit verdict below is a pre-build snapshot and is FALSE
+> today: apps/api/src/modules/photos/ ships Cloudinary storage, vision/moderation
+> lifecycle, photo-event ledger, gallery pagination (steps 3–5 landed in
+> f04227081/ef7da8045). Remaining image work is tracked as open-items-ledger §B8
+> (mobile image pipeline: priority/cachePolicy/prefetch/blurhash — still unbuilt).
+
 Product design of record: product/images.md. Pages/funnels:
 plans/page-registry.md §6. Audit run 2026-07-09 (two sweeps: backend +
 mobile). This file = ground truth + the sequenced build.

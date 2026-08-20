@@ -34,7 +34,7 @@
 > "Immediate Execution Order" are therefore both false as of today.
 
 Last updated: 2026-04-21
-Status: active master plan
+Status: SUPERSEDED (was "active master plan" — see banner above; corrected 2026-08-19)
 Rough doneness:
 
 - architectural pressure relief / ownership narrowing: ~85%

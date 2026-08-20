@@ -1,5 +1,11 @@
 # Poll supply — rederivation to an audience-denominated economy
 
+> **STATUS (noted 2026-08-19, plans reconciliation): ENTIRELY UNEXECUTED.** Code is
+> still attention-denominated (poll-supply-controller.ts creditRate ÷ viability,
+> VIABILITY_PRIOR=15 unchanged); the 5 live bugs / 16,226 poisoned rows stand. Tracked:
+> plans/red-team-2026-08-19.md standing docket ("owner sequencing needed"). Six owner
+> questions at the tail remain unanswered.
+
 Owner rulings 2026-08-09. Written to be executed by agents who were not in the
 room: every claim about current code carries `file:line`, every decision carries
 its why, and the options that lost are kept with the reason they lost.

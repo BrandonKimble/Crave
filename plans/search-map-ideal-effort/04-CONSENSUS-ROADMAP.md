@@ -8,7 +8,10 @@
 > Steps NOT executed, verified against code today: **Step 7 (TR5)** — no
 > `useToggleCoordinator`/`declareToggle`/`CompositorToggle` exists in apps/mobile/src, and
 > `apps/mobile/src/components/SegmentedToggle.tsx` was never absorbed; **Step 9's H1
-> harness** — never built, and the `[lodev]` harness the plan assumes never existed at all
+> harness** — never built, and the `[lodev]` harness the plan assumes is GONE (correction
+> 2026-08-19: it DID exist briefly — added a13230e87/328a89b04/8eedc51ae, removed at
+> 364e17be2 — the earlier "never existed at all" phrasing here was wrong; either way it
+> is not in the tree and must not be searched for)
 > (see `plans/lod-v5-architecture.md`'s 2026-08-03 correction). A5/A7's SDK facts are stale:
 > `@rnmapbox/maps` is 10.3.1 today (apps/mobile/package.json:29) with a repo-local patch in
 > `patches/`. The workspace topology section is also historical — the second `~/Crave-map`

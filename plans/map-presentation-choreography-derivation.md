@@ -1,5 +1,12 @@
 # Map presentation: choreography derivation (paint/placement split + epoch-fenced decide)
 
+> **STATUS (added 2026-08-19, plans reconciliation): SHIPPED — commit 8ed123f30.**
+> One residual named at the tail remains technically live and UNOWNED: the
+> style-reload-while-dismissed edge (`beginSourceRecovery` early-returns when
+> inactive, SearchMapRenderController.swift ~:9551 — world layers would remount at
+> authored visibility/placement). Per CLAUDE.md, do not fix as a naked map cleanup;
+> bundle with the next real map change.
+
 Ground-up shape from requirements (2026-07-12), completing what
 [map-presentation-epoch-and-participation.md](map-presentation-epoch-and-participation.md)
 started: that pass made _participation membership_ derived; this pass makes _choreography

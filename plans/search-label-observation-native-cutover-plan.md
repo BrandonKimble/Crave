@@ -1,7 +1,7 @@
 # Search Label Observation Finalization Plan
 
 Last updated: 2026-04-03
-Status: active, but now focused on final executor-shape cleanup rather than JS sticky ownership promotion
+Status: DEAD — subject matter no longer exists (labels are ViewAnnotations now; see banner below; header corrected 2026-08-19)
 
 > **Correction 2026-08-03 (truth audit): "active" is FALSE — this plan's entire subject
 > matter no longer exists.** Search-map labels were migrated OFF GL symbol layers onto

@@ -1,5 +1,10 @@
 # Observability Overhaul (Production + Collection/Polls Tuning + AI Feedback Loop)
 
+> **STATUS (noted 2026-08-19, plans reconciliation): UNBUILT AND UNTRACKED.** No
+> prom-client in apps/api/package.json, no metrics controller, no ops:report script —
+> only the Sentry pieces are real. Not in any active ledger; hosted-metrics spend would
+> also be gated by the iteration-phase no-prod-spend ruling. Adopt or close explicitly.
+
 This plan replaces `plans/keyword-collection-observability-overhaul.md` with a broader, production-oriented observability strategy.
 
 Core decisions:

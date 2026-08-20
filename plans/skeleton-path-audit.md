@@ -1,5 +1,13 @@
 # Skeleton-path audit — why you have never seen a skeleton sheet (2026-08-08)
 
+> **FIXES LANDED (noted 2026-08-19, plans reconciliation).** This audit's findings were
+> executed by d3f48d685 (pending mounted bodies paint skeleton), 018542e8e (skeleton with
+> a face), b4a24c645 (one skeleton instance press→reveal). NOTE: the owner's 2026-08-07
+> "skeleton never seen" verdict PREDATES these fixes and was never re-tested — the
+> re-test rides the track-visual punchlist (v16 roadmap Phase 6, owner checkpoint ⑥).
+> Residual: the 'history' preset spec-contradiction ruling (line ~246), partly addressed
+> by f8a21b7d4.
+
 Full read of the tracksheet skeleton machinery, the old host's skeleton legs, every
 `SceneLoadingSurface` consumer, and the contract (G-SKEL / OA2 / OA6.1 / R2 / handoff
 correction). All paths absolute under `/Users/brandonkimble/Crave/Crave/apps/mobile/src/`.

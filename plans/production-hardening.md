@@ -1,5 +1,14 @@
 # Production Hardening Plan (Stack + Services)
 
+> **LARGELY SUPERSEDED (noted 2026-08-19, plans reconciliation).** Two overriding facts:
+> (1) the 2026-08-09 ITERATION-PHASE ruling (plans/iteration-phase-open-items.md) forbids
+> prod deploys/spend until ideal shape — this plan's prod-rollout framing is suspended;
+> the pre-launch ship checklist lives at iteration-phase-open-items §D. (2) The §0
+> "confirm" decisions are decided and shipped: billing/entitlements + PaywallScreen are
+> built (see plans/payments-ideal-shape.md, which also supersedes §0.4/§7's
+> delete-Stripe instruction), worker topology + Railway backups are live. Read the
+> in-file 2026-08-03 correction notes; do not execute this plan as written.
+
 Goal: close the concrete production gaps identified in the current repo state, with best-practice defaults and a phased rollout path.
 
 This plan is intentionally split into **workstreams** that can be shipped incrementally without blocking product work. Each workstream includes:

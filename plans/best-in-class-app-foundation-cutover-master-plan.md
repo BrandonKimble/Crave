@@ -1,5 +1,11 @@
 # Best-In-Class App Foundation Cutover Master Plan
 
+> **SUPERSEDED/HISTORICAL (noted 2026-08-19, plans reconciliation).** The "active source
+> of truth" status below is April-era and dead: the frontend foundation this governed was
+> rebuilt by the registry/wave/track era and the old sheet system was deleted
+> (2d7f1a23d "the old sheet system is gone"). Every scope path uses a dead repo root
+> (/Users/brandonkimble/Crave/apps/...). Do not build from this file.
+
 Last updated: 2026-04-18
 Status: active master plan
 Owner: Codex + Brandon

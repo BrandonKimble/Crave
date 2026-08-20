@@ -250,6 +250,15 @@ GitHub Actions until a second committer.
 > as a passing gate, and `deploy.sh`'s known-red refusal (CLAUDE.md THE
 > DEPLOY LAW) will currently block a prod deploy without `--force`. Getting
 > CI green is an open owner item, not a settled one.
+>
+> **UPDATE 2026-08-19 (plans reconciliation):** the picture moved again. GitHub CI last
+> ran 2026-08-09 (the 3 most recent runs on origin/main: FAILURE) and has seen NOTHING
+> since — local main is ~281 commits ahead of origin/main, which sits at d85def24b, the
+> exact "prod frozen" commit of the iteration-phase ruling. So the freeze is working as
+> intended, but the "CI is the async safety net" claim is dark for the entire iteration
+> arc: the only gates covering current work are the local suites/`yarn invariants`/the
+> nightly-invariants rung. Getting CI green rides the pre-launch ship
+> (iteration-phase-open-items §D).
 
 ## SHADOW VOCABULARY CONTRACT (big-one red team, 2026-08-02 — supersedes
 

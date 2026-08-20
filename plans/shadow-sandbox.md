@@ -1,5 +1,12 @@
 # Shadow sandbox — the from-scratch isolation model (P6)
 
+> **STATUS (added 2026-08-19, plans reconciliation): LANDED.** The design below is
+> implemented — `born_extraction_run_id` lives on core_entities + entity_surface
+> (schema.prisma), the byte-identical acceptance is 4/4 per plans/v16-program.md,
+> and the SD-1/SD-2 retro sweep EXECUTED (4,510 surfaces deprecated + 4,116 entities
+> archived; see v16-program "Ground truth"). SD-3 (ghost `Best`) rides the P8
+> reground/ghost-lifecycle sweep, in flight 2026-08-19.
+
 Owner ruling (2026-08-14 walkthrough subject 7): not a patch on the
 entity-quarantine hack — rederive the entire shadow isolation model. One
 invariant: **a rehearsal must be observable (diffable, auditable) and

@@ -1,5 +1,9 @@
 # Spec: promote rank pins UNDER COVER (before the reveal fade-in)
 
+> **SUPERSEDED (noted 2026-08-19, plans reconciliation).** `toggle-unified-fade-spec.md`
+> declares itself successor to this file ("pre-v6, stale"); the "residency session" this
+> spec assigns work to no longer exists. Kept for provenance only.
+
 **From:** the toggle/fade-swap workstream. **For:** the residency session that owns
 `SearchMapRenderController.swift`.
 **Why it's yours:** it's a reveal-lane reorder (your domain), it fixes submit-reveal, AND the
