@@ -312,7 +312,12 @@ bounded to search/profile/runtime cluster deliberately.
   crashed once data returned); coverage-truth truth-SQL aliases vs mapper.
 - Coverage-truth VACUOUS-GREEN closed: empty truth set = instrument
   failure exit 1. Back at true baseline 2,304/98.6%/0 unexplained.
-- CLASS FINDING → OPEN ITEM (mine): source tables have NO emptiness/
+- CLASS FINDING → CLOSED (2026-08-19): SourceTableCollapseAlarmService
+  (boot + nightly census of the five source tables against persisted
+  source_table_high_water; >20% single-step drop or drop-to-zero raises a
+  critical deduped opsAlert; registry entry
+  source.tables-cannot-silently-collapse, mutation-proven). Original:
+  source tables have NO emptiness/
   row-collapse alarm (only derived tables carry the DerivedIndexJob law);
   a core-table row-count anomaly census (cheap, nightly, opsAlert) is the
   structural answer. Third deferred/silent machine of the rollback window

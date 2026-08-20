@@ -139,15 +139,36 @@ L3. **COVER-LINKER (locked 2026-08-10, owner delegated).** Whole-query span
 
 ## A9. OWNERSHIP ASSIGNMENTS (truth pass 2026-08-16 — the dropped-silently items, each with a named home)
 
-A9a. **fold_version stamping in attribute-ontology + projection-rebuild
+A9a. **CLOSED (2026-08-19).** Both raw re-key sites now stamp
+   fold_version with the keys, routed through identityInsertData (the one
+   identity helper): the attribute-ontology rename UPDATE and the
+   identity-key heal (refreshSortedIdentityKeys — which now also treats a
+   stale fold_version as drift, so { full: true } is a true post-bump
+   provenance backfill). Proven: apply-plan spec asserts the rename SETs
+   fold_version = $5; the heal integration spec (real Postgres) seeds
+   fold_version 0 rows and asserts re-keyed rows carry
+   FOLD_ALGORITHM_VERSION, including a version-only backfill case.
+   ORIGINAL ITEM (for history): **fold_version stamping in
+   attribute-ontology + projection-rebuild
    raw re-keys → MY QUEUE (this lane), concrete item.** The wave-1
    residual (see the wave-1 LANDED note below) left two raw re-key paths
    writing surface rows without stamping fold_version; until stamped,
    the fold-drift detector reads them as unknown-provenance. Work: find
    both raw re-key sites, stamp fold_version at write, prove with
    check-surface-fold-drift.
-A9b. **12b usageCaller invariant completion + 12d worker-boot budget
-   refusal → MY QUEUE (this lane).** 12b: finish the every-LLM-call-
+A9b. **CLOSED (2026-08-19).** 12b: registry entry
+   spend.every-gemini-generation-caller-is-profiled (mutation-proven RED:
+   a planted unprofiled usageCaller AND a planted indirected *_judge
+   lane-config caller both redden the gateway-lockdown completeness scan;
+   a profiled caller stays green). 12d: UsageLedgerService refuses a
+   worker-capable boot (PROCESS_ROLE=worker|all) when its @Optional()
+   budget owners (GovernanceService, SpendCampaignService) are absent —
+   slim script graphs (PROCESS_ROLE=api) stay legal; both directions
+   spec-proven (usage-ledger-budget-ownership.spec.ts). Companion: the
+   08-16 wipe's structural answer, SourceTableCollapseAlarmService
+   (source.tables-cannot-silently-collapse, mutation-proven).
+   ORIGINAL ITEM: **12b usageCaller invariant completion + 12d
+   worker-boot budget refusal → MY QUEUE (this lane).** 12b: finish the every-LLM-call-
    carries-usageCaller mutation-provable invariant (tag the 16k
    flash-lite classifier + the gemini-3.5-flash caller while building
    it). 12d: boot inspects spend-bearing queues and refuses/pauses

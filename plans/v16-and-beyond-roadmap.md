@@ -13,7 +13,7 @@ for input only at the named checkpoints below.
       first right theirs, mine if they defer). UNBLOCKS: venue-axis
       semantic flip, full button row, clean venue population for the v16
       diff review.
-- [~] Invariant-cluster close-out (agent): A9a fold_version stamps at the
+- [x] Invariant-cluster close-out (agent, DONE 2026-08-19): A9a fold_version stamps at the
       two raw re-key sites; 12b usageCaller completeness invariant; 12d
       worker-boot budget-owner refusal; source-table row-collapse alarm
       (the 08-16 wipe's structural answer).
