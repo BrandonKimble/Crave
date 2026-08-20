@@ -15,7 +15,9 @@ standing program. Coordinator = this session (⭐04); search-side = ⭐05.
   scan widened to _judge-suffix callers.
 - Full API suite green (2,186 tests); `yarn invariants` 39/39; NIGHTLY
   invariants rung live (scheduled task `nightly-invariants`, 03:30,
-  diagnose-never-patch).
+  diagnose-never-patch; PUSH-on-red — phone notification + untracked
+  INVARIANTS-RED.md at repo root until a green run verifies the fix;
+  silent when green).
 - RETRO SHADOW SWEEP EXECUTED (SD-1/SD-2): 4,510 shadow-banked surfaces
   deprecated + 4,116 shadow-minted entities archived (witnesses bơ/'bo'
   dead; acc-02 went green; ⭐05's loc-05 fixture is corpus-stale — their
