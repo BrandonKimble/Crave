@@ -9,6 +9,10 @@ import {
   type LabelGenerationRequest,
   type LabelGenerator,
 } from './label-generator';
+import {
+  resolvePromptRule,
+  type RuleRelease,
+} from '../content-processing/entity-resolver/prompt-rule-release';
 
 /**
  * THE VOCABULARY GENERATOR — the real implementation of the LabelGenerator
@@ -51,11 +55,52 @@ import {
  * claimants — decides ownership. A single draw is right when the question
  * has one answer.
  */
-/** Bumped when prompt WORDING changes what the corpus should contain.
+/** The rule as fingerprinted: the template rendered with placeholder data —
+ *  the same move `concept-satisfies-rule.ts` uses for a TS-template rule. */
+export const VOCABULARY_RULE_TEXT = buildVocabularyPrompt([
+  {
+    entityId: '<ID>',
+    name: '<CONCEPT>',
+    entityType: '<TYPE>',
+    locale: '<LOCALE>',
+    hint: null,
+  },
+]);
+
+/**
+ * THE VERSION LEDGER — append-only, oldest first. Version 7 is the text the
+ * hand constant `VOCABULARY_PROMPT_VERSION = 7` last named; listing its
+ * fingerprint pins the number to the text so neither can drift alone. The
+ * value is unchanged, so no label already written comes due from this move.
+ * Versions 1-6 predate fingerprinting (their texts are unrecoverable); their
+ * history lives in the comment block above the version export.
+ */
+const VOCABULARY_RULE_RELEASES: readonly RuleRelease[] = [
+  {
+    version: 7,
+    fingerprint: '44c6dd662cfd',
+    note: 'THING-vs-MATERIAL boundary test added (gyro != gyro meat); enumerate-not-curate retained',
+  },
+];
+
+function resolveVocabularyPromptVersion(): number {
+  return resolvePromptRule(
+    'labels.vocabulary',
+    'vocabulary-generator.ts',
+    VOCABULARY_RULE_TEXT,
+    VOCABULARY_RULE_RELEASES,
+  ).version;
+}
+
+/** DERIVED from the template's fingerprint through the release ledger at
+ *  the bottom of this file (prompt-rule-release law, P7 docket item 3,
+ *  2026-08-17) — this was the fleet's last hand-maintained version constant,
+ *  and an edit-without-bump here was undetectable: the sweep's due predicate
+ *  reads the version and would see nothing owed. The sweep re-offers labels
+ *  below this — one re-pay per bump.
  *  v1 = pre-gender-complete labels (implicit, DB default); v2 = the
- *  gender/plural-complete + dietary-boundary prompt. The sweep re-offers
- *  labels below this — one re-pay per bump. */
-export const VOCABULARY_PROMPT_VERSION = 7;
+ *  gender/plural-complete + dietary-boundary prompt. */
+export const VOCABULARY_PROMPT_VERSION = resolveVocabularyPromptVersion();
 // v7 (2026-08-12): THE BOUNDARY GREW ITS SECOND NAMED TEST — A THING IS NOT
 // WHAT IT IS MADE OF. Measured on all 812 active English default labels, 10
 // answered the concept with a NEIGHBOUR'S name in the ingredient/material

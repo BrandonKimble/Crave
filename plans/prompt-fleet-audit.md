@@ -324,11 +324,21 @@ rehearing budget — the healthiest corner of the fleet.
    facets run query/MINIMAL; the taxonomy completeness spec text-scans
    llm.service.ts only, so generateForCaller callers escape coverage.
    Fix = profile entry + spec widened to the wrapper.
-3. **VOCABULARY_PROMPT_VERSION = 7 is the last hand-maintained version**
+3. **DONE 2026-08-17 (owner pulled forward).** VOCABULARY_PROMPT_VERSION
+   is now DERIVED: template fingerprinted with placeholder data (the
+   satisfies-lane move), release ledger v7 = fingerprint 44c6dd662cfd,
+   resolves to the same value so nothing comes due; RED-capable spec pins
+   the throw-on-unledgered-edit. ORIGINAL: **the last hand-maintained
+   version**
    and buildVocabularyPrompt has no fingerprint — an edit without a bump
    is undetectable and the due predicate would see nothing owed. Migrate
    to resolvePromptRule like the other five.
-4. **dish.knowledge_synthesize due predicate is a bare timestamp**
+4. **DONE 2026-08-17 (owner pulled forward).** dish-knowledge-rule.ts
+   ledgers the .md (v1 = 6ed39bb6a8ba); stamps carry
+   knowledge_prompt_version (migration backfills all 8,924 stamped rows to
+   v1 — exact count verified); due predicate = never-synthesized OR
+   below-version; RED-capable spec. ORIGINAL: **due predicate is a bare
+   timestamp**
    (knowledgeSynthesizedAt, no version) — a prompt bump never re-opens
    old syntheses.
 5. llm_decision_records: 203,507 rows, zero readers — standing stance

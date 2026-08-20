@@ -55,6 +55,10 @@ model Entity {
   /// Stamp for the offline dish-knowledge pass (canonical ingredients +
   /// established surface forms). NULL = not yet synthesized.
   knowledgeSynthesizedAt              DateTime?                     @map("knowledge_synthesized_at") @db.Timestamptz(3)
+  /// Version of the dish-knowledge rule that produced the stamp above
+  /// (dish-knowledge-rule.ts ledger). NULL only when never synthesized; the
+  /// sweep re-offers rows stamped below the current version (P7, 2026-08-17).
+  knowledgePromptVersion              Int?                          @map("knowledge_prompt_version")
   nameEmbedding                       Unsupported("vector(768)")?   @map("name_embedding")
   nameEmbeddingStale                  Boolean                       @default(false) @map("name_embedding_stale")
   placeAttributes                String[]                      @default([]) @map("restaurant_attributes") @db.Uuid

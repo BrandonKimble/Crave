@@ -10,6 +10,7 @@ import { LLMService } from '../../external-integrations/llm/llm.service';
 import { PooledBatchRunner } from '../../external-integrations/llm/pooled-batch-runner';
 import { recordUnanswered } from '../../external-integrations/llm/unanswered-outcome';
 import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
+import { DISH_KNOWLEDGE_RULE } from './dish-knowledge-rule';
 
 export interface DishKnowledgeSummary {
   dishesProcessed: number;
@@ -106,7 +107,13 @@ export class DishKnowledgeSynthesisService {
       where: {
         type: EntityType.item,
         status: EntityStatus.active,
-        knowledgeSynthesizedAt: null,
+        // Due = never synthesized, OR stamped by a superseded rule version
+        // (P7 re-open, 2026-08-17): a deliberate ledger bump re-offers the
+        // outdated population; a bare timestamp made a dish done forever.
+        OR: [
+          { knowledgeSynthesizedAt: null },
+          { knowledgePromptVersion: { lt: DISH_KNOWLEDGE_RULE.version } },
+        ],
       },
       select: { entityId: true, name: true },
       orderBy: { createdAt: 'asc' },
@@ -240,6 +247,7 @@ export class DishKnowledgeSynthesisService {
           data: {
             canonicalIngredients: Array.from(new Set(ingredientIds)),
             knowledgeSynthesizedAt: new Date(),
+            knowledgePromptVersion: DISH_KNOWLEDGE_RULE.version,
           },
         });
         // A1: established shorthand goes through THE surface writer, which
