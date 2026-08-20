@@ -761,15 +761,19 @@ export class JudgedVocabularyService implements OnModuleInit {
     }
     if (!byKey.size) return { queued: 0, heard: 0, remaining: 0 };
 
-    const byLane = new Map<string, WordVocabularyClaim[]>();
-    for (const { lane, claim } of byKey.values()) {
-      const bucket = byLane.get(lane) ?? [];
-      bucket.push(claim);
-      byLane.set(lane, bucket);
+    // ONE HEARING PER SUBJECT, NOT PER LANE (L1, entity-resolver red team
+    // 2026-08-19). This used to group the backlog by lane and call
+    // `ensureJudged(claims, [lane])` once per lane — so a word queued on two
+    // lanes was sent to the judge in two separate LLM calls, the exact 2x
+    // spend `certifyFacets` co-batching removed. The backlog is deduped to
+    // its SUBJECTS and offered once; `ensureJudged` computes per-lane dueness
+    // itself, so a lane already answered contributes no questions and a lane
+    // never queued but genuinely due gets healed in the same call.
+    const subjects = new Map<string, WordVocabularyClaim>();
+    for (const { claim } of byKey.values()) {
+      subjects.set(`${claim.locale}|${claim.word}`, claim);
     }
-    for (const [lane, claims] of byLane) {
-      await this.ensureJudged(claims, [lane]);
-    }
+    await this.ensureJudged([...subjects.values()]);
 
     // DELETE WHAT WAS ANSWERED, KEEP WHAT WAS NOT. The verdict table is the
     // authority on which it is — not the return value of the drain, which
