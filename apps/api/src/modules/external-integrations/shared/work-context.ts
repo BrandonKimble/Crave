@@ -77,7 +77,7 @@ export function currentAttribution(): string | undefined {
  * (`{ campaignId: currentCampaignId() }`) drops the label and the
  * attribution — use the snapshot. Enforced by the
  * `campaign.attribution-crosses-every-queue-boundary` invariant
- * (scripts/check-workcontext-boundaries.mjs).
+ * (scripts/check-workcontext-boundaries.ts).
  */
 export function snapshotWorkContext(): WorkContext | undefined {
   const context = storage.getStore();

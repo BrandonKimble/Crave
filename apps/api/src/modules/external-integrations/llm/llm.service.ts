@@ -402,9 +402,20 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
 
     // THE Gemini client. Paid surfaces run the spend gate inside the client,
     // so no call site can skip it — see gated-gemini-client.ts.
-    this.gemini = new GatedGeminiClient(this.llmConfig.apiKey, () =>
-      this.assertSpendBudgetOpen(),
-    );
+    // The gate carries BOTH tiers (red team 2026-08-19 D3): the Tier-3 pool
+    // backstop AND the ambient-campaign dispatch gate. Before this, only
+    // generate/batch ran assertDispatchable, so a BREACHED campaign's
+    // ingest tree kept paying for embeddings and cache mints through the
+    // two paid side doors — the same "generation stops while embeddings
+    // keep spending" defect the pool gate fixed one tier down. User paths
+    // have no ambient campaign and are untouched.
+    this.gemini = new GatedGeminiClient(this.llmConfig.apiKey, async () => {
+      await this.assertSpendBudgetOpen();
+      const ambientCampaignId = currentCampaignId();
+      if (ambientCampaignId && this.spendCampaigns) {
+        await this.spendCampaigns.assertDispatchable(ambientCampaignId);
+      }
+    });
     this.redisClient = this.redisService.getOrThrow();
 
     // Load system prompt from collection-prompt.md
@@ -3668,16 +3679,9 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
         // §24 caller taxonomy: the generic tag is a dead-man default only.
         // Any warning here means a call site forgot its usageCaller tag.
-        if (!options.usageCaller) {
-          this.logger.warn(
-            'usage-ledger record fell back to generic caller tag — tag the call site with usageCaller',
-            {
-              operation: 'call_llm_api',
-              model: targetModel,
-              correlationId: CorrelationUtils.getCorrelationId(),
-            },
-          );
-        }
+        // (The old untagged-caller warn here was unreachable — the entry
+        // throw at the top of callLLMApi already refuses untagged calls —
+        // deleted, red team 2026-08-19.)
         this.usageLedger.record({
           service: 'gemini',
           operation: 'generateContent',

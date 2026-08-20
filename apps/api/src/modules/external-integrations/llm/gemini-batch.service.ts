@@ -11,6 +11,12 @@ import { currentCampaignId, runInWorkContext } from '../shared/work-context';
 import { GovernanceService } from '../governance/governance.service';
 import { SpendCampaignService } from '../shared/spend-campaign.service';
 
+/** The provider job as the transport returns it — the terminalizer meters
+ *  from this shape (red team 2026-08-19 D1/D2). */
+type ProviderBatchJob = Awaited<
+  ReturnType<ReturnType<LLMService['batchTransportOps']>['get']>
+>;
+
 export interface BatchSubmitItem {
   /** Caller's stable key for this item (e.g. the chunk id). */
   key: string;
@@ -428,14 +434,92 @@ export class GeminiBatchService implements OnModuleDestroy {
     return refreshed.status;
   }
 
-  async cancel(jobId: string): Promise<void> {
+  /**
+   * THE ONE FAILED-JOB METER (red team 2026-08-19 D1/D2). Google bills
+   * COMPLETED items inside a cancelled/expired/failed batch; any path that
+   * terminalizes a job without running this leaves paid work with no ledger
+   * row, no pool meter, no campaign debit. Idempotent by the same
+   * one-row-per-job dedupe key as the success path, so cancel, the poller
+   * and the stale sweep can all call it without double-billing.
+   */
+  private async meterFailedRemoteUsage(
+    jobId: string,
+    purpose: string,
+    remote: ProviderBatchJob,
+  ): Promise<void> {
+    const failedResumeRow = await this.prisma.llmBatchJob.findUnique({
+      where: { jobId },
+      select: { resumeContext: true },
+    });
+    const failedCampaignId = campaignIdFromResumeContext(
+      failedResumeRow?.resumeContext,
+    );
+    const failedInlined = remote.dest?.inlinedResponses ?? [];
+    const failedUsage = { input: 0, output: 0, cached: 0, model: '' };
+    for (const entry of failedInlined) {
+      const meta = entry.response?.usageMetadata;
+      failedUsage.input += meta?.promptTokenCount ?? 0;
+      failedUsage.output +=
+        (meta?.candidatesTokenCount ?? 0) + (meta?.thoughtsTokenCount ?? 0);
+      failedUsage.cached += meta?.cachedContentTokenCount ?? 0;
+      failedUsage.model ||= entry.response?.modelVersion ?? '';
+    }
+    if (failedInlined.length > 0) {
+      this.usageLedger.record({
+        service: 'gemini',
+        operation: 'batchGenerateContent',
+        model: failedUsage.model || undefined,
+        mode: 'batch',
+        inputTokens: failedUsage.input,
+        outputTokens: failedUsage.output,
+        cachedTokens: failedUsage.cached,
+        requestCount: failedInlined.length,
+        caller: `gemini-batch.${purpose}`,
+        runKey: jobId,
+        dedupeKey: `gemini-batch:${jobId}`,
+        // Round-6 F2: without this, partial spend on a failed batch was
+        // invisible to campaign budget accounting while identical spend on
+        // a succeeded batch counted.
+        campaignId: failedCampaignId,
+        outcome: 'failed',
+      });
+    }
+  }
+
+  /**
+   * Reap a job's remote side: vendor-cancel (so a wedged-but-alive job
+   * cannot keep billing) and meter whatever it already completed. Safe on
+   * jobs with no provider name; every error degrades to a warn — reaping is
+   * accounting, never a reason to fail the caller's own terminalization.
+   */
+  async reapRemote(jobId: string): Promise<void> {
     const job = await this.prisma.llmBatchJob.findUnique({
       where: { jobId },
-      select: { providerJobName: true },
+      select: { providerJobName: true, purpose: true },
     });
-    if (job?.providerJobName) {
+    if (!job?.providerJobName) return;
+    try {
       await this.batchOps.cancel(job.providerJobName);
+    } catch {
+      // Already terminal at the vendor — get() below still reads usage.
     }
+    try {
+      const remote = await this.batchOps.get(job.providerJobName);
+      await this.meterFailedRemoteUsage(jobId, job.purpose, remote);
+    } catch (error) {
+      this.logger.warn('reapRemote could not meter remote usage', {
+        jobId,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+
+  async cancel(jobId: string): Promise<void> {
+    // Meter-before-flip (D1): once status leaves 'submitted', pollOne's
+    // failed path can never run for this job — reap now or never.
+    await this.reapRemote(jobId);
     // GUARDED: cancel only overtakes LIVE states — a job that already
     // reached a terminal state ('succeeded'/'ingested'/'failed') keeps its
     // truth; stamping 'failed' over 'ingested' would erase a completed,
@@ -581,47 +665,7 @@ export class GeminiBatchService implements OnModuleDestroy {
     if (!terminal) return; // still queued/pending/running
 
     if (terminal === 'failed') {
-      // Google bills COMPLETED items inside a cancelled/expired/failed batch.
-      // Before this, a provider-failed job ledgered nothing — paid work with
-      // no meter. Sum whatever usage the remote carries; idempotent by the
-      // same one-row-per-job dedupe key as the success path.
-      const failedResumeRow = await this.prisma.llmBatchJob.findUnique({
-        where: { jobId },
-        select: { resumeContext: true },
-      });
-      const failedCampaignId = campaignIdFromResumeContext(
-        failedResumeRow?.resumeContext,
-      );
-      const failedInlined = remote.dest?.inlinedResponses ?? [];
-      const failedUsage = { input: 0, output: 0, cached: 0, model: '' };
-      for (const entry of failedInlined) {
-        const meta = entry.response?.usageMetadata;
-        failedUsage.input += meta?.promptTokenCount ?? 0;
-        failedUsage.output +=
-          (meta?.candidatesTokenCount ?? 0) + (meta?.thoughtsTokenCount ?? 0);
-        failedUsage.cached += meta?.cachedContentTokenCount ?? 0;
-        failedUsage.model ||= entry.response?.modelVersion ?? '';
-      }
-      if (failedInlined.length > 0) {
-        this.usageLedger.record({
-          service: 'gemini',
-          operation: 'batchGenerateContent',
-          model: failedUsage.model || undefined,
-          mode: 'batch',
-          inputTokens: failedUsage.input,
-          outputTokens: failedUsage.output,
-          cachedTokens: failedUsage.cached,
-          requestCount: failedInlined.length,
-          caller: `gemini-batch.${purpose}`,
-          runKey: jobId,
-          dedupeKey: `gemini-batch:${jobId}`,
-          // Round-6 F2: without this, partial spend on a failed batch was
-          // invisible to campaign budget accounting while identical spend on
-          // a succeeded batch counted.
-          campaignId: failedCampaignId,
-          outcome: 'failed',
-        });
-      }
+      await this.meterFailedRemoteUsage(jobId, purpose, remote);
       // GUARDED (C3): a late poller must not stamp 'failed' over a state
       // another worker already decided — the exact cancel-over-terminal
       // shape (b0db25258): 'failed' over 'succeeded'/'ingested' erases the

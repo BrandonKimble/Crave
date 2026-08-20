@@ -28,7 +28,10 @@ import type { GeminiGenerationConfig } from './gemini-generation-config';
  * re-offered on the next run — so a timeout costs latency, never data, and
  * never a fabricated result. On timeout the job is CANCELLED so a wedged
  * provider job cannot bill for work nobody will read (completed items inside
- * a cancelled batch still ledger — pollOne's failed path meters them).
+ * a cancelled batch still ledger — cancel() reaps the remote and meters
+ * them itself before flipping status; the poller can no longer see a
+ * cancelled job, which is why the meter rides the cancel — red team
+ * 2026-08-19 D1).
  *
  * Request assembly lives in LLMService.buildCallerBatchRequest — the runner
  * never writes a model, ceiling, thinking level, or schema conversion, which

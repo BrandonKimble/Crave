@@ -707,6 +707,11 @@ export class CollectionEvidenceService implements OnModuleInit {
         });
         if (claimed.count === 0) continue; // progressed since SELECT
         failedJobIds.push(job.job_id);
+        // Reap the remote side (red team 2026-08-19 D2): once the status
+        // leaves the poller's reach, nothing else would ever vendor-cancel
+        // the wedged job (it could complete later and bill) or meter what
+        // it already completed. Best-effort by design.
+        await this.geminiBatch.reapRemote(job.job_id).catch(() => undefined);
         // ONE mechanism for job-level run-failure: route through the
         // purpose's registered failure handler exactly like the poller's
         // provider-failed and ingest-exhausted paths — a richer future

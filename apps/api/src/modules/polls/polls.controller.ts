@@ -141,7 +141,13 @@ export class PollsController {
   @Get('restaurants/:restaurantId/mentions')
   @UseGuards(OptionalClerkAuthGuard)
   getPlaceMentions(
-    @Param('placeId', new ParseUUIDPipe()) placeId: string,
+    // Param name MUST match the route segment (':restaurantId' — the URL is
+    // API contract, the mobile client calls it): the R14 vocabulary rename
+    // changed this binding to 'placeId' without the segment, so
+    // req.params['placeId'] was undefined and ParseUUIDPipe 400'd EVERY
+    // call — the whole Discussions tab dead for 3 days (red team
+    // 2026-08-19 polls-D1).
+    @Param('restaurantId', new ParseUUIDPipe()) placeId: string,
     @Query() query: PlaceMentionsQueryDto,
     @CurrentUser() user?: User | null,
   ) {
