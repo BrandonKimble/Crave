@@ -124,7 +124,11 @@ if [[ "$KEEP_USERS" -eq 0 ]]; then
   stg_psql -v ON_ERROR_STOP=1 -f "$SCRIPT_DIR/scrub-staging-user-data.sql"
 else
   # --keep-users: still drop spend history (local meters, not staging's).
-  stg_psql -v ON_ERROR_STOP=1 -c "TRUNCATE api_usage_ledger, spend_campaigns;" || true
+  # pool_window_consumption is the ledger's durable METER twin — truncating
+  # one without the other splits the truth: the 2026-08-20 v16 arm failed
+  # because imported local consumption ($362) exhausted staging's monthly
+  # backstop while staging had spent nothing.
+  stg_psql -v ON_ERROR_STOP=1 -c "TRUNCATE api_usage_ledger, spend_campaigns, pool_window_consumption;" || true
 fi
 
 echo "==> Verifying ..."
