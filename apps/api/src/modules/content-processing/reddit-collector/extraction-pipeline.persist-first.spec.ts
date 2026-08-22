@@ -1,6 +1,8 @@
 // p-limit is ESM-only; jest's CJS transform chokes on it when the pipeline
 // service's import chain pulls in llm-concurrent-processing. Stub it — this
 // spec never runs concurrent LLM work.
+import { readFileSync } from 'fs';
+import { join } from 'path';
 jest.mock('p-limit', () => ({
   __esModule: true,
   default:
@@ -139,5 +141,33 @@ describe('§12.1 persist-first admission', () => {
     expect(
       h.collectionEvidenceService.persistSourceDocuments,
     ).toHaveBeenCalled();
+  });
+});
+
+/**
+ * REHEARSAL SURVIVES THE BATCH RESUME (red team 2026-08-22, the v16 leak).
+ * The mutation this pins: dropping `rehearsal` from the resumeContext
+ * baseParams projection makes the ingest read false and mint LIVE rows from
+ * a shadow replay — 339 entities leaked on staging before this existed.
+ */
+describe('batch resumeContext carries rehearsal', () => {
+  it('the projection includes the flag exactly as submitted', () => {
+    // The projection is data, not behavior: assert on the source so a field
+    // deletion cannot pass silently (same pattern as the quote-mirror).
+    const source = readFileSync(
+      join(
+        process.cwd(),
+        'src/modules/content-processing/reddit-collector/extraction-pipeline.service.ts',
+      ),
+      'utf8',
+    );
+    const start = source.indexOf('resumeContext: {');
+    const projection = source.slice(
+      start,
+      source.indexOf('llmPosts: params.llmPosts', start),
+    );
+    expect(projection).toContain(
+      'rehearsal: params.baseParams.rehearsal === true',
+    );
   });
 });

@@ -765,6 +765,13 @@ export class ExtractionPipelineService implements OnModuleInit {
             params.baseParams.collectionRunScopeKey ?? null,
           parentJobId: params.baseParams.parentJobId ?? null,
           runMetadata: params.baseParams.runMetadata ?? null,
+          // REHEARSAL RIDES THE RESUME (red team 2026-08-22, the v16 leak):
+          // this projection omitted the flag, so the batch ingest read
+          // rehearsal===false and every batch-path shadow minted LIVE
+          // entities/surfaces — 339 entities + 943 surfaces on staging, the
+          // exact SD-class the sandbox exists to close. The "one assembler
+          // forgot X" projection class, again.
+          rehearsal: params.baseParams.rehearsal === true,
         },
         llmPosts: params.llmPosts,
         chunkInputs: stubs.map((stub) => ({
