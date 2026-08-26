@@ -265,9 +265,9 @@ async function runChunks(
 
 const norm = (s: string | null | undefined) => (s ?? '').trim().toLowerCase();
 const keyOf = (r: MentionRecord) =>
-  `${r.sourceId}|${norm(r.mention.place)}|${norm(r.mention.item)}`;
+  `${r.sourceId}|${norm(r.mention.place_observed)}|${norm(r.mention.item)}`;
 const postKeyOf = (r: MentionRecord) =>
-  `${norm(r.mention.place)}|${norm(r.mention.item)}`;
+  `${norm(r.mention.place_observed)}|${norm(r.mention.item)}`;
 
 function churn(
   a: MentionRecord[],
@@ -301,7 +301,7 @@ function report(
   const aNamesByPost = new Map<string, Set<string>>();
   for (const r of a.records) {
     const set = aNamesByPost.get(r.postId) ?? new Set<string>();
-    if (norm(r.mention.place)) set.add(norm(r.mention.place));
+    if (norm(r.mention.place_observed)) set.add(norm(r.mention.place_observed));
     if (norm(r.mention.item)) set.add(norm(r.mention.item));
     aNamesByPost.set(r.postId, set);
   }
@@ -337,7 +337,7 @@ function report(
     const aNames = aNamesByPost.get(r.postId) ?? new Set<string>();
     const squashedText = squash(postText.get(r.postId) ?? '');
     for (const [kind, name] of [
-      ['restaurant', norm(r.mention.place)],
+      ['restaurant', norm(r.mention.place_observed)],
       ['food', norm(r.mention.item)],
     ] as const) {
       if (!name) continue;

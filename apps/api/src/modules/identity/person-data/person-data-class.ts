@@ -734,6 +734,10 @@ export const COLUMN_COVERAGE: readonly ColumnCoverageEntry[] = [
         'Provider webhook ledger keyed by external event id.',
       ],
       ['collection_communities', 'Which subreddits/cities we collect from.'],
+      [
+        'collection_extraction_contract_refusals',
+        'Banked observed-span contract refusals over public corpus text (v17). Run ids, a raw mention JSON about restaurants/dishes, a reason — no person.',
+      ],
       ['collection_extraction_coverage_claims', 'Extraction bookkeeping.'],
       ['collection_extraction_input_documents', 'Extraction bookkeeping.'],
       [

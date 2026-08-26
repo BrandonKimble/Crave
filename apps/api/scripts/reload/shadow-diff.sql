@@ -96,4 +96,30 @@ WHERE NOT EXISTS (
 ORDER BY e.type, e.name
 LIMIT 500;
 
+\echo ''
+\echo '=== CONTRACT REFUSALS (banked observed-span refusals, per reason) ==='
+\echo '--- a refusal rate that surprises you is an OWNER-DECISION, not a log line'
+SELECT
+  r.reason,
+  count(*) AS refusals,
+  count(DISTINCT r.extraction_run_id) AS runs,
+  count(DISTINCT r.source_document_id) AS docs
+FROM collection_extraction_contract_refusals r
+JOIN shadow_runs sr ON sr.extraction_run_id = r.extraction_run_id
+GROUP BY r.reason
+ORDER BY refusals DESC;
+
+\echo ''
+\echo '=== CONTRACT REFUSAL SAMPLES (up to 50, newest first) ==='
+SELECT
+  r.reason,
+  r.mention->>'place_observed' AS place_observed,
+  r.mention->>'place_source_id' AS place_source_id,
+  r.mention->>'source_id' AS source_id,
+  left(coalesce(r.detail, ''), 120) AS detail
+FROM collection_extraction_contract_refusals r
+JOIN shadow_runs sr ON sr.extraction_run_id = r.extraction_run_id
+ORDER BY r.created_at DESC
+LIMIT 50;
+
 ROLLBACK;

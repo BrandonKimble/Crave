@@ -110,12 +110,82 @@ export interface EnrichedLLMOutputStructure {
   rateLimitInfo?: RateLimitInfo;
 }
 
-interface LLMMentionBase {
+/**
+ * THE V17 WIRE CONTRACT (observed-span, plans/v17-program.md item 1): the
+ * model never authors a name — it emits `place_observed` (the span AS
+ * WRITTEN in a source, mechanical lowercase only) and `place_source_id`
+ * (WHICH source's text contains it). Ingest derives the canonical name in
+ * code (place-name-contract.ts) and mechanically refuses a span absent from
+ * the cited source — refusals are BANKED, never dropped.
+ */
+interface LLMWireMentionCommon {
+  temp_id: string;
+  /** The restaurant name exactly as the cited source's text wrote it. */
+  place_observed: string;
+  /** Chunk-local SRC ref of the source whose text contains the span. */
+  place_source_id: string;
+  place_attributes?: string[] | null;
+  // Source tracking from the prompt input, using chunk-local source refs
+  // such as SRC001 that are resolved back to canonical IDs server-side.
+  source_id: string;
+}
+
+/**
+ * PLACE mention: restaurant-only carrier of holistic endorsement or venue
+ * attributes. The ONLY shape that carries `general_praise`; it has no dish
+ * fields — praise-on-a-dish-row is unrepresentable (red team F6).
+ */
+export interface LLMPlaceMention extends LLMWireMentionCommon {
+  general_praise: boolean;
+  item?: never;
+  item_categories?: never;
+  ingredients?: never;
+  is_menu_item?: never;
+  item_attributes?: never;
+}
+
+/**
+ * DISH mention: a composed dish claim at a place. The connection IS its
+ * endorsement, so it carries no praise flag at all.
+ */
+export interface LLMDishMention extends LLMWireMentionCommon {
+  item: string;
+  item_categories?: string[] | null;
+  ingredients?: string[] | null; // Source-named ingredient nouns for this dish — evidence tier; canonical dish ingredients are synthesized offline
+  is_menu_item?: boolean | null;
+  item_attributes?: string[] | null;
+  general_praise?: never;
+}
+
+/**
+ * The decode-layer mention union — discriminated by the presence of `item`
+ * (see COLLECTION_RESPONSE_JSON_SCHEMA's anyOf twin). The invalid state
+ * (praise flag + dish fields on one row) is unrepresentable in TS too.
+ */
+export type LLMMention = LLMPlaceMention | LLMDishMention;
+
+export function isDishMention(mention: LLMMention): mention is LLMDishMention {
+  return typeof mention.item === 'string';
+}
+
+/**
+ * INTERNAL mention shape, post-ingest: the extraction pipeline converts the
+ * wire union into this — `place` is the CODE-derived canonical
+ * (canonicalizeObservedPlaceName over place_observed), `place_surface` is
+ * the observed span verbatim, and `general_praise` is DERIVED from the wire
+ * shape (dish mention -> false; place mention -> its flag) so downstream
+ * writers keep their old semantics unchanged.
+ */
+export interface LLMInternalMention {
   temp_id: string;
 
   // Restaurant fields (REQUIRED)
-  place: string; // Normalized name only
-  place_surface?: string | null; // Exact string as observed in source
+  place: string; // Canonical name derived in code from place_observed
+  place_surface?: string | null; // Exact string as observed in source (= place_observed)
+  /** Verbatim observed span from the wire mention (provenance). */
+  place_observed?: string | null;
+  /** Canonical source id whose text contains the observed span. */
+  place_source_id?: string | null;
 
   // Food entity fields (optional - null when no food mentioned)
   item?: string | null; // Normalized name only
@@ -131,7 +201,7 @@ interface LLMMentionBase {
   item_attributes?: string[] | null;
   item_attribute_surfaces?: (string | null)[] | null;
 
-  // Core processing fields (VITAL)
+  // Core processing fields (VITAL) — derived at ingest from the wire shape.
   general_praise: boolean;
 
   // Source tracking from the prompt input, using chunk-local source refs
@@ -140,16 +210,10 @@ interface LLMMentionBase {
 }
 
 /**
- * Flat mention structure with ALL properties preserved
- * Optimized structure for better LLM parsing performance and compound term support
- */
-export type LLMMention = LLMMentionBase;
-
-/**
  * Enriched mention shape used after the collector hydrates model output
  * with source metadata and internal provenance.
  */
-export interface EnrichedLLMMention extends LLMMentionBase {
+export interface EnrichedLLMMention extends LLMInternalMention {
   source_id: string;
   source_type: 'post' | 'comment';
   source_content?: string;

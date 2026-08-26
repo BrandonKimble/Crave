@@ -89,34 +89,28 @@ const KNOWN_DRIFT: ReadonlyArray<{
   dies: string;
 }> = [
   {
-    path: 'COLLECTION_RESPONSE_JSON_SCHEMA.properties.mentions.items.properties.item',
+    path: 'COLLECTION_RESPONSE_JSON_SCHEMA.properties.mentions.items.anyOf.1.properties.item',
     file: 'collection-prompt.md',
     needle: 'THE ORDER TEST',
     dies: 'v15 activation replaces the v1 live prompt, which predates the named-test doctrine',
   },
   {
-    path: 'COLLECTION_RESPONSE_JSON_SCHEMA.properties.mentions.items.properties.item_attributes',
+    path: 'COLLECTION_RESPONSE_JSON_SCHEMA.properties.mentions.items.anyOf.1.properties.item_attributes',
     file: 'collection-prompt.md',
     needle: 'THE STANDALONE TEST',
     dies: 'v15 activation replaces the v1 live prompt, which predates the named-test doctrine',
   },
   {
-    path: 'COLLECTION_RESPONSE_JSON_SCHEMA.properties.mentions.items.properties.item',
+    path: 'COLLECTION_RESPONSE_JSON_SCHEMA.properties.mentions.items.anyOf.1.properties.item',
     file: 'collection-prompt.md',
     needle: 'anything orderable — drinks included',
     dies: 'v15 activation replaces the v1 live prompt, which predates the inclusive-scope clauses (owner/⭐05 consensus 2026-08-15)',
   },
   {
-    path: 'COLLECTION_RESPONSE_JSON_SCHEMA.properties.mentions.items.properties.item',
+    path: 'COLLECTION_RESPONSE_JSON_SCHEMA.properties.mentions.items.anyOf.1.properties.item',
     file: 'collection-prompt.candidate.md',
     needle: 'anything orderable — drinks included',
     dies: 'v15 activation certifies the re-mirrored pairing as a whole (reason 2: the rhino C.1 rewrite rephrased this line; aligning the description now would change certified behavior — V15h 6/6 -> 0/6 measured 2026-08-17)',
-  },
-  {
-    path: 'COLLECTION_RESPONSE_JSON_SCHEMA.properties.mentions.items.properties.place',
-    file: 'collection-prompt.md',
-    needle: 'Read the mode of consumption, never the kind of business',
-    dies: 'v15 activation replaces the v1 live prompt, which predates the PLACE TEST mode-of-consumption law',
   },
 ];
 

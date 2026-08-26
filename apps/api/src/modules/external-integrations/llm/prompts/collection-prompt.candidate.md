@@ -255,11 +255,19 @@ The writer vouches from experience, or reports a clear consensus:
   the writer's own scale, and a 7.3 beside the writer's 8.4 favorite
   withholds endorsement and emits nothing. Praise of size, price, or
   portions never rescues a hedged verdict on the food itself. **A "but"
-  INSIDE the verdict clause decides that clause's net direction, whatever
-  the "but" is about**: "Good, but definitely not worth waiting on a
-  long-ass line for" is a net recommendation AGAINST — the downward pull
-  need not concern flavor; value, wait, or price qualifying the verdict
-  defeats it. (A complaint in a SEPARATE clause about service or logistics
+  decides net direction only for the SUBJECT its verdict is about**:
+  "Good, but definitely not worth waiting on a long-ass line for" is one
+  verdict on one dish, and the "but" defeats it — the downward pull need
+  not concern flavor; value, wait, or price qualifying the verdict
+  defeats it. But **a "but" never reaches back across a subject change**:
+  "I love Uroko, but their handrolls would move up a tier if the seaweed
+  was better" holds TWO verdicts on TWO subjects — the place verdict ("I
+  love Uroko") stands and emits; the handroll clause is judged on its own
+  and fails as hedged. Before letting a "but" defeat a verdict, ask what
+  the downgrade is ABOUT: the same subject as the verdict defeats it; a
+  different dish, a different place, or a separate aside is a new clause
+  under this step's clause-by-clause law, and the earlier verdict stands.
+  (A complaint in a SEPARATE clause about service or logistics
   is A.2 NEGATIVE CONTENT for that clause only, and leaves an unqualified
   verdict elsewhere standing.)
 - **NEGATIVE CONTENT.** Criticism, warnings, "I'd skip \_\_\_", "many of your
@@ -279,7 +287,14 @@ The writer vouches from experience, or reports a clear consensus:
   eligible; never guess at a closure. **Closure is a fact stated about the
   PLACE, never an inference from the WRITER's tense**: "I used to live in
   NYC and would go out of my way just for \_\_\_" reports a live place from
-  a writer who moved away — testimony, not closure.
+  a writer who moved away — testimony, not closure. **A closure stated
+  anywhere in scope silences every mention of that place in this post
+  object** — praise beside the closure ("Lulu B's was the best banh mi …
+  they closed suddenly") is a eulogy, not a recommendation. And a
+  remembrance ask ("who remembers \_\_\_?", "what closed spots do you
+  miss?") asks for places that are GONE: the ANSWER TEST never turns its
+  replies into picks — each named place inherits the ask's closure frame
+  and emits nothing, unless the reply itself says the place is open.
 
 ### A.3 Judge each entry on its own verdict
 
@@ -414,12 +429,54 @@ Also fails the PLACE TEST:
   passes like any other.
 - **Landmark-plus-vendor**: when the text names a landmark and a vendor inside
   it, the claim belongs to the vendor.
+- **A PLACE THE TEXT ITSELF LOCATES OUTSIDE THIS COMMUNITY'S AREA.** The
+  input comes from one city's community; a claim is useful only where the
+  community eats. When the SOURCE'S OWN TEXT places the venue in another
+  city or a distant town — "in Fredericksburg", "in Johnson City", "when I
+  was in Chicago", "back home in Houston" — emit nothing for that venue,
+  however glowing the verdict. This is a fact stated in the text, never an
+  inference: a venue with no stated location remains eligible (most names
+  carry none, and they are local), and a same-city neighborhood or suburb
+  tag ("in Round Rock", "out on 620") is location detail, not another
+  market. When unsure whether a stated place is another market or a local
+  area, keep the mention.
 
-### B.3 Canonicalize the name
+### B.3 Emit the name as this source wrote it
 
-Choose ONE canonical name per establishment, from **observed forms only** —
-never synthesize or expand a name with tokens absent from the text, and never
-contract a name into an acronym or initialism the text does not use.
+**Each mention emits the name AS WRITTEN in one specific source, and names
+WHERE it read it.** There is no choosing, no unifying, and no "canonical
+name" to maintain: two comments spelling the same place differently produce
+two mentions with two different name strings, and that is correct — deciding
+whether two spellings are the same establishment is another system's job,
+done downstream with an audit trail. Your job is a faithful transcript.
+
+- **`place_observed`** is the name span exactly as this source's text wrote
+  it (after the mechanical normalization below). Never synthesize or expand
+  a name with tokens absent from that source, never contract one into an
+  acronym or initialism the text does not use, and **never substitute a
+  name used elsewhere in the thread** — a one-off mention of "Luckys" in a
+  thread full of "Lefty's" emits `luckys`, full stop. If the string you are
+  about to emit does not appear in the source you are citing (or in the
+  fuller-form source you cite for a shorthand — below), you have invented
+  it: stop and re-read.
+- **`place_source_id`** is the id of the source whose text contains the
+  span you emitted. Usually it equals `source_id` (the claim and the name
+  come from the same comment). It differs in exactly two licensed cases:
+  a reference resolved through the depth-aware order (a "+1" or "it's so
+  good" inherits its referent — point at the source that NAMES the place),
+  and B.1's shorthand rule (a clipped slot like "Best" emits the fuller
+  brand form — point at the source where the fuller form appears).
+
+**The span's boundary follows the text's own framing (B.1), not your
+knowledge of the brand.** Capitalized brand tokens as written are the name
+("Lefty's Pizza Kitchen", "Violet Crown Wine Bar & Coffee Shop"). A
+locating tail ("in FiDi", "in Westlake", "on 5th"), a branch or
+neighborhood designator trailing the brand ("soho", "les", "queens"), and
+a lowercase category word the writer appended as description ("Baldinucci
+pizza" — the pizza is what Baldinucci makes, not what it is named) are
+NOT part of the span. When the writer capitalizes the category word as
+part of the brand ("Williamsburg Pizza"), it IS part of the span — the
+writer's framing decides, in both directions.
 
 **Your world knowledge of the establishment is off-limits here.** You will
 often RECOGNIZE the place and know its fuller real-world name or its correct
@@ -436,32 +493,25 @@ creme`). A typo is not yours to correct; an accent is not yours to remove.
 
 Normalize:
 
+Normalization is MECHANICAL — the only changes you may make to the span:
+
 - Lowercase everything — but **keep every letter as the writer spelled it,
   diacritics included** ("Phở Lệ" → `phở lệ`, never `pho le`): accent marks
   are identity, and stripping them fuses different names downstream.
-- Drop trailing neighborhood/borough/location suffixes ("les", "chelsea",
-  "midtown", "queens"), even when the text contrasts branches — emit only the
-  core brand tokens.
 - Collapse repeated whitespace; trim.
 - Keep the writer's punctuation as written — apostrophes, "&", periods are
   part of the observed form: "Joe's Pizza" → `joe's pizza`; "Pho & Co." →
   `pho & co.`.
 - **Strip a possessive clitic used to attach the name to a dish**: "Nixta's
-  duck carnitas taco" yields the name "nixta", so the same venue always
-  produces one stable form.
-- Keep brand tokens intact ("bbq", "deli", "bakery", "taqueria") and preserve
-  multi-word ordering as written.
+  duck carnitas tacos are crispy" is about a place written "Nixta" — the
+  `'s` is this sentence's grammar, not the name. A possessive that IS the
+  brand as written stays: "Adrienne's in FiDi" → `adrienne's`.
+- Preserve multi-word ordering as written.
 
-Unify variants only when safe: identical after normalization, or one is a
-strict token-superset of another AND no other anchor shares the subset tokens.
-Otherwise keep them distinct.
-
-When several variants survive, choose by: completeness (prefer full brand
-tokens, "katz's delicatessen" over "katz's"); prefer the tighter brand-only
-form when a longer variant only appends a generic cuisine/service term AND the
-shorter form also appears in this input; then frequency; then the longer
-informative token set. **Use the chosen canonical consistently for every
-mention of that place within the post object.**
+Repeated references to the same place WITHIN one source still collapse to
+one mention per (restaurant, food) pair (F.2) — use the span as this
+source wrote it. Across sources, emit each source's own spelling; never
+carry one source's spelling into another's mention.
 
 Never emit placeholders ("unknown restaurant", "that place") or a partial name
 with no brand token. A bare generic English word kept from a list slot (B.1's
@@ -496,9 +546,12 @@ rescue it — triage the modifier instead:
   combo"): `item` is `wagyu`, `nigiri`, `dumpling` — the food itself,
   never the compound. The venue may earn the BARE wrapper as a
   `place_attributes` entry per Step D.
-- Modifier NAMES A TIME, PRICE, COUNT, OR OCCASION ("lunch special", "3/4
-  course menu", "happy hour deal", "$25 combo") — or the wrapper is bare
-  ("the tasting menu"): no dish — **but the mention still EMITS**,
+- Modifier NAMES ANYTHING THAT IS NOT A FOOD — a time, price, count, or
+  occasion ("lunch special", "3/4 course menu", "happy hour deal", "$25
+  combo"), a proper name or theme ("elvis presley combo", "game day
+  deal"), or the wrapper is bare ("the tasting menu"): no dish. Only a
+  modifier that itself names a FOOD rescues a wrapper; every other
+  modifier leaves it a wrapper — **but the mention still EMITS**,
   restaurant-only with `general_praise: true`: praise of a deal is VALUE
   testimony, however strong the verb — "their lunch specials are big
   hits", "my go-to", "great weekday lunch special - 2 tacos, rice y beans,
@@ -530,8 +583,8 @@ What fails here is not lost: the cuisine or style lands in Step D as an
 attribute where it describes.
 
 **Gate 3 — THE VERDICT.** Something survived → compose it in C.2. Nothing
-survived → the mention is restaurant-only (`item` and `item_categories`
-null) — with ONE inheritance: when this source is a pick answering a
+survived → the mention is restaurant-only (a PLACE mention, no dish
+fields — F.2) — with ONE inheritance: when this source is a pick answering a
 dish-targeted ask, the ASK's food language walks these same gates, and
 what survives is the claim's subject. "best burger in EV?" → a bare pick
 carries `burger`; "Pizza in Austin?" → `pizza` (`is_menu_item` stays
@@ -647,9 +700,9 @@ Build the list:
    "chinese food", and it is wrong here. Say "I'll have the \_\_\_" of every
    entry before it lands: "taco", "soup", "dessert" order something;
    "chinese", "italian", "japanese" name a tradition, an axis whose home is
-   the attribute sides (D.4) — "mapo tofu" → `["mapo tofu", "tofu"]`, with
-   `chinese` in `item_attributes`/`place_attributes` and never in
-   `item_categories`. A printed menu section is a category only
+   the place side (D.4) — "mapo tofu" → `["mapo tofu", "tofu"]`, with
+   `chinese` in `place_attributes` and never in `item_categories` or
+   `item_attributes`. A printed menu section is a category only
    when the heading predicts the food: "Desserts", "Sides", "Tacos" do;
    "Happy Hour", "Chef's Tasting" do not.
    - **Run the ORDER TEST on the PARTS of the dish name, not just the whole.**
@@ -702,10 +755,13 @@ words.** Surrounding context — the ask, parent comments, siblings — resolves
 the SUBJECTS of a claim (which place, which dish; Steps B and E); it never
 supplies what is CLAIMED about them. One choice speaks: **an unqualified
 pick answering a constrained ask asserts fit** — the ask's VENUE-level
-constraint words ("romantic", "cheap", a cuisine) are that pick's own
-claim, walking D.1/D.2 like any stated word; a re-scoping annotation
+constraint words ("romantic", "cheap", "outdoor seating") are that pick's
+own claim, walking D.1/D.2 like any stated word; a re-scoping annotation
 blocks the word it re-scopes ("great but pricey" blocks "cheap"), and the
-ask itself still emits nothing. Before any other word enters an attribute
+ask itself still emits nothing. **A cuisine is NOT a fit assertion** — the
+ask's cuisine words never transfer to a pick (D.4 and Step E state the
+same law): "Best Indian around?" answered by a bare name yields NO
+`indian` anywhere. Before any other word enters an attribute
 array, point to the words of this source that state it — or, for a cuisine
 alone, to the dish name this source composed (D.4). A parent's words, the
 venue's own name, and your knowledge of the venue are never this source's
@@ -821,14 +877,19 @@ Scope follows **what the property describes**, not where the word sits.
   this source's own text calls the place that — never because the ask did,
   and never because the dish implies it (a cake claim does not make the
   venue a `bakery`).
-- **A CUISINE ATTACHES ON BOTH SIDES, ALWAYS — and its ONLY inference base is
-  the dish THIS source composed.** A cuisine is a property of the dish AND of
-  the place, never either/or. **Infer it from the dish's identity even when
-  unstated**: "chicken tikka masala" → `indian` in `item_attributes` on
-  that dish AND in `place_attributes`. This holds when the dish's cuisine
-  differs from the venue's: tacos at a Korean spot give the dish `mexican` and
-  add `mexican` to the restaurant's attributes **in addition to** `korean`.
-  Use ONE canonical spelling per cuisine — `mexican`, never "mex",
+- **A CUISINE IS A PLACE PROPERTY, ONLY — and its ONLY inference base is
+  the dish THIS source composed.** A cuisine describes the tradition a
+  VENUE cooks in; it lands in `place_attributes` and never in
+  `item_attributes` or `item_categories`. What tradition a DISH belongs to
+  is a fact about the dish itself ("birria" is Mexican wherever it is
+  served) — that knowledge is stamped downstream from the dish's identity,
+  not extracted from testimony; writing it here would only restate the
+  dish's name. **Infer the place-side cuisine from the dish's identity
+  even when unstated**: "chicken tikka masala" → `indian` in
+  `place_attributes`. This holds when the dish's cuisine differs from the
+  venue's: tacos at a Korean spot add `mexican` to the restaurant's
+  attributes **in addition to** `korean` — the place demonstrably cooks
+  both. Use ONE canonical spelling per cuisine — `mexican`, never "mex",
   "mexican food", or "tex-mex-ish".
 
   That dish-name inference is the SINGLE licensed inference in this step, it
@@ -902,8 +963,8 @@ Set `is_menu_item` for each composed dish.
   sentence).
 - **`false`** — the dish is a family or class ("tacos", "pizza", "coffee"), or
   the source only names a restaurant.
-- **Restaurant-only**: no dish named and none inherited → `item` and
-  `item_categories` both null, `is_menu_item: false`.
+- **Restaurant-only**: no dish named and none inherited → a PLACE mention
+  (F.2), which carries no dish fields and no `is_menu_item` at all.
 
 Set `true` only with strong evidence; when unsure, `false`.
 
@@ -969,42 +1030,45 @@ endorsement** — "this place is incredible", "my favorite spot in Austin", or
 a name offered as the writer's own pick (the ANSWER TEST, A.1). Decide
 placement by what the praise NAMES:
 
-- **Aimed at a dish** ("the brisket is unreal") → that dish's mention with
-  `general_praise: false` — the praise IS the dish connection; no carrier is
-  created.
-- **Aimed at the place as a whole** (or an ANSWER-TEST pick) → ONE
-  restaurant-only mention (`item` null) with `general_praise: true`, per
-  source per restaurant.
+- **Aimed at a dish** ("the brisket is unreal") → that DISH mention — the
+  praise IS the dish connection; no carrier is created and a dish mention
+  carries no praise flag.
+- **Aimed at the place as a whole** (or an ANSWER-TEST pick) → ONE PLACE
+  mention with `general_praise: true`, per source per restaurant.
 - **Both at once** — a source that praises the place holistically (or IS a
-  pick) AND names dishes — emits both: the dish mentions at `false` PLUS the
-  restaurant-only carrier at `true`. The pick endorsed the place, not only
-  the dishes it went on to name.
+  pick) AND names dishes — emits both: the dish mentions PLUS the place
+  carrier at `true`. The pick endorsed the place, not only the dishes it
+  went on to name.
 
-The invariant that follows: **`general_praise: true` lives ONLY on a
-restaurant-only mention (`item` null).** Before emitting, if any mention
-carries BOTH a non-null `item` and `general_praise: true`, split it — the
-dish keeps `false`, the `true` moves to a restaurant-only carrier. It is an
-independent axis: composing a dish neither creates nor suppresses it, and
-endorsing a place neither creates nor suppresses a dish. Availability,
-popularity, and price are never endorsement (Step A.2).
+The shape enforces this: **a PLACE mention (no `item` field) is the only
+shape that carries `general_praise`; a DISH mention (non-null `item`) has
+no praise flag at all** — the dish connection IS its endorsement. It is an
+independent axis: composing a dish neither creates nor suppresses the
+carrier, and endorsing a place neither creates nor suppresses a dish.
+Availability, popularity, and price are never endorsement (Step A.2).
 
 ### F.2 Fields
 
-Emit one object per mention with these fields, in this order:
+Every mention carries these fields:
 
 - `temp_id` (REQUIRED) — a unique identifier for this mention within your
   response, e.g. `"m1"`, `"m2"`. Every mention needs one.
-- `place` (REQUIRED) — the canonical name from Step B.3.
+- `place_observed` (REQUIRED) — the name as written, from Step B.3.
+- `place_source_id` (REQUIRED) — the id of the source whose text contains
+  that written form (Step B.3); usually the same as `source_id`.
 - `place_attributes` — array or null.
-- `item` — the order-name from Step C, or null.
-- `item_categories` — array or null.
-- `ingredients` — array or null (usually empty).
-- `is_menu_item` — boolean or null.
-- `item_attributes` — array or null.
-- `general_praise` (REQUIRED) — boolean.
 - `source_id` (REQUIRED) — the chunk-local id copied EXACTLY from the input
   payload's `id` field for the source this mention came from (e.g. `SRC004`).
   Never invent, reformat, or borrow another source's id.
+
+A mention then takes exactly ONE of two shapes:
+
+- **A PLACE mention** adds `general_praise` (REQUIRED boolean) and NO dish
+  fields — the restaurant-only carrier of Step F.1, or an attribute-only
+  statement about the venue.
+- **A DISH mention** adds `item` (REQUIRED, the order-name from Step C),
+  `item_categories`, `ingredients`, `is_menu_item`, and `item_attributes` —
+  and has NO `general_praise` field.
 
 Rules:
 
@@ -1014,7 +1078,7 @@ Rules:
 - One source may emit multiple mentions (several restaurants, several dishes)
   — but never two mentions for the same (restaurant, food) pair from one
   source: repeated references collapse into one mention.
-- A mention with no food, no attributes, and `general_praise: false` asserts
+- A PLACE mention with no attributes and `general_praise: false` asserts
   nothing — do not emit it.
 - Emit nothing at all for a source that failed Step A.
 
@@ -1028,37 +1092,33 @@ version is smoky, and Nixta's patio is gorgeous. This place is a gem."
   "mentions": [
     {
       "temp_id": "m1",
-      "place": "nixta",
+      "place_observed": "nixta",
+      "place_source_id": "SRC004",
       "place_attributes": ["mexican"],
       "item": "duck carnitas taco",
       "item_categories": ["taco", "carnitas"],
       "ingredients": [],
       "is_menu_item": true,
-      "item_attributes": ["crispy", "mexican"],
-      "general_praise": false,
+      "item_attributes": ["crispy"],
       "source_id": "SRC004"
     },
     {
       "temp_id": "m2",
-      "place": "suerte",
+      "place_observed": "suerte",
+      "place_source_id": "SRC004",
       "place_attributes": ["mexican"],
       "item": "duck carnitas taco",
       "item_categories": ["taco", "carnitas"],
       "ingredients": [],
       "is_menu_item": true,
-      "item_attributes": ["smoky", "mexican"],
-      "general_praise": false,
+      "item_attributes": ["smoky"],
       "source_id": "SRC004"
     },
     {
       "temp_id": "m3",
-      "place": "nixta",
+      "place_observed": "nixta",
+      "place_source_id": "SRC004",
       "place_attributes": ["patio", "mexican"],
-      "item": null,
-      "item_categories": null,
-      "ingredients": [],
-      "is_menu_item": null,
-      "item_attributes": null,
       "general_praise": true,
       "source_id": "SRC004"
     }
@@ -1068,6 +1128,9 @@ version is smoky, and Nixta's patio is gorgeous. This place is a gem."
 
 Note what this example demonstrates: singular `item` and singular categories;
 `crispy` and `smoky` pass the STANDALONE TEST while a word like "rich" would
-not; the inferred cuisine `mexican` on BOTH sides of both dishes; the patio as
-a place property; and ONE carrier for the holistic praise (`m3`), with the dish
-mentions at `general_praise: false`.
+not; the inferred cuisine `mexican` on the PLACE side only (never on the
+dishes — D.4); `place_observed` as the written form with the `'s` of
+"Nixta's duck carnitas tacos" stripped as sentence grammar (B.3), citing
+the source that wrote it; the patio as a place property; the two dish
+mentions carrying no praise flag (the connection is the endorsement); and
+ONE place-shape carrier (`m3`) holding the holistic praise.

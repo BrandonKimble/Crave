@@ -426,9 +426,28 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
         });
       }
 
-      if (mention.general_praise === undefined) {
+      // v17 observed-span contract: the name span + its citation are the
+      // vital fields; general_praise exists only on the PLACE shape (a dish
+      // mention derives false at ingest).
+      if (
+        typeof mention.place_observed !== 'string' ||
+        !mention.place_observed.trim()
+      ) {
         throw new Error(
-          `Missing vital field: general_praise in chunk ${chunkId}, mention ${mention.temp_id}`,
+          `Missing vital field: place_observed in chunk ${chunkId}, mention ${mention.temp_id}`,
+        );
+      }
+      if (
+        typeof mention.place_source_id !== 'string' ||
+        !mention.place_source_id.trim()
+      ) {
+        throw new Error(
+          `Missing vital field: place_source_id in chunk ${chunkId}, mention ${mention.temp_id}`,
+        );
+      }
+      if (!mention.item && mention.general_praise === undefined) {
+        throw new Error(
+          `Missing vital field: general_praise in chunk ${chunkId}, place mention ${mention.temp_id}`,
         );
       }
 

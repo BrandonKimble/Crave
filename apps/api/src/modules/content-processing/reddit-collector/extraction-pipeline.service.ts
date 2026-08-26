@@ -23,6 +23,7 @@ import {
   EnrichedLLMOutputStructure,
   LLMModelInput,
   LLMMention,
+  LLMInternalMention,
   LLMComment,
   LLMPost,
   LLMProcessingInput,
@@ -38,6 +39,11 @@ import {
 } from './collection-evidence.service';
 import { UnifiedProcessingService } from './unified-processing.service';
 import { BatchJob } from './batch-processing-queue.types';
+import {
+  canonicalizeObservedPlaceName,
+  observedSpanAppearsInSource,
+} from './place-name-contract';
+import { isDishMention } from '../../external-integrations/llm/llm.types';
 import { isEnvFlagExplicitlyDisabled } from '../../../shared/config/env-flag';
 
 // F9201/F4905: an item whose creation time is UNKNOWN must NEVER be stamped
@@ -82,9 +88,21 @@ type SourceEnrichmentMaps = {
   >;
   contentById: Map<string, string>;
   postContextBySource: Map<string, string>;
+  /** Text the OBSERVED-SPAN refusal checks against, per source: a post's
+   *  title + body, a comment's body (v17 observed-span contract). */
+  spanTextById: Map<string, string>;
 };
 
-type HydratingMention = LLMMention &
+/** A banked observed-span contract refusal (red team F8: never dropped). */
+export type ContractRefusalRow = {
+  extractionInputId: string | null;
+  sourceDocumentId: string | null;
+  reason: string;
+  detail: string | null;
+  mention: LLMMention;
+};
+
+type HydratingMention = LLMInternalMention &
   Partial<
     Pick<
       EnrichedLLMMention,
@@ -982,28 +1000,36 @@ export class ExtractionPipelineService implements OnModuleInit {
     const enrichment = this.buildSourceEnrichmentMaps(args.llmPosts);
     const flatMentions: EnrichedLLMMention[] = [];
     const quarantinedChunks: { chunkId: string; cause: string }[] = [];
+    const contractRefusals: ContractRefusalRow[] = [];
     for (const chunkResult of args.chunkResults) {
       if (!chunkResult.result) continue;
+      const extractionInputId =
+        args.extractionInputIdByChunkId.get(chunkResult.chunkId) ?? null;
       try {
-        const hydrated = (chunkResult.result.mentions ?? []).map((mention) =>
-          this.enrichHydratedMention(
-            {
-              ...mention,
-              source_id: this.resolveCanonicalSourceIdForMention(
-                mention.source_id,
-                chunkResult.input,
-                chunkResult.chunkId,
-              ),
-              __inputChunkId: chunkResult.chunkId,
-              __extractionInputId:
-                args.extractionInputIdByChunkId.get(chunkResult.chunkId) ??
-                null,
-            },
+        for (const wireMention of chunkResult.result.mentions ?? []) {
+          // THE OBSERVED-SPAN CONTRACT (v17): resolve the cited sources,
+          // mechanically verify the span, derive canonical name + praise
+          // semantics in code. A failing mention is REFUSED — banked in
+          // collection_extraction_contract_refusals, never silently dropped
+          // (red team F8) and never ingested. A bad source_id still
+          // quarantines the whole chunk (closed-world contract, as before).
+          const admitted = this.admitWireMention(
+            wireMention,
+            chunkResult,
             enrichment,
+            extractionInputId,
             args.sourceDocumentIdBySourceKey,
-          ),
-        );
-        flatMentions.push(...hydrated);
+            contractRefusals,
+          );
+          if (!admitted) continue;
+          flatMentions.push(
+            this.enrichHydratedMention(
+              admitted,
+              enrichment,
+              args.sourceDocumentIdBySourceKey,
+            ),
+          );
+        }
       } catch (error) {
         const cause = buildCauseChain(error);
         chunkResult.success = false;
@@ -1017,12 +1043,29 @@ export class ExtractionPipelineService implements OnModuleInit {
       }
     }
 
+    if (contractRefusals.length > 0) {
+      this.logger.warn('Observed-span contract refusals banked', {
+        extractionRunId: args.extractionRunId,
+        refusals: contractRefusals.length,
+        byReason: contractRefusals.reduce<Record<string, number>>(
+          (acc, row) => {
+            acc[row.reason] = (acc[row.reason] ?? 0) + 1;
+            return acc;
+          },
+          {},
+        ),
+      });
+      await this.collectionEvidenceService.bankContractRefusals(
+        args.extractionRunId,
+        contractRefusals,
+      );
+    }
+
     const llmOutput: EnrichedLLMOutputStructure = {
       mentions: flatMentions,
     };
 
     this.ensureSurfaceDefaults(llmOutput.mentions);
-    this.normalizePlaceNames(llmOutput.mentions, enrichment);
     this.dropDuplicatePlaceMentions(llmOutput.mentions, enrichment);
 
     const rawMentionsSample = [...llmOutput.mentions];
@@ -1144,6 +1187,111 @@ export class ExtractionPipelineService implements OnModuleInit {
     }
 
     return result;
+  }
+
+  /** First contract stage of chunk hydration (v17 observed-span contract):
+   *  resolve the wire mention's cited sources, mechanically verify that
+   *  `place_observed` appears in the text of the source `place_source_id`
+   *  points to (post: title+body; comment: body), derive the canonical
+   *  resolver-facing name in code, and derive the legacy `general_praise`
+   *  semantics from the mention's SHAPE (dish mention -> false; place
+   *  mention -> its flag). Returns null when the mention is REFUSED —
+   *  pushing a banked refusal row — so a too-strict contract can never
+   *  shrink the corpus silently (red team F8). Throws only for a bad
+   *  `source_id` (the pre-existing closed-world chunk quarantine). */
+  private admitWireMention(
+    wireMention: LLMMention,
+    chunkResult: ChunkProcessingResult<LLMProcessingInput>,
+    enrichment: SourceEnrichmentMaps,
+    extractionInputId: string | null,
+    sourceDocumentIdBySourceKey: Map<SourceDocumentKey, string>,
+    refusals: ContractRefusalRow[],
+  ): HydratingMention | null {
+    const canonicalSourceId = this.resolveCanonicalSourceIdForMention(
+      wireMention.source_id,
+      chunkResult.input,
+      chunkResult.chunkId,
+    );
+    const sourceDocumentId = this.resolveDocumentIdForCanonicalSourceId(
+      canonicalSourceId,
+      enrichment,
+      sourceDocumentIdBySourceKey,
+    );
+    const refuse = (reason: string, detail: string | null): null => {
+      refusals.push({
+        extractionInputId,
+        sourceDocumentId,
+        reason,
+        detail,
+        mention: wireMention,
+      });
+      return null;
+    };
+
+    const placeObserved =
+      typeof wireMention.place_observed === 'string'
+        ? wireMention.place_observed.trim()
+        : '';
+    if (!placeObserved) {
+      return refuse('missing_place_observed', null);
+    }
+
+    let canonicalPlaceSourceId: string;
+    try {
+      canonicalPlaceSourceId = this.resolveCanonicalSourceIdForMention(
+        wireMention.place_source_id,
+        chunkResult.input,
+        chunkResult.chunkId,
+      );
+    } catch (error) {
+      return refuse('unresolvable_place_source_id', buildCauseChain(error));
+    }
+
+    const spanText = enrichment.spanTextById.get(canonicalPlaceSourceId) ?? '';
+    if (!observedSpanAppearsInSource(placeObserved, spanText)) {
+      return refuse(
+        'span_not_in_cited_source',
+        `"${placeObserved}" not found in ${canonicalPlaceSourceId}`,
+      );
+    }
+
+    const place = canonicalizeObservedPlaceName(placeObserved);
+    if (!place) {
+      return refuse('empty_canonical_name', placeObserved);
+    }
+
+    return {
+      ...wireMention,
+      place,
+      place_surface: placeObserved,
+      place_observed: placeObserved,
+      place_source_id: canonicalPlaceSourceId,
+      // GENERAL_PRAISE DERIVATION (v17 schema split): the dish connection IS
+      // its endorsement, so a dish mention derives false; only the place
+      // shape carries the flag. Downstream writers keep the old semantics.
+      general_praise: isDishMention(wireMention)
+        ? false
+        : wireMention.general_praise === true,
+      source_id: canonicalSourceId,
+      __inputChunkId: chunkResult.chunkId,
+      __extractionInputId: extractionInputId,
+    };
+  }
+
+  private resolveDocumentIdForCanonicalSourceId(
+    canonicalSourceId: string,
+    enrichment: SourceEnrichmentMaps,
+    sourceDocumentIdBySourceKey: Map<SourceDocumentKey, string>,
+  ): string | null {
+    const sourceType =
+      enrichment.metadataById.get(canonicalSourceId)?.type ??
+      this.inferSourceTypeFromSourceId(canonicalSourceId);
+    if (!sourceType) return null;
+    return (
+      sourceDocumentIdBySourceKey.get(
+        buildSourceDocumentKey(sourceType, canonicalSourceId),
+      ) ?? null
+    );
   }
 
   /** Second contract stage of chunk hydration: resolve source metadata for a
@@ -1831,6 +1979,7 @@ export class ExtractionPipelineService implements OnModuleInit {
     >();
     const contentById = new Map<string, string>();
     const postContextBySource = new Map<string, string>();
+    const spanTextById = new Map<string, string>();
 
     llmPosts.forEach((post) => {
       metadataById.set(post.id, {
@@ -1843,6 +1992,11 @@ export class ExtractionPipelineService implements OnModuleInit {
       });
       contentById.set(post.id, post.content ?? '');
       postContextBySource.set(post.id, post.content ?? '');
+      // Observed-span check text for a POST source: title + body (v17).
+      spanTextById.set(
+        post.id,
+        [post.title ?? '', post.content ?? ''].filter(Boolean).join('\n'),
+      );
 
       (post.comments ?? []).forEach((comment) => {
         metadataById.set(comment.id, {
@@ -1855,6 +2009,8 @@ export class ExtractionPipelineService implements OnModuleInit {
         });
         contentById.set(comment.id, comment.content ?? '');
         postContextBySource.set(comment.id, post.content ?? '');
+        // Observed-span check text for a COMMENT source: its body (v17).
+        spanTextById.set(comment.id, comment.content ?? '');
       });
     });
 
@@ -1862,17 +2018,15 @@ export class ExtractionPipelineService implements OnModuleInit {
       metadataById,
       contentById,
       postContextBySource,
+      spanTextById,
     };
   }
 
+  /** Surface defaults for the dish-side fields. The PLACE surface is set
+   *  authoritatively in admitWireMention (place_surface = place_observed,
+   *  the v17 wire contract) and needs no fallback here. */
   private ensureSurfaceDefaults(mentions: EnrichedLLMMention[]): void {
     mentions.forEach((mention) => {
-      mention.place_surface =
-        typeof mention.place_surface === 'string' &&
-        mention.place_surface.trim().length > 0
-          ? mention.place_surface.trim()
-          : mention.place?.trim() || null;
-
       if (typeof mention.item === 'string' && mention.item.trim().length > 0) {
         mention.item_surface =
           typeof mention.item_surface === 'string' &&
@@ -1948,52 +2102,10 @@ export class ExtractionPipelineService implements OnModuleInit {
     });
   }
 
-  private normalizePlaceNames(
-    mentions: EnrichedLLMMention[],
-    enrichment: SourceEnrichmentMaps,
-  ): void {
-    mentions.forEach((mention) => {
-      const sourceId = mention.source_id?.trim();
-      const place = mention.place?.trim();
-      if (!place) {
-        return;
-      }
-
-      mention.place = place;
-      if (
-        typeof mention.place_surface !== 'string' ||
-        !mention.place_surface.trim().length
-      ) {
-        mention.place_surface = place;
-      }
-
-      if (!sourceId) {
-        return;
-      }
-
-      const content = enrichment.contentById.get(sourceId) ?? '';
-      if (!content) {
-        return;
-      }
-
-      const existingSurface = mention.place_surface ?? place;
-      if (
-        existingSurface &&
-        content.toLowerCase().includes(existingSurface.toLowerCase())
-      ) {
-        return;
-      }
-
-      const regex = new RegExp(
-        `\\b${place.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`,
-        'iu',
-      );
-      const match = content.match(regex);
-      if (match?.[0]) {
-        mention.place_surface = match[0];
-      }
-    });
-  }
+  // normalizePlaceNames DELETED (v17): it was a regex RECOVERY of a missing
+  // surface field. Under the observed-span contract the model states the
+  // surface (`place_observed`) and cites where it read it — the recovery is
+  // dead code (v17-coherence-redteam F2).
 
   private dropDuplicatePlaceMentions(
     mentions: EnrichedLLMMention[],

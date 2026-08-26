@@ -252,6 +252,38 @@ function withDescription<T extends Record<string, unknown>>(
   return { ...schema, description };
 }
 
+const PLACE_OBSERVED_SCHEMA = withDescription(
+  { type: 'string' },
+  'The restaurant name AS WRITTEN in the cited source (bars, cafés, trucks, and stalls all qualify): lowercase and whitespace-collapse only — diacritics, punctuation, and possessives kept as written; never expanded, corrected, unified with another spelling in the thread, or completed from world knowledge of the venue, and never a bare generic word kept from a list slot ("Best", "Good") — such a slot emits the fuller observed form (citing its source) or nothing',
+);
+
+const PLACE_SOURCE_ID_SCHEMA = withDescription(
+  { type: 'string' },
+  'The id of the source whose text contains the emitted name form — usually equal to source_id; differs only for a resolved reference (point at the source that NAMES the place) or a shorthand completed by a fuller form elsewhere (point at the fuller form)',
+);
+
+const PLACE_ATTRIBUTES_SCHEMA = withDescription(
+  { ...NULLABLE_STRING_ARRAY_SCHEMA },
+  'Restaurant-scoped attributes stated by THIS source (ambiance, features, service model, price) plus cuisine inferred from this source dish name — cuisine is a PLACE property only; never from the ask, a parent comment, or world knowledge of the venue',
+);
+
+const SOURCE_ID_SCHEMA = withDescription(
+  { type: 'string' },
+  'Chunk-local source identifier copied exactly from the input payload id field (for example SRC001)',
+);
+
+const TEMP_ID_SCHEMA = withDescription(
+  { type: 'string' },
+  'Unique identifier for this mention',
+);
+
+/**
+ * Two mention shapes, structurally exclusive: a PLACE mention is the only
+ * carrier of general_praise and has no dish fields; a DISH mention requires
+ * item and has no praise flag (the dish connection IS its endorsement).
+ * The invalid combination — praise flag on a dish row — is unrepresentable
+ * at the decode layer, replacing the F.1 split-before-emitting instruction.
+ */
 export const COLLECTION_RESPONSE_JSON_SCHEMA = {
   type: 'object',
   description:
@@ -259,65 +291,92 @@ export const COLLECTION_RESPONSE_JSON_SCHEMA = {
   properties: {
     mentions: {
       type: 'array',
-      description: 'Array of restaurant/food mentions with entity details',
+      description:
+        'Array of restaurant/food mentions — each is either a PLACE mention (endorsement/attribute carrier, no dish fields) or a DISH mention (non-null item, no praise flag)',
       items: {
-        type: 'object',
-        description:
-          'Single mention of restaurant or food with complete metadata',
-        properties: {
-          temp_id: withDescription(
-            { type: 'string' },
-            'Unique identifier for this mention',
-          ),
-          place: withDescription(
-            { type: 'string' },
-            'Canonical restaurant name — bars, cafés, trucks, and stalls all qualify: "Read the mode of consumption, never the kind of business"; lowercase, diacritics kept as written; never expanded, corrected, or completed from world knowledge of the venue, and never a bare generic word kept from a list slot ("Best", "Good") — such a slot emits the fuller observed form or nothing',
-          ),
-          place_attributes: withDescription(
-            { ...NULLABLE_STRING_ARRAY_SCHEMA },
-            'Restaurant-scoped attributes stated by THIS source (ambiance, features, service model, price) plus cuisine inferred from this source dish name; never from the ask, a parent comment, or world knowledge of the venue',
-          ),
-          item: withDescription(
-            { ...NULLABLE_STRING_SCHEMA },
-            'The order-name (THE ORDER TEST: sayable to a server as the thing you want) — "anything orderable — drinks included"; complete compound term, singular, excluding attributes; null when this source names no orderable dish — never a delivery wrapper (special, combo, menu), a cuisine, or a food token from the venue name',
-          ),
-          item_categories: withDescription(
-            { ...NULLABLE_STRING_ARRAY_SCHEMA },
-            'Broader orderable dish classes the food rolls up into (what arrives, most specific first); NEVER a cuisine (chinese, italian), meal period, or delivery wrapper - cuisines belong in the attribute arrays',
-          ),
-          ingredients: withDescription(
-            { ...NULLABLE_STRING_ARRAY_SCHEMA },
-            'Ingredient nouns THIS source names for this dish (with-clauses or dish-name components); singular lowercase; empty for most mentions; never from world knowledge',
-          ),
-          item_attributes: withDescription(
-            { ...NULLABLE_STRING_ARRAY_SCHEMA },
-            'Dish properties THIS source states for THIS dish (dietary, preparation, texture, flavor), each passing the DESCRIBE-not-judge bar and THE STANDALONE TEST; never praise, never a comparison, never a property stated for a neighboring dish or venue — empty is the normal output',
-          ),
-          is_menu_item: withDescription(
-            { ...NULLABLE_BOOLEAN_SCHEMA },
-            'True only when THIS source names one specific orderable item (two diners ordering "the X" get the same thing); false for families and for any dish inherited from the ask or a parent — a dish this source never named is never true',
-          ),
-          general_praise: withDescription(
-            { type: 'boolean' },
-            'True ONLY on a restaurant-only mention (food null) that carries holistic place-level endorsement or an ANSWER-TEST pick; every mention with a non-null food is false — dish-directed praise IS the dish connection, never this flag',
-          ),
-          source_id: withDescription(
-            { type: 'string' },
-            'Chunk-local source identifier copied exactly from the input payload id field (for example SRC001)',
-          ),
-        },
-        required: ['temp_id', 'place', 'general_praise', 'source_id'],
-        propertyOrdering: [
-          'temp_id',
-          'place',
-          'place_attributes',
-          'item',
-          'item_categories',
-          'ingredients',
-          'is_menu_item',
-          'item_attributes',
-          'general_praise',
-          'source_id',
+        anyOf: [
+          {
+            type: 'object',
+            description:
+              'PLACE mention: restaurant-only carrier of holistic endorsement (general_praise) or venue attributes — no dish fields',
+            properties: {
+              temp_id: TEMP_ID_SCHEMA,
+              place_observed: PLACE_OBSERVED_SCHEMA,
+              place_source_id: PLACE_SOURCE_ID_SCHEMA,
+              place_attributes: PLACE_ATTRIBUTES_SCHEMA,
+              general_praise: withDescription(
+                { type: 'boolean' },
+                'True when this source carries holistic place-level endorsement or an ANSWER-TEST pick; false for an attribute-only statement about the venue',
+              ),
+              source_id: SOURCE_ID_SCHEMA,
+            },
+            required: [
+              'temp_id',
+              'place_observed',
+              'place_source_id',
+              'general_praise',
+              'source_id',
+            ],
+            propertyOrdering: [
+              'temp_id',
+              'place_observed',
+              'place_source_id',
+              'place_attributes',
+              'general_praise',
+              'source_id',
+            ],
+          },
+          {
+            type: 'object',
+            description:
+              'DISH mention: a composed dish claim at a place — the connection is its own endorsement, so it carries no praise flag',
+            properties: {
+              temp_id: TEMP_ID_SCHEMA,
+              place_observed: PLACE_OBSERVED_SCHEMA,
+              place_source_id: PLACE_SOURCE_ID_SCHEMA,
+              place_attributes: PLACE_ATTRIBUTES_SCHEMA,
+              item: withDescription(
+                { type: 'string' },
+                'The order-name (THE ORDER TEST: sayable to a server as the thing you want) — "anything orderable — drinks included"; complete compound term, singular, excluding attributes — never a delivery wrapper (special, combo, menu), a cuisine, or a food token from the venue name',
+              ),
+              item_categories: withDescription(
+                { ...NULLABLE_STRING_ARRAY_SCHEMA },
+                'Broader orderable dish classes the food rolls up into (what arrives, most specific first); NEVER a cuisine (chinese, italian), meal period, or delivery wrapper — a cuisine belongs in place_attributes only',
+              ),
+              ingredients: withDescription(
+                { ...NULLABLE_STRING_ARRAY_SCHEMA },
+                'Ingredient nouns THIS source names for this dish (with-clauses or dish-name components); singular lowercase; empty for most mentions; never from world knowledge',
+              ),
+              is_menu_item: withDescription(
+                { ...NULLABLE_BOOLEAN_SCHEMA },
+                'True only when THIS source names one specific orderable item (two diners ordering "the X" get the same thing); false for families and for any dish inherited from the ask or a parent — a dish this source never named is never true',
+              ),
+              item_attributes: withDescription(
+                { ...NULLABLE_STRING_ARRAY_SCHEMA },
+                'Dish properties THIS source states for THIS dish (dietary, preparation, texture, flavor), each passing the DESCRIBE-not-judge bar and THE STANDALONE TEST; never praise, never a comparison, never a cuisine (place side only), never a property stated for a neighboring dish or venue — empty is the normal output',
+              ),
+              source_id: SOURCE_ID_SCHEMA,
+            },
+            required: [
+              'temp_id',
+              'place_observed',
+              'place_source_id',
+              'item',
+              'source_id',
+            ],
+            propertyOrdering: [
+              'temp_id',
+              'place_observed',
+              'place_source_id',
+              'place_attributes',
+              'item',
+              'item_categories',
+              'ingredients',
+              'is_menu_item',
+              'item_attributes',
+              'source_id',
+            ],
+          },
         ],
       },
     },
@@ -347,16 +406,26 @@ export function collectionResponseJsonSchemaForSourceRefs(
   ) as unknown as {
     properties: {
       mentions: {
-        items: { properties: { source_id: Record<string, unknown> } };
+        items: {
+          anyOf: Array<{ properties: Record<string, Record<string, unknown>> }>;
+        };
       };
     };
   };
-  schema.properties.mentions.items.properties.source_id = {
-    type: 'string',
-    enum: [...sourceRefs],
-    description:
-      'Chunk-local source identifier: exactly one of the id values in the input payload',
-  };
+  for (const variant of schema.properties.mentions.items.anyOf) {
+    variant.properties.source_id = {
+      type: 'string',
+      enum: [...sourceRefs],
+      description:
+        'Chunk-local source identifier: exactly one of the id values in the input payload',
+    };
+    variant.properties.place_source_id = {
+      type: 'string',
+      enum: [...sourceRefs],
+      description:
+        'Id of the source whose text contains the emitted name form: exactly one of the id values in the input payload',
+    };
+  }
   return schema as unknown as Record<string, unknown>;
 }
 
@@ -454,12 +523,24 @@ export function jsonSchemaToTypedSchema(
   const anyOf = schema.anyOf as Record<string, unknown>[] | undefined;
   if (Array.isArray(anyOf)) {
     const nonNull = anyOf.filter((entry) => entry.type !== 'null');
-    if (nonNull.length !== 1 || nonNull.length === anyOf.length) {
-      throw new Error(
-        'jsonSchemaToTypedSchema: only anyOf-with-null unions are supported',
-      );
+    if (nonNull.length === 1 && nonNull.length !== anyOf.length) {
+      return { ...jsonSchemaToTypedSchema(nonNull[0]), nullable: true };
     }
-    return { ...jsonSchemaToTypedSchema(nonNull[0]), nullable: true };
+    // MULTI-VARIANT anyOf (v17 mention union): Google's typed Schema carries
+    // anyOf natively; each variant converts recursively. A null variant
+    // alongside multiple shapes is unsupported (no such schema exists here).
+    if (nonNull.length === anyOf.length && nonNull.length > 1) {
+      const out: Record<string, unknown> = {
+        anyOf: nonNull.map((entry) => jsonSchemaToTypedSchema(entry)),
+      };
+      if (typeof schema.description === 'string') {
+        out.description = schema.description;
+      }
+      return out;
+    }
+    throw new Error(
+      'jsonSchemaToTypedSchema: unsupported anyOf combination (null + multiple variants)',
+    );
   }
 
   const out: Record<string, unknown> = {};

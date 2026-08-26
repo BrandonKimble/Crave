@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# @script-class: operational
+# @run-by: the reextract/iteration-bench workflow (plans/iteration-bench.md).
 # THE ITERATION BENCH runner (plans/iteration-bench.md). Thin wrapper over
 # apps/api/scripts/bench.ts — same REEXTRACT_DB targeting law as
 # reextract.sh (local db unless REEXTRACT_DB is set; staging is the

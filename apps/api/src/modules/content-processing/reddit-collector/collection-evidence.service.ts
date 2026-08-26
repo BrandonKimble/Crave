@@ -439,6 +439,38 @@ export class CollectionEvidenceService implements OnModuleInit {
   }
 
   /**
+   * OBSERVED-SPAN CONTRACT REFUSALS ARE BANKED, NEVER DROPPED (v17, red
+   * team F8): a mention whose `place_observed` fails the mechanical
+   * span-in-cited-source check writes a row here instead of vanishing, so
+   * the shadow diff's refusal section can see contract strictness instead
+   * of closing green over a silently smaller corpus.
+   */
+  async bankContractRefusals(
+    extractionRunId: string,
+    refusals: Array<{
+      extractionInputId: string | null;
+      sourceDocumentId: string | null;
+      reason: string;
+      detail: string | null;
+      mention: unknown;
+    }>,
+  ): Promise<void> {
+    if (!refusals.length) {
+      return;
+    }
+    await this.prismaService.extractionContractRefusal.createMany({
+      data: refusals.map((refusal) => ({
+        extractionRunId,
+        inputId: refusal.extractionInputId,
+        sourceDocumentId: refusal.sourceDocumentId,
+        reason: refusal.reason,
+        detail: refusal.detail,
+        mention: refusal.mention as Prisma.InputJsonValue,
+      })),
+    });
+  }
+
+  /**
    * CLAIM, DON'T CHECK (async-integrity step 3, Law 2): atomically reserve
    * documents for extraction under a prompt contract. Winners are returned;
    * a document somebody else holds a live claim on is the caller's cue to

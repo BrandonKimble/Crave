@@ -4773,7 +4773,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
           normalized.mentions.length > 0
             ? normalized.mentions.map((m) => ({
                 temp_id: m.temp_id,
-                place: m.place,
+                place_observed: m.place_observed,
                 item: m.item,
                 item_categories: m.item_categories,
               }))

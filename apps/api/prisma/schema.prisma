@@ -942,6 +942,7 @@ model ExtractionRun {
   metadata                Json?                   @default("{}")
   collectionRun           CollectionRun?          @relation(fields: [collectionRunId], references: [collectionRunId], onDelete: SetNull)
   inputs                  ExtractionInput[]
+  contractRefusals        ExtractionContractRefusal[]
   activeForDocuments      SourceDocument[]        @relation("ActiveExtractionRunDocuments")
   placeEvents        PlaceEvent[]
   placeEntityEvents  PlaceEntityEvent[]
@@ -950,6 +951,29 @@ model ExtractionRun {
   @@index([collectionRunId], map: "idx_extraction_runs_collection_run_id")
   @@index([status], map: "idx_extraction_runs_status")
   @@map("collection_extraction_runs")
+}
+
+/// OBSERVED-SPAN CONTRACT REFUSALS (v17, red team F8): a mention whose
+/// `place_observed` fails the mechanical span-in-cited-source check at
+/// ingest is REFUSED — banked here with the raw mention JSON and reason,
+/// never silently dropped. The shadow diff reads this table so a
+/// too-strict contract can never close a review green over a smaller
+/// corpus. input_id / source_document_id are bare provenance uuids (no FK)
+/// so wipes and input compaction never take the audit rows with them.
+model ExtractionContractRefusal {
+  refusalId        String        @id @default(dbgenerated("gen_random_uuid()")) @map("refusal_id") @db.Uuid
+  extractionRunId  String        @map("extraction_run_id") @db.Uuid
+  inputId          String?       @map("input_id") @db.Uuid
+  sourceDocumentId String?       @map("source_document_id") @db.Uuid
+  reason           String        @db.VarChar(64)
+  detail           String?
+  mention          Json
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  extractionRun    ExtractionRun @relation(fields: [extractionRunId], references: [extractionRunId], onDelete: Cascade)
+
+  @@index([extractionRunId], map: "idx_extraction_contract_refusals_run")
+  @@index([reason], map: "idx_extraction_contract_refusals_reason")
+  @@map("collection_extraction_contract_refusals")
 }
 
 /// IN-FLIGHT EXTRACTION RESERVATION (async-integrity step 3, Law 2:
