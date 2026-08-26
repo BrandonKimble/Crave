@@ -813,6 +813,10 @@ export const COLUMN_COVERAGE: readonly ColumnCoverageEntry[] = [
       ['llm_decision_records', 'LLM decision audit trail.'],
       ['llm_prompts', 'Versioned prompt text we wrote.'],
       [
+        'iteration_runs',
+        'Ops bookkeeping: the iteration bench state machine (phases, artifacts).',
+      ],
+      [
         'source_table_high_water',
         'Ops bookkeeping: row-count high-water marks for the collapse alarm.',
       ],
