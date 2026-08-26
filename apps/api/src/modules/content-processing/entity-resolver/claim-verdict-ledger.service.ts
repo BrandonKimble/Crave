@@ -233,6 +233,27 @@ export class ClaimVerdictLedgerService {
    * decided, not only that something was. Same `=` version discipline as
    * `decidedKeys`, for the same rollback reason.
    */
+  /** BENCH PROBE READ (plans/iteration-bench.md S2): a random sample of a
+   *  lane's OUTDATED verdicts — the population a rule bump made non-
+   *  reusable — for compare-only re-asking. Read-only by construction. */
+  async sampleOutdated(
+    lane: string,
+    currentVersion: number,
+    limit: number,
+  ): Promise<Array<{ claimKey: string; outcome: string; subject: unknown }>> {
+    const rows = await this.prisma.$queryRaw<
+      Array<{ claim_key: string; outcome: string; subject: unknown }>
+    >`
+      SELECT claim_key, outcome, subject FROM claim_verdicts
+      WHERE lane = ${lane} AND rule_version < ${currentVersion}
+      ORDER BY random() LIMIT ${limit}`;
+    return rows.map((row) => ({
+      claimKey: row.claim_key,
+      outcome: row.outcome,
+      subject: row.subject,
+    }));
+  }
+
   async decidedVerdicts(
     lane: string,
     ruleVersion: number,

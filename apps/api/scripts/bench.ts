@@ -13,6 +13,7 @@
  *   bench.ts approve <sheetHash>
  *   bench.ts campaign <campaignId>
  *   bench.ts drive            (one step; rig/bench.sh loops it)
+ *   bench.ts triage <lost-support|new-entities> <summary...>
  *   bench.ts diff-artifact <path>
  *   bench.ts close-review <summary...>
  *   bench.ts outcome <activated|rejected>
@@ -101,6 +102,13 @@ async function main(): Promise<void> {
         const status = await bench.driveStatus(run.runId);
         console.log(`${status.state.toUpperCase()}: ${status.detail}`);
         if (status.state === 'stalled') process.exitCode = 2;
+        break;
+      }
+      case 'triage': {
+        const run = await activeRun();
+        const kind = rest[0] as 'lost-support' | 'new-entities';
+        await bench.recordTriage(run.runId, kind, rest.slice(1).join(' '));
+        console.log(`Triage '${kind}' recorded.`);
         break;
       }
       case 'diff-artifact': {

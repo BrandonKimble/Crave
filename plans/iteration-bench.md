@@ -84,12 +84,24 @@ docket, post-activation docket.
 
 ## Build stages
 
-S1 (spine): iteration_runs migration; IterationBenchService state machine
-with advance()/nextAction(); inventory computation; replay preflight
-gates; the drive loop; closed phase. Operated via
-`scripts/rig/bench.sh <verb>` wrapping one script entry.
-S2: proofs prober on the claim-lane rehear machinery; approval sheet +
-hash; estimator-from-history.
-S3: diff-phase triage dispatch + lifecycle alarms; retire the reextract.sh
-runbook path in favor of bench verbs (reextract.sh stays as the manual
-escape hatch, labeled as such).
+S1 LANDED (4fe932db5): iteration_runs migration; the state machine with
+advance()/nextAction(); computed inventory; poisoned-meter/quiescence/
+stale-candidate preflight refusals; the drive contract with loud stall;
+one active run per prompt kind; scripts/rig/bench.sh.
+S2 LANDED: the flip-rate prober seam (bench-prober.ts — lanes register
+their own probers at module init; the three word lanes are live via
+WordVocabularyJudgeService.probeLane, compare-only, writes nothing;
+unregistered lanes are REPORTED, never faked); the hash-bound approval
+sheet (approve refuses a hash that doesn't match the sheet that was
+read); estimate-from-history (closed runs bank campaign actuals;
+the sheet quotes the last comparable run first, window-mix demoted to a
+labeled upper-bound fallback).
+S3 LANDED: `bench.sh diff` generates the review file AND the two required
+triage briefs; recordTriage()/closeReview() make the triage deliverables
+structurally unforgettable (review refuses to close without both); the
+stalled-queue state emits a critical ops alert (deduped per run);
+reextract.sh carries the escape-hatch label.
+NEXT CANDIDATES (not owed): probers for place_grounding/word_claim/
+restaurant_name lanes as their modules are next touched; replay
+arm/disarm as bench-owned verbs (today the reextract arm is recorded via
+recordCampaign).

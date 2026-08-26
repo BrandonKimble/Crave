@@ -1,3 +1,4 @@
+import { benchProberRegistry } from '../iteration-bench/bench-prober';
 import { Injectable } from '@nestjs/common';
 import { LoggerService } from '../../../shared';
 import { LLMService } from '../../external-integrations/llm/llm.service';
@@ -170,6 +171,85 @@ export class WordVocabularyJudgeService {
     private readonly budget: ClaimRehearingBudgetService,
   ) {
     this.logger = loggerService.setContext('WordVocabularyJudgeService');
+    // Bench probers: one per word lane, owned here where the wiring lives.
+    for (const lane of Object.keys(VOCABULARY_LANES)) {
+      benchProberRegistry.register({
+        lane,
+        probe: (sampleSize: number) => this.probeLane(lane, sampleSize),
+      });
+    }
+  }
+
+  /**
+   * BENCH FLIP-RATE PROBE (plans/iteration-bench.md S2): re-ask a random
+   * sample of this lane's OUTDATED verdicts under the CURRENT rule and
+   * report agreement — WRITING NOTHING. The carry-forward proof: flips ≈ 0
+   * means old decisions survive the new rule and reuse for free.
+   */
+  async probeLane(
+    lane: string,
+    sampleSize = 100,
+  ): Promise<{
+    lane: string;
+    sampled: number;
+    flips: number;
+    flipRate: number;
+    flipExamples: Array<{
+      claimKey: string;
+      storedOutcome: string;
+      probedOutcome: string;
+      probedReason?: string;
+    }>;
+  }> {
+    const wiring = laneWiring(lane);
+    const rows = await this.ledger.sampleOutdated(
+      lane,
+      wiring.ruleVersion,
+      sampleSize,
+    );
+    if (!rows.length) {
+      return { lane, sampled: 0, flips: 0, flipRate: 0, flipExamples: [] };
+    }
+    const flipExamples: Array<{
+      claimKey: string;
+      storedOutcome: string;
+      probedOutcome: string;
+      probedReason?: string;
+    }> = [];
+    let flips = 0;
+    let heard = 0;
+    for (
+      let offset = 0;
+      offset < rows.length;
+      offset += VOCABULARY_CLAIMS_PER_CALL
+    ) {
+      const batch = rows.slice(offset, offset + VOCABULARY_CLAIMS_PER_CALL);
+      const claims = batch.map((row) => row.subject as WordVocabularyClaim);
+      const answers = await this.hearFacets([wiring], claims);
+      for (let index = 0; index < batch.length; index++) {
+        const answer = answers.get(index + 1)?.get(lane);
+        if (!answer) continue; // unanswered ≠ flipped; it stays uncounted
+        heard += 1;
+        if (answer.outcome !== batch[index].outcome) {
+          flips += 1;
+          if (flipExamples.length < 20) {
+            flipExamples.push({
+              claimKey: batch[index].claimKey,
+              storedOutcome: batch[index].outcome,
+              probedOutcome: answer.outcome,
+              probedReason: answer.reason,
+            });
+          }
+        }
+      }
+    }
+    return {
+      lane,
+      sampled: heard,
+      flips,
+      flipRate: heard ? flips / heard : 0,
+      flipExamples,
+    };
   }
 
   /** Register a listener — the read cache's invalidation hook. */

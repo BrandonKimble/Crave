@@ -17,7 +17,8 @@ const logger = {
   warn: () => {},
   error: () => {},
 } as never;
-const bench = new IterationBenchService(prisma as never, logger);
+const opsAlerts = { emit: () => {} } as never;
+const bench = new IterationBenchService(prisma as never, opsAlerts, logger);
 
 const TAG = 'bench-spec';
 let candidateVersion: number;
@@ -98,7 +99,17 @@ describe('the iteration bench state machine', () => {
   });
 
   it('preflight REFUSES on the poisoned-meter signature (the v16 first arm)', async () => {
-    await bench.approve(runId, 'spec-sheet-hash');
+    // The approval BINDS the sheet that was read: a wrong hash refuses
+    // (pins the S2 binding), the stored one passes.
+    await expect(bench.approve(runId, 'wrong-hash')).rejects.toThrow(
+      /Sheet hash mismatch/,
+    );
+    const sheetRun = await prisma.iterationRun.findUniqueOrThrow({
+      where: { runId },
+    });
+    const sheetHash = (sheetRun.phaseState as { sheetHash?: string }).sheetHash;
+    expect(sheetHash).toBeDefined();
+    await bench.approve(runId, sheetHash as string);
     // Fixture: the meter claims real month spend the priced ledger cannot
     // back (granted=424242 marks the row as this spec's).
     await prisma.$executeRawUnsafe(

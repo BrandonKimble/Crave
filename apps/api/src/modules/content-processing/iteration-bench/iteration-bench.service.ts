@@ -2,7 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
+import { createHash } from 'crypto';
 import { pricedGeminiRow } from '../../external-integrations/shared/gemini-pricing';
+import { OpsAlertsService } from '../../external-integrations/shared/ops-alerts.service';
+import { benchProberRegistry, BenchProbeResult } from './bench-prober';
 
 /**
  * THE ITERATION BENCH — prompt iteration as a state machine, not a runbook
@@ -17,12 +20,12 @@ import { pricedGeminiRow } from '../../external-integrations/shared/gemini-prici
  * is owned and coverage derived) are enforced by SHAPE here: phases are
  * rows, gates are refusals, and "what do I do next" is a computation.
  *
- * S1 scope (this file): the machine, inventory, preflight gates, the
- * drive contract, closure. S2 adds the flip-rate prober and the
- * estimate-from-history sheet; S3 folds the diff triage dispatch in.
- * Until then the proofs/approval artifacts say exactly what is deferred —
- * a bench that overstates its automation would be the very disease it
- * exists to cure.
+ * S1: the machine, inventory, preflight gates, the drive contract,
+ * closure. S2 (landed): the flip-rate prober seam (lanes register their
+ * own probers; word lanes live), the hash-bound approval sheet, and the
+ * estimate-from-history basis. S3 (landed): required triage deliverables,
+ * the stalled-queue ops alert, and bench.sh's diff verb. A lane without a
+ * prober is REPORTED as such — the sheet never overstates automation.
  */
 
 export const BENCH_PHASES = [
@@ -69,6 +72,7 @@ export class IterationBenchService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly opsAlerts: OpsAlertsService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('IterationBenchService');
@@ -137,7 +141,7 @@ export class IterationBenchService {
           phase,
           automatic: true,
           action:
-            'advance(): compute per-lane due populations (S2 adds the flip-rate prober)',
+            'advance(): run the flip-rate probes on every due lane and assemble the approval sheet',
         };
       case 'approval':
         return {
@@ -158,14 +162,14 @@ export class IterationBenchService {
           phase,
           automatic: false,
           action:
-            'generate the diff (reextract diff verb) and recordDiffArtifact(<path>); S3 dispatches triage automatically',
+            'bench.sh diff — generates the review file + the two triage briefs and records the artifact',
         };
       case 'review':
         return {
           phase,
           automatic: false,
           action:
-            'close the review: closeReview(<summary>) after the named checklists and triage verdicts are recorded',
+            'record both triage summaries (recordTriage) then closeReview(<summary>) — it refuses without them',
         };
       case 'activation':
         return {
@@ -195,25 +199,90 @@ export class IterationBenchService {
       case 'proofs': {
         const state = run.phaseState as { inventory?: InventoryArtifact };
         const lanes = state.inventory?.judgeLanes ?? [];
-        // S1 honesty: populations and costs are computed; the flip-rate
-        // prober (re-hear a stratified sample under the new rule) is S2.
-        // The sheet SAYS so rather than pretending the proof ran.
-        const proofs = lanes.map((lane) => ({
-          lane: lane.lane,
-          dueVerdicts: lane.dueVerdicts,
-          flipRate: null,
-          recommendation:
-            lane.dueVerdicts === 0
-              ? 'nothing-due'
-              : 'S2-prober-pending: population computed, flip sample not yet automated',
-        }));
+        const proofs: Array<
+          | (BenchProbeResult & { recommendation: string })
+          | {
+              lane: string;
+              dueVerdicts: number;
+              recommendation: string;
+            }
+        > = [];
+        for (const lane of lanes) {
+          if (lane.dueVerdicts === 0) {
+            proofs.push({
+              lane: lane.lane,
+              dueVerdicts: 0,
+              recommendation: 'nothing-due',
+            });
+            continue;
+          }
+          const prober = benchProberRegistry.get(lane.lane);
+          if (!prober) {
+            proofs.push({
+              lane: lane.lane,
+              dueVerdicts: lane.dueVerdicts,
+              recommendation:
+                'no-prober-registered: manual carry-forward decision or re-buy',
+            });
+            continue;
+          }
+          const result = await prober.probe(Math.min(100, lane.dueVerdicts));
+          // The bands: ~zero flips carry forward automatically; a clearly
+          // semantic change re-buys; the ambiguous middle is the ONLY
+          // place a human reads proofs (owner mandate: in the loop only
+          // where judgment is irreplaceable).
+          const recommendation =
+            result.sampled === 0
+              ? 'sample-unanswerable: manual decision'
+              : result.flipRate < 0.02
+                ? 'carry-forward (auto: flips ~0, proof recorded)'
+                : result.flipRate > 0.2
+                  ? 're-buy (semantic change; population owed)'
+                  : 'OWNER-BAND: read the flip examples';
+          proofs.push({ ...result, recommendation });
+        }
+        // ESTIMATE FROM HISTORY (the v16 post-mortem law): quote the last
+        // comparable run's actuals first; the window-mix estimator is a
+        // labeled fallback with its measured 5x history stated.
+        const lastComparable = await this.prisma.iterationRun.findFirst({
+          where: {
+            promptKind: run.promptKind,
+            status: 'done',
+            corpus: { equals: run.corpus },
+          },
+          orderBy: { updatedAt: 'desc' },
+          select: { phaseState: true, candidateVersion: true },
+        });
+        const lastActuals = (
+          lastComparable?.phaseState as {
+            actuals?: { spentUsd?: number };
+          } | null
+        )?.actuals;
+        const spend = lastActuals?.spentUsd
+          ? {
+              basis: 'bench-history',
+              quoteUsd: lastActuals.spentUsd,
+              note: `last comparable run (v${lastComparable?.candidateVersion}) actually spent $${lastActuals.spentUsd.toFixed(2)} — the honest prior`,
+            }
+          : {
+              basis: 'window-fallback',
+              quoteUsd: null,
+              note: 'no comparable bench history — use reextract estimate, and treat it as an UPPER BOUND (the window mix ran 5x over on v16)',
+            };
         const approvalSheet = {
           proofs,
-          spend:
-            'S2: estimate-from-history pending — quote via reextract estimate and attach its hash',
+          spend,
           generatedAt: new Date().toISOString(),
         };
-        await this.transition(runId, 'approval', { proofs, approvalSheet });
+        const sheetHash = createHash('sha256')
+          .update(JSON.stringify(approvalSheet))
+          .digest('hex')
+          .slice(0, 16);
+        await this.transition(runId, 'approval', {
+          proofs,
+          approvalSheet,
+          sheetHash,
+        });
         return this.nextAction(runId);
       }
       default: {
@@ -318,6 +387,13 @@ export class IterationBenchService {
     if (run.phase !== 'approval') {
       throw new Error(`Run is in '${run.phase}', not approval.`);
     }
+    const expected = (run.phaseState as { sheetHash?: string }).sheetHash;
+    if (expected && sheetHash !== expected) {
+      throw new Error(
+        `Sheet hash mismatch: approval binds the sheet that was READ ` +
+          `(expected ${expected}) — regenerate or re-read before approving.`,
+      );
+    }
     await this.transition(runId, 'replay', {
       approval: { sheetHash, at: new Date().toISOString() },
     });
@@ -378,6 +454,15 @@ export class IterationBenchService {
     // 30 minutes without any job-row movement while jobs are live = the
     // v16 silent-25-hours class. A pushed state, never a quiet log.
     if (live > 0 && stalledMs > 30 * 60 * 1000) {
+      // The v16 silent-25-hours class, made loud: a pushed alert, deduped
+      // per run, the moment the queue stops moving with work outstanding.
+      this.opsAlerts.emit({
+        severity: 'critical',
+        kind: 'bench-replay-stalled',
+        title: 'Iteration bench: replay queue stalled',
+        body: `Run ${runId}: ${live} live batch job(s) with no state movement for ${Math.round(stalledMs / 60000)} minutes — nothing is polling. drive-loop exits 2; investigate the poller.`,
+        dedupeKey: `bench-replay-stalled:${runId}`,
+      });
       return {
         state: 'stalled',
         liveJobs: live,
@@ -401,10 +486,39 @@ export class IterationBenchService {
     await this.transition(runId, 'review', { diffArtifact: path });
   }
 
+  /** S3: the two standard triage deliverables are REQUIRED review inputs —
+   *  generated briefs live beside the diff artifact; the coordinator runs
+   *  them and records the summaries here. closeReview refuses without both,
+   *  so "we forgot the junk audit" is unrepresentable. */
+  async recordTriage(
+    runId: string,
+    kind: 'lost-support' | 'new-entities',
+    summary: string,
+  ): Promise<void> {
+    const run = await this.load(runId);
+    if (run.phase !== 'review') {
+      throw new Error(`Run is in '${run.phase}', not review.`);
+    }
+    const triage =
+      (run.phaseState as { triage?: Record<string, string> }).triage ?? {};
+    triage[kind] = summary;
+    await this.mergeState(runId, { triage });
+  }
+
   async closeReview(runId: string, summary: string): Promise<void> {
     const run = await this.load(runId);
     if (run.phase !== 'review') {
       throw new Error(`Run is in '${run.phase}', not review.`);
+    }
+    const triage = (run.phaseState as { triage?: Record<string, string> })
+      .triage;
+    const missing = ['lost-support', 'new-entities'].filter(
+      (kind) => !triage?.[kind],
+    );
+    if (missing.length) {
+      throw new Error(
+        `Review cannot close: triage deliverable(s) missing [${missing.join(', ')}] — run the generated briefs and recordTriage() each.`,
+      );
     }
     await this.transition(runId, 'activation', {
       reviewClosure: { summary, at: new Date().toISOString() },
@@ -422,6 +536,16 @@ export class IterationBenchService {
     if (run.phase !== 'activation') {
       throw new Error(`Run is in '${run.phase}', not activation.`);
     }
+    // BANK THE ACTUALS: this run's real spend becomes the next comparable
+    // run's estimate basis (the v16 post-mortem law).
+    const campaignId = (run.phaseState as { campaignId?: string }).campaignId;
+    let actuals: { spentUsd: number } | undefined;
+    if (campaignId) {
+      const [campaign] = await this.prisma.$queryRaw<
+        { spent: number }[]
+      >`SELECT spent_micros::float8 / 1e6 AS spent FROM spend_campaigns WHERE campaign_id = ${campaignId}::uuid`;
+      if (campaign) actuals = { spentUsd: campaign.spent };
+    }
     await this.prisma.iterationRun.update({
       where: { runId },
       data: {
@@ -430,6 +554,7 @@ export class IterationBenchService {
         phaseState: {
           ...(run.phaseState as Prisma.JsonObject),
           outcome: { outcome, at: new Date().toISOString() },
+          ...(actuals ? { actuals } : {}),
         },
       },
     });

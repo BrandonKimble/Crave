@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# ESCAPE HATCH (2026-08-25): the ITERATION BENCH (scripts/rig/bench.sh,
+# plans/iteration-bench.md) is the primary path for prompt iteration —
+# it gates, drives, and records what this runbook asks a human to
+# remember. Use these verbs directly only when the bench cannot express
+# the operation, and tell the bench run about anything you did by hand.
 # @script-class: operational
 # @run-by: .claude/skills/reextract/SKILL.md.
 # RE-EXTRACTION COORDINATOR (agent-operated; see .claude/skills/reextract).
