@@ -34,6 +34,7 @@ import { CollectorSourceRegistryService } from './collector-source-registry.serv
 import { ExtractionScopeService } from './extraction-scope.service';
 import { ProjectionRebuildService } from './projection-rebuild.service';
 import { RehearsalGenerationService } from './rehearsal-generation.service';
+import { IterationBenchService } from '../iteration-bench/iteration-bench.service';
 import { ReplayService } from './replay.service';
 import { PlaceEnrichmentModule } from '../../restaurant-enrichment/restaurant-enrichment.module';
 import { AnalyticsModule } from '../../analytics/analytics.module';
@@ -49,6 +50,7 @@ const redditCollectorCoreProviders = [
   RelevanceGateService,
   ProjectionRebuildService,
   RehearsalGenerationService,
+  IterationBenchService,
   ReplayService,
   UnifiedProcessingService,
   // CORE, not worker (Railway cutover 2026-07-24): the markets-extermination

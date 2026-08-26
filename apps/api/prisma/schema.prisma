@@ -3148,3 +3148,21 @@ model DerivedNameContainmentEdge {
   @@index([variantId], map: "idx_name_containment_variant")
   @@map("derived_name_containment_edges")
 }
+
+/// THE ITERATION BENCH (plans/iteration-bench.md): one durable row per
+/// prompt-iteration run — phases strictly ordered, advance() executes the
+/// automatic ones and stops at human gates; phase_state carries each
+/// phase's artifacts so a crash resumes instead of relying on memory.
+model IterationRun {
+  runId            String   @id @default(uuid()) @map("run_id") @db.Uuid
+  corpus           String[]
+  promptKind       String   @default("collection_system") @map("prompt_kind") @db.VarChar(64)
+  candidateVersion Int      @map("candidate_version")
+  phase            String   @default("inventory") @db.VarChar(32)
+  phaseState       Json     @default("{}") @map("phase_state")
+  status           String   @default("active") @db.VarChar(16)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("iteration_runs")
+}
