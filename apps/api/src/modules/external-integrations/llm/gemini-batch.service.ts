@@ -538,6 +538,30 @@ export class GeminiBatchService implements OnModuleDestroy {
         'Batch cancel no-oped — job already in a terminal state; record kept',
         { jobId },
       );
+      return;
+    }
+    // ENDING GOES THROUGH ONE DOOR (red team 2026-08-22, the 79 stuck-run
+    // incident): cancel flipped the JOB but never terminalized its RUN —
+    // the owning extraction run sat 'running' forever, invisible to every
+    // sweep (the stale reaper only reads job status) and poisoning
+    // coverage math. Route through the same registered failure handler the
+    // poller's provider-failed and the stale sweep use, so a cancelled
+    // job's run fails exactly like every other terminal failure.
+    const jobRow = await this.prisma.llmBatchJob.findUnique({
+      where: { jobId },
+      select: { purpose: true },
+    });
+    if (jobRow) {
+      await this.notifyJobFailed(jobId, jobRow.purpose, 'cancelled').catch(
+        (error: unknown) => {
+          this.logger.warn('cancel: run terminalization failed', {
+            jobId,
+            error: {
+              message: error instanceof Error ? error.message : String(error),
+            },
+          });
+        },
+      );
     }
   }
 
