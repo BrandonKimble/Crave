@@ -302,6 +302,23 @@ export const GOOGLE_PLACE_TYPE_IGNORED_TYPES: ReadonlySet<string> = new Set([
   'ranch',
   'resort_hotel',
   'wellness_center',
+  // Fourth tranche, same drain (2026-08-25 nightly catch #4): venues that
+  // HOST or NEIGHBOR food service without being a food-venue kind, plus
+  // pure-service noise. All 14 verified 1-2 entities each.
+  'amusement_park',
+  'buddhist_temple',
+  'electric_vehicle_charging_station',
+  'government_office',
+  'guest_house',
+  'history_museum',
+  'marina',
+  'miniature_golf_course',
+  'observation_deck',
+  'pet_care',
+  'real_estate_agency',
+  'secondary_school',
+  'shopping_mall',
+  'transportation_service',
   // Third tranche, same drain (2026-08-19): outdoors/retail noise.
   'discount_supermarket',
   'hiking_area',
