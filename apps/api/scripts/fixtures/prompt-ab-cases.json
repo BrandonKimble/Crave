@@ -93,7 +93,7 @@
       }
     ],
     "expect": {
-      "places": ["jds"],
+      "places": ["jd's"],
       "items": ["taco"]
     }
   },
@@ -964,7 +964,7 @@
       }
     ],
     "expect": {
-      "places": ["threadgills", "shady grove", "huts", "mothers"],
+      "places": ["threadgills", "shady grove", "hut's", "mother's"],
       "items": ["chicken fried steak", "burger"]
     }
   },
@@ -1007,7 +1007,7 @@
       }
     ],
     "expect": {
-      "places": ["philomenas", "traze", "lupo rosso"]
+      "places": ["philomena's", "traze", "lupo rosso"]
     }
   },
   {
@@ -1757,7 +1757,7 @@
       }
     ],
     "expect": {
-      "places": ["vinnies", "williamsburg pizza", "tompkins square bagels"],
+      "places": ["vinnie's", "williamsburg pizza", "tompkins square bagels"],
       "notRestaurants": ["best", "apollo bagels"]
     }
   },
@@ -1844,7 +1844,7 @@
       "perSource": [
         {
           "source": "SRC003",
-          "places": ["asters"],
+          "places": ["aster's"],
           "somePraise": true,
           "praiseOnlyRestaurantOnly": true,
           "notFoods": ["buffet", "lunch buffet"]
@@ -2292,7 +2292,7 @@
       }
     ],
     "expect": {
-      "places": ["carmines"],
+      "places": ["carmine's"],
       "notFoods": ["italian food", "red sauce italian food", "food"],
       "attributes": ["italian"]
     }
@@ -2315,7 +2315,7 @@
       }
     ],
     "expect": {
-      "places": ["jacobs pickles"],
+      "places": ["jacob's pickles"],
       "attributes": ["comfort food"],
       "notFoods": ["comfort food"],
       "somePraise": true
@@ -2343,7 +2343,7 @@
       }
     ],
     "expect": {
-      "places": ["clarks", "pterrys"],
+      "places": ["clark's", "pterry's"],
       "perSource": [
         {
           "source": "SRC002",
@@ -2420,6 +2420,368 @@
         "smiling",
         "vinnies",
         "l and b spumoni gardens"
+      ]
+    }
+  },
+  {
+    "id": "N1-luckys-leftys-name-integrity",
+    "why": "F1 wrong-name swap (staging doc e9598532, thread t3_1632ndh): the Luckys review was credited to Lefty's because sibling comments in the same chunk name Lefty's. Pins: each comment's testimony carries only the name written in THAT comment.",
+    "contract": "v16",
+    "posts": [
+      {
+        "id": "t3_1632ndh",
+        "title": "Best super thin crust pizza in town?",
+        "body": "Like square cut cracker thin Chicago tavern style/midwestern pizza. Honestly just wondering if there’s anything like this other than dominos or the frozen pizza aisle… via has a bar pizza but it’s not the same style.",
+        "comments": [
+          {
+            "id": "t1_jy0tdu4",
+            "body": "A bit out there, but Lefty's Pizza[https://www.leftyspizzakitchen.com](https://www.leftyspizzakitchen.com)"
+          },
+          {
+            "id": "t1_jy185gs",
+            "body": "Lefty’s but it’s all the way west by bee cave. Chicagoan here. It’s legit the best!"
+          },
+          {
+            "id": "t1_jyl6gdc",
+            "body": "OK so i went and tried Luckys. Former chicagoan here - its the real deal, thumbs up. But the thin crust is good but not paper thin, about a quarter inch thick, yeast crust . The mushrooms topping were the best ive had in austin - fresh portabello very thick slices. Go at lunch and you can get the small thin crust and small pan deal to try both economically."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t3_1632ndh",
+          "emitsNothing": true
+        },
+        {
+          "source": "t1_jy0tdu4",
+          "places": ["lefty's pizza"]
+        },
+        {
+          "source": "t1_jy185gs",
+          "places": ["lefty's"],
+          "somePraise": true
+        },
+        {
+          "source": "t1_jyl6gdc",
+          "places": ["luckys"],
+          "notRestaurants": ["lefty's", "leftys", "lefty's pizza"],
+          "somePraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "N1b-luckys-leftys-observed-span",
+    "why": "v17 observed-span twin of N1: place_observed must be the span as written and place_source_id must point at the comment that wrote it — the contract that makes the Luckys→Lefty's swap a refusable violation.",
+    "contract": "v17",
+    "pending": "v17 candidate (S3) — place_observed/place_source_id fields",
+    "posts": [
+      {
+        "id": "t3_1632ndh",
+        "title": "Best super thin crust pizza in town?",
+        "body": "Like square cut cracker thin Chicago tavern style/midwestern pizza. Honestly just wondering if there’s anything like this other than dominos or the frozen pizza aisle… via has a bar pizza but it’s not the same style.",
+        "comments": [
+          {
+            "id": "t1_jy0tdu4",
+            "body": "A bit out there, but Lefty's Pizza[https://www.leftyspizzakitchen.com](https://www.leftyspizzakitchen.com)"
+          },
+          {
+            "id": "t1_jy185gs",
+            "body": "Lefty’s but it’s all the way west by bee cave. Chicagoan here. It’s legit the best!"
+          },
+          {
+            "id": "t1_jyl6gdc",
+            "body": "OK so i went and tried Luckys. Former chicagoan here - its the real deal, thumbs up. But the thin crust is good but not paper thin, about a quarter inch thick, yeast crust . The mushrooms topping were the best ive had in austin - fresh portabello very thick slices. Go at lunch and you can get the small thin crust and small pan deal to try both economically."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_jyl6gdc",
+          "places": ["luckys"],
+          "placeSourceIds": {
+            "luckys": "t1_jyl6gdc"
+          },
+          "notRestaurants": ["lefty's", "lefty's pizza"]
+        },
+        {
+          "source": "t1_jy185gs",
+          "places": ["lefty's"],
+          "placeSourceIds": {
+            "lefty's": "t1_jy185gs"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "N2-thin-praise-slaps",
+    "why": "Trace audit §3.1 (t1_jrh6kr2): \"that place slaps\" is a complete verdict; the surrounding wish (\"why we don't have five of those in town\") must not re-frame it as DESIRE. The parent Jollibee wish stays silent.",
+    "contract": "v16",
+    "posts": [
+      {
+        "id": "t3_14w7014",
+        "title": "best crab rangoon? best cream cheese wonton?",
+        "body": "hi!! i’m in need of a new crab rangoon place. and, also, any place with those sweet (or not) cream cheese fried rolls of goodness. wontons, egg rolls, lumpia—any recommendation for that sorta thing?? thanks for the help!!",
+        "comments": [
+          {
+            "id": "t1_jrgsqaj",
+            "body": "L&L Hawaiian BBQ is opening soon on Wm Cannon and they have great lumpia!"
+          },
+          {
+            "id": "t1_jrgx83g",
+            "parent_id": "t1_jrgsqaj",
+            "body": "What? We’re getting an L&L? No way!"
+          },
+          {
+            "id": "t1_jrgxo9v",
+            "parent_id": "t1_jrgx83g",
+            "body": "We are! I don’t think there’s an opening date yet. It just says “Coming soon” but I’m happy."
+          },
+          {
+            "id": "t1_jrh35cf",
+            "parent_id": "t1_jrgxo9v",
+            "body": "Awesome! Hate to get greedy, but now we need a Jollibee too."
+          },
+          {
+            "id": "t1_jrh6kr2",
+            "parent_id": "t1_jrh35cf",
+            "body": "And a Taco Palenque!-that place slaps, but they’re only in San Antonio and new Braunfels and round rock and the valley. I just don’t understand why we don’t have five of those in town. 😫"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_jrh6kr2",
+          "places": ["taco palenque"],
+          "somePraise": true
+        },
+        {
+          "source": "t1_jrh35cf",
+          "emitsNothing": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "N3-thin-praise-uroko",
+    "why": "Trace audit §3.1 (t1_ia8aa4n): \"I love uroko\" must emit; the hedge on the handroll clause strips only the handroll, never the praise clause next to it.",
+    "contract": "v16",
+    "posts": [
+      {
+        "id": "t3_uz3rv9",
+        "title": "Tamaki at Uroko",
+        "body": "Tamaki at Uroko",
+        "comments": [
+          {
+            "id": "t1_ia8aa4n",
+            "body": "I love uroko but their handrolls would move up a tier if the seaweed was a bit better"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_ia8aa4n",
+          "places": ["uroko"],
+          "somePraise": true,
+          "notFoods": ["handroll"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N4-thin-praise-iconic",
+    "why": "Trace audit §3.1 (t1_jyr27y1): \"Thundercloud is iconic\" is testimony; D.1's judge-word drop list governs attributes, not whether the sentence counts. The parent wish (\"God I hope it's Thundercloud\") stays silent.",
+    "contract": "v16",
+    "posts": [
+      {
+        "id": "t3_167ozes",
+        "title": "At what Austin establishment are you MOST likely to get food prepared by someone who is completely stoned?",
+        "body": "And don’t say “all of them.” There’s got to be one with the absolute best chance.",
+        "comments": [
+          {
+            "id": "t1_jyqzzr2",
+            "body": "God I hope it's Thundercloud."
+          },
+          {
+            "id": "t1_jyr27y1",
+            "parent_id": "t1_jyqzzr2",
+            "body": "Thundercloud is iconic and I hope they never change"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_jyr27y1",
+          "places": ["thundercloud"],
+          "somePraise": true
+        },
+        {
+          "source": "t1_jyqzzr2",
+          "emitsNothing": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "N5-thin-praise-jollibee",
+    "why": "The Jollibee class (t1_nu6wzlb): short, plain praise (\"has really good fried chicken\") must emit — no minimum eloquence.",
+    "contract": "v16",
+    "posts": [
+      {
+        "id": "t3_1pn83ej",
+        "title": "Food Near LGA",
+        "body": "Alright yall,\n\nFlight home was cancelled today and per Delta there’s 0 chance of getting on with standby so we’re rebooked for tomorrow. We are staying at a hotel close to LGA. Any good pasta/burgers/bakeries/etc near LGA?\n\nIf it’s a burger rec then specifically a non-smash burger. Not a fan of the smash burgers. We had fanelli’s cafe during our trip and it was a PHENOMENAL burger.\n\nAlso anything you recommend seeing/doing this way? We were sad to find out Monday is broadway’s “dark day”",
+        "comments": [
+          {
+            "id": "t1_nu5q43e",
+            "body": "Donovan’s pub is pretty close by and has excellent burgers."
+          },
+          {
+            "id": "t1_nu6wzlb",
+            "parent_id": "t1_nu5q43e",
+            "body": "Also can use the free  Q70 bus.  First/last stop is 61st Street and a quick walk.   Also, Woodside Cafe and Pizza Boy 2 for non-ethnic fare.\n\nJollibee's, which is Filipino, has really good fried chicken."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_nu5q43e",
+          "places": ["donovan's pub"],
+          "items": ["burger"]
+        },
+        {
+          "source": "t1_nu6wzlb",
+          "places": ["jollibee's"],
+          "items": ["fried chicken"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N6-closure-lulu-bs",
+    "why": "A.2 CLOSED PLACE (t1_ozbjoeo): \"closed suddenly … RIP\" — nothing may be emitted for Lulu Bs; the post's praised venue is unnamed and Dart Bowl carries no verdict, so the whole doc is silent.",
+    "contract": "v16",
+    "posts": [
+      {
+        "id": "t3_1v4iqh0",
+        "title": "Ok, how’s this one. A memorable meal at a place that didn’t last long or you never went back.",
+        "body": "For me it was a place on 34th street in the 90s next to Seton.  Neat old building and the best muffaletta ever!  Only there a year or two.  Even though I bowled there a lot, only ate at Dart Bowl once.",
+        "comments": [
+          {
+            "id": "t1_ozbjoeo",
+            "body": "Lulu Bs was the best banh mi and spring rolls I ever had, I went to their truck for years, they finally opened a brick and mortar and closed suddenly after like a year in that spot, RIP"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "N7-wrapper-elvis-combo",
+    "why": "C.1 wrapper head (t1_k0226k3): \"the Elvis Presley combo hit the spot\" must not mint a combo dish — a delivery wrapper is never the dish. The itinerary post itself is a plan and emits nothing.",
+    "contract": "v16",
+    "posts": [
+      {
+        "id": "t3_16ffj0d",
+        "title": "Judge my austin food itinerary",
+        "body": "Headed to Austin at the end of the month for a long weekend. Here’s our short list for food and beverages. \n\nBetter Half \nSuerte \nEasy Tiger\nCuantos Tacos\nMicklethwait\nFukumoto\n\nLive Oak Brewery\nFast Friends\nlive oak",
+        "comments": [
+          {
+            "id": "t1_k0226k3",
+            "body": "Just got back from Austin and did Perla’s, Odd Duck, Suerte, Loro, and Mattie’s. Loved the Scallops and Tuna Tostada at Perla’s. \n\nOdd Duck had the best over menu between the 4 dishes (Corn Ribs 9/10 Corn Bread with Kimichi Butter 8/10, Red Fish 8.5/10, Pasta 9.5/10). \n\nSuerte was good not great (Brisket Taco’s 8/10, Tuna Tartar 9/10, Mushroom Tostada 7/10, Lentil Dip 7.5/10) but they did have the best service (shout outs Maggie) \n\nMattie’s had my favourite dish in fried green tomato’s with Corn and crab salad, Fried Chicken was nothing special but the Mash potato were really good and service was Meh. \n\nLoro had a great citrus salad and wood smoked Salmon but skip the Karage as it’s basic just felt like something fried. \n\nBest taco’s we’re El Tacorrido. Tried a bunch but stick with Barbacoa and the breakfast taco. \n\nBest coffee was Civil Goat \n\nLoved the Tex mex from Chuy’s because I love enchiladas and the Elvis Presley combo hit the spot. Avoid Torchy’s. \n\nWe loved the Austin food scene coming from Toronto, Canada."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t3_16ffj0d",
+          "emitsNothing": true
+        },
+        {
+          "source": "t1_k0226k3",
+          "places": ["chuy's"],
+          "notFoods": ["combo", "elvis presley combo"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N8-geo-fredericksburg",
+    "why": "Geography gate (no rule exists in any prompt yet): Fredericksburg/Johnson City picks in an Austin community must not enter the Austin corpus once the community-scope rule lands.",
+    "contract": "v16",
+    "pending": "community-scope geography rule (v17 S3)",
+    "posts": [
+      {
+        "id": "t3_166i6yq",
+        "title": "Fredericksburg wineries and food, cool outdoor spots?",
+        "body": "Going to enchanted rock this weekend and want to grab some food and wine after in Fredericksburg. Any must-go to places that serve wine and/or food outdoors? Looking for a nice patio maybe with misters and some shade.\n\nThanks!",
+        "comments": [
+          {
+            "id": "t1_jylgsjf",
+            "body": "Altdorf Beer Garden in Fredericksburg is solid. Also, Hye Thai (in Johnson City) is surprisingly good Thai.\n\nMost wineries don’t have food, and some are reservation only, especially on weekends (not sure if Labor Day is good or bad for you). If you go that route, call/ email and ask them about reservations.\n\nI’ve also eaten at Pecan St. Brewing in Johnson City and it’s also good."
+          },
+          {
+            "id": "t1_jyksfhy",
+            "body": "I'd say about 4/10 wineries in Fredericksburg have good wine and food is almost a mystery entirely. Plenty of great outdoor spaces!"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "notRestaurants": ["altdorf beer garden", "hye thai", "pecan st. brewing"]
+    }
+  },
+  {
+    "id": "N9-hedge-adjacency-fixe",
+    "why": "Hedge adjacency (t1_nt8fn1w): \"consistently pretty good\" for Fixe must emit even though the neighboring clauses hedge Boa (hearsay) and Nido (middling) — a hedge strips exactly its own clause.",
+    "contract": "v16",
+    "posts": [
+      {
+        "id": "t3_1piquvj",
+        "title": "Help me choose, Nido, fixe, Boa.",
+        "body": "Have guests coming in need last minute nice restaurant. These places all have times that work and are in convenient spots. Has anyone been to any of them? I have been to fixe and like it but it has been a few years and not sure if it has declined. Any help would be appreciated. Guests are older so looking for more approachable food. ",
+        "comments": [
+          {
+            "id": "t1_nt8ahyo",
+            "body": "I liked Fixe well enough, seems to fit your criteria!"
+          },
+          {
+            "id": "t1_nt8fn1w",
+            "parent_id": "t1_nt8ahyo",
+            "body": "Fixe seems perfect for the older generation in that I don't think it gets too loud and the food is accessible.  I've been at least once a year for brunch or HH in the last few years and it's consistently pretty good.  \n\nHeard good things about Boa's food no idea about the atmosphere though.  Nido was okay but haven't been back."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_nt8fn1w",
+          "places": ["fixe"],
+          "somePraise": true,
+          "notRestaurants": ["boa's", "boa", "nido"]
+        },
+        {
+          "source": "t1_nt8ahyo",
+          "places": ["fixe"]
+        }
       ]
     }
   }

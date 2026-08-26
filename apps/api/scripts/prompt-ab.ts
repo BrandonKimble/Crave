@@ -41,11 +41,27 @@ const PROMPT_DIR = join(
   '../src/modules/external-integrations/llm/prompts',
 );
 
+/**
+ * Which naming contract a case grades against. `v16` reads the emitted
+ * `place` field (prompt-chosen canonical name); `v17` reads `place_observed`
+ * (the observed-span contract) and can additionally pin `place_source_id`.
+ * Case-level, never global: certification runs mixed sets while both eras
+ * coexist.
+ */
+type Contract = 'v16' | 'v17';
+
 /** One graded scenario: real source text plus what must and must not appear. */
 type Case = {
   id: string;
   /** Why this case exists — the defect class or the control it protects. */
   why: string;
+  /** Naming contract this case grades against. Defaults to 'v16'. */
+  contract?: Contract;
+  /** A case whose rule does not exist in any prompt yet (e.g. the geography
+   *  gate before S3 lands). Graded and reported, but excluded from the
+   *  regression list and counted separately in the summary — it documents a
+   *  future obligation, not a current one. The string says what it waits on. */
+  pending?: string;
   /** Documents exactly as the pipeline would present them. */
   posts: Array<{
     id: string;
@@ -54,42 +70,108 @@ type Case = {
     extract_from_post?: boolean;
     comments?: Array<{ id: string; body: string; parent_id?: string }>;
   }>;
-  expect: {
-    /** No mention at all may be emitted. */
-    emitsNothing?: boolean;
-    /** Every listed restaurant must appear in some mention. */
-    places?: string[];
-    /** These foods must appear. */
-    items?: string[];
-    /** These must NOT appear as food anywhere. */
-    notItems?: string[];
-    /** These must NOT appear in any attribute array. */
-    notAttributes?: string[];
-    /** These must NOT appear as a restaurant. */
-    notPlaces?: string[];
-    /** These must appear in some attribute array. */
-    attributes?: string[];
-    /** At least one mention must carry general_praise: true. */
-    somePraise?: boolean;
-    /** No mention may carry general_praise: true. */
-    noPraise?: boolean;
-    /** No mention may carry is_menu_item: true (v8 audit class 4 — the
-     *  inherited-dish rule mandates false; a true here is the systematic
-     *  overcall). */
-    noMenuItemTrue?: boolean;
-    /** Every general_praise:true mention must be restaurant-only (food null)
-     *  — the F.1 one-carrier invariant (v8 audit class 5). */
-    praiseOnlyPlaceOnly?: boolean;
-    /** Per-source expectations (remaining-classes drain, 2026-08-12): a real
-     *  thread's OTHER comments may legitimately emit the very thing the
-     *  TARGET source must not (e.g. a parent that praises a place its child
-     *  merely inherits). Each entry grades ONLY the mentions whose source_id
-     *  matches, with the same sub-fields as the top level. */
-    perSource?: Array<{ source: string } & Omit<Case['expect'], 'perSource'>>;
-  };
+  expect: Expect;
 };
 
+type Expect = {
+  /** No mention at all may be emitted. */
+  emitsNothing?: boolean;
+  /** Every listed restaurant must appear as some mention's name — compared
+   *  MECHANICALLY (lowercase + whitespace collapse only; see mechName). */
+  places?: string[];
+  /** These foods must appear. */
+  items?: string[];
+  /** These must NOT appear as food anywhere. */
+  notFoods?: string[];
+  /** These must NOT appear in any attribute array. */
+  notAttributes?: string[];
+  /** These must NOT appear as a restaurant name (mechanical comparison). */
+  notRestaurants?: string[];
+  /** These must appear in some attribute array. */
+  attributes?: string[];
+  /** At least one mention must carry general_praise: true. */
+  somePraise?: boolean;
+  /** No mention may carry general_praise: true. */
+  noPraise?: boolean;
+  /** No mention may carry is_menu_item: true (v8 audit class 4 — the
+   *  inherited-dish rule mandates false; a true here is the systematic
+   *  overcall). */
+  noMenuItemTrue?: boolean;
+  /** Every general_praise:true mention must be restaurant-only (food null)
+   *  — the F.1 one-carrier invariant (v8 audit class 5). */
+  praiseOnlyRestaurantOnly?: boolean;
+  /** v17 only: for each observed name (key, mechanical form), every mention
+   *  carrying that name must declare this source id as its
+   *  `place_source_id` — the observed-span contract's "WHERE did you read
+   *  it" assertion. */
+  placeSourceIds?: Record<string, string>;
+  /** Per-source expectations (remaining-classes drain, 2026-08-12): a real
+   *  thread's OTHER comments may legitimately emit the very thing the
+   *  TARGET source must not (e.g. a parent that praises a place its child
+   *  merely inherits). Each entry grades ONLY the mentions whose source_id
+   *  matches, with the same sub-fields as the top level. */
+  perSource?: Array<{ source: string } & Omit<Expect, 'perSource'>>;
+};
+
+/** The complete expectation vocabulary. An unknown key in a case file is a
+ *  HARD ERROR at load: the previous grader/fixture drifted apart silently
+ *  (the fixture said `notItems`/`notPlaces`-era names the grader no longer
+ *  read) and 46 expectations were being skipped without a trace — the
+ *  tool-absence-swallow class, in JSON form. */
+const EXPECT_KEYS = new Set([
+  'emitsNothing',
+  'places',
+  'items',
+  'notFoods',
+  'notAttributes',
+  'notRestaurants',
+  'attributes',
+  'somePraise',
+  'noPraise',
+  'noMenuItemTrue',
+  'praiseOnlyRestaurantOnly',
+  'placeSourceIds',
+  'perSource',
+]);
+
+function validateExpectKeys(caseId: string, expect: Record<string, unknown>) {
+  for (const key of Object.keys(expect)) {
+    if (key !== 'source' && !EXPECT_KEYS.has(key)) {
+      throw new Error(
+        `case "${caseId}": unknown expectation key "${key}" — ` +
+          `it would be silently ignored. Known keys: ${[...EXPECT_KEYS].join(', ')}`,
+      );
+    }
+  }
+}
+
 type Mention = Record<string, unknown>;
+
+/**
+ * MECHANICAL name normalization — the only transform place-name grading is
+ * allowed (v17 observed-span contract; applied to BOTH eras so the v16
+ * baseline is measured with the same ruler): lowercase + whitespace collapse.
+ * Diacritics, punctuation, and possessives are PRESERVED — `café crème` ≠
+ * `cafe creme`, `lefty's` ≠ `leftys`. The two codepoint-only steps (NFC,
+ * curly→straight apostrophes/quotes) unify different encodings of the SAME
+ * written character, never different characters.
+ */
+function mechName(value: string): string {
+  return value
+    .normalize('NFC')
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Exact mechanical equality for place names. No token subsets, no plural
+ *  fold: `franklin bbq` does not satisfy `franklin`, and vice versa. */
+function hasName(haystack: string[], needle: string): boolean {
+  const n = mechName(needle);
+  return haystack.some((value) => mechName(value) === n);
+}
 
 function norm(value: string): string {
   // Unicode-aware (multilingual ruling R6, 2026-08-12): the gold suite now
@@ -104,15 +186,14 @@ function norm(value: string): string {
 }
 
 /**
- * Singular-insensitive containment, so "taco" matches "tacos".
- *
- * ALSO token-subset tolerant, and that is not laxness — it is the difference
- * between grading the prompt and grading canonicalization. Round 1 marked the
- * candidate FAIL on `missing restaurant "baldinucci"` when it had emitted
- * "baldinucci pizza": a correct canonical form that legitimately keeps its
- * brand token. The bug was mine, and it hid a real win (the candidate had
- * dropped the `light` attribute the live prompt emitted). An expectation is
- * met when every word of the expected name appears in the emitted one.
+ * Tolerant containment for NON-NAME vocabulary only (foods, categories,
+ * attributes): singular-insensitive ("taco" matches "tacos") and
+ * token-subset tolerant ("shoestring fry" matches "crispy shoestring
+ * fries"). Those fields are open descriptive vocabulary the prompt is free
+ * to phrase — grading them exactly would grade phrasing, not extraction.
+ * Place names NEVER go through this path (see mechName): under the
+ * observed-span contract this very tolerance is what hid the violations the
+ * contract exists to refuse (diacritic folds, token-superset blends).
  */
 function has(haystack: string[], needle: string): boolean {
   const n = norm(needle);
@@ -131,24 +212,29 @@ function grade(
   testCase: Case,
   mentions: Mention[],
 ): { pass: boolean; failures: string[] } {
-  const failures = gradeExpect(testCase.expect, mentions);
+  const contract = testCase.contract ?? 'v16';
+  const failures = gradeExpect(testCase.expect, mentions, contract);
   for (const per of testCase.expect.perSource ?? []) {
     const subset = mentions.filter((m) => m.source_id === per.source);
     failures.push(
-      ...gradeExpect(per, subset).map((f) => `[${per.source}] ${f}`),
+      ...gradeExpect(per, subset, contract).map((f) => `[${per.source}] ${f}`),
     );
   }
   return { pass: failures.length === 0, failures };
 }
 
 function gradeExpect(
-  expect: Omit<Case['expect'], 'perSource'>,
+  expect: Omit<Expect, 'perSource'>,
   mentions: Mention[],
+  contract: Contract,
 ): string[] {
   const failures: string[] = [];
 
+  // The name field is era-specific: v16 emits `place` (prompt-canonical),
+  // v17 emits `place_observed` (the span as written in the source).
+  const nameField = contract === 'v17' ? 'place_observed' : 'place';
   const places = mentions.map((m) =>
-    typeof m.place === 'string' ? m.place : '',
+    typeof m[nameField] === 'string' ? m[nameField] : '',
   );
   const items = mentions
     .map((m) => m.item)
@@ -171,16 +257,32 @@ function gradeExpect(
     );
   }
   for (const r of expect.places ?? []) {
-    if (!has(places, r)) failures.push(`missing restaurant "${r}"`);
+    if (!hasName(places, r)) failures.push(`missing restaurant "${r}"`);
   }
-  for (const r of expect.notPlaces ?? []) {
-    if (has(places, r)) failures.push(`FORBIDDEN restaurant "${r}"`);
+  for (const r of expect.notRestaurants ?? []) {
+    if (hasName(places, r)) failures.push(`FORBIDDEN restaurant "${r}"`);
+  }
+  for (const [observed, sourceId] of Object.entries(
+    expect.placeSourceIds ?? {},
+  )) {
+    const carriers = mentions.filter(
+      (m) =>
+        typeof m.place_observed === 'string' &&
+        mechName(m.place_observed) === mechName(observed),
+    );
+    for (const m of carriers) {
+      if (m.place_source_id !== sourceId) {
+        failures.push(
+          `"${observed}" claims place_source_id=${String(m.place_source_id)}, expected ${sourceId}`,
+        );
+      }
+    }
   }
   for (const f of expect.items ?? []) {
     if (!has(items, f) && !has(categories, f))
       failures.push(`missing food "${f}"`);
   }
-  for (const f of expect.notItems ?? []) {
+  for (const f of expect.notFoods ?? []) {
     if (has(items, f) || has(categories, f))
       failures.push(`FORBIDDEN food "${f}"`);
   }
@@ -200,7 +302,7 @@ function gradeExpect(
     failures.push('FORBIDDEN is_menu_item:true (inherited/family dish)');
   }
   if (
-    expect.praiseOnlyPlaceOnly &&
+    expect.praiseOnlyRestaurantOnly &&
     mentions.some(
       (m) =>
         m.general_praise === true &&
@@ -275,6 +377,17 @@ async function main(): Promise<void> {
   };
   let cases = JSON.parse(readFileSync(caseFile, 'utf-8')) as Case[];
   if (only) cases = cases.filter((c) => c.id === only);
+  for (const c of cases) {
+    validateExpectKeys(c.id, c.expect as Record<string, unknown>);
+    for (const per of c.expect.perSource ?? []) {
+      validateExpectKeys(c.id, per as Record<string, unknown>);
+    }
+    if (c.contract && c.contract !== 'v16' && c.contract !== 'v17') {
+      throw new Error(
+        `case "${c.id}": unknown contract "${String(c.contract)}"`,
+      );
+    }
+  }
 
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error'],
@@ -334,7 +447,12 @@ async function main(): Promise<void> {
   );
 
   for (const testCase of cases) {
-    const row: Record<string, unknown> = { id: testCase.id, why: testCase.why };
+    const row: Record<string, unknown> = {
+      id: testCase.id,
+      why: testCase.why,
+      contract: testCase.contract ?? 'v16',
+      ...(testCase.pending ? { pending: testCase.pending } : {}),
+    };
     for (const variant of ['live', 'candidate'] as const) {
       let passes = 0;
       const allFailures: string[] = [];
@@ -368,7 +486,7 @@ async function main(): Promise<void> {
             ? ' ❌REGRESSION'
             : '  ~';
     console.log(
-      `${testCase.id.padEnd(30)} live=${liveVerdict.padEnd(6)} candidate=${candVerdict.padEnd(6)}${arrow}`,
+      `${testCase.id.padEnd(30)} live=${liveVerdict.padEnd(6)} candidate=${candVerdict.padEnd(6)}${arrow}${testCase.pending ? `  [PENDING: ${testCase.pending}]` : ''}`,
     );
     const candFailures = (row.candidate as { failures: string[] }).failures;
     if (candFailures.length) {
@@ -378,9 +496,13 @@ async function main(): Promise<void> {
   }
 
   const summary = (variant: 'live' | 'candidate') => {
-    const counts = { PASS: 0, FLAKY: 0, FAIL: 0 } as Record<string, number>;
+    const counts = { PASS: 0, FLAKY: 0, FAIL: 0, PENDING: 0 } as Record<
+      string,
+      number
+    >;
     results.forEach((r) => {
-      counts[(r[variant] as { verdict: string }).verdict] += 1;
+      if (r.pending) counts.PENDING += 1;
+      else counts[(r[variant] as { verdict: string }).verdict] += 1;
     });
     return counts;
   };
@@ -389,6 +511,7 @@ async function main(): Promise<void> {
   console.log('candidate', JSON.stringify(summary('candidate')));
   const regressions = results.filter(
     (r) =>
+      !r.pending &&
       (r.live as { verdict: string }).verdict === 'PASS' &&
       (r.candidate as { verdict: string }).verdict !== 'PASS',
   );
