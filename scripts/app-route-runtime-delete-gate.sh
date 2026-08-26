@@ -1031,7 +1031,8 @@ restaurant_route_types_contract_file="$TARGET_PATH/navigation/runtime/app-overla
 # The surviving, enforceable law: restaurant is a child route with no product scene of its
 # own, riding the SHARED physical sheet, and its only source is 'search'.
 if [[ -e "$restaurant_route_types_contract_file" ]] && {
-  ! rg -q -U --pcre2 "restaurant\\?: \\{\\s*restaurantId: string \\| null;\\s*source\\?: 'search';\\s*\\}" "$restaurant_route_types_contract_file" ||
+  # R14 rename (7dc77f8d9): the param is placeId now — same law, new vocabulary.
+  ! rg -q -U --pcre2 "restaurant\\?: \\{\\s*placeId: string \\| null;\\s*source\\?: 'search';\\s*\\}" "$restaurant_route_types_contract_file" ||
   ! rg -q -U --pcre2 "restaurant: \\{\\s*role: 'child',\\s*productSceneKey: null,[\\s\\S]{0,150}?sheetPolicy: 'sharedPhysicalSheet'" "$restaurant_route_types_contract_file"
 }; then
   echo "[app-route-runtime-delete-gate] FAIL restaurant_parent_scoped_route_contract_gate: Restaurant routes must stay owner-scoped shared-sheet children (role child, no product scene) whose only source is 'search'." >&2
