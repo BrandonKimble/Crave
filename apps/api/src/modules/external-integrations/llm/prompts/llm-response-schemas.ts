@@ -37,8 +37,8 @@ export const SEARCH_QUERY_RESPONSE_JSON_SCHEMA = {
   required: [
     'places',
     'items',
-    'foodAttributes',
-    'restaurantAttributes',
+    'itemAttributes',
+    'placeAttributes',
     'ingredients',
   ],
   additionalProperties: false,
@@ -264,7 +264,7 @@ const PLACE_SOURCE_ID_SCHEMA = withDescription(
 
 const PLACE_ATTRIBUTES_SCHEMA = withDescription(
   { ...NULLABLE_STRING_ARRAY_SCHEMA },
-  'Restaurant-scoped attributes stated by THIS source (ambiance, features, service model, price) plus cuisine inferred from this source dish name — cuisine is a PLACE property only; never from the ask, a parent comment, or world knowledge of the venue',
+  "Restaurant-scoped attributes STATED by THIS source (ambiance, features, service model, price, cuisine — cuisine is a PLACE property only and is never inferred from a dish's identity), plus the ask's venue-level constraint words when this source is an unqualified fit-asserting pick; never from a parent comment or world knowledge of the venue",
 );
 
 const SOURCE_ID_SCHEMA = withDescription(

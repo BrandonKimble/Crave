@@ -113,6 +113,9 @@ interface LightweightComment {
 
 interface LightweightPost {
   id: string;
+  // The community-scope geography rule (prompt B.2) reads this; dropping it
+  // here silently disabled the rule — the v16-leak projection class.
+  subreddit: string | null;
   title: string;
   content: string;
   extract_from_post: boolean;
@@ -2438,6 +2441,10 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
 
       return {
         id: post.id,
+        subreddit:
+          'subreddit' in post && typeof post.subreddit === 'string'
+            ? post.subreddit
+            : null,
         title: post.title,
         content: post.content,
         extract_from_post: Boolean(post.extract_from_post),

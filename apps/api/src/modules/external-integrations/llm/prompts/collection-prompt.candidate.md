@@ -46,6 +46,10 @@ cheapest-first, and each one protects the tests after it.
 Still use the post title and body to resolve names in comments. The flag
 controls emission from the body only, never the use of context.
 
+**`subreddit`**: the community this post comes from — background context
+for reading the thread (what "the domain" of local shorthand is). It
+licenses no claims and changes no rule below.
+
 **In-scope context**: strictly the text of the POST OBJECT the active source
 belongs to — that post's title/body (subject to `extract_from_post`), the
 active comment, and parent/earlier lines within that same post's threads. The
@@ -89,7 +93,7 @@ mixed sources are the norm — in both directions:
   post exists to ask. A REMEMBERED verdict is still a verdict: "I remember
   Uchi being one of the best restaurants in the city" emits, and the
   writer's present question about whether it still holds does not un-say
-  it (nor is it a closure — the place is open, A.2). The asker's OTHER clauses still earn nothing on their
+  it (nor is it a closure — the place is open; B.1's PLACE STATUS rule). The asker's OTHER clauses still earn nothing on their
   own: "I've only been to Cuba512" states experience with no verdict, and
   the ask's own comparison anchors ("birria Landon the best Mexican?") are
   questions, not claims.
@@ -144,15 +148,20 @@ The writer vouches from experience, or reports a clear consensus:
      Answering a fact ask names places by availability, not by taste: that is
      A.2's AVAILABILITY case and emits nothing.
   2. **Nothing in the reply re-frames the name as neutral information or
-     disclaims it.** Hours, prices, "they sell", "never been but", "I've
-     heard" strip the pick back to information. Positive or plain annotations
-     do not ("for dinner", "if central", a neighborhood tag). An annotation
-     that qualifies DOWNWARD is a hedge and strips THAT entry — it emits
-     nothing ("not spectacular but on the cheaper side", "cheaper BBQ but
-     decent"). An operational annotation ("serves BBQ", a location, hours)
-     re-frames its entry as availability — that entry also emits nothing,
-     not even the food it mentions. Each entry is judged on its OWN
-     annotation; one stripped entry never strips its neighbors.
+     disclaims it.** Judge an annotation by what it DOES to the
+     pick: an annotation that helps you USE a pick the writer's taste
+     already chose ("for dinner", "if central", "on the east side") leaves
+     the endorsement standing — but an annotation that supplies the REASON
+     the name is on the list ("H-E-B (location at Lake Austin blvd serves
+     BBQ)" — it qualifies by AVAILABILITY, not taste) is not a use-note,
+     and that entry emits nothing; an annotation that REPLACES taste as the
+     reason the name is here — availability ("they sell", hours, "serves
+     BBQ"), secondhandness ("never been but", "I've heard"), or a
+     downward qualification ("not spectacular but on the cheaper side",
+     "cheaper BBQ but decent") — strips that entry back to information,
+     and it emits nothing, not even the food it mentions. Each entry is
+     judged on its OWN annotation; one stripped entry never strips its
+     neighbors.
 - **A verdict has no minimum eloquence.** "is good", "is great", "is awesome",
   "love this place", "my go-to" are complete endorsements — as complete as a
   paragraph. A hedge is a word that qualifies DOWNWARD ("it's _fine_", "not
@@ -198,8 +207,19 @@ The writer vouches from experience, or reports a clear consensus:
   most common false positive; check tense and intent before crediting a list.**
   The check cuts both ways: the SAME list shape in the past tense — "just got
   back", "here's what we ate through", "how did we do?" — is a trip REPORT,
-  and every place on it was eaten at. Tense decides, never the shape.
-- **AN ASK.** The request itself never emits, whether or not it names places.
+  and its entries emit: OFFERING your eaten list as your account (or for
+  judgment — A.1's feedback rule) is the claim; the writer chose and ate
+  these. Attendance emits nothing only when stated for another PURPOSE —
+  as a credential qualifying an ask ("I've only been to Cuba512"), not as
+  an account being offered.
+- **AN ASK.** The request itself never emits. **Every name inside a
+  request is part of the QUESTION** — the target being asked about ("best
+  Vinnie Special slice you've had?"), the benchmark it measures against
+  ("on par or better than hey yuet?"), the anchor it compares ("birria
+  Landon the best Mexican?") — however admiring the phrasing: an ask
+  states what the asker WANTS TO KNOW, never what they vouch for. Only
+  ANSWERS emit. (An asker's separate clause reporting their OWN past
+  verdict is A.1 testimony as ever — that clause answers no question.)
 - **AN ANNOUNCEMENT or DIRECTORY.** Participant rosters, event line-ups,
   fundraiser lists, "these 12 spots are doing a prix fixe this week", opening
   notices, marketing. Naming many restaurants neutrally is not endorsing them.
@@ -280,21 +300,11 @@ The writer vouches from experience, or reports a clear consensus:
   glowing review, "Also supremas enchiladas for 11" and "6 dollar beers, 18
   dollar spritzes" price items without judging them — those items do not
   emit, however warm the surrounding clauses.
-- **A CLOSED PLACE.** "RIP", "closed down", "went out of business", "used to
-  go", "who remembers", "back in the day", "I miss \_\_\_" — with no
-  contradicting present-tense context. A recommendation for a place that no
-  longer exists is not actionable. Places whose status is unstated remain
-  eligible; never guess at a closure. **Closure is a fact stated about the
-  PLACE, never an inference from the WRITER's tense**: "I used to live in
-  NYC and would go out of my way just for \_\_\_" reports a live place from
-  a writer who moved away — testimony, not closure. **A closure stated
-  anywhere in scope silences every mention of that place in this post
-  object** — praise beside the closure ("Lulu B's was the best banh mi …
-  they closed suddenly") is a eulogy, not a recommendation. And a
-  remembrance ask ("who remembers \_\_\_?", "what closed spots do you
-  miss?") asks for places that are GONE: the ANSWER TEST never turns its
-  replies into picks — each named place inherits the ask's closure frame
-  and emits nothing, unless the reply itself says the place is open.
+- **A CLOSED PLACE** — decided in Step B, not here. Testimony about a
+  place that no longer exists is real testimony that cannot emit; B.1's
+  PLACE STATUS rule resolves each place's status once for the whole post
+  object and kills every mention of a closed one. Nothing about the
+  WRITER (their tense, their nostalgia) decides this — see Step B.
 
 ### A.3 Judge each entry on its own verdict
 
@@ -337,7 +347,14 @@ around a bare category noun is a DESCRIPTION of an unnamed venue, not a name:
 downstairs" describe a place the writer never names. Skip that venue; never
 promote the description (or the landmark hosting it) into a restaurant name.
 The head must be a proper name for the frame to keep it ("Liberty halal cart"
-names; "the halal cart at South Ferry" describes).
+names; "the halal cart at South Ferry" describes). **And the unnamed
+venue CONSUMES its own verdict**: praise of a place the writer never
+names ("a place on 34th street … best muffaletta ever") is a complete,
+resolved claim about THAT unnamed place — it is spent there and emits
+nothing, leaving no free-floating praise. A different place the same
+source happens to name still earns only what its OWN clauses say ("even
+though I bowled there a lot, only ate at Dart Bowl once" — attendance,
+no verdict, nothing emits).
 
 **A one-word shorthand in a list names its referent, not itself.** Locals
 clip names: "Vinnie's, Williamsburg Pizza, Best, Smiling, Ben's" uses "Best"
@@ -388,6 +405,21 @@ viable anchor. A comment with no explicit name may inherit an anchor from
 surrounding in-scope text. **If no anchor survives, or two anchors remain
 equally likely, stop — never carry ambiguity forward.**
 
+**PLACE STATUS — resolved ONCE per place, for the whole post object.**
+Before any claim about a place emits, ask: does the in-scope text state
+that this place is GONE? Stated closure ("RIP", "closed down", "went out
+of business", "closed suddenly") anywhere in scope — including the frame
+of an ask whose selection criterion is that its places are gone ("who
+remembers \_\_\_?", "a memorable meal at a place that didn't last long")
+— marks the place CLOSED, and NO mention of it emits from any source in
+this post object, however warm the words: praise beside a closure is a
+eulogy. A place is closed only by a STATED fact about the PLACE — never
+by the writer's own tense or distance ("I used to live in NYC and would
+go out of my way just for \_\_\_" reports a live place from a writer who
+moved away), and never by guessing: unstated status means OPEN. A source
+that says the place is open again overrides an older closure in the same
+scope.
+
 ### B.2 Is the claim about food this place serves?
 
 **THE PLACE TEST: is this claim about food PREPARED AND SERVED BY this place,
@@ -429,17 +461,6 @@ Also fails the PLACE TEST:
   passes like any other.
 - **Landmark-plus-vendor**: when the text names a landmark and a vendor inside
   it, the claim belongs to the vendor.
-- **A PLACE THE TEXT ITSELF LOCATES OUTSIDE THIS COMMUNITY'S AREA.** The
-  input comes from one city's community; a claim is useful only where the
-  community eats. When the SOURCE'S OWN TEXT places the venue in another
-  city or a distant town — "in Fredericksburg", "in Johnson City", "when I
-  was in Chicago", "back home in Houston" — emit nothing for that venue,
-  however glowing the verdict. This is a fact stated in the text, never an
-  inference: a venue with no stated location remains eligible (most names
-  carry none, and they are local), and a same-city neighborhood or suburb
-  tag ("in Round Rock", "out on 620") is location detail, not another
-  market. When unsure whether a stated place is another market or a local
-  area, keep the mention.
 
 ### B.3 Emit the name as this source wrote it
 
@@ -468,15 +489,26 @@ done downstream with an audit trail. Your job is a faithful transcript.
   brand form — point at the source where the fuller form appears).
 
 **The span's boundary follows the text's own framing (B.1), not your
-knowledge of the brand.** Capitalized brand tokens as written are the name
-("Lefty's Pizza Kitchen", "Violet Crown Wine Bar & Coffee Shop"). A
-locating tail ("in FiDi", "in Westlake", "on 5th"), a branch or
-neighborhood designator trailing the brand ("soho", "les", "queens"), and
-a lowercase category word the writer appended as description ("Baldinucci
-pizza" — the pizza is what Baldinucci makes, not what it is named) are
-NOT part of the span. When the writer capitalizes the category word as
-part of the brand ("Williamsburg Pizza"), it IS part of the span — the
-writer's framing decides, in both directions.
+knowledge of the brand.** Brand tokens as written are the name ("Lefty's
+Pizza Kitchen", "Violet Crown Wine Bar & Coffee Shop"). Only two things
+sit OUTSIDE the span: a PREPOSITIONAL locating tail ("in FiDi", "in
+Westlake", "on 5th" — grammar locating the place, not naming it), and a
+lowercase category word the writer appended as description ("Baldinucci
+pizza" — the pizza is what Baldinucci makes, not what it is named; when
+the writer capitalizes it as part of the brand, "Williamsburg Pizza", it
+IS the name). A bare trailing area or city tag welded onto the name
+("Momoya soho", "Au Cheval NYC") stays IN the span, whatever its
+capitalization — emit it as written; a downstream normalizer owns
+branch-tag handling, never you. One override outranks capitalization:
+
+- **A capitalized bare generic English word in a list slot is a
+  shorthand, never a brand** ("Vinnie's, Williamsburg Pizza, Best,
+  Smiling, Ben's"): B.1's shorthand rule governs — emit the fuller
+  observed form from this input (citing its source) or drop that slot.
+  From that example list, `vinnie's`, `williamsburg pizza`, and `ben's`
+  emit; "Best" and "Smiling" emit NOTHING unless this input elsewhere
+  writes their fuller brand names. Capitalization in a name series is how
+  lists are written; it proves nothing.
 
 **Your world knowledge of the establishment is off-limits here.** You will
 often RECOGNIZE the place and know its fuller real-world name or its correct
@@ -487,9 +519,9 @@ emission records what was OBSERVED; resolution to the real place is another
 system's job. **Both directions of "fixing" are forbidden.** Never repair a
 typo toward the real-world name ("Dominic Ansel" stays `dominic ansel`,
 "Switf's" stays `switf's` — even when you know who is meant), and never
-strip letters the writer DID write: de-diacritization is the same
-correction run in reverse ("Café Crème" → `café crème`, never `cafe
-creme`). A typo is not yours to correct; an accent is not yours to remove.
+strip letters the writer DID write (the normalize rule below: diacritics
+are identity). A typo is not yours to correct; an accent is not yours to
+remove.
 
 Normalize:
 
@@ -584,12 +616,28 @@ attribute where it describes.
 
 **Gate 3 — THE VERDICT.** Something survived → compose it in C.2. Nothing
 survived → the mention is restaurant-only (a PLACE mention, no dish
-fields — F.2) — with ONE inheritance: when this source is a pick answering a
-dish-targeted ask, the ASK's food language walks these same gates, and
-what survives is the claim's subject. "best burger in EV?" → a bare pick
-carries `burger`; "Pizza in Austin?" → `pizza` (`is_menu_item` stays
-false — Step E). An ask whose food language fails the gates inherits
-nothing: "craving red sauce italian food" targets no orderable dish.
+fields — F.2) — with ONE inheritance, defined here and only here. **AN
+UNQUALIFIED PICK** — a source that passes the TESTIMONY TEST while
+answering a dish-targeted ask (by bare name or with its own verdict
+words, "Desano and Homeslice are all great"), and whose own text neither
+names food nor hedges/re-scopes the pick — inherits the ASK's food
+language: the ask's dish PHRASE, as the asker
+composed it, walks these same gates, C.2, and Step D exactly as if this
+source had written it — "best burger in EV?" → `burger`; "crispy
+shoestring fries?" → `shoestring fry` with `crispy` peeling into
+`item_attributes` by D's normal tests. WHO inherits is the only gate:
+only an unqualified pick — a reply that hedges or re-scopes the ask's
+terms ("ask them to fry it twice") inherits none of them — and
+an ask whose food language fails the gates inherits nothing: "craving red
+sauce italian food" targets no orderable dish. Two boundary shapes:
+a dish wrapped in a venue type is still a DISH ask ("best burger joint?",
+"quán phở nào ngon nhất?" — the dish inside the wrapper, `burger`/`phở`,
+passes the gates and inherits; the reply's restaurant name containing the
+same word changes nothing); a cuisine or style ask ("best Indian
+around?") PASSES prediction but FAILS the ORDER TEST — no dish inherits,
+the food slots stay empty, and the cuisine reaches the pick only as Step
+D's place-side fit assertion. (`is_menu_item` stays false for anything
+inherited — Step E.)
 
 ### C.2 Build the order-name
 
@@ -606,7 +654,11 @@ nothing: "craving red sauce italian food" targets no orderable dish.
    - "carnitas taco", "tonkotsu ramen", "duck carnitas taco" — the specifier
      changes what arrives; keep it.
    - "breakfast taco" — a different order from "a taco"; **never** peel the
-     word out (see the PREDICTION TEST in C.3).
+     word out (see the PREDICTION TEST in C.3). "thin crust pizza" is the
+     same shape: ordering "the thin crust pizza" and "the pizza" are
+     different orders, so the style words STAY in the dish name — a style
+     word inside an order-name is never peeled off into an attribute (and
+     "thin" alone would fail the STANDALONE TEST anyway).
    - **"lunch special", "3/4 course menu"** — two diners ordering "the lunch
      special" here ARE handed the same thing, and the phrase still names no
      food. The sameness question decides which WORDS of a dish name to keep;
@@ -627,9 +679,9 @@ nothing: "craving red sauce italian food" targets no orderable dish.
    - **Appearing on a menu is NOT sufficient.** "Lunch Special", "3-Course
      Menu", "Happy Hour Deal", "Chef's Tasting" are all printed menu headings
      and none of them is a dish. Re-run C.1's HEAD NOUN check on the phrase
-     you just composed: if its head noun is a delivery wrapper (`menu`,
-     `course`, `special`, `deal`, `combo`, `buffet`, `prix fixe`), you have
-     composed a wrapper, not a dish — go back to C.1 and either redirect to
+     you just composed: if its head noun is a delivery wrapper (Gate 1's
+     list — `menu`, `course`, `special`, `deal`, `combo`, `buffet`,
+     `prix fixe`), you have composed a wrapper, not a dish — go back to C.1 and either redirect to
      the food the modifier names ("chicken special" → `chicken`, "nigiri
      special" → `nigiri`), or emit no dish ("tuesday special", "lunch deal",
      "happy hour tasting menu").
@@ -689,7 +741,7 @@ Build the list:
    direction: "ploughman's lunch" survives because its head is `lunch` used
    as a named composed dish, and its modifier is not a wrapper. "lunch
    special" does not survive, because its head is `special`. When in doubt:
-   if removing the time-word leaves a wrapper (`special`, `menu`, `deal`),
+   if removing the time-word leaves a delivery wrapper (Gate 1's list),
    there was never a dish.
 3. **Add 1–3 parent classes** the dish clearly belongs to, even when unstated —
    **dish shapes that each pass the ORDER TEST** (dessert, pastry, coffee, tea,
@@ -699,10 +751,10 @@ Build the list:
    tradition-bound — the salient parent of "mapo tofu" in your head is
    "chinese food", and it is wrong here. Say "I'll have the \_\_\_" of every
    entry before it lands: "taco", "soup", "dessert" order something;
-   "chinese", "italian", "japanese" name a tradition, an axis whose home is
-   the place side (D.4) — "mapo tofu" → `["mapo tofu", "tofu"]`, with
-   `chinese` in `place_attributes` and never in `item_categories` or
-   `item_attributes`. A printed menu section is a category only
+   "chinese", "italian", "japanese" name a tradition, and a tradition is
+   never yours to add — "mapo tofu" → `["mapo tofu", "tofu"]`, with NO
+   `chinese` anywhere (a cuisine enters only when stated or fit-asserted —
+   D.4). A printed menu section is a category only
    when the heading predicts the food: "Desserts", "Sides", "Tacos" do;
    "Happy Hour", "Chef's Tasting" do not.
    - **Run the ORDER TEST on the PARTS of the dish name, not just the whole.**
@@ -755,15 +807,18 @@ words.** Surrounding context — the ask, parent comments, siblings — resolves
 the SUBJECTS of a claim (which place, which dish; Steps B and E); it never
 supplies what is CLAIMED about them. One choice speaks: **an unqualified
 pick answering a constrained ask asserts fit** — the ask's VENUE-level
-constraint words ("romantic", "cheap", "outdoor seating") are that pick's
-own claim, walking D.1/D.2 like any stated word; a re-scoping annotation
-blocks the word it re-scopes ("great but pricey" blocks "cheap"), and the
-ask itself still emits nothing. **A cuisine is NOT a fit assertion** — the
-ask's cuisine words never transfer to a pick (D.4 and Step E state the
-same law): "Best Indian around?" answered by a bare name yields NO
-`indian` anywhere. Before any other word enters an attribute
-array, point to the words of this source that state it — or, for a cuisine
-alone, to the dish name this source composed (D.4). A parent's words, the
+constraint words ("romantic", "cheap", "outdoor seating", a cuisine like
+"mexican") are that pick's own claim, walking D.1/D.2 like any stated
+word: the answerer chose this place BECAUSE it fits what was asked, and
+that choice vouches for the fit. A re-scoping annotation blocks the word
+it re-scopes ("great but pricey" blocks "cheap"), an off-axis answer that
+pushes back on the ask's frame asserts nothing from it, and the ask
+itself still emits nothing. Fit-asserted words land on the PLACE side —
+"Best Indian around?" → "Ravi Kabab, hands down" carries `indian` in
+`place_attributes`, never in a food slot — the ask constrained the
+venue, and its dish words are SUBJECTS handled by C.1 Gate 3, never
+attributes. Before any other word enters an attribute
+array, point to the words of this source that state it. A parent's words, the
 venue's own name, and your knowledge of the venue are never this source's
 words. **An empty attribute array is the normal output for a pick
 answering an unconstrained ask.**
@@ -776,8 +831,7 @@ WHICH place, not WHAT the place is like: they license no cuisine, no venue
 type, no attribute of any kind, on either side. (C.1 makes the same point
 for dishes: praising "Birria-Landia" names no birria.) A property enters an
 attribute array only when the source's DESCRIBING words state it — or via
-the single licensed inference, D.4's cuisine from the dish THIS source
-composed.
+a fit-asserting pick's ask constraints (this step's opening rule).
 
 ### D.1 Does it describe, or does it judge?
 
@@ -786,11 +840,9 @@ states HOW GOOD it is.** Only descriptions are attributes.
 
 - `spicy`, `crispy`, `smoky`, `grilled`, `vegan`, `cozy`, `outdoor seating`,
   `indian`, `comfort food` → describe → attributes.
-- `delicious`, `tasty`, `amazing`, `incredible`, `insane`, `flavorful`,
-  `seasoned perfectly`, `solid`, `best`,
-  `elite`, `top notch`, `quality`, `specialty`, `favorite`, `standout`,
-  `award winning`, `worth the trip`, `must-try`, `hidden gem`, `iconic`,
-  `famous`, `world class` → judge → **NOT attributes. Drop them.**
+- `delicious`, `iconic`, `worth the trip` — and every word of their kind,
+  however novel ("elite", "hidden gem", "seasoned perfectly") → judge →
+  **NOT attributes. Drop them.**
 - The test: **could the same word describe a BAD dish?** "spicy" yes (a dish
   can be badly spicy) → attribute. "delicious" no → praise, drop.
 - The very praise that made this source eligible in Step A is what feeds
@@ -803,9 +855,8 @@ thing a diner could filter by?**
 
 - **PASSES**: `gluten free`, `spicy`, `smoky`, `crispy`, `vegan`, `patio`,
   `counter service`, `byob`. Each means the same thing wherever it lands.
-- **FAILS**: `rich`, `light`, `thin`, `thick`, `heavy`, `simple`, `hearty`,
-  `old school`, `classic`, `authentic`, `traditional`, `generous portions`,
-  `bright`, `clean`, `filling`. A **light roast**, a **light marinara**, and a
+- **FAILS**: `rich`, `light`, `authentic` — and their whole kind (`thin`,
+  `old school`, `filling`, …). A **light roast**, a **light marinara**, and a
   **light meal** are three unrelated senses; separated from its noun the word
   asserts nothing and two readers will not agree what it claims. **Drop it.**
 
@@ -877,44 +928,39 @@ Scope follows **what the property describes**, not where the word sits.
   this source's own text calls the place that — never because the ask did,
   and never because the dish implies it (a cake claim does not make the
   venue a `bakery`).
-- **A CUISINE IS A PLACE PROPERTY, ONLY — and its ONLY inference base is
-  the dish THIS source composed.** A cuisine describes the tradition a
-  VENUE cooks in; it lands in `place_attributes` and never in
-  `item_attributes` or `item_categories`. What tradition a DISH belongs to
-  is a fact about the dish itself ("birria" is Mexican wherever it is
-  served) — that knowledge is stamped downstream from the dish's identity,
-  not extracted from testimony; writing it here would only restate the
-  dish's name. **Infer the place-side cuisine from the dish's identity
-  even when unstated**: "chicken tikka masala" → `indian` in
-  `place_attributes`. This holds when the dish's cuisine differs from the
-  venue's: tacos at a Korean spot add `mexican` to the restaurant's
-  attributes **in addition to** `korean` — the place demonstrably cooks
-  both. Use ONE canonical spelling per cuisine — `mexican`, never "mex",
-  "mexican food", or "tex-mex-ish".
+- **A CUISINE IS A PLACE PROPERTY, ONLY — and it is NEVER INFERRED.** A
+  cuisine describes the tradition a VENUE cooks in; it lands in
+  `place_attributes` and never in `item_attributes` or `item_categories`.
+  It enters a mention exactly two ways, both observational: this source's
+  own DESCRIBING words state it ("best Italian spot in town", "legit
+  Sichuan"), or an unqualified pick fit-asserts the ask's cuisine word
+  (the opening rule). **Never derive a cuisine from a dish's identity**:
+  "chicken tikka masala" composes a dish and licenses NO `indian` — what
+  tradition a dish belongs to is a fact about the dish concept, stamped
+  downstream by another system from the dish name you already emitted;
+  writing it here would only restate that name, per-mention and
+  inconsistently. Use ONE canonical spelling per cuisine when one IS
+  stated — `mexican`, never "mex", "mexican food", or "tex-mex-ish".
 
-  That dish-name inference is the SINGLE licensed inference in this step, it
-  runs on the dish's name **as this source said it** — nothing else — and it
-  yields a CUISINE only, never a venue type: "funfetti cake" licenses no
-  `bakery`, "sushi" licenses `japanese`, never `sushi bar`. The
-  thread may tell you WHO is being discussed (Step B); only this source's own
-  words tell you WHAT is claimed about them. **When this source composed no
-  dish, there is nothing to infer from**: a restaurant-only mention carries a
-  cuisine (or any attribute) only when this source's own text states one.
-  These are NOT inference bases, ever:
+  The thread may tell you WHO is being discussed (Step B); only this
+  source's own words (or its fit-asserted ask constraints) tell you WHAT
+  is claimed about them. These are NOT sources of a cuisine — or of any
+  attribute — ever:
+  - **A dish's identity.** The single inference the old rule licensed is
+    retired: the dish name itself is the deliverable, and the tradition it
+    implies is derived once, downstream, not re-derived per mention.
   - **Your world knowledge of the venue.** A bare list — "Momoya soho, La
     dong, shuka" — carries NO cuisines, however well you recognize the
     restaurants. The same off-limits rule as B.3's names: emission records
     what was OBSERVED.
   - **The venue's own name.** "1618 Asian Fusion" states no cuisine claim,
     just as "Birria-Landia" names no birria dish (C.1).
-  - **The ASK.** Its cuisine, price, and venue-type words ("Mexican
-    restaurant vibe", "cheap", "bakeries") describe what the ASKER wants. A
-    bare-name pick answers the ask without asserting its constraints — the
-    pick says "go here", not "this place is mexican/cheap/a bakery".
   - **A parent or sibling comment.** "ilili is fire" under a parent praising
     ilili's "beautiful Mediterranean mezzes" inherits the REFERENT ilili and
     nothing more — never the parent's `mediterranean`, dishes, or verdicts.
     Those are the parent source's claims and emit from the parent's id only.
+    (An ASK's constraint words are the one licensed carry-over, and only
+    onto an unqualified pick — the fit assertion, above.)
 
 - **DIETARY LIFESTYLE CLAIMS ARE NEVER DROPPED.** Whenever a source asserts
   vegan / vegetarian / gluten free / halal / kosher about a dish or venue —
@@ -939,8 +985,8 @@ Scope follows **what the property describes**, not where the word sits.
 - Attach an attribute **only to the mention whose text supports it.** An
   attribute stated for one dish or one restaurant never attaches to another.
 - **Final gate**: before emitting ANY term, re-run D.1 and D.2, then point to
-  its source: the words of THIS source that state it, the dish name that
-  licenses a cuisine, or a fit-asserting pick's ask constraints (the
+  its source: the words of THIS source that state it, or a fit-asserting
+  pick's ask constraints (the
   opening rule). A term whose only support is a parent's wording or your
   knowledge of the venue does not pass. If it judges quality, fails the
   STANDALONE TEST, is a bare ingredient or filler, or has no in-source
@@ -969,52 +1015,10 @@ Set `is_menu_item` for each composed dish.
 Set `true` only with strong evidence; when unsure, `false`.
 
 **A dish this source never named is never `true`.** When the dish was
-INHERITED from the ask, or adopted from a parent, THIS source did not narrow
-it to one item — `is_menu_item` is `false` no matter how specific the ask's
-wording was. `true` requires the narrowing to happen in this source's own
-words.
-
-**Answering an item-specific ask.** When the ask names a target dish ("best
-burger in EV?") and a reply ONLY names a restaurant while passing the TESTIMONY
-TEST (a bare name answering a judgment ask passes it via the ANSWER TEST in
-A.1 — do not re-litigate the gate here), reuse the ask's target as
-`item`/`item_categories` with
-`is_menu_item: false`. This applies only when the reply names no dish of its
-own — a reply that restates the dish in its own words goes through the normal
-path above. **The inherited target must be an ORDERABLE DISH — it must pass
-BOTH the ORDER TEST and the PREDICTION TEST**, because each catches what the
-other misses:
-
-- "best burger in EV?" → `burger` passes both → inherit it.
-- **A dish wrapped in a venue type is still a DISH ask.** "best burger
-  joint?", "quán phở nào ngon nhất?" ("which phở place is best?") target
-  the dish through the kind of place that serves it: the dish inside the
-  wrapper (`burger`, `phở`) passes both tests and IS inherited as `item`.
-  The reply's restaurant name containing the same dish word ("Phở Lệ")
-  changes nothing — the inherited dish is the ASK's food language, not a
-  dish minted from the venue's name. The boundary in one sentence: **the
-  ask's named DISH is a SUBJECT — it becomes what the reply's claim is
-  about, gated by the ORDER and PREDICTION tests; the ask's cuisines,
-  vibes, price words, and venue-type words are PREDICATES and never
-  transfer — not as `item`, and not as attributes.** "Mexican restaurant
-  vibe?" answered by a bare name is a restaurant-only mention with EMPTY
-  attributes; no `mexican` rides over from the ask.
-- "nice dinners on a budget?", "lunch spots?" → `dinner`/`lunch` fail the
-  PREDICTION TEST (they predict no food at all) → inherit NOTHING.
-- "best Indian around?", "where for comfort food?" → `indian`/`comfort food`
-  PASS prediction (they do predict a kind of food) but FAIL the ORDER TEST —
-  a cuisine or style is not a thing you order — so they inherit NOTHING at
-  all: not as food, and not as attributes either. Inheritance fills the
-  SUBJECT slots of a claim (which place, which dish — "best burger" does
-  hand its replies `burger`); it never supplies PREDICATES. The ask's
-  cuisine, style, price, and venue-type words are the ASKER's; Step D
-  attaches only what THIS reply's own text states, so a bare-name reply to
-  a cuisine or style ask is a restaurant-only mention with EMPTY attributes:
-  "Best Indian around?" → "Ravi Kabab, hands down" emits `ravi kabab` with
-  NO `indian` anywhere — not as food, and not as an attribute (neither from
-  the ask's words nor from your knowledge of the venue).
-  A reply that inherits nothing is a restaurant-only mention. **The ask itself
-  never emits.** Cuisines and dietary flags never enter `item_categories`.
+INHERITED from the ask (C.1 Gate 3), or adopted from a parent, THIS source
+did not narrow it to one item — `is_menu_item` is `false` no matter how
+specific the ask's wording was. `true` requires the narrowing to happen in
+this source's own words.
 
 Never re-split a dish composed in Step C, and never invent a restaurant name —
 if the place cannot be resolved with confidence, skip the mention.
@@ -1034,18 +1038,23 @@ placement by what the praise NAMES:
   praise IS the dish connection; no carrier is created and a dish mention
   carries no praise flag.
 - **Aimed at the place as a whole** (or an ANSWER-TEST pick) → ONE PLACE
-  mention with `general_praise: true`, per source per restaurant.
+  mention with `general_praise: true`, per source per restaurant. **An
+  ANSWER-TEST pick ALWAYS produces this carrier** — including when the
+  pick also inherits a dish from the ask ("best phở?" → "Phở Lệ ở quận 5"
+  emits the inherited-phở dish mention AND the place carrier at `true`):
+  the pick endorsed the place; the dish mention alone does not record that.
 - **Both at once** — a source that praises the place holistically (or IS a
   pick) AND names dishes — emits both: the dish mentions PLUS the place
   carrier at `true`. The pick endorsed the place, not only the dishes it
   went on to name.
 
-The shape enforces this: **a PLACE mention (no `item` field) is the only
-shape that carries `general_praise`; a DISH mention (non-null `item`) has
-no praise flag at all** — the dish connection IS its endorsement. It is an
-independent axis: composing a dish neither creates nor suppresses the
-carrier, and endorsing a place neither creates nor suppresses a dish.
-Availability, popularity, and price are never endorsement (Step A.2).
+The output shape already enforces the split — a dish mention cannot carry
+the flag. Your one decision is WHERE praise lands, per the three arms
+above. A carrier also holds endorsement whose target failed the dish
+gates: praise of a deal or wrapper (C.1's value-testimony arm) and an
+adopted verdict whose referent dish failed Step C both emit as the PLACE
+carrier at `true`. Availability, popularity, and price are never
+endorsement (Step A.2).
 
 ### F.2 Fields
 
@@ -1094,7 +1103,7 @@ version is smoky, and Nixta's patio is gorgeous. This place is a gem."
       "temp_id": "m1",
       "place_observed": "nixta",
       "place_source_id": "SRC004",
-      "place_attributes": ["mexican"],
+      "place_attributes": null,
       "item": "duck carnitas taco",
       "item_categories": ["taco", "carnitas"],
       "ingredients": [],
@@ -1106,7 +1115,7 @@ version is smoky, and Nixta's patio is gorgeous. This place is a gem."
       "temp_id": "m2",
       "place_observed": "suerte",
       "place_source_id": "SRC004",
-      "place_attributes": ["mexican"],
+      "place_attributes": null,
       "item": "duck carnitas taco",
       "item_categories": ["taco", "carnitas"],
       "ingredients": [],
@@ -1118,7 +1127,7 @@ version is smoky, and Nixta's patio is gorgeous. This place is a gem."
       "temp_id": "m3",
       "place_observed": "nixta",
       "place_source_id": "SRC004",
-      "place_attributes": ["patio", "mexican"],
+      "place_attributes": ["patio"],
       "general_praise": true,
       "source_id": "SRC004"
     }
@@ -1128,9 +1137,10 @@ version is smoky, and Nixta's patio is gorgeous. This place is a gem."
 
 Note what this example demonstrates: singular `item` and singular categories;
 `crispy` and `smoky` pass the STANDALONE TEST while a word like "rich" would
-not; the inferred cuisine `mexican` on the PLACE side only (never on the
-dishes — D.4); `place_observed` as the written form with the `'s` of
-"Nixta's duck carnitas tacos" stripped as sentence grammar (B.3), citing
-the source that wrote it; the patio as a place property; the two dish
-mentions carrying no praise flag (the connection is the endorsement); and
-ONE place-shape carrier (`m3`) holding the holistic praise.
+not; NO cuisine anywhere — the source stated none, and "duck carnitas
+taco" licenses none (D.4: a cuisine is never inferred); `place_observed`
+as the written form with the `'s` of "Nixta's duck carnitas tacos"
+stripped as sentence grammar (B.3), citing the source that wrote it; the
+patio as a place property; the two dish mentions carrying no praise flag
+(the connection is the endorsement); and ONE place-shape carrier (`m3`)
+holding the holistic praise.

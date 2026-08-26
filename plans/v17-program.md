@@ -57,7 +57,13 @@ S2. Schema + pipeline: observed-span fields, code-side canonicalization,
 S3. The prompt rewrite (rhino: rederivation at each decision point,
     certification ×3 against the rebuilt grader).
 S4. Enumerator build (knowledge-attributes, cuisine facet #1) + the
-    grain-bridge projection + search OR-projection + placement fix.
+    grain-bridge projection + search OR-projection + placement fix +
+    MARKET MEMBERSHIP AT GROUNDING (ruled 2026-08-26): a grounded place
+    outside the community's metro is excluded deterministically from that
+    community's corpus — the prompt geo rule was tried, failed 3x cert
+    (model treats a day-trip ask's town as in-scope), and was deleted;
+    geography belongs to the layer that has coordinates. Sweeps the ~41
+    existing out-of-market restaurants.
 S5. Bench run: inventory → proofs → owner approval (hash) → replay (~$12)
     → diff (with the refusal section) → review → owner activation call.
 

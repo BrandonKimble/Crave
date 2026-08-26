@@ -429,7 +429,7 @@
   },
   {
     "id": "D15-cuisine-ask-reuse",
-    "why": "Prompt red team 2026-08-10: 'indian' PASSES prediction but fails the order test — never inherited as food. RE-LITIGATED 2026-08-12 (remaining-classes drain): the old expectation ALSO required attributes:['indian'] per the 'rides the attribute side' doctrine; that is the ask-borrowing noise class (43 docs in the 330-doc blind audit — 'cheap'/'irish'/'mexican' read off the ask). New doctrine: context fills subject slots only; predicates come from this source's own words. 'Ravi Kabab, hands down' states no cuisine — no attribute.",
+    "why": "Fit assertion (owner-ruled 2026-08-26): an unqualified pick answering 'Best Indian around?' asserts the ask's venue-level cuisine — 'indian' lands in place_attributes, never in the food slots.",
     "posts": [
       {
         "id": "SRC060",
@@ -447,7 +447,7 @@
     "expect": {
       "places": ["ravi kabab"],
       "notFoods": ["indian"],
-      "notAttributes": ["indian"]
+      "attributes": ["indian"]
     }
   },
   {
@@ -943,7 +943,7 @@
       }
     ],
     "expect": {
-      "places": ["la gran uruguaya", "la nueva bakery", "chivito"]
+      "places": ["la gran uruguaya", "la nueva bakery", "chivito d'oro"]
     }
   },
   {
@@ -1323,7 +1323,7 @@
   },
   {
     "id": "G60-borrow-ask-cuisine",
-    "why": "Real doc 2d82c2c9: a bare-name pick (\"Chavelas in crown heights will do it\") answering \"Urgently Need this Mexican Restaurant Vibe\" asserts GO HERE, not \"this place is mexican\" — the ask's cuisine never rides onto the reply's attributes.",
+    "why": "Real doc 2d82c2c9: 'Chavelas in crown heights will do it' is an unqualified fit-asserting pick — it inherits the ask's 'mexican' as a place attribute (owner-ruled 2026-08-26); dish slots stay empty.",
     "posts": [
       {
         "id": "SRC001",
@@ -1345,7 +1345,7 @@
           "source": "SRC237",
           "places": ["chavelas"],
           "somePraise": true,
-          "notAttributes": ["mexican"]
+          "attributes": ["mexican"]
         }
       ]
     }
@@ -1415,7 +1415,7 @@
   },
   {
     "id": "G63-cuisine-not-category",
-    "why": "Real doc 8b3a5a32 (NYC trip report): categories say WHAT ARRIVES, cuisine says WHERE FROM. mapo tofu keeps dish-shaped categories; chinese/italian land on the attribute sides (keep) and never in food_categories (reject).",
+    "why": "Real doc 8b3a5a32: categories say WHAT ARRIVES. Under the no-inference cuisine law (2026-08-26) 'chinese' appears NOWHERE — not a category, not an attribute: the source never states it and dish identity licenses nothing.",
     "posts": [
       {
         "id": "SRC001",
@@ -1429,7 +1429,7 @@
       "places": ["szechuan mountain house"],
       "items": ["mapo tofu"],
       "notFoods": ["chinese", "italian"],
-      "attributes": ["chinese"]
+      "notAttributes": ["chinese"]
     }
   },
   {
@@ -1820,7 +1820,7 @@
   },
   {
     "id": "V14d-adopted-verdict-wrapper-referent",
-    "why": "v13 MAJOR b9e99062: 'God it's so good' adopting a parent whose food is a wrapper (lunch buffet) emitted nothing — must yield a restaurant-only carrier.",
+    "why": "v13 MAJOR b9e99062: 'God it's so good' adopting a parent whose food is a wrapper (lunch buffet) emitted nothing — must yield a restaurant-only carrier. Expectation re-derived 2026-08-26: source writes \"Aster's Ethiopian\" — the as-written span is aster's ethiopian.",
     "posts": [
       {
         "id": "SRC001",
@@ -1844,7 +1844,7 @@
       "perSource": [
         {
           "source": "SRC003",
-          "places": ["aster's"],
+          "places": ["aster's ethiopian"],
           "somePraise": true,
           "praiseOnlyRestaurantOnly": true,
           "notFoods": ["buffet", "lunch buffet"]
@@ -2476,7 +2476,6 @@
     "id": "N1b-luckys-leftys-observed-span",
     "why": "v17 observed-span twin of N1: place_observed must be the span as written and place_source_id must point at the comment that wrote it — the contract that makes the Luckys→Lefty's swap a refusable violation.",
     "contract": "v17",
-    "pending": "v17 candidate (S3) — place_observed/place_source_id fields",
     "posts": [
       {
         "id": "t3_1632ndh",
@@ -2726,7 +2725,6 @@
     "id": "N8-geo-fredericksburg",
     "why": "Geography gate (no rule exists in any prompt yet): Fredericksburg/Johnson City picks in an Austin community must not enter the Austin corpus once the community-scope rule lands.",
     "contract": "v16",
-    "pending": "community-scope geography rule (v17 S3)",
     "posts": [
       {
         "id": "t3_166i6yq",
@@ -2741,16 +2739,18 @@
             "id": "t1_jyksfhy",
             "body": "I'd say about 4/10 wineries in Fredericksburg have good wine and food is almost a mystery entirely. Plenty of great outdoor spaces!"
           }
-        ]
+        ],
+        "subreddit": "austinfood"
       }
     ],
     "expect": {
       "notRestaurants": ["altdorf beer garden", "hye thai", "pecan st. brewing"]
-    }
+    },
+    "pending": "out-of-market exclusion is owned by the grounding layer (deterministic coordinates), not extraction — ruled 2026-08-26 after 3x model non-compliance; this case documents the decision and re-arms if extraction ever claims the job again"
   },
   {
     "id": "N9-hedge-adjacency-fixe",
-    "why": "Hedge adjacency (t1_nt8fn1w): \"consistently pretty good\" for Fixe must emit even though the neighboring clauses hedge Boa (hearsay) and Nido (middling) — a hedge strips exactly its own clause.",
+    "why": "Hedge adjacency (t1_nt8fn1w): \"consistently pretty good\" for Fixe must emit even though the neighboring clauses hedge Boa (hearsay) and Nido (middling) — a hedge strips exactly its own clause. Re-derived 2026-08-26: 'I liked Fixe well enough' is itself a middling verdict (A.2 net direction) — t1_nt8ahyo emits nothing; the real praise carrier is t1_nt8fn1w ('consistently pretty good').",
     "contract": "v16",
     "posts": [
       {
@@ -2777,10 +2777,6 @@
           "places": ["fixe"],
           "somePraise": true,
           "notRestaurants": ["boa's", "boa", "nido"]
-        },
-        {
-          "source": "t1_nt8ahyo",
-          "places": ["fixe"]
         }
       ]
     }

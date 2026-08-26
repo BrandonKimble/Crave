@@ -42,6 +42,12 @@ const TRAILING_LOCATION_TOKENS: ReadonlySet<string> = new Set([
   'brooklyn',
   'manhattan',
   'bronx',
+  // City tags: the prompt transcribes a capitalized trailing city tag as
+  // written ("Au Cheval NYC" → `au cheval nyc`); this normalizer owns the
+  // drop. Growing this per-metro is an owner call (v17 red team F2).
+  'nyc',
+  'austin',
+  'atx',
 ]);
 
 /**

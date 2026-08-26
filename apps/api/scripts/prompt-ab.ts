@@ -35,6 +35,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
 import { LLMService } from '../src/modules/external-integrations/llm/llm.service';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
+import { canonicalizeObservedPlaceName } from '../src/modules/content-processing/reddit-collector/place-name-contract';
 
 const PROMPT_DIR = join(
   __dirname,
@@ -65,6 +66,7 @@ type Case = {
   /** Documents exactly as the pipeline would present them. */
   posts: Array<{
     id: string;
+    subreddit?: string;
     title?: string;
     body?: string;
     extract_from_post?: boolean;
@@ -230,12 +232,19 @@ function gradeExpect(
 ): string[] {
   const failures: string[] = [];
 
-  // The name field is era-specific: v16 emits `place` (prompt-canonical),
-  // v17 emits `place_observed` (the span as written in the source).
-  const nameField = contract === 'v17' ? 'place_observed' : 'place';
-  const places = mentions.map((m) =>
-    typeof m[nameField] === 'string' ? m[nameField] : '',
-  );
+  // The name comes from whichever contract the OUTPUT speaks: the wire is
+  // `place_observed` since the v17 cutover (9ecc1c3e3), `place` before it.
+  // A v16-era case's expectations were written against the INGESTED name,
+  // so a v17 emission is graded through the same code canonicalization the
+  // pipeline applies (suffix drop etc.); a v17-era case grades the raw span.
+  const places = mentions.map((m) => {
+    if (typeof m.place_observed === 'string') {
+      return contract === 'v17'
+        ? m.place_observed
+        : canonicalizeObservedPlaceName(m.place_observed);
+    }
+    return typeof m.place === 'string' ? m.place : '';
+  });
   const items = mentions
     .map((m) => m.item)
     .filter((f): f is string => typeof f === 'string' && f.length > 0);
@@ -331,6 +340,9 @@ async function runOnce(
   const input = {
     posts: testCase.posts.map((post) => ({
       id: post.id,
+      // The community-scope geography rule reads the post's subreddit; the
+      // production chunker always sends it, so the harness must too.
+      subreddit: post.subreddit ?? 'austinfood',
       title: post.title ?? '',
       content: post.body ?? '',
       extract_from_post: post.extract_from_post !== false,
