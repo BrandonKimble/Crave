@@ -473,7 +473,7 @@
       }
     ],
     "expect": {
-      "places": ["nixta"],
+      "places": ["nixta taqueria"],
       "somePraise": true
     }
   },
@@ -495,7 +495,7 @@
       }
     ],
     "expect": {
-      "places": ["adrienne"],
+      "places": ["adrienne's"],
       "items": ["pizza"],
       "somePraise": true
     }
@@ -518,7 +518,7 @@
       }
     ],
     "expect": {
-      "places": ["violet crown"],
+      "places": ["violet crown wine bar & coffee shop"],
       "somePraise": true
     }
   },
@@ -561,7 +561,7 @@
       }
     ],
     "expect": {
-      "places": ["slick willie"],
+      "places": ["slick willie's"],
       "somePraise": true
     }
   },
@@ -709,7 +709,7 @@
       }
     ],
     "expect": {
-      "places": ["main noodle"],
+      "places": ["main noodle house"],
       "notFoods": ["lunch special", "lunch specials", "special"],
       "somePraise": true
     }
@@ -744,7 +744,7 @@
       }
     ],
     "expect": {
-      "places": ["nakazawa"],
+      "places": ["sushi nakazawa"],
       "items": ["salmon omakase"]
     }
   },
@@ -853,7 +853,7 @@
       }
     ],
     "expect": {
-      "places": ["el califa"],
+      "places": ["taquería el califa"],
       "items": ["taco"],
       "somePraise": true
     }
@@ -1251,7 +1251,7 @@
       }
     ],
     "expect": {
-      "places": ["chivito"],
+      "places": ["chivito d'oro"],
       "items": ["chivito"]
     }
   },

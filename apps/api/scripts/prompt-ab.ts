@@ -376,7 +376,7 @@ async function main(): Promise<void> {
     candidate: readFileSync(candidatePath, 'utf-8'),
   };
   let cases = JSON.parse(readFileSync(caseFile, 'utf-8')) as Case[];
-  if (only) cases = cases.filter((c) => c.id === only);
+  if (only) cases = cases.filter((c) => only.split(',').includes(c.id));
   for (const c of cases) {
     validateExpectKeys(c.id, c.expect as Record<string, unknown>);
     for (const per of c.expect.perSource ?? []) {
