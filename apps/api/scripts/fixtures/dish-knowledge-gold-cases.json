@@ -42,6 +42,48 @@
     "expect": { "emptyAliases": true }
   },
   {
+    "id": "cuisine-birria-mexican",
+    "why": "S4 TRADITION TEST keep-side: 'birria' belongs to Mexican cooking unmistakably, everywhere it is served.",
+    "dish": "birria",
+    "expect": { "cuisines": ["mexican"] }
+  },
+  {
+    "id": "cuisine-shared-name-empty",
+    "why": "S4 reject-side: 'fried chicken' is shared across traditions — names NO tradition; empty is the cheap error.",
+    "dish": "fried chicken",
+    "expect": { "emptyCuisines": true }
+  },
+  {
+    "id": "cuisine-identity-modifier-kfc",
+    "why": "S4: identity modifiers govern — 'korean fried chicken' commits to korean even though the bare name is shared.",
+    "dish": "korean fried chicken",
+    "expect": { "cuisines": ["korean"] }
+  },
+  {
+    "id": "cuisine-granularity-mapo-tofu",
+    "why": "S4 granularity: the prompt's own example — 'mapo tofu' names the Sichuan repertoire; 'sichuan' must be emitted (a broader 'chinese' beside it is permitted only as a defensible second level, so it is not pinned either way).",
+    "dish": "mapo tofu",
+    "expect": { "cuisines": ["sichuan"] }
+  },
+  {
+    "id": "cuisine-budae-jjigae-korean",
+    "why": "S4: the prompt's own keep-side example — 'budae jjigae' -> korean; the tradition travels with the name.",
+    "dish": "budae jjigae",
+    "expect": { "cuisines": ["korean"] }
+  },
+  {
+    "id": "cuisine-diet-never-tradition",
+    "why": "S4: a diet word is never a tradition — 'vegan al pastor taco' is Mexican food; 'vegan' must not appear in cuisines.",
+    "dish": "vegan al pastor taco",
+    "expect": { "cuisines": ["mexican"], "notCuisines": ["vegan"] }
+  },
+  {
+    "id": "cuisine-ambiguous-name-empty",
+    "why": "S4: an ambiguous menu label entails no tradition — same silence economics as ingredients.",
+    "dish": "combo plate",
+    "expect": { "emptyCuisines": true }
+  },
+  {
     "id": "standard-prep-bec",
     "why": "Keep-side control: the standard preparation and the one established alias both come through.",
     "dish": "bacon egg and cheese",

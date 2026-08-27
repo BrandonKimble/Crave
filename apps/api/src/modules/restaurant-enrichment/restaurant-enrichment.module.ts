@@ -19,6 +19,7 @@ import { PlaceSecondaryLocationExpansionQueueService } from './restaurant-second
 import { PlaceSecondaryLocationExpansionWorker } from './restaurant-secondary-location-expansion.worker';
 import { isWorkerRuntime } from '../../shared/utils/process-role';
 import { RedditCollectorModule } from '../content-processing/reddit-collector/reddit-collector.module';
+import { AttributeOntologyModule } from '../attribute-ontology/attribute-ontology.module';
 
 const placeEnrichmentWorkerProviders = isWorkerRuntime()
   ? [
@@ -36,6 +37,7 @@ const placeEnrichmentWorkerProviders = isWorkerRuntime()
     EntityResolverModule,
     PublicCraveScoreModule,
     forwardRef(() => RedditCollectorModule),
+    AttributeOntologyModule,
     BullModule.registerQueue({
       name: 'restaurant-cuisine-extraction',
     }),

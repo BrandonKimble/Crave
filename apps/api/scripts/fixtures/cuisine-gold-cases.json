@@ -46,5 +46,54 @@
     "why": "A meal format ('all-day brunch cafe') is not a tradition.",
     "summary": "An airy all-day brunch cafe pouring good coffee and stacking pancakes.",
     "expect": { "emptyCuisines": true }
+  },
+  {
+    "id": "attr-communal-tables-real-cantina",
+    "why": "S4 FILTER TEST keep-side on a REAL stored editorial: 'communal tables' describes one definite filterable thing; the cuisine rides alongside.",
+    "summary": "Cozy cantina with communal tables offering Mexican fare made for sharing, plus house margaritas.",
+    "expect": { "cuisines": ["mexican"], "attributes": ["communal tables"] }
+  },
+  {
+    "id": "attr-outdoor-seating-real-winebar",
+    "why": "S4 keep-side, real editorial: 'outdoor seating' in its plainest common form; 'vino & bites' supports no tradition.",
+    "summary": "This tiny wine bar offers a variety of vino & bites, plus outdoor seating in warm weather.",
+    "expect": { "attributes": ["outdoor seating"], "emptyCuisines": true }
+  },
+  {
+    "id": "attr-self-serve-real-chain",
+    "why": "S4 keep-side, real editorial: 'self-serve' is a definite service format a diner can filter by; frozen yogurt names no tradition.",
+    "summary": "Self-serve chain offering rotating varieties of frozen yogurt & a big range of creative toppings.",
+    "expect": { "attributes": ["self-serve"], "emptyCuisines": true }
+  },
+  {
+    "id": "attr-no-frills-rejected-real",
+    "why": "S4 reject-side, real editorial: 'no-frills' and 'popular' mean nothing definite severed from the sentence / judge rather than describe — must NOT emit.",
+    "summary": "Popular, no-frills venue for specialty Chinese noodle dishes, soups & dumplings.",
+    "expect": {
+      "cuisines": ["chinese"],
+      "notAttributes": ["no-frills", "no frills", "popular"]
+    }
+  },
+  {
+    "id": "attr-chic-rejected-patio-kept-real",
+    "why": "S4 both sides in one real editorial: 'patio' passes THE FILTER TEST; 'chic' is a vibe-word that means nothing definite alone.",
+    "summary": "Cocktails and Asian fusion eats are offered in this chic eatery with a patio.",
+    "expect": { "attributes": ["patio"], "notAttributes": ["chic"] }
+  },
+  {
+    "id": "attr-judges-rejected-real-bbq",
+    "why": "S4 reject-side, real editorial: 'acclaimed' judges, 'no-frills' is vibe; 'communal tables' still comes through; shared-dish 'bbq' names no tradition.",
+    "summary": "Acclaimed BBQ spot offering meats fresh from the smoker in a no-frills space with communal tables.",
+    "expect": {
+      "attributes": ["communal tables"],
+      "notAttributes": ["acclaimed", "no-frills", "no frills"],
+      "notCuisines": ["bbq"]
+    }
+  },
+  {
+    "id": "attr-beloved-rejected",
+    "why": "S4 reject-side: 'beloved' states how good, not what is — the check: it could not describe a BAD restaurant.",
+    "summary": "A beloved neighborhood steakhouse known for dry-aged cuts and stiff martinis.",
+    "expect": { "notAttributes": ["beloved"] }
   }
 ]

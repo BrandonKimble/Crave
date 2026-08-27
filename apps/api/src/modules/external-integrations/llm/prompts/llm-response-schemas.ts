@@ -46,7 +46,7 @@ export const SEARCH_QUERY_RESPONSE_JSON_SCHEMA = {
 
 export const CUISINE_EXTRACTION_RESPONSE_JSON_SCHEMA = {
   type: 'object',
-  description: 'Cuisine extraction result',
+  description: 'Venue facts stated by an editorial summary',
   properties: {
     cuisines: {
       type: 'array',
@@ -54,8 +54,14 @@ export const CUISINE_EXTRACTION_RESPONSE_JSON_SCHEMA = {
       description:
         'Cuisines passing THE TRADITION TEST — the name of a cooking tradition a diner would give when asked "what kind of food do they make?"; empty when the summary supports none (the cheap error) — never a dish, diet, format, or quality stretched into one',
     },
+    attributes: {
+      type: 'array',
+      items: { type: 'string' },
+      description:
+        'Venue attributes the summary STATES, passing THE FILTER TEST: describes rather than judges (could the word describe a BAD restaurant?) AND means one definite filterable thing severed from the sentence ("patio", "counter service", "live music", "vegetarian-friendly"); plainest common form; never praise, vibe-words ("no-frills", "chic"), or implications the text does not state — empty is the cheap error',
+    },
   },
-  required: ['cuisines'],
+  required: ['cuisines', 'attributes'],
   additionalProperties: false,
 } as const;
 
@@ -604,8 +610,14 @@ export const DISH_KNOWLEDGE_RESPONSE_JSON_SCHEMA = {
             description:
               'Established co-names passing THE EXCLUSIVITY TEST — the alias points to nothing but this dish anywhere in the food world; never invented, shortened, or translated; empty is the expected default',
           },
+          cuisines: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Cooking tradition(s) the dish name AS NAMED unmistakably belongs to, everywhere it is served (THE TRADITION TEST); canonical everyday spelling, at the level the name commits to; EMPTY when the name is shared across traditions — empty is the cheap error, a wrong tradition mis-files every restaurant serving the dish',
+          },
         },
-        required: ['index', 'ingredients', 'aliases'],
+        required: ['index', 'ingredients', 'aliases', 'cuisines'],
       },
     },
   },

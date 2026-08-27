@@ -291,6 +291,8 @@ export interface LLMSearchQueryAnalysis {
 
 export interface LLMCuisineExtractionResult {
   cuisines: string[];
+  /** Venue attributes the summary STATES (THE FILTER TEST) — S4 widening. */
+  attributes: string[];
 }
 
 export interface LLMModerationResult {

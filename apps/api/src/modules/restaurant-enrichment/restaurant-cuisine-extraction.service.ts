@@ -11,6 +11,29 @@ import { AliasManagementService } from '../content-processing/entity-resolver/al
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { GOOGLE_PLACE_CUISINE_TYPE_MAP } from './google-place-type-attributes';
 import { identityScope } from '../../shared/locale/surface-scope';
+import { AttributeOntologyQueueService } from '../attribute-ontology/attribute-ontology-queue.service';
+import { createHash } from 'crypto';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+/**
+ * INPUT-FINGERPRINT (S4): the hash that keys one completed venue-facts
+ * computation — the editorial summary text, the Google place types, and the
+ * prompt text itself. The reconciler (worker re-enqueues after every
+ * enrichment/refresh) skips a restaurant whose fingerprint is unchanged and
+ * recomputes when any input or the prompt changes. This replaces the
+ * once-ever `extractedAt` gate (F369): the machinery F369's comment said
+ * nobody had committed to now has a reader — this comparison.
+ */
+const CUISINE_PROMPT_FINGERPRINT = createHash('sha256')
+  .update(
+    readFileSync(
+      join(__dirname, '../external-integrations/llm/prompts/cuisine-prompt.md'),
+      'utf8',
+    ),
+  )
+  .digest('hex')
+  .slice(0, 12);
 
 // Every value here means "we HAD evidence and extracted from it": place
 // types matched ('types'), the LLM was asked and returned cuisines ('llm'),
@@ -20,14 +43,28 @@ import { identityScope } from '../../shared/locale/surface-scope';
 // ABSENCE of the record is what the once-ever gate reads as "not yet asked",
 // so first-evidence-arrives-later re-tries instead of being permanently
 // stamped done (F4948).
-type CuisineExtractionSource = 'types' | 'llm' | 'llm_found_nothing';
+type CuisineExtractionSource =
+  | 'types'
+  | 'llm'
+  | 'llm_found_nothing'
+  // S4: place types matched AND a summary existed, so the LLM was also asked
+  // (the summary is now the venue-facts source, not just the cuisine
+  // fallback) — cuisines union both readings.
+  | 'types+llm';
 
 type CuisineExtractionMetadata = {
   extractedAt: string;
   source: CuisineExtractionSource;
   cuisines: string[];
+  /** Canonical cuisine attribute ids (kept under its historical key). */
   attributeIds: string[];
+  /** S4: venue attributes the summary stated (FILTER TEST survivors). */
+  attributes?: string[];
+  /** S4: their resolved place_attribute entity ids (active or pending). */
+  editorialAttributeIds?: string[];
   matchedTypes?: string[];
+  /** S4: hash of (summary, types, prompt) this computation answered. */
+  inputFingerprint?: string;
 };
 
 const CUISINE_STRIP_TOKENS = new Set([
@@ -50,6 +87,7 @@ export class PlaceCuisineExtractionService {
     private readonly prisma: PrismaService,
     private readonly llmService: LLMService,
     private readonly aliasManagement: AliasManagementService,
+    private readonly attributeOntologyQueue: AttributeOntologyQueueService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('RestaurantCuisineExtraction');
@@ -92,32 +130,37 @@ export class PlaceCuisineExtractionService {
     const priorAttributeIds = this.coerceStringArray(
       existingExtraction.attributeIds,
     );
+    const priorEditorialIds = this.coerceStringArray(
+      existingExtraction.editorialAttributeIds,
+    );
 
-    // ONCE EVER PER RESTAURANT, DELIBERATELY (F369). The gate is `extractedAt`
-    // alone: a restaurant whose Google editorial summary later changes is not
-    // re-extracted.
-    //
-    // This service used to ALSO hash that summary into the extraction
-    // metadata (`summaryHash`) — the machinery for "has the evidence
-    // changed?" — and a repo-wide grep found exactly three occurrences: the
-    // type, the computation, and the write. NOTHING ever compared it. A
-    // stored derived value with no reader is not a feature in waiting, it is
-    // a claim about a future nobody committed to, so it is deleted rather
-    // than left looking implemented. (Rows written before 2026-08-03 still
-    // carry the key in their free-form metadata blob; nothing reads it there
-    // either.)
-    //
-    // The alternative — gate on `extractedAt && summaryHash === current` —
-    // costs one LLM call per changed restaurant per refresh cycle, on a
-    // corpus refreshStaleLocations re-polls every 90 days, and the churn rate
-    // of Google's editorial summaries is UNMEASURED. Measuring it needs a
-    // Places re-poll, i.e. spend; so once-ever stands as the stated policy
-    // until someone chooses otherwise with a number in hand.
-    if (extractedAt) {
-      if (priorAttributeIds.length > 0) {
+    const googlePlaces = this.toRecord(metadata.googlePlaces);
+    const placeTypes = this.extractPlaceTypes(googlePlaces);
+    const summaryText = this.extractEditorialSummary(googlePlaces);
+    const inputFingerprint = this.computeInputFingerprint(
+      summaryText,
+      placeTypes,
+    );
+
+    // INPUT-FINGERPRINT GATE (S4, supersedes the once-ever F369 gate): a
+    // completed extraction is skipped IFF its inputs are unchanged — same
+    // summary text, same place types, same prompt text. A changed summary,
+    // a Places re-poll that grew types, or a prompt edit all change the
+    // fingerprint and the extraction reruns (correcting, not accumulating:
+    // this lane's evidence rows are deleted and rewritten). Legacy rows
+    // stamped before fingerprinting carry no fingerprint and rerun once.
+    const storedFingerprint = this.coerceString(
+      existingExtraction.inputFingerprint,
+    );
+    if (extractedAt && storedFingerprint === inputFingerprint) {
+      const carriedIds = this.unionStringArrays(
+        priorAttributeIds,
+        priorEditorialIds,
+      );
+      if (carriedIds.length > 0) {
         const mergedAttributes = this.unionStringArrays(
           entity.placeAttributes,
-          priorAttributeIds,
+          await this.filterActiveEntityIds(carriedIds),
         );
         if (
           !this.setsEqual(
@@ -133,37 +176,47 @@ export class PlaceCuisineExtractionService {
             },
           });
         }
-        // Phase 4b: state the cuisine LLM's claims in the rebuildable
-        // substrate — this source has no document/run, so the event ledger
-        // cannot hold them and a derived array would otherwise drop them.
-        await this.recordCuisineEvidence(entity.entityId, mergedAttributes);
+        // Phase 4b: state the lane's claims in the rebuildable substrate —
+        // this source has no document/run, so the event ledger cannot hold
+        // them and a derived array would otherwise drop them.
+        await this.recordEvidence(
+          entity.entityId,
+          priorAttributeIds,
+          priorEditorialIds,
+          { replace: false },
+        );
       }
 
-      this.logger.debug('Cuisine extraction already completed', {
+      this.logger.debug('Cuisine extraction inputs unchanged — skipped', {
         placeId: entity.entityId,
         extractedAt,
       });
       return;
     }
 
-    const googlePlaces = this.toRecord(metadata.googlePlaces);
-    const placeTypes = this.extractPlaceTypes(googlePlaces);
-    const summaryText = this.extractEditorialSummary(googlePlaces);
-
     const typeMapping = this.mapTypesToCuisines(placeTypes);
     let rawCuisines = typeMapping.cuisines;
+    let rawAttributes: string[] = [];
     let source: CuisineExtractionSource;
 
-    if (rawCuisines.length) {
-      source = 'types';
-    } else if (summaryText) {
-      // We HAD evidence (an editorial summary) and asked the LLM. Whether it
-      // returned cuisines or not, the extraction genuinely ran — record it so
-      // the once-ever gate does not re-spend on the same summary.
+    if (summaryText) {
+      // We HAD evidence (an editorial summary) and asked the LLM — the
+      // summary is the venue-facts source (cuisines AND attributes), so it
+      // is consulted even when place types already yielded cuisines.
       const llmResult =
         await this.llmService.extractCuisineFromSummary(summaryText);
-      rawCuisines = llmResult.cuisines ?? [];
-      source = rawCuisines.length ? 'llm' : 'llm_found_nothing';
+      rawCuisines = this.unionStringArrays(
+        rawCuisines,
+        llmResult.cuisines ?? [],
+      );
+      rawAttributes = llmResult.attributes ?? [];
+      source = typeMapping.cuisines.length
+        ? 'types+llm'
+        : rawCuisines.length || rawAttributes.length
+          ? 'llm'
+          : 'llm_found_nothing';
+    } else if (rawCuisines.length) {
+      source = 'types';
     } else {
       // NO EVIDENCE: no place types matched and there is no editorial summary
       // to ask the LLM with — the common case for a freshly-grounded
@@ -191,9 +244,19 @@ export class PlaceCuisineExtractionService {
       filteredCuisines.length > 0
         ? await this.resolveCuisineAttributeIds(filteredCuisines)
         : [];
+
+    // S4: venue attributes ride the attribute ONTOLOGY — matched onto
+    // existing place_attribute vocabulary, or minted PENDING (quarantined)
+    // for the placement judge to merge/promote/reject like any
+    // collection-coined attribute.
+    const editorial = await this.resolveEditorialAttributeIds(rawAttributes);
+
+    // Only ACTIVE vocabulary enters the read-side projection; pending mints
+    // stay quarantined in the evidence substrate until adjudicated.
     const mergedAttributes = this.unionStringArrays(
       entity.placeAttributes,
       cuisineAttributeIds,
+      editorial.activeIds,
     );
 
     const cuisineMetadata: CuisineExtractionMetadata = {
@@ -201,7 +264,10 @@ export class PlaceCuisineExtractionService {
       source,
       cuisines: filteredCuisines,
       attributeIds: cuisineAttributeIds,
+      attributes: editorial.attributes,
+      editorialAttributeIds: editorial.ids,
       matchedTypes: typeMapping.matchedTypes,
+      inputFingerprint,
     };
 
     const updatedMetadata = this.applyCuisineMetadata(
@@ -218,12 +284,164 @@ export class PlaceCuisineExtractionService {
       },
     });
 
+    // Re-extraction CORRECTS: this lane owns its two source classes, so the
+    // restaurant's prior claims are replaced, never accumulated beside.
+    await this.recordEvidence(
+      entity.entityId,
+      cuisineAttributeIds,
+      editorial.ids,
+      { replace: true },
+    );
+
+    if (editorial.mintedPending) {
+      await this.attributeOntologyQueue.queueAdjudication();
+    }
+
     this.logger.info('Cuisine extraction completed', {
       placeId: entity.entityId,
       cuisines: filteredCuisines,
+      attributes: editorial.attributes,
       source,
       matchedTypes: typeMapping.matchedTypes,
+      rerun: Boolean(extractedAt),
     });
+  }
+
+  /** S4: the (summary, types, prompt) hash the fingerprint gate compares. */
+  private computeInputFingerprint(
+    summaryText: string | null,
+    placeTypes: string[],
+  ): string {
+    return createHash('sha256')
+      .update(
+        JSON.stringify({
+          summary: summaryText ?? '',
+          types: [...placeTypes].sort(),
+          prompt: CUISINE_PROMPT_FINGERPRINT,
+        }),
+      )
+      .digest('hex')
+      .slice(0, 16);
+  }
+
+  /** Read-projection guard: of these entity ids, the ones currently ACTIVE. */
+  private async filterActiveEntityIds(ids: string[]): Promise<string[]> {
+    const unique = Array.from(new Set(ids.filter(Boolean)));
+    if (!unique.length) return [];
+    const rows = await this.prisma.entity.findMany({
+      where: { entityId: { in: unique }, status: 'active' },
+      select: { entityId: true },
+    });
+    return rows.map((row) => row.entityId);
+  }
+
+  /**
+   * S4: resolve the widened response's venue attributes onto the attribute
+   * ontology. Matching mirrors the cuisine resolver (name, identity fold, or
+   * banked recall surface — fold on both sides); a term the vocabulary has
+   * never seen mints a PENDING place_attribute (quarantined until the
+   * placement judge adjudicates it), exactly like collection-coined
+   * attributes — so synonyms merge into canonical attribute entities instead
+   * of forking the vocabulary.
+   */
+  private async resolveEditorialAttributeIds(values: string[]): Promise<{
+    /** The normalized attribute strings that survived scope validation. */
+    attributes: string[];
+    /** All resolved entity ids (active + pending). */
+    ids: string[];
+    /** The subset safe for the read-side placeAttributes projection. */
+    activeIds: string[];
+    mintedPending: boolean;
+  }> {
+    const normalized = this.normalizeAliasList(values);
+    if (!normalized.length) {
+      return { attributes: [], ids: [], activeIds: [], mintedPending: false };
+    }
+    const scopeCheck = this.aliasManagement.validateScopeConstraints(
+      EntityType.place_attribute,
+      normalized,
+    );
+    const attributes = this.normalizeAliasList(scopeCheck.validAliases);
+
+    const ids: string[] = [];
+    const activeIds: string[] = [];
+    let mintedPending = false;
+    for (const attribute of attributes) {
+      const folded = canonicalFold(attribute);
+      const [existing] = await this.prisma.$queryRaw<
+        Array<{ entity_id: string; status: string }>
+      >`
+        SELECT e.entity_id, e.status::text AS status
+          FROM core_entities e
+         WHERE e.type = 'place_attribute'::entity_type
+           AND e.status IN ('active'::entity_status, 'pending'::entity_status)
+           AND (
+             e.name = ${attribute}
+             OR e.identity_key = ${folded}
+             OR EXISTS (
+               SELECT 1 FROM entity_surface s
+                WHERE s.entity_id = e.entity_id
+                  AND ${identityScope('s')}
+                  AND s.form_folded = ${folded}
+             )
+           )
+         ORDER BY (e.status = 'active'::entity_status) DESC
+         LIMIT 1`;
+      if (existing) {
+        ids.push(existing.entity_id);
+        if (existing.status === 'active') activeIds.push(existing.entity_id);
+        continue;
+      }
+      try {
+        const created = await this.prisma.entity.create({
+          data: {
+            name: attribute,
+            type: EntityType.place_attribute,
+            status: 'pending',
+            ...identityInsertData(attribute, EntityType.place_attribute),
+          },
+          select: { entityId: true },
+        });
+        await this.prisma.$transaction((tx) =>
+          addSurfaces(
+            tx,
+            created.entityId,
+            [{ form: attribute, source: 'extraction' as const }],
+            { markEmbeddingStale: false },
+          ),
+        );
+        ids.push(created.entityId);
+        mintedPending = true;
+      } catch (error) {
+        // uq_attribute_identity_key: the find-then-create race loses loudly —
+        // refetch the winner (any status the probe accepts).
+        const winner = await this.prisma.entity.findFirst({
+          where: {
+            type: EntityType.place_attribute,
+            name: attribute,
+            status: { in: ['active', 'pending'] },
+          },
+          select: { entityId: true, status: true },
+        });
+        if (winner) {
+          ids.push(winner.entityId);
+          if (winner.status === 'active') activeIds.push(winner.entityId);
+          continue;
+        }
+        this.logger.warn('Editorial attribute mint failed', {
+          attribute,
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        });
+      }
+    }
+    return {
+      attributes,
+      ids: Array.from(new Set(ids)),
+      activeIds: Array.from(new Set(activeIds)),
+      mintedPending,
+    };
   }
 
   private extractPlaceTypes(metadata: Record<string, unknown>): string[] {
@@ -349,7 +567,7 @@ export class PlaceCuisineExtractionService {
                  WHERE s.entity_id = e.entity_id
                    AND ${identityScope('s')}) AS forms
           FROM core_entities e
-         WHERE e.type = 'restaurant_attribute'::entity_type
+         WHERE e.type = 'place_attribute'::entity_type
            AND (
              e.name = ANY(${normalized}::text[])
              OR EXISTS (
@@ -551,23 +769,60 @@ export class PlaceCuisineExtractionService {
     return trimmed.length ? trimmed : null;
   }
 
-  /** Phase 4b: cuisine-LLM attribute claims -> evidence substrate. */
-  private async recordCuisineEvidence(
+  /**
+   * Phase 4b: this lane's claims -> the rebuildable evidence substrate.
+   * Two source classes, one writer: 'cuisine_llm' (cuisines — the shipped
+   * class, unchanged) and 'editorial_llm' (S4 venue attributes — its own
+   * class so this lane can delete/rewrite its attribute claims without
+   * touching any other writer's rows, the same ownership contract
+   * projection-rebuild has over 'reddit_evidence').
+   *
+   * `replace: true` (a fresh or fingerprint-changed extraction) deletes the
+   * restaurant's rows in BOTH lane-owned classes first, so a re-extraction
+   * corrects instead of accumulating; `replace: false` (carry-forward) is
+   * additive + skipDuplicates.
+   */
+  private async recordEvidence(
     placeId: string,
-    attributeIds: string[],
+    cuisineAttributeIds: string[],
+    editorialAttributeIds: string[],
+    options: { replace: boolean },
   ): Promise<void> {
-    const ids = Array.from(new Set(attributeIds.filter(Boolean)));
-    if (!placeId || !ids.length) return;
+    if (!placeId) return;
+    const cuisineIds = Array.from(new Set(cuisineAttributeIds.filter(Boolean)));
+    const editorialIds = Array.from(
+      new Set(editorialAttributeIds.filter(Boolean)),
+    );
+    if (!options.replace && !cuisineIds.length && !editorialIds.length) return;
     try {
-      await this.prisma.placeAttributeEvidence.createMany({
-        data: ids.map((attributeId) => ({
+      if (options.replace) {
+        await this.prisma.placeAttributeEvidence.deleteMany({
+          where: {
+            placeId,
+            sourceClass: { in: ['cuisine_llm', 'editorial_llm'] },
+          },
+        });
+      }
+      const data = [
+        ...cuisineIds.map((attributeId) => ({
           placeId,
           attributeId,
           sourceClass: 'cuisine_llm',
           observations: 1,
         })),
-        skipDuplicates: true,
-      });
+        ...editorialIds.map((attributeId) => ({
+          placeId,
+          attributeId,
+          sourceClass: 'editorial_llm',
+          observations: 1,
+        })),
+      ];
+      if (data.length) {
+        await this.prisma.placeAttributeEvidence.createMany({
+          data,
+          skipDuplicates: true,
+        });
+      }
     } catch (error) {
       this.logger.warn('Cuisine attribute evidence write failed', {
         operation: 'attribute_evidence_write',

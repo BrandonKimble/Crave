@@ -22,6 +22,11 @@ const DISH_KNOWLEDGE_RULE_RELEASES: readonly RuleRelease[] = [
     fingerprint: '6ed39bb6a8ba',
     note: 'The timestamp-era text, ledgered as-is: identity-modifier test + world-knowledge-never-testimony law. Existing stamps are backfilled to this version, so nothing comes due from the move itself.',
   },
+  {
+    version: 2,
+    fingerprint: 'c2df681bee2a',
+    note: 'S4 knowledge widening (2026-08-26): the response gains a `cuisines` facet per dish — the cooking tradition(s) the dish NAME itself entails (TRADITION TEST), stored as canonical facet=cuisine attribute ids in knowledge_cuisines. Re-opens every v1 stamp (the whole dish population owes a cuisine hearing).',
+  },
 ];
 
 export const DISH_KNOWLEDGE_RULE: ResolvedPromptRule = resolvePromptRule(

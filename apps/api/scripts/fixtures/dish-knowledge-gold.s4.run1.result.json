@@ -1,0 +1,677 @@
+[
+  {
+    "id": "identity-modifier-vegan",
+    "why": "THE IDENTITY-MODIFIER TEST: the modifier wins over the standard preparation — a wrong ingredient sends a hard-constraint diner to food they cannot eat.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "corn tortilla",
+              "pineapple",
+              "guajillo chili",
+              "achiote",
+              "mushroom"
+            ],
+            "aliases": [],
+            "cuisines": ["mexican"]
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "corn tortilla",
+              "pineapple",
+              "achiote",
+              "guajillo chili",
+              "onion",
+              "cilantro"
+            ],
+            "aliases": [],
+            "cuisines": ["mexican"]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "identity-modifier-white-pizza",
+    "why": "THE IDENTITY-MODIFIER TEST: 'white pizza' has no tomato sauce.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "pizza dough",
+              "mozzarella",
+              "ricotta",
+              "garlic",
+              "parmesan"
+            ],
+            "aliases": [],
+            "cuisines": ["italian", "american"]
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "pizza dough",
+              "mozzarella",
+              "ricotta",
+              "garlic",
+              "olive oil"
+            ],
+            "aliases": [],
+            "cuisines": ["italian"]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "alias-exclusivity-marg",
+    "why": "THE EXCLUSIVITY TEST: 'marg' is claimed by both the cocktail and the pizza — an alias that fails exclusivity fuses two dishes in search.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "pizza dough",
+              "tomato sauce",
+              "mozzarella cheese",
+              "basil"
+            ],
+            "aliases": [],
+            "cuisines": ["italian"]
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "pizza dough",
+              "tomato sauce",
+              "mozzarella cheese",
+              "basil"
+            ],
+            "aliases": [],
+            "cuisines": ["italian"]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "alias-established-army-stew",
+    "why": "Keep-side of the exclusivity line: 'army stew' is an established co-name pointing at nothing but budae jjigae.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "spam",
+              "hot dog",
+              "kimchi",
+              "ramen noodle",
+              "tofu",
+              "baked beans",
+              "gochujang"
+            ],
+            "aliases": ["army stew"],
+            "cuisines": ["korean"]
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "spam",
+              "hot dog",
+              "kimchi",
+              "tofu",
+              "ramen noodle",
+              "gochujang",
+              "baked beans"
+            ],
+            "aliases": ["army stew"],
+            "cuisines": ["korean"]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "invention-worse-than-silence-combo",
+    "why": "Invention-worse-than-silence economics: an ambiguous name has no canonical contents — empty, never a plausible fabrication.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [],
+            "aliases": [],
+            "cuisines": []
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [],
+            "aliases": [],
+            "cuisines": []
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "invention-worse-than-silence-seasonal",
+    "why": "Same economics, second instance: 'seasonal salad' is whatever the kitchen has — an invented list is indistinguishable from a real one forever.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [],
+            "aliases": [],
+            "cuisines": []
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [],
+            "aliases": [],
+            "cuisines": []
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "no-invented-aliases-shortening",
+    "why": "Never invent or shorten a name yourself: 'chicken tikka masala' has no established shorthand to emit — 'ctm' style abbreviations must not be minted.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "udon noodle",
+              "egg",
+              "pecorino romano",
+              "guanciale",
+              "black pepper"
+            ],
+            "aliases": [],
+            "cuisines": ["japanese"]
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "udon noodle",
+              "egg",
+              "pecorino romano",
+              "guanciale",
+              "black pepper"
+            ],
+            "aliases": [],
+            "cuisines": ["japanese"]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "cuisine-birria-mexican",
+    "why": "S4 TRADITION TEST keep-side: 'birria' belongs to Mexican cooking unmistakably, everywhere it is served.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "goat",
+              "dried chili",
+              "garlic",
+              "clove",
+              "cinnamon",
+              "vinegar"
+            ],
+            "aliases": [],
+            "cuisines": ["mexican"]
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "goat",
+              "dried chili",
+              "garlic",
+              "clove",
+              "cumin",
+              "cinnamon"
+            ],
+            "aliases": [],
+            "cuisines": ["mexican"]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "cuisine-shared-name-empty",
+    "why": "S4 reject-side: 'fried chicken' is shared across traditions — names NO tradition; empty is the cheap error.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": ["chicken", "flour", "buttermilk"],
+            "aliases": [],
+            "cuisines": []
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": ["chicken", "flour", "egg", "buttermilk"],
+            "aliases": [],
+            "cuisines": []
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "cuisine-identity-modifier-kfc",
+    "why": "S4: identity modifiers govern — 'korean fried chicken' commits to korean even though the bare name is shared.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "chicken",
+              "cornstarch",
+              "flour",
+              "ginger",
+              "garlic",
+              "soy sauce"
+            ],
+            "aliases": [],
+            "cuisines": ["korean"]
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "chicken",
+              "flour",
+              "cornstarch",
+              "soy sauce",
+              "ginger",
+              "garlic"
+            ],
+            "aliases": [],
+            "cuisines": ["korean"]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "cuisine-granularity-mapo-tofu",
+    "why": "S4 granularity: the prompt's own example — 'mapo tofu' names the Sichuan repertoire; 'sichuan' must be emitted (a broader 'chinese' beside it is permitted only as a defensible second level, so it is not pinned either way).",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "tofu",
+              "ground pork",
+              "doubanjiang",
+              "sichuan peppercorn",
+              "fermented black beans",
+              "scallion"
+            ],
+            "aliases": [],
+            "cuisines": ["sichuan", "chinese"]
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "tofu",
+              "ground pork",
+              "doubanjiang",
+              "sichuan peppercorn",
+              "ginger",
+              "garlic",
+              "scallion"
+            ],
+            "aliases": [],
+            "cuisines": ["sichuan", "chinese"]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "cuisine-budae-jjigae-korean",
+    "why": "S4: the prompt's own keep-side example — 'budae jjigae' -> korean; the tradition travels with the name.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "spam",
+              "hot dog",
+              "kimchi",
+              "ramen noodle",
+              "tofu",
+              "baked beans",
+              "gochujang"
+            ],
+            "aliases": ["army stew"],
+            "cuisines": ["korean"]
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "spam",
+              "hot dog",
+              "kimchi",
+              "tofu",
+              "ramen noodle",
+              "gochujang",
+              "baked beans"
+            ],
+            "aliases": ["army stew"],
+            "cuisines": ["korean"]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "cuisine-diet-never-tradition",
+    "why": "S4: a diet word is never a tradition — 'vegan al pastor taco' is Mexican food; 'vegan' must not appear in cuisines.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "corn tortilla",
+              "pineapple",
+              "guajillo chili",
+              "achiote",
+              "mushroom"
+            ],
+            "aliases": [],
+            "cuisines": ["mexican"]
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [
+              "corn tortilla",
+              "pineapple",
+              "achiote",
+              "guajillo chili",
+              "onion",
+              "cilantro"
+            ],
+            "aliases": [],
+            "cuisines": ["mexican"]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "cuisine-ambiguous-name-empty",
+    "why": "S4: an ambiguous menu label entails no tradition — same silence economics as ingredients.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [],
+            "aliases": [],
+            "cuisines": []
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": [],
+            "aliases": [],
+            "cuisines": []
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "standard-prep-bec",
+    "why": "Keep-side control: the standard preparation and the one established alias both come through.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": ["bacon", "egg", "cheese", "bread"],
+            "aliases": ["bec"],
+            "cuisines": ["american"]
+          }
+        ]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "dishes": [
+          {
+            "index": 0,
+            "ingredients": ["bacon", "egg", "cheese", "bread"],
+            "aliases": ["bec"],
+            "cuisines": []
+          }
+        ]
+      }
+    }
+  }
+]

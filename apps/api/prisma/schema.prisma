@@ -59,6 +59,12 @@ model Entity {
   /// (dish-knowledge-rule.ts ledger). NULL only when never synthesized; the
   /// sweep re-offers rows stamped below the current version (P7, 2026-08-17).
   knowledgePromptVersion              Int?                          @map("knowledge_prompt_version")
+  /// KNOWLEDGE TIER (food entities only): canonical facet='cuisine'
+  /// place_attribute entity ids the dish NAME itself entails ("birria" ->
+  /// mexican). Written by the dish-knowledge pass under the same version
+  /// ledger as canonicalIngredients; the grain-bridge projection stamps
+  /// these onto each (restaurant, dish) row's food_attributes (S4).
+  knowledgeCuisines                   String[]                      @default([]) @map("knowledge_cuisines") @db.Uuid
   nameEmbedding                       Unsupported("vector(768)")?   @map("name_embedding")
   nameEmbeddingStale                  Boolean                       @default(false) @map("name_embedding_stale")
   placeAttributes                String[]                      @default([]) @map("restaurant_attributes") @db.Uuid
@@ -322,6 +328,12 @@ model Connection {
   itemId              String                  @map("food_id") @db.Uuid
   categories          String[]                @default([]) @db.Uuid
   itemAttributes      String[]                @default([]) @map("food_attributes") @db.Uuid
+  /// GRAIN BRIDGE stamp (S4): the dish-knowledge rule version whose
+  /// knowledge_cuisines this row's food_attributes last absorbed. NULL =
+  /// never projected. The reconciler re-projects rows whose stamp differs
+  /// from the food entity's knowledge_prompt_version — derived from state,
+  /// never event-fired.
+  cuisineProjectionVersion Int?               @map("cuisine_projection_version")
   /// SOURCE-FAITHFUL ingredient entity ids for THIS restaurant's dish (the
   /// evidence tier; canonical dish-level ingredients live on the food entity).
   ingredients         String[]                @default([]) @db.Uuid

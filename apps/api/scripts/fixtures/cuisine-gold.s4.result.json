@@ -1,0 +1,362 @@
+[
+  {
+    "id": "tradition-from-unmistakable-dishes",
+    "why": "TRADITION TEST keep-side: dishes pointing at ONE tradition unmistakably yield that tradition.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "cuisines": ["japanese"],
+        "attributes": ["counter service", "late night"]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "cuisines": ["japanese"],
+        "attributes": ["counter service", "late-night"]
+      }
+    }
+  },
+  {
+    "id": "format-is-not-a-cuisine",
+    "why": "A venue format ('steakhouse') is not a cooking tradition — the old prompt's example-defined list invites emitting it.",
+    "live": {
+      "passes": 0,
+      "of": 3,
+      "verdict": "FAIL",
+      "failures": ["FORBIDDEN cuisine \"steakhouse\""],
+      "sample": {
+        "cuisines": ["steakhouse"],
+        "attributes": ["dry-aged cuts"]
+      }
+    },
+    "candidate": {
+      "passes": 0,
+      "of": 3,
+      "verdict": "FAIL",
+      "failures": ["FORBIDDEN cuisine \"steakhouse\""],
+      "sample": {
+        "cuisines": ["steakhouse"],
+        "attributes": []
+      }
+    }
+  },
+  {
+    "id": "diet-is-not-a-cuisine",
+    "why": "A diet is not a cuisine; the tradition underneath it is. A vegan Thai place is thai.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "cuisines": ["thai"],
+        "attributes": ["vegan"]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "cuisines": ["thai"],
+        "attributes": ["vegan"]
+      }
+    }
+  },
+  {
+    "id": "quality-posture-empty",
+    "why": "Error economics: 'farm-to-table seasonal' supports no tradition — empty is the cheap error.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "cuisines": [],
+        "attributes": ["farm-to-table"]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "cuisines": [],
+        "attributes": []
+      }
+    }
+  },
+  {
+    "id": "fusion-named-tradition",
+    "why": "A named diasporic/fusion tradition passes ('tex-mex'); shared dishes alone would not.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "cuisines": ["tex-mex"],
+        "attributes": []
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "cuisines": ["tex-mex"],
+        "attributes": []
+      }
+    }
+  },
+  {
+    "id": "granularity-level-committed",
+    "why": "Granularity: the text commits to Sichuan, so emit sichuan — not also the broader tradition it belongs to.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "cuisines": ["sichuan"],
+        "attributes": []
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "cuisines": ["sichuan"],
+        "attributes": []
+      }
+    }
+  },
+  {
+    "id": "shared-dishes-no-tradition",
+    "why": "Dishes shared across traditions ('fried chicken', 'bbq') name no single tradition — the reject-side of dish inference.",
+    "live": {
+      "passes": 0,
+      "of": 3,
+      "verdict": "FAIL",
+      "failures": ["expected EMPTY cuisines, got: american"],
+      "sample": {
+        "cuisines": ["american"],
+        "attributes": ["counter service"]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "cuisines": [],
+        "attributes": ["food truck"]
+      }
+    }
+  },
+  {
+    "id": "format-brunch-empty",
+    "why": "A meal format ('all-day brunch cafe') is not a tradition.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "cuisines": [],
+        "attributes": ["all-day brunch"]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "cuisines": [],
+        "attributes": ["brunch"]
+      }
+    }
+  },
+  {
+    "id": "attr-communal-tables-real-cantina",
+    "why": "S4 FILTER TEST keep-side on a REAL stored editorial: 'communal tables' describes one definite filterable thing; the cuisine rides alongside.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "cuisines": ["mexican"],
+        "attributes": ["communal tables"]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "cuisines": ["mexican"],
+        "attributes": ["communal tables"]
+      }
+    }
+  },
+  {
+    "id": "attr-outdoor-seating-real-winebar",
+    "why": "S4 keep-side, real editorial: 'outdoor seating' in its plainest common form; 'vino & bites' supports no tradition.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "cuisines": [],
+        "attributes": ["wine bar", "outdoor seating"]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "cuisines": [],
+        "attributes": ["wine bar", "outdoor seating"]
+      }
+    }
+  },
+  {
+    "id": "attr-self-serve-real-chain",
+    "why": "S4 keep-side, real editorial: 'self-serve' is a definite service format a diner can filter by; frozen yogurt names no tradition.",
+    "live": {
+      "passes": 0,
+      "of": 3,
+      "verdict": "FAIL",
+      "failures": ["expected EMPTY cuisines, got: frozen yogurt"],
+      "sample": {
+        "cuisines": ["frozen yogurt"],
+        "attributes": ["self-serve"]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "cuisines": [],
+        "attributes": ["self-serve"]
+      }
+    }
+  },
+  {
+    "id": "attr-no-frills-rejected-real",
+    "why": "S4 reject-side, real editorial: 'no-frills' and 'popular' mean nothing definite severed from the sentence / judge rather than describe — must NOT emit.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "cuisines": ["chinese"],
+        "attributes": ["counter service"]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "cuisines": ["chinese"],
+        "attributes": []
+      }
+    }
+  },
+  {
+    "id": "attr-chic-rejected-patio-kept-real",
+    "why": "S4 both sides in one real editorial: 'patio' passes THE FILTER TEST; 'chic' is a vibe-word that means nothing definite alone.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "cuisines": ["asian fusion"],
+        "attributes": ["patio"]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "cuisines": ["asian fusion"],
+        "attributes": ["patio"]
+      }
+    }
+  },
+  {
+    "id": "attr-judges-rejected-real-bbq",
+    "why": "S4 reject-side, real editorial: 'acclaimed' judges, 'no-frills' is vibe; 'communal tables' still comes through; shared-dish 'bbq' names no tradition.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "cuisines": ["barbecue"],
+        "attributes": ["communal tables"]
+      }
+    },
+    "candidate": {
+      "passes": 0,
+      "of": 3,
+      "verdict": "FAIL",
+      "failures": ["FORBIDDEN cuisine \"bbq\""],
+      "sample": {
+        "cuisines": ["bbq"],
+        "attributes": ["communal tables"]
+      }
+    }
+  },
+  {
+    "id": "attr-beloved-rejected",
+    "why": "S4 reject-side: 'beloved' states how good, not what is — the check: it could not describe a BAD restaurant.",
+    "live": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "cuisines": ["steakhouse"],
+        "attributes": ["dry-aged cuts"]
+      }
+    },
+    "candidate": {
+      "passes": 3,
+      "of": 3,
+      "verdict": "PASS",
+      "failures": [],
+      "sample": {
+        "cuisines": ["steakhouse"],
+        "attributes": []
+      }
+    }
+  }
+]

@@ -17,6 +17,12 @@ export interface DishKnowledgeSummary {
   ingredientsLinked: number;
   ingredientEntitiesCreated: number;
   aliasesAdded: number;
+  /** Cuisine facet (S4): canonical cuisine attribute ids linked to dishes. */
+  cuisinesLinked: number;
+  cuisineEntitiesCreated: number;
+  /** Grain bridge: (restaurant, dish) rows whose food_attributes were
+   *  re-projected from the dish entity's knowledge cuisines. */
+  connectionsProjected: number;
 }
 
 /**
@@ -101,6 +107,9 @@ export class DishKnowledgeSynthesisService {
       ingredientsLinked: 0,
       ingredientEntitiesCreated: 0,
       aliasesAdded: 0,
+      cuisinesLinked: 0,
+      cuisineEntitiesCreated: 0,
+      connectionsProjected: 0,
     };
 
     const dishes = await this.prisma.entity.findMany({
@@ -124,6 +133,13 @@ export class DishKnowledgeSynthesisService {
       take: limit,
     });
     if (!dishes.length) {
+      // Reconciler law: the grain bridge is derived from state (entity
+      // version vs connection stamp), so it runs even when no dish is due —
+      // a crash between a past synthesis and its projection leaves owed
+      // rows that only a state-driven pass can find.
+      if (!dryRun) {
+        summary.connectionsProjected = await this.projectKnowledgeCuisines();
+      }
       return summary;
     }
 
@@ -189,7 +205,11 @@ export class DishKnowledgeSynthesisService {
         });
         continue;
       }
-      let knowledge: { ingredients: string[]; aliases: string[] }[];
+      let knowledge: {
+        ingredients: string[];
+        aliases: string[];
+        cuisines: string[];
+      }[];
       try {
         knowledge = this.llmService.parseDishKnowledgeResponse(
           text,
@@ -212,17 +232,23 @@ export class DishKnowledgeSynthesisService {
 
       for (let i = 0; i < batch.length; i += 1) {
         const dish = batch[i];
-        const result = knowledge[i] ?? { ingredients: [], aliases: [] };
+        const result = knowledge[i] ?? {
+          ingredients: [],
+          aliases: [],
+          cuisines: [],
+        };
 
         if (dryRun) {
           this.logger.info('Would synthesize dish knowledge', {
             dish: dish.name,
             ingredients: result.ingredients,
             aliases: result.aliases,
+            cuisines: result.cuisines,
           });
           summary.dishesProcessed += 1;
           summary.ingredientsLinked += result.ingredients.length;
           summary.aliasesAdded += result.aliases.length;
+          summary.cuisinesLinked += result.cuisines.length;
           continue;
         }
 
@@ -231,6 +257,18 @@ export class DishKnowledgeSynthesisService {
           const { entityId, created } = await this.ensureIngredientEntity(name);
           ingredientIds.push(entityId);
           if (created) summary.ingredientEntitiesCreated += 1;
+        }
+
+        // Cuisine facet (S4): resolve each tradition name onto THE canonical
+        // facet='cuisine' place_attribute row — the same canonical entities
+        // core_restaurant_attribute_evidence points at — so dish-side and
+        // restaurant-side cuisine share one vocabulary.
+        const cuisineIds: string[] = [];
+        for (const name of result.cuisines) {
+          const resolved = await this.ensureCuisineAttributeEntity(name);
+          if (!resolved) continue;
+          cuisineIds.push(resolved.entityId);
+          if (resolved.created) summary.cuisineEntitiesCreated += 1;
         }
 
         // Established shorthand, minus the dish's own name. NOTE there is no
@@ -272,6 +310,7 @@ export class DishKnowledgeSynthesisService {
           where: { entityId: dish.entityId },
           data: {
             canonicalIngredients: Array.from(new Set(ingredientIds)),
+            knowledgeCuisines: Array.from(new Set(cuisineIds)),
             knowledgeSynthesizedAt: new Date(),
             knowledgePromptVersion: DISH_KNOWLEDGE_RULE.version,
           },
@@ -279,7 +318,12 @@ export class DishKnowledgeSynthesisService {
         summary.dishesProcessed += 1;
         summary.ingredientsLinked += ingredientIds.length;
         summary.aliasesAdded += newAliases.length;
+        summary.cuisinesLinked += cuisineIds.length;
       }
+    }
+
+    if (!dryRun) {
+      summary.connectionsProjected = await this.projectKnowledgeCuisines();
     }
 
     this.logger.info('Dish knowledge synthesis pass complete', {
@@ -287,6 +331,132 @@ export class DishKnowledgeSynthesisService {
       ...(summary as unknown as Record<string, unknown>),
     });
     return summary;
+  }
+
+  /**
+   * THE GRAIN BRIDGE (S4): dish-side cuisine is KNOWLEDGE on the food
+   * ENTITY; search filters at (restaurant, dish) grain via
+   * core_restaurant_items.food_attributes. This projection stamps each
+   * connection's food_attributes with its dish entity's knowledge cuisines.
+   *
+   * Reconciler-shaped, never event-fired: due = the connection's
+   * cuisine_projection_version differs from the dish's
+   * knowledge_prompt_version. SET-REPLACEMENT within the cuisine facet:
+   * every facet='cuisine' id NOT in the current knowledge set is stripped,
+   * the knowledge set is unioned in, non-cuisine attribute ids pass through
+   * untouched — so a corrected synthesis removes the wrong cuisine instead
+   * of accumulating beside it. Idempotent: a second run finds nothing due.
+   */
+  async projectKnowledgeCuisines(): Promise<number> {
+    const updated = await this.prisma.$executeRaw`
+      WITH cuisine_vocab AS (
+        SELECT entity_id FROM core_entities
+         WHERE type = 'place_attribute'::entity_type
+           AND facet = 'cuisine'
+      ),
+      due AS (
+        SELECT c.connection_id,
+               e.knowledge_cuisines,
+               e.knowledge_prompt_version
+          FROM core_restaurant_items c
+          JOIN core_entities e ON e.entity_id = c.food_id
+         WHERE e.knowledge_prompt_version IS NOT NULL
+           AND c.cuisine_projection_version IS DISTINCT FROM e.knowledge_prompt_version
+      )
+      UPDATE core_restaurant_items c
+         SET food_attributes = (
+               SELECT COALESCE(array_agg(DISTINCT x), ARRAY[]::uuid[])
+                 FROM unnest(c.food_attributes || d.knowledge_cuisines) AS x
+                WHERE x = ANY(d.knowledge_cuisines)
+                   OR NOT EXISTS (
+                        SELECT 1 FROM cuisine_vocab v WHERE v.entity_id = x
+                      )
+             ),
+             cuisine_projection_version = d.knowledge_prompt_version
+        FROM due d
+       WHERE c.connection_id = d.connection_id`;
+    if (updated > 0) {
+      this.logger.info('Knowledge-cuisine grain bridge projected', {
+        connections: updated,
+      });
+    }
+    return updated;
+  }
+
+  /**
+   * Cuisine vocabulary resolves onto THE canonical facet='cuisine'
+   * place_attribute rows (class ② of the 2026-08 data audit) — matched on
+   * name, identity key, or any banked recall surface (fold, both sides),
+   * exactly like the ingredient path below. A tradition the vocabulary has
+   * never seen mints an ACTIVE facet='cuisine' row (the shipped cuisine
+   * lane's shape — cuisines are a curated closed-ish set, not quarantined
+   * collection vocabulary).
+   */
+  private async ensureCuisineAttributeEntity(
+    name: string,
+  ): Promise<{ entityId: string; created: boolean } | null> {
+    const normalized = name.trim().toLowerCase().replace(/\s+/g, ' ');
+    if (normalized.length < 2) return null;
+    const folded = canonicalFold(normalized);
+    const [existing] = await this.prisma.$queryRaw<
+      Array<{ entity_id: string }>
+    >`
+      SELECT e.entity_id
+        FROM core_entities e
+       WHERE e.type = 'place_attribute'::entity_type
+         AND e.status = 'active'::entity_status
+         AND (
+           e.name = ${normalized}
+           OR e.identity_key = ${folded}
+           OR EXISTS (
+             SELECT 1 FROM entity_surface s
+              WHERE s.entity_id = e.entity_id
+                AND ${identityScope('s')}
+                AND s.form_folded = ${folded}
+           )
+         )
+       -- Prefer the facet-tagged canonical when both a cuisine row and an
+       -- ordinary attribute answer to the same fold.
+       ORDER BY (e.facet = 'cuisine') DESC NULLS LAST
+       LIMIT 1`;
+    if (existing) {
+      return { entityId: existing.entity_id, created: false };
+    }
+    try {
+      const created = await this.prisma.entity.create({
+        data: {
+          name: normalized,
+          type: EntityType.place_attribute,
+          facet: 'cuisine',
+          ...identityInsertData(normalized, EntityType.place_attribute),
+        },
+        select: { entityId: true },
+      });
+      await this.prisma.$transaction((tx) =>
+        addSurfaces(
+          tx,
+          created.entityId,
+          [{ form: normalized, source: 'cuisine' as const }],
+          { markEmbeddingStale: false },
+        ),
+      );
+      return { entityId: created.entityId, created: true };
+    } catch {
+      // uq_attribute_identity_key: the find-then-create race loses loudly —
+      // refetch the winner.
+      const winner = await this.prisma.entity.findFirst({
+        where: {
+          type: EntityType.place_attribute,
+          name: normalized,
+          status: EntityStatus.active,
+        },
+        select: { entityId: true },
+      });
+      if (winner) {
+        return { entityId: winner.entityId, created: false };
+      }
+      return null;
+    }
   }
 
   /** Ingredient vocabulary self-provisions, same normalization as the

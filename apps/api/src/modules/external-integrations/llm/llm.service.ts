@@ -1370,7 +1370,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   ): Promise<LLMCuisineExtractionResult> {
     const trimmedSummary = summary?.trim() ?? '';
     if (!trimmedSummary) {
-      return { cuisines: [] };
+      return { cuisines: [], attributes: [] };
     }
 
     this.logger.info('Extracting cuisines from summary', {
@@ -1782,10 +1782,13 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
    */
   async synthesizeDishKnowledgeBatch(
     dishes: { name: string }[],
-  ): Promise<{ ingredients: string[]; aliases: string[] }[]> {
+  ): Promise<
+    { ingredients: string[]; aliases: string[]; cuisines: string[] }[]
+  > {
     const empty = dishes.map(() => ({
       ingredients: [] as string[],
       aliases: [] as string[],
+      cuisines: [] as string[],
     }));
     if (!dishes.length) return [];
 
@@ -1848,10 +1851,11 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   parseDishKnowledgeResponse(
     content: string,
     count: number,
-  ): { ingredients: string[]; aliases: string[] }[] {
+  ): { ingredients: string[]; aliases: string[]; cuisines: string[] }[] {
     const results = Array.from({ length: count }, () => ({
       ingredients: [] as string[],
       aliases: [] as string[],
+      cuisines: [] as string[],
     }));
     const start = content.indexOf('{');
     const parsed = JSON.parse(start >= 0 ? content.slice(start) : content) as {
@@ -1859,6 +1863,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         index?: unknown;
         ingredients?: unknown;
         aliases?: unknown;
+        cuisines?: unknown;
       }[];
     };
     for (const item of parsed.dishes ?? []) {
@@ -1878,6 +1883,9 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       results[idx] = {
         ingredients: clean(item.ingredients).slice(0, 10),
         aliases: clean(item.aliases).slice(0, 4),
+        // Cuisine facet (S4): a name commits to at most a couple of
+        // traditions; anything past 3 is the model stretching.
+        cuisines: clean(item.cuisines).slice(0, 3),
       };
     }
     return results;
@@ -2916,8 +2924,14 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     }
 
     const cuisines = this.coerceStringArray(parsed.cuisines);
+    // S4 widening: `attributes` is required by the enforced schema, but the
+    // decode stays lenient — an absent/invalid array coerces to [] (the
+    // cheap error), never a parse failure.
+    const attributes = this.coerceStringArray(
+      (parsed as unknown as Record<string, unknown>).attributes,
+    );
 
-    return { cuisines };
+    return { cuisines, attributes };
   }
 
   private coerceStringArray(value: unknown): string[] {

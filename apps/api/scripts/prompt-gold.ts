@@ -116,10 +116,14 @@ type GoldCase = {
     notAliases?: string[];
     emptyIngredients?: boolean;
     emptyAliases?: boolean;
-    /** cuisine */
+    /** cuisine (venue-facts lane) + dish-knowledge cuisine facet */
     cuisines?: string[];
     notCuisines?: string[];
     emptyCuisines?: boolean;
+    /** cuisine lane S4: venue attributes (THE FILTER TEST). */
+    attributes?: string[];
+    notAttributes?: string[];
+    emptyAttributes?: boolean;
     /** attribute-placement */
     placement?: 'match' | 'new' | 'reject';
     matchCandidateId?: string;
@@ -288,7 +292,9 @@ function grade(
   } else if (kind === 'dish-knowledge') {
     const first = (
       Array.isArray(raw.dishes) ? (raw.dishes as unknown[])[0] : undefined
-    ) as { ingredients?: unknown; aliases?: unknown } | undefined;
+    ) as
+      | { ingredients?: unknown; aliases?: unknown; cuisines?: unknown }
+      | undefined;
     const list = (value: unknown): string[] =>
       Array.isArray(value)
         ? value.filter((v): v is string => typeof v === 'string').map(norm)
@@ -315,6 +321,18 @@ function grade(
       );
     if (expect.emptyAliases && aliases.length)
       failures.push(`expected EMPTY aliases, got: ${aliases.join(', ')}`);
+    // S4 cuisine facet: the same expectation fields the cuisine lane uses.
+    const dishCuisines = list(first?.cuisines);
+    for (const want of expect.cuisines ?? [])
+      if (!dishCuisines.includes(norm(want)))
+        failures.push(
+          `missing cuisine "${want}" (got: ${dishCuisines.join(', ') || 'nothing'})`,
+        );
+    for (const banned of expect.notCuisines ?? [])
+      if (dishCuisines.includes(norm(banned)))
+        failures.push(`FORBIDDEN cuisine "${banned}"`);
+    if (expect.emptyCuisines && dishCuisines.length)
+      failures.push(`expected EMPTY cuisines, got: ${dishCuisines.join(', ')}`);
   } else if (kind === 'cuisine') {
     const cuisines = (
       Array.isArray(raw.cuisines) ? (raw.cuisines as unknown[]) : []
@@ -331,6 +349,22 @@ function grade(
         failures.push(`FORBIDDEN cuisine "${banned}"`);
     if (expect.emptyCuisines && cuisines.length)
       failures.push(`expected EMPTY cuisines, got: ${cuisines.join(', ')}`);
+    // S4 venue-facts widening: the attributes array (THE FILTER TEST).
+    const attrs = (
+      Array.isArray(raw.attributes) ? (raw.attributes as unknown[]) : []
+    )
+      .filter((v): v is string => typeof v === 'string')
+      .map(norm);
+    for (const want of expect.attributes ?? [])
+      if (!attrs.includes(norm(want)))
+        failures.push(
+          `missing attribute "${want}" (got: ${attrs.join(', ') || 'nothing'})`,
+        );
+    for (const banned of expect.notAttributes ?? [])
+      if (attrs.includes(norm(banned)))
+        failures.push(`FORBIDDEN attribute "${banned}"`);
+    if (expect.emptyAttributes && attrs.length)
+      failures.push(`expected EMPTY attributes, got: ${attrs.join(', ')}`);
   } else if (kind === 'attribute-placement') {
     const decision = normEnum(raw.decision);
     if (expect.placement && decision !== expect.placement)

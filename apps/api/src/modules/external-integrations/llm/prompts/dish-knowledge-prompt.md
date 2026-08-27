@@ -34,7 +34,26 @@ Only shorthand that is ESTABLISHED in real use. Never invent, shorten,
 pluralize, or translate a name yourself. Empty is the expected default —
 most dishes have no established co-name.
 
+## 3. `cuisines` — the cooking tradition(s) the dish name itself belongs to
+
+**THE TRADITION TEST — is this the name of a cooking tradition a diner
+would give when asked "what kind of food is this?"** Name a tradition only
+when the dish name AS NAMED belongs to it unmistakably, everywhere it is
+served: "birria" → `mexican`, "budae jjigae" → `korean`, "carbonara" →
+`italian` — the tradition travels with the name ("birria at a Korean
+spot" is still Mexican food). A name shared across traditions ("fried
+chicken", "dumpling", "bbq", "noodle soup") names NO tradition — empty.
+Identity modifiers govern here too: "korean fried chicken" → `korean`.
+Emit at the level the NAME commits to ("mapo tofu" → `sichuan` and
+`chinese` only if you would defend both as what a diner would say; when
+one level is the honest answer, emit only it), using the one canonical
+everyday spelling — `mexican`, never "mex" or "mexican food". A diet,
+format, or venue type is never a tradition. **Empty is the cheap error**:
+an unnamed tradition can be asked again; a wrong one files every
+restaurant serving this dish under a filter where the tap disappoints.
+
 ## Output
 
 Return JSON only, matching the enforced output schema:
-`{"dishes":[{"index","ingredients","aliases"}]}` covering every input index.
+`{"dishes":[{"index","ingredients","aliases","cuisines"}]}` covering every
+input index.

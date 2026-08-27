@@ -39,9 +39,13 @@ describe('cuisine extraction does not stamp "no evidence" as done (F4948)', () =
         findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn(),
       },
-      placeAttributeEvidence: { createMany: jest.fn() },
+      placeAttributeEvidence: {
+        createMany: jest.fn(),
+        deleteMany: jest.fn(),
+      },
       $transaction: jest.fn(),
     };
+    const attributeOntologyQueue = { queueAdjudication: jest.fn() };
     const llmService = {
       extractCuisineFromSummary: opts.extractCuisineFromSummary,
     };
@@ -55,6 +59,7 @@ describe('cuisine extraction does not stamp "no evidence" as done (F4948)', () =
       prisma as never,
       llmService as never,
       aliasManagement as never,
+      attributeOntologyQueue as never,
       logger as never,
     );
     return { service, prisma, llmService };
@@ -105,7 +110,7 @@ describe('cuisine extraction does not stamp "no evidence" as done (F4948)', () =
       .mockResolvedValue({});
     const extractCuisineFromSummary = jest
       .fn()
-      .mockResolvedValue({ cuisines: ['thai'] });
+      .mockResolvedValue({ cuisines: ['thai'], attributes: [] });
     const withSummary = {
       ...NO_EVIDENCE_ENTITY,
       placeMetadata: {
@@ -144,7 +149,7 @@ describe('cuisine extraction does not stamp "no evidence" as done (F4948)', () =
       .mockResolvedValue({});
     const extractCuisineFromSummary = jest
       .fn()
-      .mockResolvedValue({ cuisines: [] });
+      .mockResolvedValue({ cuisines: [], attributes: [] });
     const withSummary = {
       ...NO_EVIDENCE_ENTITY,
       placeMetadata: {
