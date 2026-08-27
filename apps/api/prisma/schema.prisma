@@ -59,6 +59,9 @@ model Entity {
   /// (dish-knowledge-rule.ts ledger). NULL only when never synthesized; the
   /// sweep re-offers rows stamped below the current version (P7, 2026-08-17).
   knowledgePromptVersion              Int?                          @map("knowledge_prompt_version")
+  /// K4: the dish name this row's knowledge synthesis answered for — the
+  /// name is a synthesis INPUT, so a renamed dish is due again.
+  knowledgeSynthesizedName            String?                       @map("knowledge_synthesized_name")
   /// KNOWLEDGE TIER (food entities only): canonical facet='cuisine'
   /// place_attribute entity ids the dish NAME itself entails ("birria" ->
   /// mexican). Written by the dish-knowledge pass under the same version

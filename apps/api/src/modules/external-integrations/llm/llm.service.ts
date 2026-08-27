@@ -54,6 +54,8 @@ import {
   LLMModelInput,
   LLMProcessingInput,
   LLMOutputStructure,
+  LLMPost,
+  LLMComment,
   LLMApiResponse,
   LLMSearchQueryAnalysis,
   LLMCuisineExtractionResult,
@@ -105,22 +107,24 @@ interface GeminiCacheEntry {
 
 type SearchQueryCacheLayer = 'memory' | 'redis';
 
-interface LightweightComment {
-  id: string;
-  content: string;
-  parent_id: string | null;
-}
+/**
+ * THE MODEL-FACING POST PROJECTION (redteam-l1 F5): derived from the sealed
+ * input shape with Pick, never hand-declared — so a field the prompt reads
+ * (the community-scope rule reads `subreddit`; dropping it silently
+ * disabled the rule, the v16-leak projection class) is a COMPILE ERROR to
+ * drop, not a runtime shape-sniff. This serializer is the one place that
+ * decides what the model sees.
+ */
+type LightweightComment = Pick<LLMComment, 'id' | 'content' | 'parent_id'>;
 
-interface LightweightPost {
-  id: string;
-  // The community-scope geography rule (prompt B.2) reads this; dropping it
-  // here silently disabled the rule — the v16-leak projection class.
-  subreddit: string | null;
-  title: string;
-  content: string;
+type LightweightPost = Pick<
+  LLMPost,
+  'id' | 'subreddit' | 'title' | 'content'
+> & {
+  /** Normalized: the chunker's optional flag becomes an explicit boolean. */
   extract_from_post: boolean;
   comments: LightweightComment[];
-}
+};
 
 interface SearchQueryRawResponse {
   places: unknown;
@@ -2449,10 +2453,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
 
       return {
         id: post.id,
-        subreddit:
-          'subreddit' in post && typeof post.subreddit === 'string'
-            ? post.subreddit
-            : null,
+        subreddit: post.subreddit,
         title: post.title,
         content: post.content,
         extract_from_post: Boolean(post.extract_from_post),

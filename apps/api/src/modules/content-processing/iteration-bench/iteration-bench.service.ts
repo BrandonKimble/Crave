@@ -540,11 +540,36 @@ export class IterationBenchService {
     // run's estimate basis (the v16 post-mortem law).
     const campaignId = (run.phaseState as { campaignId?: string }).campaignId;
     let actuals: { spentUsd: number } | undefined;
+    let contractRefusals:
+      | { total: number; byReason: Record<string, number> }
+      | undefined;
     if (campaignId) {
       const [campaign] = await this.prisma.$queryRaw<
         { spent: number }[]
       >`SELECT spent_micros::float8 / 1e6 AS spent FROM spend_campaigns WHERE campaign_id = ${campaignId}::uuid`;
       if (campaign) actuals = { spentUsd: campaign.spent };
+      // REFUSAL LIFECYCLE (redteam-l1 F4): close SUMMARIZES the campaign's
+      // banked observed-span refusals into the run row — the durable record
+      // — because the raw rows are campaign-scoped residue: they cascade
+      // away when compactSupersededRuns deletes the campaign's superseded
+      // extraction generation (prompt retired → runs compacted → refusals
+      // gone with them). The diff already read them during review; this is
+      // the count that outlives the rows.
+      const refusalRows = await this.prisma.$queryRaw<
+        { reason: string; n: number }[]
+      >`
+        SELECT f.reason, COUNT(*)::int AS n
+          FROM collection_extraction_contract_refusals f
+          JOIN collection_extraction_runs r
+            ON r.extraction_run_id = f.extraction_run_id
+         WHERE r.metadata->>'campaignId' = ${campaignId}
+         GROUP BY f.reason`;
+      contractRefusals = {
+        total: refusalRows.reduce((sum, row) => sum + row.n, 0),
+        byReason: Object.fromEntries(
+          refusalRows.map((row) => [row.reason, row.n]),
+        ),
+      };
     }
     await this.prisma.iterationRun.update({
       where: { runId },
@@ -555,6 +580,7 @@ export class IterationBenchService {
           ...(run.phaseState as Prisma.JsonObject),
           outcome: { outcome, at: new Date().toISOString() },
           ...(actuals ? { actuals } : {}),
+          ...(contractRefusals ? { contractRefusals } : {}),
         },
       },
     });

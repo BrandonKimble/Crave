@@ -10,6 +10,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { EmbeddingService } from '../external-integrations/llm/embedding.service';
 import { LLMAttributePlacementResult } from '../external-integrations/llm/llm.types';
+import {
+  ATTRIBUTE_ID_ARRAY_COLUMNS,
+  ATTRIBUTE_ID_SCALAR_SITES,
+} from './attribute-reference-registry';
 
 /** Attribute entity types this service canonicalizes. */
 export type AttributeEntityType = 'item_attribute' | 'place_attribute';
@@ -672,9 +676,10 @@ export class AttributeOntologyService {
    * (the default) the transaction is rolled back after running — verifying the
    * mechanics (and affected-row counts) against real data without persisting.
    *
-   * The merged/rejected attribute ids live in `core_restaurant_items.food_attributes`
-   * (food) or `core_entities.restaurant_attributes` (restaurant) — those are the
-   * only array columns that hold an attribute id, so re-pointing is type-scoped.
+   * The merged/rejected attribute ids are re-pointed/stripped at every site
+   * declared in attribute-reference-registry.ts — the registry (not this
+   * comment) is the exhaustiveness claim, and its scanner spec fails the
+   * build when a uuid[] column appears in the schema unclassified.
    */
   async applyPlan(
     plan: CanonicalizationPlan,
@@ -861,57 +866,95 @@ export class AttributeOntologyService {
     }
   }
 
-  /** Re-point a merged attribute id to its canonical in the type's array column. */
-  private repointMergeRefs(
+  /** Re-point a merged attribute id to its canonical at EVERY registered
+   *  reference site for the type (attribute-reference-registry.ts): each
+   *  uuid[] column via array_replace + DISTINCT collapse, and — for
+   *  place attributes — the evidence ledger's scalar rows, collapsed onto
+   *  any existing canonical row (observations summed; composite PK). */
+  private async repointMergeRefs(
     tx: Prisma.TransactionClient,
     type: AttributeEntityType,
     mergedId: string,
     canonicalId: string,
   ): Promise<number> {
-    if (type === 'item_attribute') {
-      return tx.$executeRawUnsafe(
-        `UPDATE core_restaurant_items
-         SET food_attributes = (
+    let count = 0;
+    for (const site of ATTRIBUTE_ID_ARRAY_COLUMNS[type]) {
+      count += await tx.$executeRawUnsafe(
+        `UPDATE ${site.table}
+         SET ${site.column} = (
            SELECT array_agg(DISTINCT e)
-           FROM unnest(array_replace(food_attributes, $1::uuid, $2::uuid)) e
+           FROM unnest(array_replace(${site.column}, $1::uuid, $2::uuid)) e
          )
-         WHERE $1::uuid = ANY(food_attributes)`,
+         WHERE $1::uuid = ANY(${site.column})`,
         mergedId,
         canonicalId,
       );
     }
-    return tx.$executeRawUnsafe(
-      `UPDATE core_entities
-       SET restaurant_attributes = (
-         SELECT array_agg(DISTINCT e)
-         FROM unnest(array_replace(restaurant_attributes, $1::uuid, $2::uuid)) e
-       )
-       WHERE $1::uuid = ANY(restaurant_attributes)`,
-      mergedId,
-      canonicalId,
-    );
+    if (ATTRIBUTE_ID_SCALAR_SITES[type].length > 0) {
+      // core_restaurant_attribute_evidence: (restaurant, attribute,
+      // source_class) is the PK, so first FOLD observations onto rows that
+      // already exist under the canonical id, then repoint the rest, then
+      // drop the folded leftovers. The ledger ends TRUE — no archived id
+      // survives to be resurrected by a projection.
+      count += await tx.$executeRawUnsafe(
+        `UPDATE core_restaurant_attribute_evidence c
+         SET observations = c.observations + m.observations
+         FROM core_restaurant_attribute_evidence m
+         WHERE m.attribute_id = $1::uuid
+           AND c.attribute_id = $2::uuid
+           AND c.restaurant_id = m.restaurant_id
+           AND c.source_class = m.source_class`,
+        mergedId,
+        canonicalId,
+      );
+      count += await tx.$executeRawUnsafe(
+        `UPDATE core_restaurant_attribute_evidence m
+         SET attribute_id = $2::uuid
+         WHERE m.attribute_id = $1::uuid
+           AND NOT EXISTS (
+             SELECT 1 FROM core_restaurant_attribute_evidence c
+             WHERE c.restaurant_id = m.restaurant_id
+               AND c.source_class = m.source_class
+               AND c.attribute_id = $2::uuid
+           )`,
+        mergedId,
+        canonicalId,
+      );
+      await tx.$executeRawUnsafe(
+        `DELETE FROM core_restaurant_attribute_evidence
+         WHERE attribute_id = $1::uuid`,
+        mergedId,
+      );
+    }
+    return count;
   }
 
-  /** Strip a rejected attribute id from the type's array column. */
-  private removeRejectRefs(
+  /** Strip a rejected attribute id from EVERY registered reference site for
+   *  the type — uuid[] columns via array_remove, and (place attributes) the
+   *  evidence ledger rows deleted outright, so a rejection is true in the
+   *  ledger instead of resting on the projection's active-only filter. */
+  private async removeRejectRefs(
     tx: Prisma.TransactionClient,
     type: AttributeEntityType,
     id: string,
   ): Promise<number> {
-    if (type === 'item_attribute') {
-      return tx.$executeRawUnsafe(
-        `UPDATE core_restaurant_items
-         SET food_attributes = array_remove(food_attributes, $1::uuid)
-         WHERE $1::uuid = ANY(food_attributes)`,
+    let count = 0;
+    for (const site of ATTRIBUTE_ID_ARRAY_COLUMNS[type]) {
+      count += await tx.$executeRawUnsafe(
+        `UPDATE ${site.table}
+         SET ${site.column} = array_remove(${site.column}, $1::uuid)
+         WHERE $1::uuid = ANY(${site.column})`,
         id,
       );
     }
-    return tx.$executeRawUnsafe(
-      `UPDATE core_entities
-       SET restaurant_attributes = array_remove(restaurant_attributes, $1::uuid)
-       WHERE $1::uuid = ANY(restaurant_attributes)`,
-      id,
-    );
+    if (ATTRIBUTE_ID_SCALAR_SITES[type].length > 0) {
+      count += await tx.$executeRawUnsafe(
+        `DELETE FROM core_restaurant_attribute_evidence
+         WHERE attribute_id = $1::uuid`,
+        id,
+      );
+    }
+    return count;
   }
 
   private chunk<T>(items: T[], size: number): T[][] {

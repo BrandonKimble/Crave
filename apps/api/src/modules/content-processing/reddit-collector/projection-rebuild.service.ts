@@ -2,6 +2,7 @@ import { Injectable, Inject, OnModuleInit } from '@nestjs/common';
 import { Connection, EntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
+import { derivePlaceAttributes as derivePlaceAttributesProjection } from './place-attribute-projection';
 import {
   ITEM_CATEGORY_EDGE_LOCK,
   itemCategoryEdgeDeleteSql,
@@ -718,33 +719,16 @@ export class ProjectionRebuildService implements OnModuleInit {
   }
 
   /**
-   * Phase 4b: `core_entities.restaurant_attributes` becomes a PROJECTION of
-   * the evidence table — the union of every source's live claims, filtered
-   * to ACTIVE attribute entities so archived vocabulary drops out on its
-   * own. Before this, the array was merge-only: it could never shrink, so a
-   * wrong attribute survived every re-extraction. Now it tracks the
-   * evidence, which is the system's law everywhere else.
+   * Phase 4b: `core_entities.restaurant_attributes` is a PROJECTION of the
+   * evidence table. The SQL lives in place-attribute-projection.ts (THE one
+   * writer, redteam-l2 K1) — shared with the enrichment lanes so their
+   * reruns correct the read column immediately, not on the next rebuild.
    */
   private async derivePlaceAttributes(
     tx: PrismaTransaction,
     placeIds: string[],
   ): Promise<void> {
-    if (!placeIds.length) return;
-    await tx.$executeRaw`
-      UPDATE core_entities r
-      SET restaurant_attributes = COALESCE(ev.attrs, ARRAY[]::uuid[])
-      FROM (
-        SELECT rid AS restaurant_id,
-               (SELECT array_agg(DISTINCT a.attribute_id)
-                FROM core_restaurant_attribute_evidence a
-                JOIN core_entities ae
-                  ON ae.entity_id = a.attribute_id AND ae.status = 'active'
-                WHERE a.restaurant_id = rid) AS attrs
-        FROM unnest(${placeIds}::uuid[]) AS rid
-      ) ev
-      WHERE r.entity_id = ev.restaurant_id
-        AND r.type = 'place'
-    `;
+    await derivePlaceAttributesProjection(tx, placeIds);
   }
 
   private async replacePlaceEntitySignals(

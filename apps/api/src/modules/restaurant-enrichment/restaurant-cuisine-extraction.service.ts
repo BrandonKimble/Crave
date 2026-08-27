@@ -12,6 +12,8 @@ import { LLMService } from '../external-integrations/llm/llm.service';
 import { GOOGLE_PLACE_CUISINE_TYPE_MAP } from './google-place-type-attributes';
 import { identityScope } from '../../shared/locale/surface-scope';
 import { AttributeOntologyQueueService } from '../attribute-ontology/attribute-ontology-queue.service';
+import { mintCuisineFacetRow } from '../content-processing/entity-resolver/cuisine-attribute';
+import { derivePlaceAttributes } from '../content-processing/reddit-collector/place-attribute-projection';
 import { createHash } from 'crypto';
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -158,33 +160,18 @@ export class PlaceCuisineExtractionService {
         priorEditorialIds,
       );
       if (carriedIds.length > 0) {
-        const mergedAttributes = this.unionStringArrays(
-          entity.placeAttributes,
-          await this.filterActiveEntityIds(carriedIds),
-        );
-        if (
-          !this.setsEqual(
-            new Set(entity.placeAttributes),
-            new Set(mergedAttributes),
-          )
-        ) {
-          await this.prisma.entity.update({
-            where: { entityId: entity.entityId },
-            data: {
-              placeAttributes: mergedAttributes,
-              lastUpdated: new Date(),
-            },
-          });
-        }
         // Phase 4b: state the lane's claims in the rebuildable substrate —
         // this source has no document/run, so the event ledger cannot hold
-        // them and a derived array would otherwise drop them.
+        // them. The read column is a PROJECTION of that substrate
+        // (redteam-l2 K1): write evidence, then project — never a second
+        // union-write semantics on the column itself.
         await this.recordEvidence(
           entity.entityId,
           priorAttributeIds,
           priorEditorialIds,
           { replace: false },
         );
+        await derivePlaceAttributes(this.prisma, [entity.entityId]);
       }
 
       this.logger.debug('Cuisine extraction inputs unchanged — skipped', {
@@ -251,14 +238,6 @@ export class PlaceCuisineExtractionService {
     // collection-coined attribute.
     const editorial = await this.resolveEditorialAttributeIds(rawAttributes);
 
-    // Only ACTIVE vocabulary enters the read-side projection; pending mints
-    // stay quarantined in the evidence substrate until adjudicated.
-    const mergedAttributes = this.unionStringArrays(
-      entity.placeAttributes,
-      cuisineAttributeIds,
-      editorial.activeIds,
-    );
-
     const cuisineMetadata: CuisineExtractionMetadata = {
       extractedAt: new Date().toISOString(),
       source,
@@ -278,20 +257,24 @@ export class PlaceCuisineExtractionService {
     await this.prisma.entity.update({
       where: { entityId: entity.entityId },
       data: {
-        placeAttributes: mergedAttributes,
         placeMetadata: updatedMetadata,
         lastUpdated: new Date(),
       },
     });
 
     // Re-extraction CORRECTS: this lane owns its two source classes, so the
-    // restaurant's prior claims are replaced, never accumulated beside.
+    // restaurant's prior claims are replaced, never accumulated beside —
+    // and the read column is re-projected from evidence IN THIS RUN
+    // (redteam-l2 K1), so a dropped attribute leaves search immediately
+    // instead of waiting for an unrelated reddit-driven rebuild. Pending
+    // mints stay quarantined: the projection is active-only.
     await this.recordEvidence(
       entity.entityId,
       cuisineAttributeIds,
       editorial.ids,
       { replace: true },
     );
+    await derivePlaceAttributes(this.prisma, [entity.entityId]);
 
     if (editorial.mintedPending) {
       await this.attributeOntologyQueue.queueAdjudication();
@@ -322,17 +305,6 @@ export class PlaceCuisineExtractionService {
       )
       .digest('hex')
       .slice(0, 16);
-  }
-
-  /** Read-projection guard: of these entity ids, the ones currently ACTIVE. */
-  private async filterActiveEntityIds(ids: string[]): Promise<string[]> {
-    const unique = Array.from(new Set(ids.filter(Boolean)));
-    if (!unique.length) return [];
-    const rows = await this.prisma.entity.findMany({
-      where: { entityId: { in: unique }, status: 'active' },
-      select: { entityId: true },
-    });
-    return rows.map((row) => row.entityId);
   }
 
   /**
@@ -617,27 +589,20 @@ export class PlaceCuisineExtractionService {
       }
 
       const createAliases = scopedAliases.length ? scopedAliases : [cuisine];
-      const created = await this.prisma.entity.create({
-        data: {
-          name: cuisine,
-          type: EntityType.place_attribute,
-          ...identityInsertData(cuisine, EntityType.place_attribute),
-        },
-        select: { entityId: true },
+      // THE shared minter (redteam-l2 K5): this lane used to mint with
+      // neither facet nor status — an ACTIVE facet-NULL row invisible to
+      // the cuisine registry, the grain bridge, and placement. Now both
+      // cuisine lanes mint through one primitive: facet='cuisine', status
+      // explicit, race-safe.
+      const minted = await mintCuisineFacetRow(this.prisma, cuisine, {
+        forms: createAliases,
+        source: 'cuisine',
       });
-      await this.prisma.$transaction((tx) =>
-        addSurfaces(
-          tx,
-          created.entityId,
-          createAliases.map((alias) => ({
-            form: alias,
-            source: 'cuisine' as const,
-          })),
-          { markEmbeddingStale: false },
-        ),
-      );
-
-      ids.push(created.entityId);
+      if (!minted) {
+        this.logger.warn('Cuisine attribute mint failed', { cuisine });
+        continue;
+      }
+      ids.push(minted.entityId);
     }
 
     return Array.from(new Set(ids));
@@ -725,18 +690,6 @@ export class PlaceCuisineExtractionService {
     return Array.from(merged);
   }
 
-  private setsEqual<T>(a: Set<T>, b: Set<T>): boolean {
-    if (a.size !== b.size) {
-      return false;
-    }
-    for (const value of a) {
-      if (!b.has(value)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
   private toRecord(value: unknown): Record<string, unknown> {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
       return {};
@@ -794,42 +747,35 @@ export class PlaceCuisineExtractionService {
       new Set(editorialAttributeIds.filter(Boolean)),
     );
     if (!options.replace && !cuisineIds.length && !editorialIds.length) return;
-    try {
-      if (options.replace) {
-        await this.prisma.placeAttributeEvidence.deleteMany({
-          where: {
-            placeId,
-            sourceClass: { in: ['cuisine_llm', 'editorial_llm'] },
-          },
-        });
-      }
-      const data = [
-        ...cuisineIds.map((attributeId) => ({
+    // No swallow (redteam-l2 K1): the read column is now DERIVED from these
+    // rows, so a failed evidence write is a failed extraction — it throws to
+    // the caller/queue instead of logging a warn over silently stale search.
+    if (options.replace) {
+      await this.prisma.placeAttributeEvidence.deleteMany({
+        where: {
           placeId,
-          attributeId,
-          sourceClass: 'cuisine_llm',
-          observations: 1,
-        })),
-        ...editorialIds.map((attributeId) => ({
-          placeId,
-          attributeId,
-          sourceClass: 'editorial_llm',
-          observations: 1,
-        })),
-      ];
-      if (data.length) {
-        await this.prisma.placeAttributeEvidence.createMany({
-          data,
-          skipDuplicates: true,
-        });
-      }
-    } catch (error) {
-      this.logger.warn('Cuisine attribute evidence write failed', {
-        operation: 'attribute_evidence_write',
-        placeId,
-        error: {
-          message: error instanceof Error ? error.message : String(error),
+          sourceClass: { in: ['cuisine_llm', 'editorial_llm'] },
         },
+      });
+    }
+    const data = [
+      ...cuisineIds.map((attributeId) => ({
+        placeId,
+        attributeId,
+        sourceClass: 'cuisine_llm',
+        observations: 1,
+      })),
+      ...editorialIds.map((attributeId) => ({
+        placeId,
+        attributeId,
+        sourceClass: 'editorial_llm',
+        observations: 1,
+      })),
+    ];
+    if (data.length) {
+      await this.prisma.placeAttributeEvidence.createMany({
+        data,
+        skipDuplicates: true,
       });
     }
   }

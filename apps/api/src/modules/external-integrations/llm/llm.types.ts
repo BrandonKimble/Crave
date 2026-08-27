@@ -169,52 +169,53 @@ export function isDishMention(mention: LLMMention): mention is LLMDishMention {
 }
 
 /**
- * INTERNAL mention shape, post-ingest: the extraction pipeline converts the
- * wire union into this — `place` is the CODE-derived canonical
- * (canonicalizeObservedPlaceName over place_observed), `place_surface` is
- * the observed span verbatim, and `general_praise` is DERIVED from the wire
- * shape (dish mention -> false; place mention -> its flag) so downstream
- * writers keep their old semantics unchanged.
+ * ADMITTED mention (redteam-l1 F1): THE UNION TRAVELS WHOLE. The old
+ * `LLMInternalMention` spread the wire union flat into an
+ * everything-optional shape one function after it was born — `item` and
+ * `general_praise` became independent fields again and the v16-forbidden
+ * combination (praise on a dish row) was representable everywhere
+ * downstream. Now admission ADDS derived provenance ALONGSIDE the wire
+ * shape (an intersection, never a spread-over): the discriminant survives
+ * to the DB write, `general_praise` exists ONLY on the place arm (the wire
+ * value — never stored/derived as separate state; the one write site that
+ * needs the legacy semantics derives it from the SHAPE at the point of
+ * use), and provenance is NON-OPTIONAL once admitted.
  */
-export interface LLMInternalMention {
-  temp_id: string;
-
-  // Restaurant fields (REQUIRED)
-  place: string; // Canonical name derived in code from place_observed
-  place_surface?: string | null; // Exact string as observed in source (= place_observed)
+export interface AdmittedProvenance {
+  /** Canonical resolver-facing name derived in code from place_observed. */
+  place: string;
+  /** Exact span as observed in the cited source (= place_observed). */
+  place_surface: string;
   /** Verbatim observed span from the wire mention (provenance). */
-  place_observed?: string | null;
-  /** Canonical source id whose text contains the observed span. */
-  place_source_id?: string | null;
-
-  // Food entity fields (optional - null when no food mentioned)
-  item?: string | null; // Normalized name only
-  item_surface?: string | null; // Exact string as observed in source
-  item_categories?: string[] | null; // Hierarchical decomposition
-  ingredients?: string[] | null; // Source-named ingredient nouns for this dish (4.6) — evidence tier; canonical dish ingredients are synthesized offline
-  item_category_surfaces?: (string | null)[] | null; // Surface tokens aligned with item_categories
-  is_menu_item?: boolean | null;
-
-  // Attributes (preserved as arrays)
-  place_attributes?: string[] | null;
-  place_attribute_surfaces?: (string | null)[] | null;
-  item_attributes?: string[] | null;
-  item_attribute_surfaces?: (string | null)[] | null;
-
-  // Core processing fields (VITAL) — derived at ingest from the wire shape.
-  general_praise: boolean;
-
-  // Source tracking from the prompt input, using chunk-local source refs
-  // such as SRC001 that are resolved back to canonical IDs server-side.
+  place_observed: string;
+  /** CANONICAL source id whose text contains the observed span. */
+  place_source_id: string;
+  /** CANONICAL source id (chunk-local SRC ref resolved server-side). */
   source_id: string;
+  /** Surface tokens aligned with place_attributes (set post-admission). */
+  place_attribute_surfaces?: (string | null)[] | null;
 }
 
+/** Dish-arm surface alignments the pipeline fills in post-admission. */
+export interface AdmittedDishSurfaces {
+  item_surface?: string | null;
+  item_category_surfaces?: (string | null)[] | null;
+  item_attribute_surfaces?: (string | null)[] | null;
+}
+
+export type Admitted<M extends LLMMention> = M &
+  AdmittedProvenance &
+  (M extends LLMDishMention ? AdmittedDishSurfaces : unknown);
+
+export type AdmittedMention =
+  | Admitted<LLMPlaceMention>
+  | Admitted<LLMDishMention>;
+
 /**
- * Enriched mention shape used after the collector hydrates model output
- * with source metadata and internal provenance.
+ * Source-metadata + internal processing fields the collector hydrates onto
+ * an admitted mention.
  */
-export interface EnrichedLLMMention extends LLMInternalMention {
-  source_id: string;
+export interface MentionEnrichment {
   source_type: 'post' | 'comment';
   source_content?: string;
   source_ups: number;
@@ -235,6 +236,15 @@ export interface EnrichedLLMMention extends LLMInternalMention {
   __extractionInputId?: string | null;
   __sourceDocumentId?: string | null;
 }
+
+/**
+ * Enriched mention union: the admitted wire shape (discriminant intact)
+ * plus hydrated source metadata. `isDishMention` narrows it exactly as it
+ * narrows the wire union.
+ */
+export type EnrichedLLMMention =
+  | (Admitted<LLMPlaceMention> & MentionEnrichment)
+  | (Admitted<LLMDishMention> & MentionEnrichment);
 
 /**
  * Gemini API response structure

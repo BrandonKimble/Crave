@@ -101,6 +101,35 @@ describe('observedSpanAppearsInSource', () => {
     ).toBe(false);
   });
 
+  it('anchors at word boundaries: a substring of a different word is refused', () => {
+    // redteam-l1 F2: fabricated short names must not verify inside longer words.
+    expect(observedSpanAppearsInSource('oro', 'Loro was fantastic')).toBe(
+      false,
+    );
+    expect(observedSpanAppearsInSource('ho ho', 'Tho Ho House rules')).toBe(
+      false,
+    );
+    expect(observedSpanAppearsInSource("torchy's", 'torchyland opened')).toBe(
+      false,
+    );
+  });
+
+  it('still admits legitimate whole-word occurrences and possessive drift', () => {
+    expect(observedSpanAppearsInSource('oro', 'Oro was fantastic')).toBe(true);
+    // Emitted possessive vs a no-apostrophe spelling in the text.
+    expect(observedSpanAppearsInSource("lefty's", 'Leftys is great')).toBe(
+      true,
+    );
+    // Plain span immediately before a possessive clitic in the text.
+    expect(
+      observedSpanAppearsInSource('torchy', "Torchy's queso is elite"),
+    ).toBe(true);
+    // The dangerous direction stays refused: bare-plural span vs possessive text.
+    expect(observedSpanAppearsInSource('leftys', "Lefty's is great")).toBe(
+      false,
+    );
+  });
+
   it('refuses empty spans and empty sources', () => {
     expect(observedSpanAppearsInSource('', text)).toBe(false);
     expect(observedSpanAppearsInSource('lucali', '')).toBe(false);

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { ItemDedupeMergeService } from '../content-processing/entity-resolver/food-dedupe-merge.service';
+import { DishKnowledgeSynthesisService } from '../content-processing/entity-resolver/dish-knowledge-synthesis.service';
 import { RescoreCoordinatorService } from '../content-processing/public-crave-score/rescore-coordinator.service';
 import { ProjectionRebuildService } from '../content-processing/reddit-collector/projection-rebuild.service';
 import { LoggerService } from '../../shared';
@@ -31,6 +32,7 @@ export class NightlyConvergenceService {
     private readonly rescoreCoordinator: RescoreCoordinatorService,
     private readonly placeTypeCensus: PlaceTypeCensusService,
     private readonly marketMembership: MarketMembershipService,
+    private readonly dishKnowledge: DishKnowledgeSynthesisService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('NightlyConvergenceService');
@@ -65,6 +67,17 @@ export class NightlyConvergenceService {
       // community whose metro it sits outside is excluded from search and
       // scoring (never deleted).
       ['market-membership', () => this.marketMembership.reconcile()],
+      // redteam-l2 K8: the knowledge-cuisine grain bridge is a STATE-derived
+      // projection (dish stamp vs connection stamp), not part of the LLM
+      // synthesis pass — so it converges nightly regardless of the
+      // DISH_KNOWLEDGE_SYNTHESIS_ENABLED flag. Without this, a new
+      // connection for an already-synthesized dish (or any environment with
+      // the flag unset) left the dish-side cuisine home silently empty and
+      // "mexican" degraded to venue-side-only.
+      [
+        'knowledge-cuisine-projection',
+        () => this.dishKnowledge.projectKnowledgeCuisines(),
+      ],
       // R11 census: a Google place type stored on a grounded restaurant that
       // google-place-type-attributes.ts classifies as neither kind nor noise
       // raises a deduped ops alert (Google shipped a taxonomy change).

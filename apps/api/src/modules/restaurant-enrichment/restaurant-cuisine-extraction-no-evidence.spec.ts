@@ -44,6 +44,9 @@ describe('cuisine extraction does not stamp "no evidence" as done (F4948)', () =
         deleteMany: jest.fn(),
       },
       $transaction: jest.fn(),
+      // K1: the read column is a projection — the lane re-projects it from
+      // evidence after each completed extraction.
+      $executeRaw: jest.fn().mockResolvedValue(0),
     };
     const attributeOntologyQueue = { queueAdjudication: jest.fn() };
     const llmService = {

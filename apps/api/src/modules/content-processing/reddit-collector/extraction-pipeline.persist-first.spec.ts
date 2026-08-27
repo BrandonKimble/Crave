@@ -92,6 +92,7 @@ function build(options: { keepIds?: string[] } = {}) {
       assertCollectionPromptAvailable: jest.fn(),
     } as never,
     { markDirty: jest.fn().mockResolvedValue(undefined) } as never,
+    { emit: jest.fn() } as never,
   );
   (service as unknown as { logger: unknown }).logger = {
     info: jest.fn(),

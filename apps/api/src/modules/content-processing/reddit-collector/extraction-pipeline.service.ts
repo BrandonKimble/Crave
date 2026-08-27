@@ -18,12 +18,14 @@ import {
 } from '../../external-integrations/llm/gemini-batch.service';
 import { RelevanceGateService } from './relevance-gate.service';
 import { RescoreCoordinatorService } from '../public-crave-score';
+import { OpsAlertsService } from '../../external-integrations/shared/ops-alerts.service';
 import {
   EnrichedLLMMention,
   EnrichedLLMOutputStructure,
   LLMModelInput,
   LLMMention,
-  LLMInternalMention,
+  AdmittedMention,
+  MentionEnrichment,
   LLMComment,
   LLMPost,
   LLMProcessingInput,
@@ -64,6 +66,13 @@ import { isEnvFlagExplicitlyDisabled } from '../../../shared/config/env-flag';
 // maximal-recency harm) — a deliberate de-weighting floor for unknown dates.
 const UNKNOWN_SOURCE_CREATED_AT_SENTINEL = '1970-01-01T00:00:00.000Z';
 
+/** Refusal-rate alarm (redteam-l1 F4). The threshold is an operator dial,
+ *  not a measured fact: certified v17 gold runs refuse well under 1 in 20,
+ *  so 10% is drift no healthy prompt produces. The floor keeps a 2-mention
+ *  chunk with 1 refusal from paging anyone. */
+const REFUSAL_RATE_ALARM_THRESHOLD = 0.1;
+const REFUSAL_RATE_ALARM_MIN_MENTIONS = 25;
+
 type SourceBreakdown = {
   pushshift_archive: number;
   reddit_api_chronological: number;
@@ -102,12 +111,11 @@ export type ContractRefusalRow = {
   mention: LLMMention;
 };
 
-type HydratingMention = LLMInternalMention &
+type HydratingMention = AdmittedMention &
   Partial<
     Pick<
-      EnrichedLLMMention,
+      MentionEnrichment,
       | 'source_type'
-      | 'source_id'
       | 'source_content'
       | 'source_ups'
       | 'source_url'
@@ -217,6 +225,7 @@ export class ExtractionPipelineService implements OnModuleInit {
     private readonly relevanceGate: RelevanceGateService,
     private readonly promptRegistry: PromptRegistryService,
     private readonly rescoreCoordinator: RescoreCoordinatorService,
+    private readonly opsAlerts: OpsAlertsService,
   ) {}
 
   /** VERSIONED PROMPTS: a shadow replay pins a registered candidate
@@ -771,24 +780,18 @@ export class ExtractionPipelineService implements OnModuleInit {
         // any run not tied to an owner-approved campaign (steady-state
         // lanes never touch this surface, §24.3).
         campaignId: params.baseParams.runMetadata?.campaignId,
+        // THE WHOLE PARAMS OBJECT RIDES (redteam-l1 F5): this used to be a
+        // field-by-field hand projection, and it forgot `rehearsal` — the
+        // batch ingest then read rehearsal===false and every batch-path
+        // shadow minted LIVE entities/surfaces (red team 2026-08-22, the
+        // v16 leak class: "one assembler forgot X"). A spread cannot forget
+        // the next field; only the effective-value normalizations are
+        // written out.
         baseParams: {
-          pipeline: params.baseParams.pipeline,
-          batchId: params.baseParams.batchId,
-          community: params.baseParams.community,
+          ...params.baseParams,
           platform: params.baseParams.platform ?? 'reddit',
-          searchEntity: params.baseParams.searchEntity ?? null,
           skipSourceLedgerDedupe:
             params.baseParams.skipSourceLedgerDedupe ?? false,
-          collectionRunScopeKey:
-            params.baseParams.collectionRunScopeKey ?? null,
-          parentJobId: params.baseParams.parentJobId ?? null,
-          runMetadata: params.baseParams.runMetadata ?? null,
-          // REHEARSAL RIDES THE RESUME (red team 2026-08-22, the v16 leak):
-          // this projection omitted the flag, so the batch ingest read
-          // rehearsal===false and every batch-path shadow minted LIVE
-          // entities/surfaces — 339 entities + 943 surfaces on staging, the
-          // exact SD-class the sandbox exists to close. The "one assembler
-          // forgot X" projection class, again.
           rehearsal: params.baseParams.rehearsal === true,
         },
         llmPosts: params.llmPosts,
@@ -1059,6 +1062,30 @@ export class ExtractionPipelineService implements OnModuleInit {
         args.extractionRunId,
         contractRefusals,
       );
+      // REFUSAL-RATE ALARM (redteam-l1 F4): the refusal ROWS were owned on
+      // every path but the refusal RATE was nobody's — a prompt/model drift
+      // pushing live refusals from 0.5% to 10% silently shrank the corpus
+      // behind a logger.warn. The rate reaches the ops-alert seam here, per
+      // run, deduped per pipeline+day so a bad day is one dashboard row.
+      const offered = flatMentions.length + contractRefusals.length;
+      const refusalRate = contractRefusals.length / offered;
+      if (
+        offered >= REFUSAL_RATE_ALARM_MIN_MENTIONS &&
+        refusalRate >= REFUSAL_RATE_ALARM_THRESHOLD
+      ) {
+        this.opsAlerts.emit({
+          severity: 'warn',
+          kind: 'extraction-refusal-rate',
+          title: 'Observed-span refusal rate above threshold',
+          body:
+            `Run ${args.extractionRunId} (${args.baseParams.pipeline}): ` +
+            `${contractRefusals.length}/${offered} mentions refused ` +
+            `(${(refusalRate * 100).toFixed(1)}% >= ${REFUSAL_RATE_ALARM_THRESHOLD * 100}%). ` +
+            `The contract may be refusing real names, or the prompt/model drifted — ` +
+            `read the banked rows in collection_extraction_contract_refusals.`,
+          dedupeKey: `extraction-refusal-rate:${args.baseParams.pipeline}:${new Date().toISOString().slice(0, 10)}`,
+        });
+      }
     }
 
     const llmOutput: EnrichedLLMOutputStructure = {
@@ -1260,22 +1287,22 @@ export class ExtractionPipelineService implements OnModuleInit {
       return refuse('empty_canonical_name', placeObserved);
     }
 
+    // THE UNION TRAVELS WHOLE (redteam-l1 F1): derived provenance is ADDED
+    // alongside the wire shape — never spread over it into an
+    // everything-optional carrier. `general_praise` is NOT re-stored here:
+    // it exists only on the place arm of the wire union (a dish mention
+    // cannot carry it, by type), and the one writer that needs the legacy
+    // semantics derives it from the SHAPE at the point of use.
     return {
       ...wireMention,
       place,
       place_surface: placeObserved,
       place_observed: placeObserved,
       place_source_id: canonicalPlaceSourceId,
-      // GENERAL_PRAISE DERIVATION (v17 schema split): the dish connection IS
-      // its endorsement, so a dish mention derives false; only the place
-      // shape carries the flag. Downstream writers keep the old semantics.
-      general_praise: isDishMention(wireMention)
-        ? false
-        : wireMention.general_praise === true,
       source_id: canonicalSourceId,
       __inputChunkId: chunkResult.chunkId,
       __extractionInputId: extractionInputId,
-    };
+    } as HydratingMention;
   }
 
   private resolveDocumentIdForCanonicalSourceId(
@@ -2027,35 +2054,57 @@ export class ExtractionPipelineService implements OnModuleInit {
    *  the v17 wire contract) and needs no fallback here. */
   private ensureSurfaceDefaults(mentions: EnrichedLLMMention[]): void {
     mentions.forEach((mention) => {
-      if (typeof mention.item === 'string' && mention.item.trim().length > 0) {
+      // Dish-arm surface defaults only exist on the dish arm of the union
+      // (F1): the place arm has no item fields to default.
+      if (isDishMention(mention)) {
         mention.item_surface =
           typeof mention.item_surface === 'string' &&
           mention.item_surface.trim().length > 0
             ? mention.item_surface.trim()
             : mention.item.trim();
-      } else {
-        mention.item_surface = null;
-      }
 
-      if (Array.isArray(mention.item_categories)) {
-        mention.item_category_surfaces = mention.item_categories.map(
-          (category, index) => {
-            const explicitSurface = Array.isArray(
-              mention.item_category_surfaces,
-            )
-              ? mention.item_category_surfaces[index]
-              : null;
-            if (
-              typeof explicitSurface === 'string' &&
-              explicitSurface.trim().length > 0
-            ) {
-              return explicitSurface.trim();
-            }
-            return typeof category === 'string' && category.trim().length > 0
-              ? category.trim()
-              : null;
-          },
-        );
+        if (Array.isArray(mention.item_categories)) {
+          mention.item_category_surfaces = mention.item_categories.map(
+            (category, index) => {
+              const explicitSurface = Array.isArray(
+                mention.item_category_surfaces,
+              )
+                ? mention.item_category_surfaces[index]
+                : null;
+              if (
+                typeof explicitSurface === 'string' &&
+                explicitSurface.trim().length > 0
+              ) {
+                return explicitSurface.trim();
+              }
+              return typeof category === 'string' && category.trim().length > 0
+                ? category.trim()
+                : null;
+            },
+          );
+        }
+
+        if (Array.isArray(mention.item_attributes)) {
+          mention.item_attribute_surfaces = mention.item_attributes.map(
+            (attribute, index) => {
+              const explicitSurface = Array.isArray(
+                mention.item_attribute_surfaces,
+              )
+                ? mention.item_attribute_surfaces[index]
+                : null;
+              if (
+                typeof explicitSurface === 'string' &&
+                explicitSurface.trim().length > 0
+              ) {
+                return explicitSurface.trim();
+              }
+              return typeof attribute === 'string' &&
+                attribute.trim().length > 0
+                ? attribute.trim()
+                : null;
+            },
+          );
+        }
       }
 
       if (Array.isArray(mention.place_attributes)) {
@@ -2065,27 +2114,6 @@ export class ExtractionPipelineService implements OnModuleInit {
               mention.place_attribute_surfaces,
             )
               ? mention.place_attribute_surfaces[index]
-              : null;
-            if (
-              typeof explicitSurface === 'string' &&
-              explicitSurface.trim().length > 0
-            ) {
-              return explicitSurface.trim();
-            }
-            return typeof attribute === 'string' && attribute.trim().length > 0
-              ? attribute.trim()
-              : null;
-          },
-        );
-      }
-
-      if (Array.isArray(mention.item_attributes)) {
-        mention.item_attribute_surfaces = mention.item_attributes.map(
-          (attribute, index) => {
-            const explicitSurface = Array.isArray(
-              mention.item_attribute_surfaces,
-            )
-              ? mention.item_attribute_surfaces[index]
               : null;
             if (
               typeof explicitSurface === 'string' &&

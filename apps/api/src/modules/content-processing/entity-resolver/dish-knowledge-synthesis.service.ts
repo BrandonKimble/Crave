@@ -11,6 +11,7 @@ import { PooledBatchRunner } from '../../external-integrations/llm/pooled-batch-
 import { recordUnanswered } from '../../external-integrations/llm/unanswered-outcome';
 import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
 import { DISH_KNOWLEDGE_RULE } from './dish-knowledge-rule';
+import { cuisineVocabularySql, mintCuisineFacetRow } from './cuisine-attribute';
 
 export interface DishKnowledgeSummary {
   dishesProcessed: number;
@@ -112,26 +113,27 @@ export class DishKnowledgeSynthesisService {
       connectionsProjected: 0,
     };
 
-    const dishes = await this.prisma.entity.findMany({
-      where: {
-        type: EntityType.item,
-        status: EntityStatus.active,
-        // Due = never synthesized, OR stamped by a superseded rule version
-        // (P7 re-open, 2026-08-17): a deliberate ledger bump re-offers the
-        // outdated population; a bare timestamp made a dish done forever.
-        OR: [
-          { knowledgeSynthesizedAt: null },
-          // '=' law, not '<' (claim-verdict-ledger doctrine; red team
-          // 2026-08-19 D1): a hearing is answered by the rule IN FORCE, so
-          // a rollback to a lower ledgered version re-opens work the wrong
-          // newer rule stamped — `lt` would leave it invisible forever.
-          { knowledgePromptVersion: { not: DISH_KNOWLEDGE_RULE.version } },
-        ],
-      },
-      select: { entityId: true, name: true },
-      orderBy: { createdAt: 'asc' },
-      take: limit,
-    });
+    // Due = never synthesized, OR stamped by a superseded rule version
+    // (P7 re-open, 2026-08-17), OR the dish NAME changed since the stamp
+    // (redteam-l2 K4: the name is a synthesis INPUT — "vegan al pastor
+    // taco" is different knowledge — so a renamed dish re-synthesizes).
+    // '=' law, not '<' (claim-verdict-ledger doctrine; red team 2026-08-19
+    // D1): a hearing is answered by the rule IN FORCE, so a rollback to a
+    // lower ledgered version re-opens work the wrong newer rule stamped —
+    // `lt` would leave it invisible forever. IS DISTINCT FROM is that
+    // equality with NULL treated as "answered by nothing", which is due.
+    const dishes = (
+      await this.prisma.$queryRaw<Array<{ entity_id: string; name: string }>>`
+        SELECT entity_id, name
+          FROM core_entities
+         WHERE type = 'item'::entity_type
+           AND status = 'active'::entity_status
+           AND (knowledge_synthesized_at IS NULL
+             OR knowledge_prompt_version IS DISTINCT FROM ${DISH_KNOWLEDGE_RULE.version}::int
+             OR knowledge_synthesized_name IS DISTINCT FROM name)
+         ORDER BY created_at ASC
+         LIMIT ${limit}`
+    ).map((row) => ({ entityId: row.entity_id, name: row.name }));
     if (!dishes.length) {
       // Reconciler law: the grain bridge is derived from state (entity
       // version vs connection stamp), so it runs even when no dish is due —
@@ -313,6 +315,9 @@ export class DishKnowledgeSynthesisService {
             knowledgeCuisines: Array.from(new Set(cuisineIds)),
             knowledgeSynthesizedAt: new Date(),
             knowledgePromptVersion: DISH_KNOWLEDGE_RULE.version,
+            // K4: stamp the name ANSWERED FOR (query-time), so a rename
+            // mid-pass still re-opens the dish next pass.
+            knowledgeSynthesizedName: dish.name,
           },
         });
         summary.dishesProcessed += 1;
@@ -350,9 +355,17 @@ export class DishKnowledgeSynthesisService {
   async projectKnowledgeCuisines(): Promise<number> {
     const updated = await this.prisma.$executeRaw`
       WITH cuisine_vocab AS (
-        SELECT entity_id FROM core_entities
-         WHERE type = 'place_attribute'::entity_type
-           AND facet = 'cuisine'
+        -- Two questions, one row (redteam-l2 K2/K5): "is x a cuisine at
+        -- all?" spans every status (an ARCHIVED cuisine is still a cuisine
+        -- — it must be STRIPPED below, never passed through as non-cuisine
+        -- vocabulary), while "may x be WRITTEN?" is THE active-only
+        -- vocabulary predicate — so a merge-archived id lingering in
+        -- knowledge_cuisines can never be resurrected into
+        -- food_attributes by this projection.
+        SELECT ce.entity_id, (${cuisineVocabularySql('ce')}) AS is_active
+          FROM core_entities ce
+         WHERE ce.type = 'place_attribute'::entity_type
+           AND ce.facet = 'cuisine'
       ),
       due AS (
         SELECT c.connection_id,
@@ -367,7 +380,11 @@ export class DishKnowledgeSynthesisService {
          SET food_attributes = (
                SELECT COALESCE(array_agg(DISTINCT x), ARRAY[]::uuid[])
                  FROM unnest(c.food_attributes || d.knowledge_cuisines) AS x
-                WHERE x = ANY(d.knowledge_cuisines)
+                WHERE (x = ANY(d.knowledge_cuisines)
+                       AND EXISTS (
+                             SELECT 1 FROM cuisine_vocab v
+                              WHERE v.entity_id = x AND v.is_active
+                           ))
                    OR NOT EXISTS (
                         SELECT 1 FROM cuisine_vocab v WHERE v.entity_id = x
                       )
@@ -422,41 +439,13 @@ export class DishKnowledgeSynthesisService {
     if (existing) {
       return { entityId: existing.entity_id, created: false };
     }
-    try {
-      const created = await this.prisma.entity.create({
-        data: {
-          name: normalized,
-          type: EntityType.place_attribute,
-          facet: 'cuisine',
-          ...identityInsertData(normalized, EntityType.place_attribute),
-        },
-        select: { entityId: true },
-      });
-      await this.prisma.$transaction((tx) =>
-        addSurfaces(
-          tx,
-          created.entityId,
-          [{ form: normalized, source: 'cuisine' as const }],
-          { markEmbeddingStale: false },
-        ),
-      );
-      return { entityId: created.entityId, created: true };
-    } catch {
-      // uq_attribute_identity_key: the find-then-create race loses loudly —
-      // refetch the winner.
-      const winner = await this.prisma.entity.findFirst({
-        where: {
-          type: EntityType.place_attribute,
-          name: normalized,
-          status: EntityStatus.active,
-        },
-        select: { entityId: true },
-      });
-      if (winner) {
-        return { entityId: winner.entityId, created: false };
-      }
-      return null;
-    }
+    // THE shared minter (redteam-l2 K5): facet='cuisine' + explicit status,
+    // race-safe — the same primitive the venue-facts lane calls, so the two
+    // cuisine minters cannot disagree about whether a cuisine is a cuisine.
+    return mintCuisineFacetRow(this.prisma, normalized, {
+      forms: [normalized],
+      source: 'cuisine',
+    });
   }
 
   /** Ingredient vocabulary self-provisions, same normalization as the

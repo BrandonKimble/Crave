@@ -37,6 +37,7 @@ import {
 import {
   EnrichedLLMOutputStructure,
   EnrichedLLMMention,
+  isDishMention,
 } from '../../external-integrations/llm/llm.types';
 import {
   EntityResolutionInput,
@@ -332,25 +333,61 @@ export class UnifiedProcessingService implements OnModuleInit {
     return { values: filteredValues, surfaces: filteredSurfaces };
   }
 
-  private sanitizeMention(mention: ProcessableMention): void {
-    mention.item = this.sanitizeItemTerm(mention.item);
+  /** Sanitize a mention IN ITS SHAPE (redteam-l1 F1: the union travels
+   *  whole). A dish mention whose item term is a generic placeholder
+   *  DEMOTES to the place arm — the returned mention replaces the input in
+   *  the caller's array; every other case mutates in place and returns the
+   *  same object. */
+  private sanitizeMention(mention: ProcessableMention): ProcessableMention {
+    if (isDishMention(mention)) {
+      const item = this.sanitizeItemTerm(mention.item);
+      if (item === null) {
+        // Generic placeholder dish ("food", "dishes") — no dish claim
+        // survives. Demote to the place arm with no praise flag set (the
+        // old flattened shape wrote item=null + general_praise=false; the
+        // union spells the same fact as a shape).
+        const rest: Record<string, unknown> = { ...mention };
+        for (const dishField of [
+          'item',
+          'item_categories',
+          'ingredients',
+          'is_menu_item',
+          'item_attributes',
+          'item_surface',
+          'item_category_surfaces',
+          'item_attribute_surfaces',
+        ]) {
+          delete rest[dishField];
+        }
+        const demoted = {
+          ...rest,
+          general_praise: false,
+        } as ProcessableMention;
+        return this.sanitizePlaceSide(demoted);
+      }
+      mention.item = item;
 
-    const categoryResult = this.filterMentionArray(
-      mention.item_categories,
-      mention.item_category_surfaces,
-      (value) => !this.isGenericItemPlaceholder(value),
-    );
-    mention.item_categories = categoryResult.values;
-    mention.item_category_surfaces = categoryResult.surfaces;
+      const categoryResult = this.filterMentionArray(
+        mention.item_categories,
+        mention.item_category_surfaces,
+        (value) => !this.isGenericItemPlaceholder(value),
+      );
+      mention.item_categories = categoryResult.values;
+      mention.item_category_surfaces = categoryResult.surfaces;
 
-    const itemAttrResult = this.filterMentionArray(
-      mention.item_attributes,
-      mention.item_attribute_surfaces,
-      (value) => !this.isGenericItemPlaceholder(value),
-    );
-    mention.item_attributes = itemAttrResult.values;
-    mention.item_attribute_surfaces = itemAttrResult.surfaces;
+      const itemAttrResult = this.filterMentionArray(
+        mention.item_attributes,
+        mention.item_attribute_surfaces,
+        (value) => !this.isGenericItemPlaceholder(value),
+      );
+      mention.item_attributes = itemAttrResult.values;
+      mention.item_attribute_surfaces = itemAttrResult.surfaces;
+    }
 
+    return this.sanitizePlaceSide(mention);
+  }
+
+  private sanitizePlaceSide(mention: ProcessableMention): ProcessableMention {
     const placeAttrResult = this.filterMentionArray(
       mention.place_attributes,
       mention.place_attribute_surfaces,
@@ -358,6 +395,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     );
     mention.place_attributes = placeAttrResult.values;
     mention.place_attribute_surfaces = placeAttrResult.surfaces;
+    return mention;
   }
 
   /**
@@ -1087,8 +1125,12 @@ export class UnifiedProcessingService implements OnModuleInit {
     };
 
     try {
-      for (const mention of llmOutput.mentions) {
-        this.sanitizeMention(mention);
+      for (let i = 0; i < llmOutput.mentions.length; i += 1) {
+        // sanitizeMention may DEMOTE a placeholder dish to the place arm —
+        // the returned mention replaces the array element (F1 union shape).
+        const mention = (llmOutput.mentions[i] = this.sanitizeMention(
+          llmOutput.mentions[i],
+        ));
         // THE LANGUAGE THE SOURCE IS CONFIGURED IN, carried onto every entity
         // this mention produces. It is READER CONTEXT and nothing else: it
         // scopes the surface slice resolution may ground THROUGH (an es
@@ -2818,7 +2860,13 @@ export class UnifiedProcessingService implements OnModuleInit {
         }
       }
 
-      if (mention.general_praise) {
+      // GENERAL PRAISE IS DERIVED FROM THE SHAPE AT THE WRITE SITE
+      // (redteam-l1 F1): only the place arm of the mention union carries the
+      // flag — a dish mention CANNOT (its connection IS its endorsement),
+      // and no stored boolean exists to drift from that law.
+      const generalPraise =
+        !isDishMention(mention) && mention.general_praise === true;
+      if (generalPraise) {
         this.logger.debug(
           'General praise detected; recording restaurant event only',
           {
@@ -2829,7 +2877,7 @@ export class UnifiedProcessingService implements OnModuleInit {
         );
       }
 
-      if (inputId && sourceDocumentId && mention.general_praise) {
+      if (inputId && sourceDocumentId && generalPraise) {
         placeEvents.push({
           extractionRunId: extractionTrace.extractionRunId,
           inputId,

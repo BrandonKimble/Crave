@@ -90,6 +90,9 @@ function possessiveVariants(span: string): string[] {
   if (span.endsWith("'s")) {
     variants.add(span.slice(0, -2));
     variants.add(`${span.slice(0, -2)}'`);
+    // Apostrophe-form drift: the text may write the plural/possessive with no
+    // apostrophe at all ("Leftys" for an emitted `lefty's`).
+    variants.add(`${span.slice(0, -2)}s`);
   } else if (span.endsWith("'")) {
     variants.add(span.slice(0, -1));
     variants.add(`${span}s`);
@@ -100,12 +103,42 @@ function possessiveVariants(span: string): string[] {
   return [...variants].filter((v) => v.length > 0);
 }
 
+/** Unicode-aware word character — letters and digits in any script. */
+const WORD_CHAR = /[\p{L}\p{N}]/u;
+
+/**
+ * Does `variant` occur in `text` anchored at word boundaries? A raw substring
+ * hit whose neighbor on either side is a letter/digit is NOT an occurrence —
+ * `oro` inside "loro" proves nothing about the source having written "oro".
+ * Apostrophes and punctuation do not break the boundary (a plain span still
+ * matches immediately before a possessive clitic the variants license).
+ */
+function occursAtWordBoundary(text: string, variant: string): boolean {
+  let from = 0;
+  for (;;) {
+    const idx = text.indexOf(variant, from);
+    if (idx === -1) return false;
+    const before = idx > 0 ? text[idx - 1] : '';
+    const after =
+      idx + variant.length < text.length ? text[idx + variant.length] : '';
+    if (
+      !(before && WORD_CHAR.test(before)) &&
+      !(after && WORD_CHAR.test(after))
+    ) {
+      return true;
+    }
+    from = idx + 1;
+  }
+}
+
 /**
  * THE REFUSAL CHECK: does the observed span appear inside the cited source's
  * text? A lookup, not a judgment (v17-coherence-redteam F1): both sides get
- * the identical mechanical normalization, and the only tolerated variance is
- * the possessive clitic (the emitted form may lack a trailing 's / ' the
- * text has, or carry one the text lacks in apostrophe-form drift).
+ * the identical mechanical normalization, the occurrence must be anchored at
+ * word boundaries (redteam-l1 F2 — `oro` never verifies against "Loro"), and
+ * the only tolerated variance is the possessive clitic (the emitted form may
+ * lack a trailing 's / ' the text has, or carry one the text lacks in
+ * apostrophe-form drift, including a no-apostrophe "Leftys" spelling).
  */
 export function observedSpanAppearsInSource(
   placeObserved: string,
@@ -115,5 +148,7 @@ export function observedSpanAppearsInSource(
   if (!span) return false;
   const text = normalizeSpanMechanically(sourceText);
   if (!text) return false;
-  return possessiveVariants(span).some((variant) => text.includes(variant));
+  return possessiveVariants(span).some((variant) =>
+    occursAtWordBoundary(text, variant),
+  );
 }

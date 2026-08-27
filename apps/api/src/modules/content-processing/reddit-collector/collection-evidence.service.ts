@@ -625,6 +625,12 @@ export class CollectionEvidenceService implements OnModuleInit {
    * safety, not policy — (b) is the same live-cover set the stale sweeps use,
    * and prevents the delete-under-in-flight-ingest FK class. No retention
    * window: replay covers forensics.
+   *
+   * REFUSAL LIFECYCLE rides this delete (redteam-l1 F4): the run's banked
+   * observed-span refusals (collection_extraction_contract_refusals,
+   * onDelete: Cascade) are campaign residue GC'd with their generation —
+   * the bench summarized their counts into the iteration run row at close
+   * (recordOutcome), so the durable record survives the raws.
    */
   private async compactSupersededRuns(): Promise<void> {
     const deleted = await this.prismaService.$executeRaw(Prisma.sql`

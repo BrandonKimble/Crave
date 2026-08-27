@@ -57,6 +57,7 @@ import { EntityTextSearchModule } from '../../entity-text-search/entity-text-sea
     AliasManagementService,
     EntityAnchorRehomeService,
     ItemDedupeMergeService,
+    DishKnowledgeSynthesisService,
   ],
 })
 export class EntityResolverModule {}

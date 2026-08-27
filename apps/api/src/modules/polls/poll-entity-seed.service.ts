@@ -4,6 +4,7 @@ import {
 } from '../content-processing/entity-resolver/entity-identity';
 import { addSurfaces } from '../content-processing/entity-resolver/entity-surface.service';
 import { entityLockKey } from '../content-processing/entity-resolver/entity-identity';
+import { derivePlaceAttributes } from '../content-processing/reddit-collector/place-attribute-projection';
 import { identityMergeLockKey } from '../content-processing/reddit-collector/extraction-scope.service';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { EntityType, Prisma } from '@prisma/client';
@@ -529,14 +530,9 @@ export class PollEntitySeedService {
       throw new BadRequestException('Restaurant not found');
     }
 
-    const updated = new Set(place.placeAttributes ?? []);
-    updated.add(params.attributeId);
-    await this.prisma.entity.update({
-      where: { entityId: params.placeId },
-      data: { placeAttributes: Array.from(updated.values()) },
-    });
-    // Phase 4b: a poll-seeded attribute is a claim like any other — state
-    // it in the substrate so the derived array keeps it.
+    // Phase 4b / redteam-l2 K1: a poll-seeded attribute is a claim like any
+    // other — state it in the evidence substrate, then project. The column
+    // has ONE writer (the projection); this lane no longer union-writes it.
     await this.prisma.placeAttributeEvidence.createMany({
       data: [
         {
@@ -548,6 +544,7 @@ export class PollEntitySeedService {
       ],
       skipDuplicates: true,
     });
+    await derivePlaceAttributes(this.prisma, [params.placeId]);
   }
 
   private async findPlaceByPlaceId(placeId: string) {
