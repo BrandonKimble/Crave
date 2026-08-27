@@ -343,7 +343,7 @@ export const COLLECTION_RESPONSE_JSON_SCHEMA = {
               place_attributes: PLACE_ATTRIBUTES_SCHEMA,
               item: withDescription(
                 { type: 'string' },
-                'The order-name (THE ORDER TEST: sayable to a server as the thing you want) — "anything orderable — drinks included"; complete compound term as spoken, singular, excluding attributes — a food-bearing or proper-named offering phrase emits whole ("steak combo", "the elvis presley combo"); never a terms-only phrase (bare "lunch special", "$25 combo"), a cuisine, or a food token from the venue name',
+                'The order-name (THE ORDER TEST: sayable to a server as the thing you want) — "anything orderable — drinks included"; complete compound term as spoken, singular, excluding attributes — a food-bearing or proper-named offering phrase emits whole ("steak combo", "elvis presley combo"); never a terms-only phrase (bare "lunch special", "$25 combo"), a cuisine, or a food token from the venue name',
               ),
               item_categories: withDescription(
                 { ...NULLABLE_STRING_ARRAY_SCHEMA },

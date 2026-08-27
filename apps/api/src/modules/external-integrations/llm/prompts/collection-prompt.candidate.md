@@ -656,9 +656,10 @@ does the phrase tell you about — none, one, or several?**
   combo", "seafood lunch special", "salmon omakase"), through a format
   that itself predicts the food ("omakase", "dim sum" — usually a FAMILY,
   `is_menu_item: false`, Step E), or through a PROPER NAME that fixes one
-  menu offering ("the Elvis Presley combo", "the Hangover Special" — two
-  diners ordering it are handed the same thing; the menu supplies what
-  the words don't). Emit the phrase a diner would say to the server —
+  menu offering ("the Elvis Presley combo" emits `elvis presley combo`,
+  "the Hangover Special" → `hangover special` — two diners ordering it
+  are handed the same thing; the menu supplies what the words don't; the
+  article stays behind). Emit the phrase a diner would say to the server —
   "steak combo", never a stripped "steak" — with categories from the
   parts that predict food (C.3: `steak combo` → `steak`; the terms-word
   itself is never a category and never an attribute).
