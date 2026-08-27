@@ -31,7 +31,16 @@ for input only at the named checkpoints below.
       ONE task updated in place, zero orphans, nothing to clean. CI keeps
       the same suite as the deploy belt. No owner action open.
 
-## PHASE 1 — THE v16 SHADOW (fires on owner's word; both GO-checklists green)
+## PHASE 1 — THE SHADOW (NOW v17: v16 ran, was audited, and is SUPERSEDED)
+2026-08-27 state: the v16 shadow completed ($11.89) and its fresh-eyes audit
+produced a full v17 rederivation (observed-span name contract, praise/dish
+split, cuisine-never-inferred owner ruling, closure as a place-status rule)
+— certified 113+1/115 x9, registered staging candidate v12 hash
+e2a99c6be946. The v16 corpus never activates; golds run against the V17
+replay output when ⭐04 pings (REEXTRACT_DB staging/tokaido, db
+crave_search, scope system_prompt_hash=v12). Luckys→Lefty's blocker SOLVED
+at the LLM emission (resolver proven innocent); bench approval sheet with
+the owner + final preflight trace audit running.
 Same-corpus shadow (~$30, pre-approved) under the P6 sandbox: every write
 rehearsal-quarantined, one atomic activation flip, byte-identical-derived-
 tables acceptance already 4/4. Frozen pairing law in force (prompt as of
