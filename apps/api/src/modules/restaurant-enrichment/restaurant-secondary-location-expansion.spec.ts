@@ -126,6 +126,7 @@ function makeService(pages: Array<() => Promise<unknown>>) {
       markExecuted: () => Promise.resolve(undefined),
       pendingExecution: () => Promise.resolve([]),
     } as never,
+    { reconcile: () => Promise.resolve(0) } as never,
     logger as never,
   );
 

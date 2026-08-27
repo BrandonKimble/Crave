@@ -80,6 +80,15 @@ model Entity {
   /// placeholder (which wrote no count at all) was re-enriched weekly forever
   /// at real Places spend. Incremented, never replaced.
   enrichmentFailureCount              Int                           @default(0) @map("enrichment_failure_count")
+  /// MARKET MEMBERSHIP verdict (v17 S4, ruled 2026-08-26; places only).
+  /// Non-NULL = every geocoded location of this place sits outside every
+  /// crediting community's market (engine territory geometry, or within
+  /// 50 mi of its centroid — the v16-defect-sizing class-4 definition).
+  /// Excluded from search membership and the public score pool; NEVER
+  /// deleted (place-grounded restaurants are never deleted). Written only
+  /// by MarketMembershipService (at grounding + nightly reconciler);
+  /// cleared automatically when a re-grounding moves the place in-market.
+  marketExcludedAt                    DateTime?                     @map("market_excluded_at") @db.Timestamptz(3)
   primaryLocationId                   String?                       @unique @map("primary_location_id") @db.Uuid
   lastUpdated                         DateTime                      @default(now()) @map("last_updated") @db.Timestamptz(3)
   createdAt                           DateTime                      @default(now()) @map("created_at") @db.Timestamptz(3)

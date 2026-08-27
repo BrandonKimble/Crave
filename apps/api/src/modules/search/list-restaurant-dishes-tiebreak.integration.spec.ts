@@ -52,6 +52,7 @@ const service = new SearchService(
   {} as never,
   {} as never,
   {} as never,
+  { getCuisineIds: () => Promise.resolve(new Set()) } as never, // cuisineFacets
   {} as never,
   {} as never,
   prisma as never,

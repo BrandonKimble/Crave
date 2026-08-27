@@ -935,6 +935,10 @@ export class PublicCraveScoreService {
         -- restaurants held freshly-computed scores — merged losers and
         -- junk sinks were user-rankable)
         AND r.status = 'active'
+        -- OUT-OF-MARKET IS NEVER RANKED (v17 S4): a place excluded from
+        -- every crediting community's market leaves the score pool too —
+        -- its rows would otherwise distort every percentile it sat in.
+        AND r.market_excluded_at IS NULL
       JOIN core_restaurant_item_mentions m ON m.connection_id = c.connection_id
       LEFT JOIN collection_source_documents d ON d.document_id = m.source_document_id
       LEFT JOIN sources src
@@ -978,6 +982,8 @@ export class PublicCraveScoreService {
         ON src.platform = d.platform AND lower(src.handle) = lower(d.community)
       WHERE e.type = 'place'
         AND e.status = 'active'
+        -- OUT-OF-MARKET IS NEVER RANKED (v17 S4), same as the dish lane.
+        AND e.market_excluded_at IS NULL
         AND ${restFixtureFilter}
       GROUP BY e.entity_id, src.source_id, src.platform
     `;

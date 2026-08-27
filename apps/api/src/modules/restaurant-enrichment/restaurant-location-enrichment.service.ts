@@ -41,6 +41,7 @@ import {
   RescoreCoordinatorService,
 } from '../content-processing/public-crave-score';
 import { PlaceEntityMergeService } from './restaurant-entity-merge.service';
+import { MarketMembershipService } from './market-membership.service';
 import { PlaceCuisineExtractionQueueService } from './restaurant-cuisine-extraction-queue.service';
 import { PlaceSecondaryLocationExpansionQueueService } from './restaurant-secondary-location-expansion-queue.service';
 import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
@@ -335,6 +336,7 @@ export class PlaceLocationEnrichmentService {
     private readonly configService: ConfigService,
     private readonly opsAlerts: OpsAlertsService,
     private readonly claimLedger: ClaimVerdictLedgerService,
+    private readonly marketMembership: MarketMembershipService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext(
@@ -4158,6 +4160,13 @@ export class PlaceLocationEnrichmentService {
         },
       });
     });
+    // MARKET MEMBERSHIP AT GROUNDING (v17 S4): the coordinates just landed,
+    // so the deterministic verdict is decidable NOW — an out-of-market
+    // grounding (Fredericksburg winery credited by r/austinfood) never
+    // spends a night in search; a re-grounding that moved the place
+    // in-market clears the verdict on the same write. Own try/catch inside
+    // reconcile(): a verdict failure never fails the grounding.
+    await this.marketMembership.reconcile(subject.restaurantId);
     return true;
   }
 

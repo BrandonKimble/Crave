@@ -83,6 +83,7 @@ export function buildResidueRuns(
 }
 
 import { DietaryConstraintRegistry } from './dietary-constraints';
+import { CuisineFacetRegistry } from './cuisine-facet.registry';
 import { UnsegmentedResidueService } from './unsegmented-residue.service';
 import type {
   EntitySpanGroup,
@@ -186,6 +187,7 @@ export class SearchQueryInterpretationService {
     private readonly entityTextSearch: EntityTextSearchService,
     private readonly engineCoverage: EngineCoverageService,
     private readonly dietaryConstraints: DietaryConstraintRegistry,
+    private readonly cuisineFacets: CuisineFacetRegistry,
     private readonly unsegmentedResidue: UnsegmentedResidueService,
     private readonly signals: SignalsService,
     private readonly surfaceLocaleIndex: SurfaceLocaleIndexService,
@@ -440,6 +442,11 @@ export class SearchQueryInterpretationService {
     const residueResults: EntityResolutionResult[] = [];
     const unresolvedResidues: string[] = [];
     const dietaryIds = await this.dietaryConstraints.getDietaryIds();
+    // CUISINE PLACEMENT IS FACET-DERIVED (v17 S4): membership in the
+    // curated facet='cuisine' vocabulary, never "which entity name matched
+    // first" — a junk dish entity literally named "mexican" must not
+    // outrank the cuisine reading of the same span.
+    const cuisineIds = await this.cuisineFacets.getCuisineIds();
     const isDietaryGroup = (g: EntitySpanGroup) =>
       g.entities.some((e) => dietaryIds.has(e.entityId));
     // STRICT adjacency (red team ⑤): a joinable neighbour must ABUT the
@@ -615,8 +622,16 @@ export class SearchQueryInterpretationService {
       const dietaryEntity = group.entities.find((e) =>
         dietaryIds.has(e.entityId),
       );
+      // CUISINE WINS BY FACET (after dietary): the facet is a curated
+      // verdict about the vocabulary; CROSS_TYPE_PLACEMENT_ORDER would
+      // otherwise hand the span to a same-named junk dish hub
+      // (item > place_attribute) and the cuisine reading would never run.
+      const cuisineEntity = group.entities.find((e) =>
+        cuisineIds.has(e.entityId),
+      );
       const winner =
         dietaryEntity ??
+        cuisineEntity ??
         [...group.entities].sort(
           (a, b) =>
             SearchQueryInterpretationService.rankIn(
@@ -689,8 +704,10 @@ export class SearchQueryInterpretationService {
         // conjunct), falling back to food membership only when no modifier
         // reading exists. "arroz con pollo" → rice∧chicken via the
         // ingredient lane, ONE score-ranked list — never "any rice dish".
+        const subCuisine = contained.find((e) => cuisineIds.has(e.entityId));
         const subWinner =
           subDietary ??
+          subCuisine ??
           [...contained].sort(
             (a, b) =>
               SearchQueryInterpretationService.rankIn(
@@ -1000,13 +1017,14 @@ export class SearchQueryInterpretationService {
     if (!candidates.length) return unmatched;
 
     const dietaryIds = await this.dietaryConstraints.getDietaryIds();
+    const cuisineIds = await this.cuisineFacets.getCuisineIds();
 
     // EXACT ANYWHERE BEATS NON-EXACT EVERYWHERE (the rounds-3/4 law, now
     // structural): if any surface form is an exact somewhere, the winner
     // comes from the exact set — placement decides WHICH bucket.
     const exacts = candidates.filter((c) => c.sparseEvidence === 'exact');
     if (exacts.length) {
-      const winner = this.pickPlacedWinner(exacts, dietaryIds);
+      const winner = this.pickPlacedWinner(exacts, dietaryIds, cuisineIds);
       const tiedIds = exacts
         .filter((c) => c.type === winner.type)
         .map((c) => c.entityId);
@@ -1061,7 +1079,7 @@ export class SearchQueryInterpretationService {
       });
     if (!linkable || !top) {
       return opts.denseTier
-        ? this.decideDenseLink(input, candidates, dietaryIds)
+        ? this.decideDenseLink(input, candidates, dietaryIds, cuisineIds)
         : unmatched;
     }
     // TIE PLURALITY: same-tier candidates within epsilon are
@@ -1071,7 +1089,7 @@ export class SearchQueryInterpretationService {
         c.sparseEvidence === top.sparseEvidence &&
         topSim - (c.sparseSimilarity ?? 0) <= LINKER_TIE_EPSILON,
     );
-    const winner = this.pickPlacedWinner(tied, dietaryIds);
+    const winner = this.pickPlacedWinner(tied, dietaryIds, cuisineIds);
     const tiedIds = tied
       .filter((c) => c.type === winner.type)
       .map((c) => c.entityId);
@@ -1104,6 +1122,7 @@ export class SearchQueryInterpretationService {
       denseCosine: number | null;
     }>,
     dietaryIds: ReadonlySet<string>,
+    cuisineIds: ReadonlySet<string>,
   ): EntityResolutionResult {
     const unmatched: EntityResolutionResult = {
       tempId: input.tempId,
@@ -1124,7 +1143,7 @@ export class SearchQueryInterpretationService {
       (c) =>
         (best.denseCosine ?? 0) - (c.denseCosine ?? 0) <= LINKER_TIE_EPSILON,
     );
-    const top = this.pickPlacedWinner(tiedTop, dietaryIds);
+    const top = this.pickPlacedWinner(tiedTop, dietaryIds, cuisineIds);
     const topFolded = canonicalFold(top.name);
     const runner = dense.find((c) => canonicalFold(c.name) !== topFolded);
     // The fused rank is computed over the list DEDUPED BY FOLDED NAME:
@@ -1175,13 +1194,21 @@ export class SearchQueryInterpretationService {
   }
 
   /** PURE PLACEMENT (shared law with the gazetteer span placement):
-   *  dietary flag WINS by rule; otherwise the deterministic type order —
-   *  the ~44-name curated list refines this at the calibration tail. */
+   *  dietary flag WINS by rule; then the cuisine FACET (v17 S4 — a junk
+   *  dish named "mexican" must not outrank the cuisine reading); otherwise
+   *  the deterministic type order — the ~44-name curated list refines this
+   *  at the calibration tail. */
   private pickPlacedWinner<
     T extends { entityId: string; type: EntityType; name: string },
-  >(candidates: T[], dietaryIds: ReadonlySet<string>): T {
+  >(
+    candidates: T[],
+    dietaryIds: ReadonlySet<string>,
+    cuisineIds: ReadonlySet<string>,
+  ): T {
     const dietary = candidates.find((c) => dietaryIds.has(c.entityId));
     if (dietary) return dietary;
+    const cuisine = candidates.find((c) => cuisineIds.has(c.entityId));
+    if (cuisine) return cuisine;
     // AUDIT M9 applies HERE too: raw .indexOf() sent an unlisted (new)
     // EntityType to -1 — winning every tie. rankIn() sends it to the back.
     return [...candidates].sort(

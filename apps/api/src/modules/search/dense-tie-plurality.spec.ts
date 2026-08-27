@@ -40,6 +40,7 @@ function makeService(): SearchQueryInterpretationService {
     {} as never,
     {} as never,
     {} as never,
+    { getCuisineIds: () => Promise.resolve(new Set()) } as never,
     {} as never,
     {} as never,
     {} as never,
@@ -72,9 +73,10 @@ function decideDense(
         i: EntityResolutionInput,
         c: typeof candidates,
         d: ReadonlySet<string>,
+        k: ReadonlySet<string>,
       ) => EntityResolutionResult;
     }
-  ).decideDenseLink(input, candidates, new Set<string>());
+  ).decideDenseLink(input, candidates, new Set<string>(), new Set<string>());
 }
 
 describe('the dense lane reveals its tie plurality', () => {

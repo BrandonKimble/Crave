@@ -197,6 +197,29 @@ export function activePlaceEventsSourceSql(): string {
      AND d_scope.active_extraction_run_id = ev_scope.extraction_run_id`;
 }
 
+/** FROM-clause source: the DISTINCT (restaurant, platform, community)
+ *  crediting pairs over ACTIVE events of BOTH ledgers — market-membership's
+ *  "which community's corpus credits this place?" question (v17 S4). Both
+ *  ledgers, for the same reason as affectedPlacesForDocuments (D7): a
+ *  praise-only restaurant lives solely in core_restaurant_events. */
+export function activeCreditingCommunitiesSourceSql(): string {
+  return `(
+    SELECT ev_scope.restaurant_id, d_scope.platform, lower(d_scope.community) AS community
+    FROM core_restaurant_events ev_scope
+    JOIN collection_source_documents d_scope
+      ON d_scope.document_id = ev_scope.source_document_id
+     AND d_scope.active_extraction_run_id = ev_scope.extraction_run_id
+    WHERE d_scope.community IS NOT NULL
+    UNION
+    SELECT ev_scope.restaurant_id, d_scope.platform, lower(d_scope.community)
+    FROM core_restaurant_entity_events ev_scope
+    JOIN collection_source_documents d_scope
+      ON d_scope.document_id = ev_scope.source_document_id
+     AND d_scope.active_extraction_run_id = ev_scope.extraction_run_id
+    WHERE d_scope.community IS NOT NULL
+  )`;
+}
+
 /** FROM-clause source over ACTIVE entity events (ops rollups). */
 export function activeEntityEventsSourceSql(): string {
   return `core_restaurant_entity_events ev_scope

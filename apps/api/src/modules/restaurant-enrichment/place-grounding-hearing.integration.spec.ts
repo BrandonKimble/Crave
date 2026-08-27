@@ -138,6 +138,7 @@ function serviceWith(opts: {
     } as never,
     { emit: jest.fn() } as never,
     ledger,
+    { reconcile: () => Promise.resolve(0) } as never,
     noopLogger() as never,
   );
 }

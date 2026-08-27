@@ -123,7 +123,8 @@ function createHarness(
       getDietaryIds: () => Promise.resolve(new Set()),
       getDietaryPairs: () => Promise.resolve(new Map()),
       resolveDietaryWalls: () => Promise.resolve([]),
-    } as never, // dietaryConstraints
+    } as never,
+    { getCuisineIds: () => Promise.resolve(new Set()) } as never, // cuisineFacets // dietaryConstraints
     {} as never, // onDemandRequestService
     {} as never, // textSanitizer
     searchPrisma as never, // prisma

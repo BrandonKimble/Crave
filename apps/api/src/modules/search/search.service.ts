@@ -40,7 +40,11 @@ import {
   type SiblingExpansionReader,
 } from './search-sibling-expansion.service';
 import { DietaryConstraintRegistry } from './dietary-constraints';
-import type { SearchExecutionDirectives } from './search-execution-directives';
+import type {
+  PooledSoftConcept,
+  SearchExecutionDirectives,
+} from './search-execution-directives';
+import { CuisineFacetRegistry } from './cuisine-facet.registry';
 import {
   ON_DEMAND_MIN_RESULTS,
   ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES,
@@ -226,6 +230,7 @@ export class SearchService {
     private readonly entityExpansion: SearchEntityExpansionService,
     private readonly siblingExpansion: SearchSiblingExpansionService,
     private readonly dietaryConstraints: DietaryConstraintRegistry,
+    private readonly cuisineFacets: CuisineFacetRegistry,
     private readonly onDemandRequestService: OnDemandRequestService,
     private readonly textSanitizer: TextSanitizerService,
     private readonly prisma: PrismaService,
@@ -1590,6 +1595,24 @@ export class SearchService {
       params.planExpansion,
     );
     const dietary = new Set(dietaryIds);
+    // CUISINE DUAL-PROJECTION (v17 S4; F5): a grounded facet='cuisine'
+    // attribute is ONE concept with two column homes — dish-side
+    // `food_attributes` (knowledge projection) and restaurant-side
+    // `restaurant_attributes` (testimony + Places + cuisine_llm). It is
+    // partitioned OUT of the single-column attribute lists (whichever
+    // bucket placement used) so it can never compile into a one-column
+    // filter, and never into two AND'd twins (the naive dual projection
+    // that gets STRICTER — F5's failure case).
+    const cuisineFacetIds = await this.cuisineFacets.getCuisineIds();
+    const cuisineConceptIds = Array.from(
+      new Set(
+        [
+          ...constraints.ids.itemAttributeIds,
+          ...constraints.ids.placeAttributeIds,
+        ].filter((id) => cuisineFacetIds.has(id) && !dietary.has(id)),
+      ),
+    );
+    const cuisineSet = new Set(cuisineConceptIds);
     // SUBJECT IS SACRED (spec §1.4.1; red team C1): softening applies to
     // MODIFIERS of a subject. When the attributes ARE the subject (no
     // food/restaurant/ingredient grounding), stripping them would leave
@@ -1605,15 +1628,37 @@ export class SearchService {
     // count). 8 covers every real query shape; beyond it the extra words
     // still filter via provenance of the first 8.
     const SOFT_ID_CAP = 8;
-    const softItemAttributeIds = hasPrimarySubject
-      ? constraints.ids.itemAttributeIds
-          .filter((id) => !dietary.has(id))
-          .slice(0, SOFT_ID_CAP)
-      : [];
-    const softPlaceAttributeIds = hasPrimarySubject
-      ? constraints.ids.placeAttributeIds
-          .filter((id) => !dietary.has(id))
-          .slice(0, SOFT_ID_CAP)
+    // ONE soft entry per CONCEPT (F5): plain attributes carry their single
+    // column home; a cuisine concept carries BOTH homes and is satisfied
+    // by either (OR within a concept, AND across concepts) — and it is
+    // counted ONCE in the starvation report (the duplicate-JSON-key trap).
+    const softConcepts: PooledSoftConcept[] = hasPrimarySubject
+      ? [
+          ...constraints.ids.itemAttributeIds
+            .filter((id) => !dietary.has(id) && !cuisineSet.has(id))
+            .slice(0, SOFT_ID_CAP)
+            .map(
+              (id): PooledSoftConcept => ({
+                id,
+                columns: ['food_attributes'],
+              }),
+            ),
+          ...constraints.ids.placeAttributeIds
+            .filter((id) => !dietary.has(id) && !cuisineSet.has(id))
+            .slice(0, SOFT_ID_CAP)
+            .map(
+              (id): PooledSoftConcept => ({
+                id,
+                columns: ['restaurant_attributes'],
+              }),
+            ),
+          ...cuisineConceptIds.slice(0, SOFT_ID_CAP).map(
+            (id): PooledSoftConcept => ({
+              id,
+              columns: ['food_attributes', 'restaurant_attributes'],
+            }),
+          ),
+        ]
       : [];
     // DIETARY WALLS (owner semantics 2026-08-04): a dietary requirement is
     // per-projection — dish shows only with the DISH-side attribute; a
@@ -1635,19 +1680,21 @@ export class SearchService {
     // Membership: soft ids move to provenance; dietary ids move to WALLS.
     // Presence bookkeeping is untouched — it describes the QUERY the user
     // asked, not the WHERE we execute.
-    const softSet = new Set([
-      ...softItemAttributeIds,
-      ...softPlaceAttributeIds,
-    ]);
+    // Cuisine ids leave membership in BOTH modes: as a soft concept they
+    // move to gate provenance like any soft word; as a hard wall (no
+    // primary subject) they move to directives.cuisineConceptIds, whose
+    // builder arm is the two-column OR — never the single-column filter
+    // the plain id lists compile to.
+    const softSet = new Set(softConcepts.map((concept) => concept.id));
     const pooledConstraints: SearchConstraints = {
       ...constraints,
       ids: {
         ...constraints.ids,
         itemAttributeIds: constraints.ids.itemAttributeIds.filter(
-          (id) => !softSet.has(id) && !dietary.has(id),
+          (id) => !softSet.has(id) && !dietary.has(id) && !cuisineSet.has(id),
         ),
         placeAttributeIds: constraints.ids.placeAttributeIds.filter(
-          (id) => !softSet.has(id) && !dietary.has(id),
+          (id) => !softSet.has(id) && !dietary.has(id) && !cuisineSet.has(id),
         ),
       },
     };
@@ -1682,8 +1729,7 @@ export class SearchService {
     // No soft words AND no ring ⇒ no gate to run: the pooled query
     // degenerates to the plain strict single query (an empty soft-id list
     // must not reach the builder — Prisma.join([]) throws).
-    const hasSoftIds =
-      softItemAttributeIds.length > 0 || softPlaceAttributeIds.length > 0;
+    const hasSoftIds = softConcepts.length > 0;
     const directives = {
       ...this.buildExecutionDirectives(
         params.request,
@@ -1691,11 +1737,13 @@ export class SearchService {
         params.planExpansion,
       ),
       ...(dietaryWalls.length ? { dietaryWalls } : {}),
+      ...(cuisineConceptIds.length && !hasPrimarySubject
+        ? { cuisineConceptIds }
+        : {}),
       ...(hasSoftIds || similarItemIds.length
         ? {
             pooledGate: {
-              softItemAttributeIds,
-              softPlaceAttributeIds,
+              softConcepts,
               // One page = what the CLIENT asked for (red team A3): a
               // pageSize above the default must not come back short
               // because the gate closed at 25.

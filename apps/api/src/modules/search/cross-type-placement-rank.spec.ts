@@ -16,13 +16,21 @@ import type { EntityType } from '@prisma/client';
 
 type Candidate = { entityId: string; type: EntityType; name: string };
 
-const pick = (candidates: Candidate[], dietary: string[] = []): Candidate => {
+const pick = (
+  candidates: Candidate[],
+  dietary: string[] = [],
+  cuisine: string[] = [],
+): Candidate => {
   const svc = Object.create(
     SearchQueryInterpretationService.prototype,
   ) as unknown as {
-    pickPlacedWinner: (c: Candidate[], d: ReadonlySet<string>) => Candidate;
+    pickPlacedWinner: (
+      c: Candidate[],
+      d: ReadonlySet<string>,
+      k: ReadonlySet<string>,
+    ) => Candidate;
   };
-  return svc.pickPlacedWinner(candidates, new Set(dietary));
+  return svc.pickPlacedWinner(candidates, new Set(dietary), new Set(cuisine));
 };
 
 const c = (id: string, type: string): Candidate => ({
@@ -53,5 +61,33 @@ describe('pickPlacedWinner — unknown types go to the BACK (M9, second copy)', 
       ['vegan-x'],
     );
     expect(winner.entityId).toBe('vegan-x');
+  });
+});
+
+describe('pickPlacedWinner — cuisine FACET beats the type order (v17 S4)', () => {
+  it('a facet=cuisine attribute beats a same-named junk dish entity', () => {
+    const winner = pick(
+      [c('junk-dish-mexican', 'item'), c('cuisine-mexican', 'place_attribute')],
+      [],
+      ['cuisine-mexican'],
+    );
+    expect(winner.entityId).toBe('cuisine-mexican');
+  });
+
+  it('dietary still outranks cuisine', () => {
+    const winner = pick(
+      [c('cuisine-x', 'place_attribute'), c('vegan-x', 'item_attribute')],
+      ['vegan-x'],
+      ['cuisine-x'],
+    );
+    expect(winner.entityId).toBe('vegan-x');
+  });
+
+  it('without a cuisine flag the type order is unchanged', () => {
+    const winner = pick([
+      c('junk-dish-mexican', 'item'),
+      c('cuisine-mexican', 'place_attribute'),
+    ]);
+    expect(winner.entityId).toBe('junk-dish-mexican');
   });
 });

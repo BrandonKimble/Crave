@@ -1,3 +1,14 @@
+/** A column home a soft concept can be satisfied from. */
+export type SoftConceptColumn = 'food_attributes' | 'restaurant_attributes';
+
+/** One soft word of the pooled gate: a concept (attribute entity id) plus
+ *  the column homes any one of which satisfies it — OR within a concept,
+ *  AND across concepts. */
+export interface PooledSoftConcept {
+  id: string;
+  columns: SoftConceptColumn[];
+}
+
 export interface SearchExecutionDirectives {
   /**
    * When the primary target is a food attribute (no explicit food/restaurant),
@@ -39,9 +50,28 @@ export interface SearchExecutionDirectives {
     itemAttributeId?: string;
     placeAttributeId?: string;
   }>;
+  /**
+   * CUISINE DUAL-PROJECTION, hard membership (v17 S4; F5): a grounded
+   * facet='cuisine' attribute is ONE concept with two storage homes — the
+   * dish-side `food_attributes` array (knowledge projection) and the
+   * restaurant-side `restaurant_attributes` array (testimony + Places +
+   * cuisine_llm). When the query has no primary subject the concept is a
+   * WALL, satisfied by EITHER home (never an AND that gets stricter):
+   * dish axis `(c.food_attributes @> [id] OR fr.restaurant_attributes @>
+   * [id])`, restaurant axis `(r.restaurant_attributes @> [id] OR EXISTS
+   * dish carrying it)`. With a primary subject the same concept rides the
+   * pooled gate as one soft concept spanning both columns.
+   */
+  cuisineConceptIds?: string[];
   pooledGate?: {
-    softItemAttributeIds: string[];
-    softPlaceAttributeIds: string[];
+    /**
+     * ONE soft entry per CONCEPT (F5): a concept lists the column homes
+     * that can satisfy it, and tier-0 requires every concept satisfied by
+     * ANY of its columns. The old parallel id lists made a dual-homed
+     * cuisine id two AND'd requirements (stricter, the exact starvation
+     * this exists to prevent) and duplicated its starvation JSON key.
+     */
+    softConcepts: PooledSoftConcept[];
     threshold: number;
     /** TIER-2 SIMILAR RING (round-5 ideal, spec §7.2 dissolved): the dense
      *  sibling ids ride the SAME dish scan as provenance tier 2 — admitted

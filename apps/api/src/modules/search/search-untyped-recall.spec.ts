@@ -48,6 +48,7 @@ function makeService(
     entityTextSearch as never,
     {} as never,
     dietary as never,
+    { getCuisineIds: () => Promise.resolve(new Set()) } as never,
     {} as never,
     {} as never,
     {} as never,

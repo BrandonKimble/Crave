@@ -100,6 +100,11 @@ export class SearchCoverageService {
       // will never show. Proven RED by deleting this line
       // (search-coverage-archived-leak.integration.spec.ts).
       Prisma.sql`e.status <> 'archived'`,
+      // MARKET MEMBERSHIP (v17 S4): the coverage/dots layer reads the same
+      // core_entities as the ranked list and must carry the same exclusion,
+      // else an out-of-market place leaks onto the map as a dot the ranked
+      // list will never show.
+      Prisma.sql`e.market_excluded_at IS NULL`,
       // Eligibility = the Crave Score v3 inclusion floor: catalogued dishes OR by-name praise
       // (mirrors the relaxed gate in search-query.builder). Restaurant-mode dots
       // (includeTopDish=false) are colored by the v3 restaurant score, so a dishless-but-praised

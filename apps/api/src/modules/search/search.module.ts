@@ -27,6 +27,7 @@ import { PlaceStatusService } from './restaurant-status.service';
 import { SearchEntityExpansionService } from './search-entity-expansion.service';
 import { SearchSiblingExpansionService } from './search-sibling-expansion.service';
 import { DietaryConstraintRegistry } from './dietary-constraints';
+import { CuisineFacetRegistry } from './cuisine-facet.registry';
 import { UnsegmentedResidueService } from './unsegmented-residue.service';
 import { ScoringTerritoryRefreshService } from './scoring-territory-refresh.service';
 import { OpenIntervalsBuilderService } from './open-intervals-builder.service';
@@ -66,6 +67,7 @@ import { ItemCategoryEdgeBuilderService } from './food-category-edge-builder.ser
     SearchEntityExpansionService,
     SearchSiblingExpansionService,
     DietaryConstraintRegistry,
+    CuisineFacetRegistry,
     UnsegmentedResidueService,
     ScoringTerritoryRefreshService,
     OpenIntervalsBuilderService,
@@ -81,6 +83,7 @@ import { ItemCategoryEdgeBuilderService } from './food-category-edge-builder.ser
     PlaceStatusService,
     SearchQueryExecutor,
     DietaryConstraintRegistry,
+    CuisineFacetRegistry,
   ],
 })
 export class SearchModule {}

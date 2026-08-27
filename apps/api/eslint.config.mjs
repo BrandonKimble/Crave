@@ -166,6 +166,12 @@ export default tseslint.config(
       'scripts/prompt-audit.ts',
       // Asserts on the scope service's own emitted SQL.
       'src/modules/polls/supply/poll-ballot-mention.service.spec.ts',
+      // FIXTURE-PLANTS the activation pointer (a synthetic run + documents
+      // whose active run is that run) to prove the market-membership
+      // reconciler reads crediting communities through the scope service's
+      // fragment — same standing as the rt-activation-scope crime-scene
+      // probe below; events go through writePlaceEvents, the one door.
+      'src/modules/restaurant-enrichment/market-membership.integration.spec.ts',
       // Owns the only legal write to enrichmentFailureCount, so its own type
       // annotation names the field.
       'src/modules/restaurant-enrichment/enrichment-failure-counter.ts',

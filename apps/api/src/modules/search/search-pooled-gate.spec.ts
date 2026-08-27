@@ -50,8 +50,12 @@ function directives(
 ): SearchExecutionDirectives {
   return {
     pooledGate: {
-      softItemAttributeIds: [SOFT_FOOD_ATTR],
-      softPlaceAttributeIds: [SOFT_REST_ATTR],
+      // F5 concept shape: one entry per concept, each naming its column
+      // home(s) — a single-home concept is the pre-concept behavior.
+      softConcepts: [
+        { id: SOFT_FOOD_ATTR, columns: ['food_attributes'] },
+        { id: SOFT_REST_ATTR, columns: ['restaurant_attributes'] },
+      ],
       threshold: 25,
       ...overrides,
     },
@@ -229,8 +233,7 @@ describe('step-3 pooled richness gate (SQL shape)', () => {
   it('ring-only gate (no soft words) builds without empty-array joins', () => {
     const d: SearchExecutionDirectives = {
       pooledGate: {
-        softItemAttributeIds: [],
-        softPlaceAttributeIds: [],
+        softConcepts: [],
         threshold: 25,
         similarItemIds: ['66666666-6666-6666-6666-666666666666'],
       },

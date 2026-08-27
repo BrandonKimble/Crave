@@ -6,6 +6,7 @@ import { ProjectionRebuildService } from '../content-processing/reddit-collector
 import { LoggerService } from '../../shared';
 import { PlaceEntityMergeService } from './restaurant-entity-merge.service';
 import { PlaceTypeCensusService } from './place-type-census.service';
+import { MarketMembershipService } from './market-membership.service';
 
 /**
  * THE NIGHTLY CONVERGENCE ORDER (round-12 architecture audit): the
@@ -29,6 +30,7 @@ export class NightlyConvergenceService {
     private readonly projectionRebuild: ProjectionRebuildService,
     private readonly rescoreCoordinator: RescoreCoordinatorService,
     private readonly placeTypeCensus: PlaceTypeCensusService,
+    private readonly marketMembership: MarketMembershipService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('NightlyConvergenceService');
@@ -58,6 +60,11 @@ export class NightlyConvergenceService {
         'mark-rescore-dirty',
         () => this.rescoreCoordinator.markDirty('nightly-convergence'),
       ],
+      // v17 S4: market-membership verdicts re-derived from state after the
+      // merges/sweeps above moved evidence — a place credited only by a
+      // community whose metro it sits outside is excluded from search and
+      // scoring (never deleted).
+      ['market-membership', () => this.marketMembership.reconcile()],
       // R11 census: a Google place type stored on a grounded restaurant that
       // google-place-type-attributes.ts classifies as neither kind nor noise
       // raises a deduped ops alert (Google shipped a taxonomy change).
