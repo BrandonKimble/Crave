@@ -500,18 +500,34 @@ export class DishKnowledgeSynthesisService {
       });
       return { entityId: created.entityId, created: true };
     } catch (error) {
-      // Unique partial index on (name) WHERE type='ingredient' makes the
-      // find-then-create race lose loudly instead of duplicating — refetch.
-      const winner = await this.prisma.entity.findFirst({
-        where: {
-          type: EntityType.ingredient,
-          name: normalized,
-          status: EntityStatus.active,
-        },
-        select: { entityId: true },
-      });
+      // FULL uniqueness scope (2026-08-27): uq_ingredient_identity_key
+      // spans every non-archived status — a pending or shadow-rehearsal
+      // ingredient row blocks the insert too, and it fires on the identity
+      // KEY, not the byte name. The row holding the slot IS the
+      // ingredient: adopt it, promoting a shadow-born winner to the
+      // status this live mint would have stamped.
+      const [winner] = await this.prisma.$queryRaw<
+        Array<{ entity_id: string; status: string }>
+      >`
+        SELECT entity_id, status::text FROM core_entities
+         WHERE type = 'ingredient'::entity_type
+           AND status <> 'archived'::entity_status
+           AND (identity_key = ${folded || null}
+                OR lower(name) = lower(${normalized}))
+         ORDER BY created_at
+         LIMIT 1`;
       if (winner) {
-        return { entityId: winner.entityId, created: false };
+        if (winner.status === 'rehearsal') {
+          await this.prisma.entity.update({
+            where: { entityId: winner.entity_id },
+            data: {
+              status: EntityStatus.active,
+              bornExtractionRunId: null,
+              lastUpdated: new Date(),
+            },
+          });
+        }
+        return { entityId: winner.entity_id, created: false };
       }
       throw error;
     }

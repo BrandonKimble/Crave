@@ -88,16 +88,36 @@ export async function mintCuisineFacetRow(
     );
     return { entityId: created.entityId, created: true };
   } catch {
-    const winner = await prisma.entity.findFirst({
-      where: {
-        type: EntityType.place_attribute,
-        name,
-        status: { in: [EntityStatus.active, EntityStatus.pending] },
-      },
-      select: { entityId: true },
-    });
+    // FULL uniqueness scope (2026-08-27): uq_attribute_identity_key spans
+    // every non-archived status — including a shadow replay's rehearsal
+    // rows — and fires on the identity KEY, not the byte name. Probing by
+    // name + active/pending missed both, returned null, and the caller
+    // treated a real row as unmintable. The row holding the slot IS the
+    // cuisine: adopt it, and promote a shadow-born winner to the status
+    // this live mint would have stamped.
+    const [winner] = await prisma.$queryRaw<
+      Array<{ entity_id: string; status: string }>
+    >`
+      SELECT entity_id, status::text FROM core_entities
+       WHERE type = 'place_attribute'::entity_type
+         AND status <> 'archived'::entity_status
+         AND (identity_key = ${identityInsertData(name, EntityType.place_attribute).identityKey}
+              OR lower(name) = lower(${name}))
+       ORDER BY created_at
+       LIMIT 1`;
     if (winner) {
-      return { entityId: winner.entityId, created: false };
+      if (winner.status === 'rehearsal') {
+        await prisma.entity.update({
+          where: { entityId: winner.entity_id },
+          data: {
+            status: EntityStatus.active,
+            facet: CUISINE_FACET,
+            bornExtractionRunId: null,
+            lastUpdated: new Date(),
+          },
+        });
+      }
+      return { entityId: winner.entity_id, created: false };
     }
     return null;
   }

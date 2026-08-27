@@ -65,6 +65,30 @@ export class RehearsalGenerationService {
                last_updated = now()
          WHERE status = 'rehearsal'::entity_status
            AND born_extraction_run_id = ANY(${ids}::uuid[])`;
+      // Cross-run adoptions (2026-08-27): the partial unique identity
+      // indexes allow only ONE non-archived row per (type, identity_key),
+      // so a run that meets a key another shadow minted first ADOPTS that
+      // foreign rehearsal row and records its reference as surfaces born
+      // to itself. Activation must make every entity this run references
+      // real, not just the ones it was first to mint — promote shadow-born
+      // rows (rehearsal, or archived-by-a-rejected-shadow: born run id
+      // NOT NULL, so genuine live junk tombstones are untouchable) that
+      // carry a surface born to the flipping runs.
+      const adopted = await tx.$executeRaw`
+        UPDATE core_entities e
+           SET status = CASE WHEN e.type IN ('item_attribute'::entity_type,
+                                             'place_attribute'::entity_type)
+                             THEN 'pending'::entity_status
+                             ELSE 'active'::entity_status END,
+               last_updated = now()
+         WHERE (e.status = 'rehearsal'::entity_status
+                OR (e.status = 'archived'::entity_status
+                    AND e.born_extraction_run_id IS NOT NULL))
+           AND NOT (e.born_extraction_run_id = ANY(${ids}::uuid[]))
+           AND EXISTS (
+             SELECT 1 FROM entity_surface s
+              WHERE s.entity_id = e.entity_id
+                AND s.born_extraction_run_id = ANY(${ids}::uuid[]))`;
       const surfaces = await tx.$executeRaw`
         UPDATE entity_surface
            SET status = 'active', updated_at = now()
@@ -77,6 +101,7 @@ export class RehearsalGenerationService {
       this.logger.info('Rehearsal generation flipped', {
         runs: ids.length,
         entities,
+        adoptedCrossRun: adopted,
         surfaces,
         verdicts,
       });

@@ -2305,36 +2305,102 @@ export class UnifiedProcessingService implements OnModuleInit {
                     : typeof rawTarget === 'string'
                       ? rawTarget
                       : '';
+                  // FULL uniqueness scope (2026-08-27, v17 replay crash):
+                  // the partial unique indexes span EVERY non-archived
+                  // status — including foreign shadows' rehearsal rows —
+                  // so a probe narrower than the index (the old rehearsal
+                  // quarantine clause) found nothing and rethrew, failing
+                  // the batch deterministically on every refill. A row
+                  // holding the (type, identity_key) slot IS the entity;
+                  // adopt it whatever its status, and let the promotion
+                  // rules below keep the quarantine's semantics intact.
+                  type AdoptWinner = {
+                    entity_id: string;
+                    status: string;
+                    born_extraction_run_id: string | null;
+                  };
                   const winner = target.includes('name')
-                    ? await tx.$queryRaw<Array<{ entity_id: string }>>`
-                        SELECT entity_id FROM core_entities
+                    ? await tx.$queryRaw<Array<AdoptWinner>>`
+                        SELECT entity_id, status::text, born_extraction_run_id
+                        FROM core_entities
                         WHERE type = ${entityType}::entity_type
                           AND lower(name) = lower(${canonicalName})
-                          AND (status <> 'rehearsal'::entity_status
-                               OR born_extraction_run_id = ${rehearsalRunId ?? null}::uuid)
                         ORDER BY (status <> 'archived') DESC, created_at
                         LIMIT 1
                       `
-                    : await tx.$queryRaw<Array<{ entity_id: string }>>`
-                        SELECT entity_id FROM core_entities
+                    : await tx.$queryRaw<Array<AdoptWinner>>`
+                        SELECT entity_id, status::text, born_extraction_run_id
+                        FROM core_entities
                         WHERE type = ${entityType}::entity_type
                           AND identity_key = ${canonicalFold(canonicalName) || null}
                           AND identity_key IS NOT NULL
-                          AND (status <> 'rehearsal'::entity_status
-                               OR born_extraction_run_id = ${rehearsalRunId ?? null}::uuid)
                         ORDER BY (status <> 'archived') DESC, created_at
                         LIMIT 1
                       `;
                   if (!winner.length) {
                     throw error;
                   }
+                  const adopted = winner[0];
+                  if (
+                    adopted.status === 'rehearsal' &&
+                    adopted.born_extraction_run_id !== rehearsalRunId &&
+                    !rehearsalRunId
+                  ) {
+                    // A LIVE mint collided with a foreign shadow's
+                    // quarantined row. The entity is being born live —
+                    // promote the row to exactly the status the live
+                    // create would have stamped and clear the born-run
+                    // marker, so the shadow's later flip/reject can never
+                    // touch a row live events now reference. Only the
+                    // name/identity row is promoted; the shadow's
+                    // evidence (events, verdicts, surfaces born to it)
+                    // stays quarantined.
+                    await tx.entity.update({
+                      where: { entityId: adopted.entity_id },
+                      data: {
+                        status: isAttributeType
+                          ? EntityStatus.pending
+                          : EntityStatus.active,
+                        bornExtractionRunId: null,
+                        lastUpdated: new Date(),
+                      },
+                    });
+                  }
+                  // A rehearsal run adopting a FOREIGN rehearsal row keeps
+                  // it as-is (still invisible to every reader); the
+                  // adopting run's reference is recorded via the surfaces
+                  // banked below, which is what flip()'s reference arm
+                  // promotes if this run is the one activated.
                   this.logger.warn('P2002 on create — adopted winner', {
                     batchId,
                     entityType,
                     name: canonicalName,
-                    entityId: winner[0].entity_id,
+                    entityId: adopted.entity_id,
+                    winnerStatus: adopted.status,
+                    winnerBornRunId: adopted.born_extraction_run_id,
                   });
-                  entityId = winner[0].entity_id;
+                  entityId = adopted.entity_id;
+                  // Bank the mention's surfaces on the adopted winner —
+                  // provenance for this mention, and (under a rehearsal
+                  // run) the reference marker the activation flip uses to
+                  // promote cross-run adoptions.
+                  const adoptSurfaces = Array.from(
+                    new Set(aliasSet.filter(Boolean)),
+                  );
+                  if (adoptSurfaces.length && adopted.status !== 'archived') {
+                    await addSurfaces(
+                      tx,
+                      adopted.entity_id,
+                      adoptSurfaces.map((alias) => ({
+                        form: alias,
+                        source: 'extraction' as const,
+                      })),
+                      {
+                        markEmbeddingStale: false,
+                        bornExtractionRunId: rehearsalRunId,
+                      },
+                    );
+                  }
                 } else {
                   throw error;
                 }
