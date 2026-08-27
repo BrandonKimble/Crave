@@ -5,6 +5,7 @@ import { LoggerService } from '../../../shared';
 import { createHash } from 'crypto';
 import { pricedGeminiRow } from '../../external-integrations/shared/gemini-pricing';
 import { OpsAlertsService } from '../../external-integrations/shared/ops-alerts.service';
+import { GeminiBatchService } from '../../external-integrations/llm/gemini-batch.service';
 import { benchProberRegistry, BenchProbeResult } from './bench-prober';
 
 /**
@@ -73,6 +74,7 @@ export class IterationBenchService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly opsAlerts: OpsAlertsService,
+    private readonly geminiBatch: GeminiBatchService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('IterationBenchService');
@@ -416,6 +418,20 @@ export class IterationBenchService {
     detail: string;
   }> {
     const run = await this.load(runId);
+    // LAW 3 — the bench DRIVES its queue, it does not watch someone else
+    // drive it: every drive step pumps the batch poller itself, so a
+    // cron-less target (staging) makes progress by being driven. The v16
+    // stall (25 silent hours) and the v17 first-drive stall were both
+    // "drive() observed a queue nobody was polling".
+    try {
+      await this.geminiBatch.poll();
+    } catch (error) {
+      this.logger.warn('drive-step poll failed (continuing to assess)', {
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
     const rows = await this.prisma.$queryRaw<
       { status: string; n: number; newest: Date | null }[]
     >`

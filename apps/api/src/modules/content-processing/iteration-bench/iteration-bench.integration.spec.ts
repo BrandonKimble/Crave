@@ -18,7 +18,13 @@ const logger = {
   error: () => {},
 } as never;
 const opsAlerts = { emit: () => {} } as never;
-const bench = new IterationBenchService(prisma as never, opsAlerts, logger);
+const geminiBatch = { poll: async () => {} } as never;
+const bench = new IterationBenchService(
+  prisma as never,
+  opsAlerts,
+  geminiBatch,
+  logger,
+);
 
 const TAG = 'bench-spec';
 let candidateVersion: number;
