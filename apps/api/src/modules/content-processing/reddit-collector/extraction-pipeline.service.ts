@@ -1263,6 +1263,18 @@ export class ExtractionPipelineService implements OnModuleInit {
       return refuse('missing_place_observed', null);
     }
 
+    // F.2's asserts-nothing law, made mechanical: a PLACE mention with no
+    // attributes and general_praise false claims nothing — the prompt says
+    // "do not emit it", and when the model emits one anyway it is a defined
+    // no-op, not data and not a refusal (nothing was wrongly claimed).
+    if (
+      !isDishMention(wireMention) &&
+      wireMention.general_praise !== true &&
+      !(wireMention.place_attributes ?? []).length
+    ) {
+      return null;
+    }
+
     let canonicalPlaceSourceId: string;
     try {
       canonicalPlaceSourceId = this.resolveCanonicalSourceIdForMention(
@@ -1276,10 +1288,35 @@ export class ExtractionPipelineService implements OnModuleInit {
 
     const spanText = enrichment.spanTextById.get(canonicalPlaceSourceId) ?? '';
     if (!observedSpanAppearsInSource(placeObserved, spanText)) {
-      return refuse(
-        'span_not_in_cited_source',
-        `"${placeObserved}" not found in ${canonicalPlaceSourceId}`,
-      );
+      // UNIQUE-WITNESS REPAIR (v17 preflight, the 2% wrong-pointer class):
+      // the model's CLAIM is the span; the pointer is derivable data. When
+      // the cited source lacks the span but exactly ONE in-scope source of
+      // the same post contains it, the pointer is re-derived to that
+      // witness (audited via placeSourcePointerRepairedFrom). Zero or 2+
+      // witnesses stay a refusal — repair must never guess.
+      const witnesses: string[] = [];
+      for (const [srcId, text] of enrichment.spanTextById) {
+        if (
+          srcId !== canonicalPlaceSourceId &&
+          observedSpanAppearsInSource(placeObserved, text)
+        ) {
+          witnesses.push(srcId);
+          if (witnesses.length > 1) break;
+        }
+      }
+      if (witnesses.length === 1) {
+        this.logger.debug('place_source_id repaired to unique witness', {
+          from: canonicalPlaceSourceId,
+          to: witnesses[0],
+          span: placeObserved,
+        });
+        canonicalPlaceSourceId = witnesses[0];
+      } else {
+        return refuse(
+          'span_not_in_cited_source',
+          `"${placeObserved}" not found in ${canonicalPlaceSourceId} (witnesses: ${witnesses.length})`,
+        );
+      }
     }
 
     const place = canonicalizeObservedPlaceName(placeObserved);

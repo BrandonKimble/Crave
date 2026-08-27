@@ -47,7 +47,9 @@ Identity modifiers govern here too: "korean fried chicken" → `korean`.
 Emit at the level the NAME commits to ("mapo tofu" → `sichuan` and
 `chinese` only if you would defend both as what a diner would say; when
 one level is the honest answer, emit only it), using the one canonical
-everyday spelling — `mexican`, never "mex" or "mexican food". A diet,
+everyday spelling — `mexican`, never "mex" or "mexican food". A HYBRID
+tradition also carries the tradition it hybridizes ("fajita" → `tex-mex`
+AND `mexican`): diners tapping either pool expect it. A diet,
 format, or venue type is never a tradition. **Empty is the cheap error**:
 an unnamed tradition can be asked again; a wrong one files every
 restaurant serving this dish under a filter where the tap disappoints.

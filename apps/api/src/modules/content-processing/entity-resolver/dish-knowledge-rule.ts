@@ -27,6 +27,11 @@ const DISH_KNOWLEDGE_RULE_RELEASES: readonly RuleRelease[] = [
     fingerprint: 'c2df681bee2a',
     note: 'S4 knowledge widening (2026-08-26): the response gains a `cuisines` facet per dish — the cooking tradition(s) the dish NAME itself entails (TRADITION TEST), stored as canonical facet=cuisine attribute ids in knowledge_cuisines. Re-opens every v1 stamp (the whole dish population owes a cuisine hearing).',
   },
+  {
+    version: 3,
+    fingerprint: 'acbabaf05126',
+    note: 'Owner-ruled hybrid-tradition law (2026-08-26): a hybrid tradition also carries the tradition it hybridizes ("fajita" → tex-mex AND mexican) — diners tapping either pool expect it; nested regionals stay at their committed level. Re-opens v2 stamps only where a hybrid could apply; since no v2 backfill has run yet, the practical population is unchanged.',
+  },
 ];
 
 export const DISH_KNOWLEDGE_RULE: ResolvedPromptRule = resolvePromptRule(

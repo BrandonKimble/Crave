@@ -674,8 +674,8 @@
     }
   },
   {
-    "id": "V8k-wagyu-redirect",
-    "why": "Predictive modifier on wrapper head redirects to the FOOD: wagyu tasting menu -> wagyu, never the compound.",
+    "id": "V8k-food-phrase-emits-as-spoken",
+    "why": "Re-derived 2026-08-27 under Gate 1 FOOD-OR-TERMS (method-audit finding 5): 'the wagyu tasting menu' tells you what arrives and is what a diner says to the server — emitted AS SPOKEN, never stripped to 'wagyu'; bare 'tasting menu' stays terms-only. (Previously pinned the retired redirect behavior.) (notFoods emptied 2026-08-27: the tolerant food matcher makes 'tasting menu' a false hit inside the expected item.)",
     "posts": [
       {
         "id": "SRC086",
@@ -692,8 +692,8 @@
     ],
     "expect": {
       "places": ["yakiniku futago"],
-      "items": ["wagyu"],
-      "notFoods": ["wagyu tasting menu", "tasting menu"]
+      "items": ["wagyu tasting menu"],
+      "notFoods": []
     }
   },
   {
@@ -2691,8 +2691,8 @@
     }
   },
   {
-    "id": "N7-wrapper-elvis-combo",
-    "why": "C.1 wrapper head (t1_k0226k3): \"the Elvis Presley combo hit the spot\" must not mint a combo dish — a delivery wrapper is never the dish. The itinerary post itself is a plan and emits nothing.",
+    "id": "N7-named-combo-is-a-dish",
+    "why": "Owner-ruled 2026-08-26: a PROPER-NAMED combo is a fixed menu offering and passes the ORDER TEST (two diners ordering it get the same thing — the omakase asymmetry); the old wrapper ban applies to generic wrappers only. This case previously pinned the opposite and was the flip-flopping band member — the instability WAS the ORDER TEST fighting Gate 1. (notFoods emptied 2026-08-27: 'combo' is a token-subset of the expected item under the tolerant matcher — a false FORBIDDEN.)",
     "contract": "v16",
     "posts": [
       {
@@ -2716,7 +2716,8 @@
         {
           "source": "t1_k0226k3",
           "places": ["chuy's"],
-          "notFoods": ["combo", "elvis presley combo"]
+          "notFoods": [],
+          "items": ["elvis presley combo"]
         }
       ]
     }
@@ -2783,7 +2784,7 @@
   },
   {
     "id": "N10-fact-ask-deal-availability",
-    "why": "v17 preflight residual (plans/v17-preflight-trace-20260826.md #5): deal/stock-flavored fact asks read as judgment asks — availability answers emitted as picks. Pins the sharpened A.1 condition 1.",
+    "why": "v17 preflight residual (plans/v17-preflight-trace-20260826.md #5): deal/stock-flavored fact asks read as judgment asks — availability answers emitted as picks. Pins the sharpened A.1 condition 1. (Expectation re-derived 2026-08-27: 'their oysters are the best in town' is DISH-directed praise — the oyster claim IS the endorsement; no place carrier is owed.)",
     "posts": [
       {
         "id": "t3_factask1",
@@ -2812,7 +2813,385 @@
         {
           "source": "t1_fa2",
           "places": ["perla's"],
+          "items": ["oyster"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N11-discontinued-dish-never-mints",
+    "why": "Owner-ruled 2026-08-26 (RIP Uchi Candy Bar class): a dish the text says is gone is not orderable — emits nothing; the restaurant is untouched (a dead dish is not a closed place).",
+    "posts": [
+      {
+        "id": "t3_ripdish1",
+        "subreddit": "austinfood",
+        "title": "RIP the Uchi candy bar",
+        "body": "Still think about the candy bar dessert at Uchi. They took it off the menu years ago and nothing has filled the hole since. Uchi is still incredible though.",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "places": ["uchi"],
+      "somePraise": true,
+      "notFoods": ["candy bar", "candy bar dessert", "dessert"]
+    }
+  },
+  {
+    "id": "N12-branch-phrase-resolves-to-brand",
+    "why": "Owner-ruled 2026-08-26: 'the south lamar location' is a REFERENCE, never a name — resolve to the named brand in scope; per-branch identity is not this system's grain.",
+    "posts": [
+      {
+        "id": "t3_branch1",
+        "subreddit": "austinfood",
+        "title": "Best queso?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_br1",
+            "body": "Torchy's, no contest."
+          },
+          {
+            "id": "t1_br2",
+            "parent_id": "t1_br1",
+            "body": "The south lamar location is the best one, their queso is always perfect."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_br2",
+          "places": ["torchy's"],
+          "items": ["queso"]
+        }
+      ],
+      "notRestaurants": [
+        "south lamar location",
+        "the south lamar location",
+        "south lamar"
+      ]
+    }
+  },
+  {
+    "id": "N13-yardstick-earns-nothing",
+    "why": "Preflight traces 2026-08-26: names as yardsticks (credential list, comparison loser) earn nothing in either direction — one law, three costumes (A.3).",
+    "posts": [
+      {
+        "id": "t3_yard1",
+        "subreddit": "austinfood",
+        "title": "Craft omakase review",
+        "body": "For context, I've had all 3 omakase at Otoko, Sushi Bar, and Toshokan, and been to Tsuke many times. Craft's omakase blew me away — best bite-for-bite value in town. I enjoyed my meal there 100% more than Jeffreys.",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "places": ["craft"],
+      "somePraise": true,
+      "notRestaurants": ["otoko", "sushi bar", "toshokan", "tsuke", "jeffreys"]
+    }
+  },
+  {
+    "id": "N14-browsing-shortlist-is-a-plan",
+    "why": "Preflight traces 2026-08-26: a menu-browsing shortlist ('stood out to me' from open tabs) chose names by reading, not eating — a plan, however curated.",
+    "posts": [
+      {
+        "id": "t3_brow1",
+        "subreddit": "austinfood",
+        "title": "Restaurant week deals worth it?",
+        "body": "From my list of open tabs, some menus still not updated, but these are the ones that stood out to me: L'oca D'oro, Paul Martin, J Prime, Carve.",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "N15-concession-vs-standalone-solid",
+    "why": "Preflight traces 2026-08-26: 'solid'/'decent' as the WHOLE verdict lean positive; as a concession inside a cooler frame they withhold (position decides direction). (pin bug fixed 2026-08-27: both spelling variants were required; one as-written form suffices.) (Re-derived AGAIN 2026-08-27: source writes \"Howdy Donut's breakfast tacos\" — an attaching possessive, stripped per B.3's clitic rule; the model was right, the pin wrong twice.)",
+    "posts": [
+      {
+        "id": "t3_solid1",
+        "subreddit": "austinfood",
+        "title": "Breakfast taco check-in",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_so1",
+            "body": "Howdy Donut's breakfast tacos are solid."
+          },
+          {
+            "id": "t1_so2",
+            "body": "I wasn't huge on De Nada but they had a decent hard shell taco."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_so1",
+          "places": ["howdy donut"],
+          "items": ["breakfast taco"]
+        },
+        {
+          "source": "t1_so2",
+          "notRestaurants": ["de nada"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N16-writer-pairing-not-a-combo",
+    "why": "Corpus-derived 2026-08-26: 'combo' as the writer's own pairing commentary — the foods are the claims, nothing named combo exists.",
+    "posts": [
+      {
+        "id": "t3_pair1",
+        "subreddit": "austinfood",
+        "title": "Alamo Drafthouse orders",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_pa1",
+            "body": "Buffalo cauliflower wings and a vanilla milkshake. My favorite combo at Alamo :)"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_pa1",
+          "places": ["alamo"],
+          "items": ["buffalo cauliflower wing", "milkshake"],
+          "notFoods": ["combo"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N17-consumed-deal-contents-claim",
+    "why": "Corpus-derived 2026-08-26: deal contents the writer ATE and judged are normal dish claims; unconsumed enumeration stays the deal's contents.",
+    "posts": [
+      {
+        "id": "t3_deal1",
+        "subreddit": "austinfood",
+        "title": "B Coop's worth the drive?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_de1",
+            "body": "I had the 2 item combo with brisket, sausage, and corn salad. The sausage was incredible and the corn salad was very tasty."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_de1",
+          "items": ["sausage", "corn salad"],
+          "notFoods": ["2 item combo", "combo"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N18-quality-criterion-in-fact-clothing",
+    "why": "Method-audit gap 6 (2026-08-27): the criterion decides, never the verb — 'who has a GOOD variety' is a judgment ask despite 'has' phrasing; its picks emit.",
+    "posts": [
+      {
+        "id": "t3_qc1",
+        "subreddit": "austinfood",
+        "title": "Who has a good selection of veggie tacos?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_qc1",
+            "body": "Nixta Taqueria, easily."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_qc1",
+          "places": ["nixta taqueria"],
           "somePraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "N19-branch-phrase-no-anchor-skips",
+    "why": "Method-audit gap 6 (2026-08-27): a branch phrase with NO named anchor in scope falls to the unnamed-venue case — nothing emits, nothing minted.",
+    "posts": [
+      {
+        "id": "t3_bn1",
+        "subreddit": "austinfood",
+        "title": "Quick lunch downtown?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_bn1",
+            "body": "The south lamar location is way better than the one downtown, worth the drive."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "N20-rip-object-and-branch-closure",
+    "why": "Hyper-research 2026-08-27: closure is stated about an OBJECT — a dead dish and a closed branch never close the brand.",
+    "posts": [
+      {
+        "id": "t3_hr1",
+        "subreddit": "austinfood",
+        "title": "Taco spots holding up?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_hr1",
+            "body": "Sad since the one on MLK closed, but Cabo Bob's is still my go-to. Great tortillas."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_hr1",
+          "places": ["cabo bob's"],
+          "somePraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "N21-off-the-menu-idiom-alive",
+    "why": "Hyper-research 2026-08-27: only VERBED removal kills a dish; 'off the menu' as ordering idiom is a live dish.",
+    "posts": [
+      {
+        "id": "t3_hr2",
+        "subreddit": "austinfood",
+        "title": "24/7 spots",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_hr2",
+            "body": "Star Seeds is 24/7 and I enjoy several things off the menu, especially the migas."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_hr2",
+          "places": ["star seeds"],
+          "items": ["migas"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N22-adoption-inherits-polarity",
+    "why": "Hyper-research 2026-08-27: '+1' under a PAN seconds the pan — emits nothing positive.",
+    "posts": [
+      {
+        "id": "t3_hr3",
+        "subreddit": "austinfood",
+        "title": "Overrated?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_hr3a",
+            "body": "Launderette. Pretty presentation but no taste in the food."
+          },
+          {
+            "id": "t1_hr3b",
+            "parent_id": "t1_hr3a",
+            "body": "+1 on Launderette"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_hr3b",
+          "notRestaurants": ["launderette"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N23-hearsay-closure-counts",
+    "why": "Hyper-research 2026-08-27: hearsay closure counts as stated ('heard they closed') — cost asymmetry; a stated reopening overrides.",
+    "posts": [
+      {
+        "id": "t3_hr4",
+        "subreddit": "austinfood",
+        "title": "Is Sala & Betty still around?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_hr4",
+            "body": "I heard they closed for good last month. Their fried chicken was the best in town."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_hr4",
+          "notRestaurants": ["sala & betty", "sala and betty"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N24-giftcard-hearsay",
+    "why": "Hyper-research 2026-08-27: hearsay dressed in commitment — money spent is not food eaten.",
+    "posts": [
+      {
+        "id": "t3_hr5",
+        "subreddit": "austinfood",
+        "title": "Tillies worth it?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_hr5",
+            "body": "I bought a giftcard for my anniversary. I hear it is a very lovely venue."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_hr5",
+          "notRestaurants": ["tillies"]
         }
       ]
     }

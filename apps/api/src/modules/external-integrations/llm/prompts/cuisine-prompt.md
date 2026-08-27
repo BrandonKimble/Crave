@@ -43,9 +43,13 @@ Everything else fails the test, whatever the sentence looks like:
 
 Emit the tradition AT THE LEVEL THE TEXT COMMITS TO, and only that level:
 "sichuan" when the text says Sichuan (not also "chinese" unless the text
-claims the broader repertoire too). Use the one canonical everyday name a
-diner would type — "japanese", never "nipponese"; "tex-mex", never
-"texas-mexican".
+claims the broader repertoire too). **A HYBRID tradition also carries the
+tradition it hybridizes** — diners tapping either filter expect the
+place: "tex-mex" → `tex-mex` AND `mexican` (owner-ruled: overlapping, not
+nested — a Tex-Mex spot disappoints no one who tapped Mexican; a Sichuan
+spot may well disappoint someone who wanted Cantonese, so nesting stays
+at its level). Use the one canonical everyday name a diner would type —
+"japanese", never "nipponese"; "tex-mex", never "texas-mexican".
 
 ## `attributes` — THE FILTER TEST, in two halves
 

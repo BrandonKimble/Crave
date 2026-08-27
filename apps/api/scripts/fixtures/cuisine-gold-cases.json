@@ -34,10 +34,10 @@
   },
   {
     "id": "fusion-named-tradition",
-    "why": "A named diasporic/fusion tradition passes ('tex-mex'); shared dishes alone would not.",
+    "why": "A named diasporic/fusion tradition passes ('tex-mex'); shared dishes alone would not. Re-derived 2026-08-27 under the owner-ruled hybrid law: a hybrid tradition also carries the tradition it hybridizes — tex-mex emits both pools.",
     "summary": "A Tex-Mex institution — queso, crispy tacos, and frozen margaritas since 1952.",
     "expect": {
-      "cuisines": ["tex-mex"]
+      "cuisines": ["tex-mex", "mexican"]
     }
   },
   {

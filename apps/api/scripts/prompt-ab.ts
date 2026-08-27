@@ -354,10 +354,36 @@ async function runOnce(
     })),
   };
 
+  // Production-faithful ids: the pipeline always sends source_map, which
+  // enum-constrains source_id AND place_source_id at the decode layer — a
+  // mangled ref (dropped t1_ prefix) is unrepresentable in the real path,
+  // so the harness must not grade a failure production cannot produce.
+  const sourceMap: Record<string, string> = {};
+  for (const post of testCase.posts) {
+    sourceMap[post.id] = post.id;
+    for (const comment of post.comments ?? [])
+      sourceMap[comment.id] = comment.id;
+  }
+  (input as { source_map?: Record<string, string> }).source_map = sourceMap;
+
   const parsed = await llm.processContent(input as never, systemPrompt);
-  return Array.isArray(parsed?.mentions)
+  const mentions = Array.isArray(parsed?.mentions)
     ? (parsed.mentions as unknown as Mention[])
     : [];
+  // Mirror ingest's asserts-nothing no-op (F.2 law, enforced mechanically in
+  // admitWireMention): a place mention with no attributes and praise false
+  // never reaches data, so the grader must not see it either.
+  // ACKNOWLEDGED SEMANTIC SHIFT (method-audit 2026-08-27 finding 7): this
+  // filter means notRestaurants/emitsNothing pins no longer see praise-false
+  // husks. That is the intended meaning — those pins assert "no CREDIT to
+  // X", and an inert husk credits nothing — but a pin that wants to assert
+  // "the model never even names X" cannot, by design, exist anymore.
+  return mentions.filter(
+    (m) =>
+      typeof m.item === 'string' ||
+      m.general_praise === true ||
+      (Array.isArray(m.place_attributes) && m.place_attributes.length > 0),
+  );
 }
 
 function resolvePrompt(value: string): string {
