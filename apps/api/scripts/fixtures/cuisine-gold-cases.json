@@ -3,67 +3,95 @@
     "id": "tradition-from-unmistakable-dishes",
     "why": "TRADITION TEST keep-side: dishes pointing at ONE tradition unmistakably yield that tradition.",
     "summary": "A tiny counter serving exceptional tonkotsu ramen and izakaya small plates late into the night.",
-    "expect": { "cuisines": ["japanese"] }
+    "expect": {
+      "cuisines": ["japanese"]
+    }
   },
   {
     "id": "format-is-not-a-cuisine",
     "why": "A venue format ('steakhouse') is not a cooking tradition — the old prompt's example-defined list invites emitting it.",
     "summary": "A beloved neighborhood steakhouse known for dry-aged cuts and stiff martinis.",
-    "expect": { "notCuisines": ["steakhouse"] }
+    "expect": {
+      "notCuisines": ["steakhouse"]
+    }
   },
   {
     "id": "diet-is-not-a-cuisine",
     "why": "A diet is not a cuisine; the tradition underneath it is. A vegan Thai place is thai.",
     "summary": "An entirely vegan Thai kitchen — their jackfruit khao soi is the standout.",
-    "expect": { "cuisines": ["thai"], "notCuisines": ["vegan"] }
+    "expect": {
+      "cuisines": ["thai"],
+      "notCuisines": ["vegan"]
+    }
   },
   {
     "id": "quality-posture-empty",
     "why": "Error economics: 'farm-to-table seasonal' supports no tradition — empty is the cheap error.",
     "summary": "Farm-to-table dining with seasonal tasting menus sourced from nearby growers.",
-    "expect": { "emptyCuisines": true }
+    "expect": {
+      "emptyCuisines": true
+    }
   },
   {
     "id": "fusion-named-tradition",
     "why": "A named diasporic/fusion tradition passes ('tex-mex'); shared dishes alone would not.",
     "summary": "A Tex-Mex institution — queso, crispy tacos, and frozen margaritas since 1952.",
-    "expect": { "cuisines": ["tex-mex"] }
+    "expect": {
+      "cuisines": ["tex-mex"]
+    }
   },
   {
     "id": "granularity-level-committed",
     "why": "Granularity: the text commits to Sichuan, so emit sichuan — not also the broader tradition it belongs to.",
     "summary": "Sichuan specialists: mapo tofu, dry pot, and toothpick lamb heavy with mala.",
-    "expect": { "cuisines": ["sichuan"], "notCuisines": ["chinese"] }
+    "expect": {
+      "cuisines": ["sichuan"],
+      "notCuisines": ["chinese"]
+    }
   },
   {
-    "id": "shared-dishes-no-tradition",
-    "why": "Dishes shared across traditions ('fried chicken', 'bbq') name no single tradition — the reject-side of dish inference.",
+    "id": "smoked-dish-infers-bbq",
+    "why": "Re-derived 2026-08-26 with the bbq-is-a-tradition ruling: 'smoked wings' is the defining bbq technique — a diner tapping BBQ is not disappointed here, so the inference is licensed; 'american'/'southern' remain over-reach. (Previously pinned empty under the retired bbq-not-a-cuisine doctrine.)",
     "summary": "Crowd-pleasing fried chicken sandwiches and smoked wings out of a converted trailer.",
-    "expect": { "emptyCuisines": true }
+    "expect": {
+      "cuisines": ["bbq"],
+      "notCuisines": ["american", "southern"]
+    }
   },
   {
     "id": "format-brunch-empty",
     "why": "A meal format ('all-day brunch cafe') is not a tradition.",
     "summary": "An airy all-day brunch cafe pouring good coffee and stacking pancakes.",
-    "expect": { "emptyCuisines": true }
+    "expect": {
+      "emptyCuisines": true
+    }
   },
   {
     "id": "attr-communal-tables-real-cantina",
     "why": "S4 FILTER TEST keep-side on a REAL stored editorial: 'communal tables' describes one definite filterable thing; the cuisine rides alongside.",
     "summary": "Cozy cantina with communal tables offering Mexican fare made for sharing, plus house margaritas.",
-    "expect": { "cuisines": ["mexican"], "attributes": ["communal tables"] }
+    "expect": {
+      "cuisines": ["mexican"],
+      "attributes": ["communal tables"]
+    }
   },
   {
     "id": "attr-outdoor-seating-real-winebar",
     "why": "S4 keep-side, real editorial: 'outdoor seating' in its plainest common form; 'vino & bites' supports no tradition.",
     "summary": "This tiny wine bar offers a variety of vino & bites, plus outdoor seating in warm weather.",
-    "expect": { "attributes": ["outdoor seating"], "emptyCuisines": true }
+    "expect": {
+      "attributes": ["outdoor seating"],
+      "emptyCuisines": true
+    }
   },
   {
     "id": "attr-self-serve-real-chain",
     "why": "S4 keep-side, real editorial: 'self-serve' is a definite service format a diner can filter by; frozen yogurt names no tradition.",
     "summary": "Self-serve chain offering rotating varieties of frozen yogurt & a big range of creative toppings.",
-    "expect": { "attributes": ["self-serve"], "emptyCuisines": true }
+    "expect": {
+      "attributes": ["self-serve"],
+      "emptyCuisines": true
+    }
   },
   {
     "id": "attr-no-frills-rejected-real",
@@ -78,22 +106,27 @@
     "id": "attr-chic-rejected-patio-kept-real",
     "why": "S4 both sides in one real editorial: 'patio' passes THE FILTER TEST; 'chic' is a vibe-word that means nothing definite alone.",
     "summary": "Cocktails and Asian fusion eats are offered in this chic eatery with a patio.",
-    "expect": { "attributes": ["patio"], "notAttributes": ["chic"] }
+    "expect": {
+      "attributes": ["patio"],
+      "notAttributes": ["chic"]
+    }
   },
   {
     "id": "attr-judges-rejected-real-bbq",
-    "why": "S4 reject-side, real editorial: 'acclaimed' judges, 'no-frills' is vibe; 'communal tables' still comes through; shared-dish 'bbq' names no tradition.",
+    "why": "S4 reject-side, real editorial: 'acclaimed' judges, 'no-frills' is vibe; 'communal tables' still comes through; shared-dish 'bbq' names no tradition. Re-derived 2026-08-26: 'BBQ spot' asserts a repertoire — American barbecue passes the TRADITION TEST (a diner names it when asked what the kitchen makes); the earlier not-a-cuisine pin was the error.",
     "summary": "Acclaimed BBQ spot offering meats fresh from the smoker in a no-frills space with communal tables.",
     "expect": {
       "attributes": ["communal tables"],
       "notAttributes": ["acclaimed", "no-frills", "no frills"],
-      "notCuisines": ["bbq"]
+      "cuisines": ["bbq"]
     }
   },
   {
     "id": "attr-beloved-rejected",
     "why": "S4 reject-side: 'beloved' states how good, not what is — the check: it could not describe a BAD restaurant.",
     "summary": "A beloved neighborhood steakhouse known for dry-aged cuts and stiff martinis.",
-    "expect": { "notAttributes": ["beloved"] }
+    "expect": {
+      "notAttributes": ["beloved"]
+    }
   }
 ]

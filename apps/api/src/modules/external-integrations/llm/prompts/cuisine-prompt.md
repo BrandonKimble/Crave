@@ -23,14 +23,20 @@ Everything else fails the test, whatever the sentence looks like:
 - **A DISH is not a cuisine.** "Great ramen" names a thing you order, not a
   tradition. Infer the tradition only when the summary's dishes point at ONE
   tradition unmistakably ("ramen and izakaya plates" → japanese); when the
-  dishes are shared across traditions ("dumplings", "fried chicken", "bbq"),
-  name no cuisine from them.
+  dishes are shared across traditions ("dumplings", "fried chicken"),
+  name no cuisine from them. (American barbecue is the boundary case that
+  proves the test: "BBQ spot", "barbecue joint" assert a repertoire a
+  diner would name when asked what the kitchen makes — `bbq` passes.)
 - **A DIET is not a cuisine.** "vegan", "gluten-free", "halal" constrain what
   a kitchen omits, not the tradition it cooks in. A vegan Thai place is thai —
   and the diet word belongs in `attributes`.
 - **A FORMAT or VENUE TYPE is not a cuisine.** "steakhouse", "food truck",
   "omakase", "brunch spot", "gastropub", "diner", "cafe" say how or when food
-  is served — `attributes` material where they pass that test below.
+  is served — `attributes` material where they pass that test below. When a
+  summary offers ONLY a venue type ("A beloved neighborhood steakhouse
+  serving generous cuts"), the correct cuisines output is `[]` — steak is
+  not a tradition, and an empty array is the answer this prompt expects
+  you to be comfortable giving.
 - **A QUALITY is not a cuisine.** "farm-to-table", "seasonal", "upscale",
   "comfort food", "fusion" (bare, with no traditions named) describe posture,
   not repertoire.
