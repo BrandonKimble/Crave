@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import {
+  LLMMention,
   LLMModelInput,
   LLMPost,
   LLMSourceMap,
@@ -46,6 +47,25 @@ type CollectionRunReplaySummary = ReplaySummary & {
   sourceCollectionRunId: string;
   extractionRunCount: number;
 };
+
+/** Key-order-independent identity for a banked mention's JSON — Prisma may
+ *  round-trip object key order differently between the original row and the
+ *  recovery run's re-banked copy. */
+function stableMentionKey(value: Prisma.JsonValue): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableMentionKey).join(',')}]`;
+  }
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value)
+      .sort()
+      .map(
+        (key) =>
+          `${JSON.stringify(key)}:${stableMentionKey((value as Record<string, Prisma.JsonValue>)[key])}`,
+      )
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
 
 @Injectable()
 export class ReplayService implements OnModuleInit {
@@ -188,6 +208,278 @@ export class ReplayService implements OnModuleInit {
       connectionCount: replayResult.dbResult.affectedConnectionIds.length,
       activated: params.activate === true,
     };
+  }
+
+  /** BANKED-REFUSAL RECOVERY (v17 witness repair): re-admit a campaign's
+   *  banked contract refusals through the real admitWireMention + the normal
+   *  downstream persist path — no LLM call. Recovered rows are DELETED from
+   *  the bank; still-refused rows stay (the witnesses=0 residue). The
+   *  recovery run re-banks its own refusals; those duplicates are removed
+   *  after reconciliation so the bank holds exactly the ORIGINAL residue.
+   *  Idempotent: a re-run re-refuses the residue and recovers nothing. */
+  async recoverBankedRefusals(params: { campaignId: string }): Promise<{
+    campaignId: string;
+    bankedRows: number;
+    runsProcessed: number;
+    runsSkipped: number;
+    recoveredRows: number;
+    stillRefusedRows: number;
+    recoveryRunIds: string[];
+  }> {
+    const bankedRows =
+      await this.prismaService.extractionContractRefusal.findMany({
+        where: {
+          extractionRun: {
+            metadata: { path: ['campaignId'], equals: params.campaignId },
+          },
+        },
+        orderBy: { createdAt: 'asc' },
+        select: {
+          refusalId: true,
+          extractionRunId: true,
+          inputId: true,
+          mention: true,
+        },
+      });
+
+    const summary = {
+      campaignId: params.campaignId,
+      bankedRows: bankedRows.length,
+      runsProcessed: 0,
+      runsSkipped: 0,
+      recoveredRows: 0,
+      stillRefusedRows: 0,
+      recoveryRunIds: [] as string[],
+    };
+    if (!bankedRows.length) {
+      this.logger.info('No banked refusals for campaign', {
+        campaignId: params.campaignId,
+      });
+      return summary;
+    }
+
+    const rowsByRunId = new Map<string, typeof bankedRows>();
+    for (const row of bankedRows) {
+      const rows = rowsByRunId.get(row.extractionRunId) ?? [];
+      rows.push(row);
+      rowsByRunId.set(row.extractionRunId, rows);
+    }
+
+    const collectionRunScopeKey = `replay:banked-refusals:${params.campaignId}:${Date.now()}`;
+
+    for (const [sourceRunId, runRows] of rowsByRunId) {
+      const inputIds = Array.from(
+        new Set(
+          runRows
+            .map((row) => row.inputId)
+            .filter((value): value is string => Boolean(value)),
+        ),
+      );
+      const rowsWithoutInput = runRows.filter((row) => !row.inputId);
+      if (rowsWithoutInput.length) {
+        // No stored chunk context — the mention cannot be re-admitted.
+        // Stays banked, loudly.
+        this.logger.warn('Banked refusals without input_id stay banked', {
+          sourceRunId,
+          rows: rowsWithoutInput.length,
+        });
+        summary.stillRefusedRows += rowsWithoutInput.length;
+      }
+      if (!inputIds.length) {
+        summary.runsSkipped += 1;
+        continue;
+      }
+
+      const sourceRun = await this.prismaService.extractionRun.findUnique({
+        where: { extractionRunId: sourceRunId },
+        select: {
+          extractionRunId: true,
+          pipeline: true,
+          metadata: true,
+          systemPromptHash: true,
+          inputs: {
+            where: { inputId: { in: inputIds } },
+            orderBy: { inputIndex: 'asc' },
+            select: {
+              inputId: true,
+              inputIndex: true,
+              inputPayload: true,
+              sourceMap: true,
+              sourceDocuments: {
+                orderBy: { ordinal: 'asc' },
+                select: {
+                  document: {
+                    select: {
+                      documentId: true,
+                      platform: true,
+                      community: true,
+                      sourceType: true,
+                      sourceId: true,
+                      parentSourceId: true,
+                      title: true,
+                      body: true,
+                      url: true,
+                      sourceCreatedAt: true,
+                      scoreSnapshot: true,
+                      rawPayload: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!sourceRun || sourceRun.inputs.length !== inputIds.length) {
+        this.logger.warn(
+          'Banked run is missing stored inputs — rows stay banked',
+          {
+            sourceRunId,
+            expectedInputs: inputIds.length,
+            foundInputs: sourceRun?.inputs.length ?? 0,
+          },
+        );
+        summary.runsSkipped += 1;
+        summary.stillRefusedRows += runRows.filter((row) =>
+          Boolean(row.inputId),
+        ).length;
+        continue;
+      }
+
+      const inputIndexByInputId = new Map(
+        sourceRun.inputs.map((input) => [input.inputId, input.inputIndex]),
+      );
+      const mentionsByInputIndex = new Map<number, LLMMention[]>();
+      for (const row of runRows) {
+        if (!row.inputId) continue;
+        const inputIndex = inputIndexByInputId.get(row.inputId);
+        if (inputIndex === undefined) continue;
+        const mentions = mentionsByInputIndex.get(inputIndex) ?? [];
+        mentions.push(row.mention as unknown as LLMMention);
+        mentionsByInputIndex.set(inputIndex, mentions);
+      }
+
+      const sourceDocuments = this.collectSourceDocumentsFromInputs(
+        sourceRun.inputs,
+      );
+      const llmPosts = this.buildPostsFromSourceDocuments(sourceDocuments);
+      const inputChunks = sourceRun.inputs.map<StoredExtractionInputChunk>(
+        (input) => ({
+          inputIndex: input.inputIndex,
+          inputPayload: this.asInputPayload(input.inputPayload),
+          sourceMap: this.asSourceMap(input.sourceMap, input.inputId),
+          sourceDocumentIds: input.sourceDocuments.map(
+            (documentLink) => documentLink.document.documentId,
+          ),
+          sourceInputId: input.inputId,
+        }),
+      );
+
+      const result =
+        await this.extractionPipelineService.reingestBankedMentions({
+          pipeline: this.normalizePipeline(sourceRun.pipeline),
+          platform: sourceDocuments[0]?.platform ?? 'reddit',
+          community: this.resolveCommunity(
+            sourceDocuments,
+            this.asRecord(sourceRun.metadata),
+          ),
+          llmPosts,
+          inputChunks,
+          sourceDocuments: sourceDocuments.map((document) => ({
+            documentId: document.documentId,
+            sourceType: document.sourceType,
+            sourceId: document.sourceId,
+          })),
+          mentionsByInputIndex,
+          systemPromptHash: sourceRun.systemPromptHash,
+          batchId: `banked-refusal-replay-${sourceRunId}-${Date.now()}`,
+          parentJobId: sourceRunId,
+          collectionRunScopeKey,
+          rehearsal: true,
+          skipSourceLedgerDedupe: true,
+          runMetadata: {
+            replaySource: 'banked_refusals',
+            replayOfExtractionRunId: sourceRunId,
+            campaignId: params.campaignId,
+          },
+        });
+
+      const recoveryRunId = result.extractionRunId;
+      summary.recoveryRunIds.push(recoveryRunId);
+
+      // The failure-rate law can fail the recovery run (a chunk quarantined
+      // itself). A failed run neither persisted nor banked those mentions —
+      // deleting their originals would silently drop them, so the whole
+      // run's rows stay banked.
+      const recoveryRun = await this.prismaService.extractionRun.findUnique({
+        where: { extractionRunId: recoveryRunId },
+        select: { status: true },
+      });
+      if (recoveryRun?.status !== 'completed') {
+        this.logger.warn('Recovery run did not complete — rows stay banked', {
+          sourceRunId,
+          recoveryRunId,
+          status: recoveryRun?.status ?? 'missing',
+        });
+        summary.runsSkipped += 1;
+        summary.stillRefusedRows += runRows.filter((row) =>
+          Boolean(row.inputId),
+        ).length;
+        continue;
+      }
+
+      // Reconcile: a mention the recovery run RE-refused stays banked as its
+      // ORIGINAL row; everything else was admitted and its row is recovered.
+      const reRefused =
+        await this.prismaService.extractionContractRefusal.findMany({
+          where: { extractionRunId: recoveryRunId },
+          select: { refusalId: true, mention: true },
+        });
+      const stillRefusedCounts = new Map<string, number>();
+      for (const row of reRefused) {
+        const key = stableMentionKey(row.mention);
+        stillRefusedCounts.set(key, (stillRefusedCounts.get(key) ?? 0) + 1);
+      }
+
+      const recoveredIds: string[] = [];
+      for (const row of runRows) {
+        if (!row.inputId) continue;
+        const key = stableMentionKey(row.mention);
+        const remaining = stillRefusedCounts.get(key) ?? 0;
+        if (remaining > 0) {
+          stillRefusedCounts.set(key, remaining - 1);
+          summary.stillRefusedRows += 1;
+        } else {
+          recoveredIds.push(row.refusalId);
+        }
+      }
+
+      await this.prismaService.$transaction([
+        // Recovered originals leave the bank …
+        this.prismaService.extractionContractRefusal.deleteMany({
+          where: { refusalId: { in: recoveredIds } },
+        }),
+        // … and the recovery run's re-banked rows are duplicates of the
+        // retained originals — the bank keeps exactly one row per residual
+        // refusal, on the run that first banked it.
+        this.prismaService.extractionContractRefusal.deleteMany({
+          where: { extractionRunId: recoveryRunId },
+        }),
+      ]);
+      summary.recoveredRows += recoveredIds.length;
+      summary.runsProcessed += 1;
+
+      this.logger.info('Banked-refusal recovery run reconciled', {
+        sourceRunId,
+        recoveryRunId,
+        banked: runRows.length,
+        recovered: recoveredIds.length,
+        stillRefused: runRows.length - recoveredIds.length,
+      });
+    }
+
+    return summary;
   }
 
   async replayDateRange(params: {

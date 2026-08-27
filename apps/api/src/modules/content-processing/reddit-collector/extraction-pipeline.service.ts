@@ -185,6 +185,17 @@ export interface ExtractionPipelineStoredInputsParams
   }>;
 }
 
+export interface ExtractionPipelineBankedMentionsParams
+  extends ExtractionPipelineStoredInputsParams {
+  /** Banked wire mentions to re-admit, keyed by the original stored input's
+   *  inputIndex (the chunk whose source_map their refs resolve in). */
+  mentionsByInputIndex: Map<number, LLMMention[]>;
+  /** The recovery run records the banked run's OWN prompt contract — no LLM
+   *  runs here, so nothing resolves a prompt. The registry (llm_prompts) is
+   *  the content store; the hash is the run's join key. */
+  systemPromptHash: string;
+}
+
 export interface ExtractionPipelineResult {
   extractionRunId: string;
   /** COLLECTION_LLM_MODE=batch: the LLM work was submitted as a Gemini batch
@@ -607,6 +618,123 @@ export class ExtractionPipelineService implements OnModuleInit {
           .filter((value): value is string => Boolean(value)),
       },
     });
+  }
+
+  /** BANKED-REFUSAL RECOVERY (v17 witness repair): re-admit previously
+   *  REFUSED wire mentions through the real contract — admitWireMention +
+   *  the identical post-LLM half the batch ingest uses — with NO LLM call.
+   *  The mentions are the banked rows' own JSON; the chunk context is the
+   *  original run's stored inputs, so span texts come from the pipeline's
+   *  own enrichment-map builder (never a second projection). The recovery
+   *  run records the SAME prompt contract the banked run extracted under
+   *  (no prompt resolves here — nothing was generated), so the shadow diff
+   *  counts its evidence alongside the campaign's shadow runs. Still-refused
+   *  mentions re-bank under the NEW run; the caller reconciles the bank. */
+  async reingestBankedMentions(
+    params: ExtractionPipelineBankedMentionsParams,
+  ): Promise<ExtractionPipelineResult> {
+    this.assertStoredInputsUseSourceRefs(params.inputChunks);
+    const sourceDocumentIdBySourceKey = new Map<SourceDocumentKey, string>(
+      params.sourceDocuments.map((document) => [
+        buildSourceDocumentKey(document.sourceType, document.sourceId),
+        document.documentId,
+      ]),
+    );
+    const chunkStartTime = Date.now();
+    const sortedChunks = [...params.inputChunks].sort(
+      (left, right) => left.inputIndex - right.inputIndex,
+    );
+    const chunkData = this.normalizeSourceRefsInChunkData(
+      this.buildChunkDataFromStoredInputs(sortedChunks),
+    );
+    const chunkDurationMs = Date.now() - chunkStartTime;
+
+    const extractionRunId =
+      await this.collectionEvidenceService.createExtractionRun({
+        pipeline: params.pipeline,
+        collectionRunScopeKey:
+          params.collectionRunScopeKey?.trim() ||
+          params.parentJobId?.trim() ||
+          params.batchId,
+        platform: params.platform ?? 'reddit',
+        community: params.community,
+        model: this.llmService.getContentModel(),
+        // Unused by storage — the registry is the only prompt content store;
+        // the hash below is the run's contract fingerprint.
+        systemPrompt: '',
+        systemPromptHash: params.systemPromptHash,
+        generationConfig: this.llmService.getGenerationConfigSnapshot(),
+        chunkingConfig: {
+          source: 'banked_refusal_replay',
+          inputCount: sortedChunks.length,
+          sourceInputIds: sortedChunks
+            .map((chunk) => chunk.sourceInputId ?? null)
+            .filter((value): value is string => Boolean(value)),
+        },
+        extractionSchemaVersion: 'v1',
+        metadata: {
+          batchId: params.batchId,
+          parentJobId: params.parentJobId ?? null,
+          subreddit: params.community,
+          ...(params.runMetadata ?? {}),
+        },
+      });
+
+    try {
+      const chunkResults: ChunkProcessingResult<LLMProcessingInput>[] =
+        chunkData.chunks.map((input, index) => {
+          const metadata = chunkData.metadata[index];
+          return {
+            success: true,
+            result: {
+              mentions:
+                params.mentionsByInputIndex.get(
+                  sortedChunks[index].inputIndex,
+                ) ?? [],
+            },
+            chunkId: metadata.chunkId,
+            commentCount: metadata.commentCount ?? 0,
+            duration: 0,
+            metadata,
+            input,
+          };
+        });
+
+      const extractionInputIdByChunkId =
+        await this.collectionEvidenceService.persistExtractionInputs({
+          extractionRunId,
+          chunkResults,
+          sourceDocumentIdBySourceKey,
+        });
+
+      return await this.completeChunkPlan({
+        activateDocumentIds: [],
+        baseParams: params,
+        llmPosts: params.llmPosts,
+        chunkMetadata: chunkData.metadata,
+        chunkDurationMs,
+        sourceDocumentIdBySourceKey,
+        extractionRunId,
+        extractionInputIdByChunkId,
+        chunkResults,
+        processingMetrics: {
+          totalDuration: 0,
+          chunksProcessed: chunkResults.length,
+          successRate: 1,
+          topCommentsCount: 0,
+          averageChunkTime: 0,
+          fastestChunk: 0,
+          slowestChunk: 0,
+        },
+        llmProcessingTimeMs: 0,
+      });
+    } catch (error) {
+      await this.collectionEvidenceService.markExtractionRunFailed(
+        extractionRunId,
+        error instanceof Error ? error.message : String(error),
+      );
+      throw error;
+    }
   }
 
   private async processChunkPlan(params: {
@@ -1288,12 +1416,15 @@ export class ExtractionPipelineService implements OnModuleInit {
 
     const spanText = enrichment.spanTextById.get(canonicalPlaceSourceId) ?? '';
     if (!observedSpanAppearsInSource(placeObserved, spanText)) {
-      // UNIQUE-WITNESS REPAIR (v17 preflight, the 2% wrong-pointer class):
-      // the model's CLAIM is the span; the pointer is derivable data. When
-      // the cited source lacks the span but exactly ONE in-scope source of
-      // the same post contains it, the pointer is re-derived to that
-      // witness (audited via placeSourcePointerRepairedFrom). Zero or 2+
-      // witnesses stay a refusal — repair must never guess.
+      // WITNESS REPAIR (v17 diff triage, the 813-claim pointer class): the
+      // model's CLAIM is the span; the pointer is derivable data. The
+      // anti-invention guarantee needs only that the span was OBSERVED
+      // somewhere in scope — witnesses=0 is invention and refuses (the
+      // Luckys guard, 71/884 true hits); witnesses>=1 proves the name real,
+      // and ambiguity between REAL occurrences is harmless, so the pointer
+      // repairs deterministically: the witness chosen by the input's source
+      // order (the depth-aware reading order the prompt itself resolves
+      // references in — first occurrence wins, stable across reruns).
       const witnesses: string[] = [];
       for (const [srcId, text] of enrichment.spanTextById) {
         if (
@@ -1301,20 +1432,20 @@ export class ExtractionPipelineService implements OnModuleInit {
           observedSpanAppearsInSource(placeObserved, text)
         ) {
           witnesses.push(srcId);
-          if (witnesses.length > 1) break;
         }
       }
-      if (witnesses.length === 1) {
-        this.logger.debug('place_source_id repaired to unique witness', {
+      if (witnesses.length >= 1) {
+        this.logger.debug('place_source_id repaired to witness', {
           from: canonicalPlaceSourceId,
           to: witnesses[0],
+          witnessCount: witnesses.length,
           span: placeObserved,
         });
         canonicalPlaceSourceId = witnesses[0];
       } else {
         return refuse(
           'span_not_in_cited_source',
-          `"${placeObserved}" not found in ${canonicalPlaceSourceId} (witnesses: ${witnesses.length})`,
+          `"${placeObserved}" not found in ${canonicalPlaceSourceId} (witnesses: 0)`,
         );
       }
     }

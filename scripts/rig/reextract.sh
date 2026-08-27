@@ -17,6 +17,7 @@
 #   activate  <communities> <version>          flip pointers + rebuild + GC + audit
 #   rollback  <communities> <version>          flip BACK to the pre-activation runs (real: events retained)
 #   report    <campaignId>                     quote vs envelope vs metered vs ledger actual, per caller
+#   recover-refusals <campaignId>              re-admit banked contract refusals (v17 witness repair; no LLM spend)
 #   discard   <version>                        abandon a candidate (runs+events+claims deleted, prompt retired, GC)
 #   status                                     campaigns, shadow runs, lane health
 #
@@ -112,6 +113,11 @@ case "$VERB" in
   report)
     CAMPAIGN="${1:?campaignId required}"
     (cd "$API" && run_node scripts/reextract-report.ts "$CAMPAIGN")
+    ;;
+  recover-refusals)
+    CAMPAIGN="${1:?campaignId required}"
+    echo "Recovering banked contract refusals for campaign $CAMPAIGN (witness repair; recovered rows leave the bank, residue stays)"
+    (cd "$API" && run_node scripts/replay-banked-refusals.ts --campaign "$CAMPAIGN")
     ;;
   status)
     psql "$(db_url)" -c "SELECT version, status, left(content_hash,12) hash, created_at::date, activated_at::date FROM llm_prompts WHERE kind='collection_system' ORDER BY version;"
