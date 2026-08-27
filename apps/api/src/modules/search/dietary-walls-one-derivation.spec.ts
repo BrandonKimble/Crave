@@ -93,6 +93,7 @@ describe('one dietary wall derivation', () => {
     const service = new SearchCoverageService(
       prisma as never,
       createRegistry() as never,
+      { getCuisineIds: () => Promise.resolve(new Set()) } as never,
       { setContext: () => createLogger() } as never,
     );
 

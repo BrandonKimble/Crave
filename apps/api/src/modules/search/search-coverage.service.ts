@@ -5,10 +5,19 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { activePlaceEventExistsSql } from '../content-processing/reddit-collector/extraction-scope.service';
+import { servablePlaceConditionsSql } from '../restaurant-enrichment/servable-place-scope';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
+import {
+  conceptDishAxisSql,
+  conceptRestaurantAxisSql,
+  cuisineConceptConstraint,
+  dietaryWallConcept,
+} from './concept-membership.compiler';
 import { DietaryConstraintRegistry } from './dietary-constraints';
+import { FacetRegistry } from './facet.registry';
+import type { ConceptConstraint } from './search-execution-directives';
 import type { ShortcutCoverageRequestDto } from './dto/shortcut-coverage.dto';
 import {
   buildOperatingMetadataFromLocation,
@@ -59,6 +68,7 @@ export class SearchCoverageService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly dietaryConstraints: DietaryConstraintRegistry,
+    private readonly facets: FacetRegistry,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SearchCoverageService');
@@ -91,20 +101,14 @@ export class SearchCoverageService {
     }
 
     const conditions: Prisma.Sql[] = [
-      Prisma.sql`e.type = 'place'`,
-      // ARCHIVED IS NEVER PAINTED — as a PREDICATE, not an accident of score-table
-      // membership. The ranked builder (search-query.builder buildConnectionConditions,
-      // red-team MEDIUM-1) already carries `status <> 'archived'`; the coverage/dots
-      // layer reads the same core_entities and must carry it too, else an
-      // archived-but-scored restaurant leaks onto the map as a dot the ranked list
-      // will never show. Proven RED by deleting this line
-      // (search-coverage-archived-leak.integration.spec.ts).
-      Prisma.sql`e.status <> 'archived'`,
-      // MARKET MEMBERSHIP (v17 S4): the coverage/dots layer reads the same
-      // core_entities as the ranked list and must carry the same exclusion,
-      // else an out-of-market place leaks onto the map as a dot the ranked
-      // list will never show.
-      Prisma.sql`e.market_excluded_at IS NULL`,
+      // THE SERVABLE-PLACE FLOOR, through the one shared fragment (red-team
+      // L3 F1) — the coverage/dots layer reads the same core_entities as the
+      // ranked list and must carry the same floor, else an archived or
+      // out-of-market place leaks onto the map as a dot the ranked list will
+      // never show. ARCHIVED IS NEVER PAINTED proven RED by deleting this
+      // (search-coverage-archived-leak.integration.spec.ts); MARKET
+      // MEMBERSHIP per v17 S4.
+      Prisma.raw(servablePlaceConditionsSql('e')),
       // Eligibility = the Crave Score v3 inclusion floor: catalogued dishes OR by-name praise
       // (mirrors the relaxed gate in search-query.builder). Restaurant-mode dots
       // (includeTopDish=false) are colored by the v3 restaurant score, so a dishless-but-praised
@@ -128,18 +132,49 @@ export class SearchCoverageService {
       );
     }
 
-    // DIETARY WALLS — the ONE shared derivation and the ONE shared SQL, so
-    // the map slices with the cards. This lane used to read request.dietary
-    // only, while the ranked lane also raised walls from query-text
-    // grounding: typing "vegan tacos" without touching the toggle strip gave
-    // a walled card list beside an unwalled map, and the map was the liar.
+    // CONCEPT WALLS — the ONE shared derivation and the ONE shared
+    // renderer (concept-membership.compiler), so the map slices with the
+    // cards. Dietary learned this first: this lane used to read
+    // request.dietary only, while the ranked lane also raised walls from
+    // query-text grounding — typing "vegan tacos" without touching the
+    // toggle strip gave a walled card list beside an unwalled map, and
+    // the map was the liar. Cuisine then reproduced the same defect
+    // (red-team L2 K6): coverage ANDed a cuisine id into the single
+    // placement bucket (`e.restaurant_attributes && …`), so "mexican"
+    // drew no dot for the Korean spot whose birria taco the list served
+    // through the dish-side knowledge arm. Both now compile through the
+    // same per-axis concept renderer the ranked builder uses; faceted
+    // ids are partitioned OUT of the plain single-column buckets below,
+    // exactly as the ranked lane partitions its membership lists.
     const dietaryWalls = await this.dietaryConstraints.resolveDietaryWalls({
       dietary: request.dietary,
       itemAttributeIds,
       placeAttributeIds,
     });
+    const cuisineIds = await this.facets.getCuisineIds();
+    const dietaryIds = await this.dietaryConstraints.getDietaryIds();
+    const cuisineConcepts: ConceptConstraint[] = Array.from(
+      new Set(
+        [...itemAttributeIds, ...placeAttributeIds].filter(
+          (id) => cuisineIds.has(id) && !dietaryIds.has(id),
+        ),
+      ),
+    ).map((id) => cuisineConceptConstraint(id, 'wall'));
+    const cuisineIdSet = new Set(cuisineConcepts.map((c) => c.id));
+    const plainItemAttributeIds = itemAttributeIds.filter(
+      (id) => !cuisineIdSet.has(id) && !dietaryIds.has(id),
+    );
+    const plainPlaceAttributeIds = placeAttributeIds.filter(
+      (id) => !cuisineIdSet.has(id) && !dietaryIds.has(id),
+    );
+    const conceptWalls: ConceptConstraint[] = [
+      ...cuisineConcepts,
+      ...dietaryWalls.map(dietaryWallConcept),
+    ];
     conditions.push(
-      ...DietaryConstraintRegistry.placeWallConditions(dietaryWalls, 'e'),
+      ...conceptWalls
+        .map((concept) => conceptRestaurantAxisSql(concept, 'e'))
+        .filter((sql): sql is Prisma.Sql => sql !== null),
     );
 
     if (placeEntityIds.length) {
@@ -150,10 +185,10 @@ export class SearchCoverageService {
       );
     }
 
-    if (placeAttributeIds.length) {
+    if (plainPlaceAttributeIds.length) {
       conditions.push(
         Prisma.sql`e.restaurant_attributes && ARRAY[${Prisma.join(
-          placeAttributeIds,
+          plainPlaceAttributeIds,
         )}]::uuid[]`,
       );
     }
@@ -169,14 +204,14 @@ export class SearchCoverageService {
       );
     }
 
-    if (itemAttributeIds.length) {
+    if (plainItemAttributeIds.length) {
       conditions.push(
         Prisma.sql`EXISTS (
           SELECT 1
           FROM core_restaurant_items c
           WHERE c.restaurant_id = e.entity_id
             AND c.food_attributes && ARRAY[${Prisma.join(
-              itemAttributeIds,
+              plainItemAttributeIds,
             )}]::uuid[]
         )`,
       );
@@ -227,7 +262,12 @@ export class SearchCoverageService {
     const topDishJoinSql = includeTopDish
       ? this.buildTopDishJoinSql({
           itemEntityIds,
-          itemAttributeIds,
+          itemAttributeIds: plainItemAttributeIds,
+          // K6: the dot's top dish matches through the SAME dish-axis
+          // membership as the list — a cuisine concept reaches it through
+          // either home (dietary walls stay off this pick, matching the
+          // ranked restaurant card's top-dish lateral).
+          cuisineConcepts,
         })
       : Prisma.sql``;
     const topDishSelectSql = includeTopDish
@@ -493,8 +533,9 @@ export class SearchCoverageService {
   private buildTopDishJoinSql(params: {
     itemEntityIds: string[];
     itemAttributeIds: string[];
+    cuisineConcepts: ConceptConstraint[];
   }): Prisma.Sql {
-    const { itemEntityIds, itemAttributeIds } = params;
+    const { itemEntityIds, itemAttributeIds, cuisineConcepts } = params;
     const conditions: Prisma.Sql[] = [
       Prisma.sql`c.restaurant_id = e.entity_id`,
     ];
@@ -512,6 +553,17 @@ export class SearchCoverageService {
         )}]::uuid[]`,
       );
     }
+    // K6: dish-axis membership through the shared concept renderer — the
+    // birria taco at the Korean spot is a valid top dish for a "mexican"
+    // dot because the DISH carries the concept, even though the venue
+    // array does not.
+    conditions.push(
+      ...cuisineConcepts
+        .map((concept) =>
+          conceptDishAxisSql(concept, { connection: 'c', restaurant: 'e' }),
+        )
+        .filter((sql): sql is Prisma.Sql => sql !== null),
+    );
     const orderSql = Prisma.sql`COALESCE(pcs.percentile_rank, -1) DESC, COALESCE(pcs.display_score, -1) DESC, c.connection_id ASC`;
 
     return Prisma.sql`

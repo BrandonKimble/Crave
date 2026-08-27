@@ -4,6 +4,7 @@ import { SearchQueryBuilder } from './search-query.builder';
 import { compileQueryPlanFromConstraints } from './search-constraints.compiler';
 import type { SearchConstraints } from './search-constraints';
 import type { SearchExecutionDirectives } from './search-execution-directives';
+import { cuisineConceptConstraint } from './concept-membership.compiler';
 import { judgedVocabularyDouble } from '../../shared/testing/judged-vocabulary-double';
 
 /**
@@ -66,7 +67,11 @@ function harness(cuisineIds: string[]) {
       resolveViewportCoverage: jest.fn(() => Promise.resolve({ engines: [] })),
     } as never,
     { getDietaryIds: jest.fn(() => Promise.resolve(new Set())) } as never,
-    { getCuisineIds: () => Promise.resolve(new Set(cuisineIds)) } as never,
+    {
+      // FacetRegistry double (F4): placement rank rides ON the facet row.
+      getPlacementRanks: () =>
+        Promise.resolve(new Map(cuisineIds.map((id) => [id, 1]))),
+    } as never,
     { recordResidue: jest.fn(() => Promise.resolve()) } as never,
     { record: jest.fn(), bboxFromBounds: jest.fn(() => null) } as never,
     { oracle: undefined } as never,
@@ -135,7 +140,7 @@ const builder = new SearchQueryBuilder();
 
 describe('hard membership: one concept, OR across both homes (law 2)', () => {
   const directives: SearchExecutionDirectives = {
-    cuisineConceptIds: [CUISINE_MEXICAN],
+    concepts: [cuisineConceptConstraint(CUISINE_MEXICAN, 'wall')],
   };
 
   it('dish axis: (c.food_attributes @> id OR fr.restaurant_attributes @> id) — never a bare single-column wall', () => {
@@ -168,13 +173,8 @@ describe('hard membership: one concept, OR across both homes (law 2)', () => {
 
 describe('pooled gate: a dual-homed concept is OR within, AND across (law 3, F5)', () => {
   const gate: SearchExecutionDirectives = {
+    concepts: [cuisineConceptConstraint(CUISINE_MEXICAN, 'soft')],
     pooledGate: {
-      softConcepts: [
-        {
-          id: CUISINE_MEXICAN,
-          columns: ['food_attributes', 'restaurant_attributes'],
-        },
-      ],
       threshold: 25,
     },
   };

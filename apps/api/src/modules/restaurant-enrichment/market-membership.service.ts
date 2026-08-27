@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { activeCreditingCommunitiesSourceSql } from '../content-processing/reddit-collector/extraction-scope.service';
+import { RescoreCoordinatorService } from '../content-processing/public-crave-score';
 
 /**
  * MARKET MEMBERSHIP AT GROUNDING (v17 S4, ruled 2026-08-26).
@@ -42,6 +43,15 @@ import { activeCreditingCommunitiesSourceSql } from '../content-processing/reddi
  * Writers: the grounding write path (applyGroundingEffect) reconciles the
  * one entity it just moved; the nightly convergence cron reconciles the
  * whole corpus (cheap: one set-based UPDATE over ~places × ~2 territories).
+ *
+ * GRAIN RULING (redteam L3-F5, 2026-08-26; see plans/v17-program.md):
+ * the verdict is deliberately GLOBAL — it answers "is this place inside
+ * ANYONE'S market?" (union across crediting communities), and exclusion
+ * genuinely means "nobody's market wants it". Do NOT patch a community_id
+ * onto this column; that would change its meaning. What multi-community
+ * (NY onboarding) actually needs is per-community IN-market attribution
+ * for score-pool/demand-lane scoping — a separate table derivable on
+ * demand from the same territory join, built AT onboarding, not before.
  */
 export const MARKET_MEMBERSHIP_RADIUS_MILES = 50;
 const RADIUS_METERS = Math.round(MARKET_MEMBERSHIP_RADIUS_MILES * 1609.344);
@@ -53,19 +63,33 @@ export class MarketMembershipService {
   constructor(
     private readonly prisma: PrismaService,
     loggerService: LoggerService,
+    private readonly rescore: RescoreCoordinatorService,
   ) {
     this.logger = loggerService.setContext('MarketMembershipService');
   }
 
   /** Reconcile one entity (grounding write path) or the whole corpus
-   *  (nightly / sweep). Returns how many verdicts CHANGED. */
+   *  (nightly / sweep). Returns how many verdicts CHANGED.
+   *
+   *  VERDICT AND POOL ARE ONE TRANSACTION OF INTENT (red-team L3 F2):
+   *  the score pool used to lag the verdict by up to a day (220 restaurant
+   *  + 189 dish score rows sat live for excluded places until the next
+   *  nightly rebuild's stale-prune). Now, atomically with the verdict
+   *  write: newly-EXCLUDED places have their score rows (restaurant rows
+   *  AND their connections' dish rows) DELETED in the same transaction;
+   *  newly UN-excluded places mark the rescore dirty (the ONLY enqueue
+   *  collection paths may use — §12.6 singleton rescorer) so the next
+   *  hourly tick re-admits them to the pool. */
   async reconcile(entityId?: string): Promise<number> {
     const entityFilter = entityId
       ? Prisma.sql`r2.entity_id = ${entityId}::uuid`
       : Prisma.sql`TRUE`;
     const started = Date.now();
     try {
-      const changed = await this.prisma.$executeRaw`
+      const changedRows = await this.prisma.$transaction(async (tx) => {
+        const rows = await tx.$queryRaw<
+          Array<{ entity_id: string; excluded: boolean }>
+        >`
         WITH crediting AS (
           SELECT c.restaurant_id, s.engine_id, s.anchor_place_id
           FROM ${Prisma.raw(activeCreditingCommunitiesSourceSql())} c
@@ -124,7 +148,42 @@ export class MarketMembershipService {
         ) v
         WHERE v.entity_id = r.entity_id
           AND (r.market_excluded_at IS NOT NULL) IS DISTINCT FROM v.excluded
+        RETURNING r.entity_id, v.excluded
       `;
+        const newlyExcluded = rows
+          .filter((row) => row.excluded)
+          .map((row) => row.entity_id);
+        if (newlyExcluded.length > 0) {
+          // Prune the pool atomically with the verdict: the place's own
+          // restaurant score row AND every dish (connection) score row tied
+          // to it — the same keying the score writer's stale-prune uses
+          // (subject_type/subject_id; connections key dish scores).
+          await tx.$executeRaw`
+            DELETE FROM core_public_entity_scores s
+            WHERE (s.subject_type = 'restaurant'
+                   AND s.subject_id = ANY(${newlyExcluded}::uuid[]))
+               OR (s.subject_type = 'connection'
+                   AND s.subject_id IN (
+                     SELECT c.connection_id
+                     FROM core_restaurant_items c
+                     WHERE c.restaurant_id = ANY(${newlyExcluded}::uuid[])
+                   ))
+          `;
+        }
+        return rows;
+      });
+      const changed = changedRows.length;
+      const unexcludedCount = changedRows.filter((row) => !row.excluded).length;
+      if (unexcludedCount > 0) {
+        // Re-admission needs a rebuild (percentiles are pool-wide, so a
+        // scoped upsert can't price one place honestly); mark the durable
+        // dirty flag the hourly coordinator owns. After the commit — a lost
+        // mark is self-healing (the nightly reconcile is idempotent and the
+        // score input filter already includes the place).
+        await this.rescore.markDirty(
+          `market re-inclusion: ${unexcludedCount} place(s) re-entered the market`,
+        );
+      }
       if (changed > 0 || !entityId) {
         this.logger.info('Market-membership verdicts reconciled', {
           scope: entityId ?? 'all',

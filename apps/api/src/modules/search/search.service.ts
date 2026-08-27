@@ -41,10 +41,15 @@ import {
 } from './search-sibling-expansion.service';
 import { DietaryConstraintRegistry } from './dietary-constraints';
 import type {
-  PooledSoftConcept,
+  ConceptConstraint,
   SearchExecutionDirectives,
 } from './search-execution-directives';
-import { CuisineFacetRegistry } from './cuisine-facet.registry';
+import {
+  cuisineConceptConstraint,
+  dietaryWallConcept,
+  plainAttributeSoftConcept,
+} from './concept-membership.compiler';
+import { FacetRegistry } from './facet.registry';
 import {
   ON_DEMAND_MIN_RESULTS,
   ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES,
@@ -230,7 +235,7 @@ export class SearchService {
     private readonly entityExpansion: SearchEntityExpansionService,
     private readonly siblingExpansion: SearchSiblingExpansionService,
     private readonly dietaryConstraints: DietaryConstraintRegistry,
-    private readonly cuisineFacets: CuisineFacetRegistry,
+    private readonly cuisineFacets: FacetRegistry,
     private readonly onDemandRequestService: OnDemandRequestService,
     private readonly textSanitizer: TextSanitizerService,
     private readonly prisma: PrismaService,
@@ -1623,42 +1628,33 @@ export class SearchService {
       constraints.ids.itemIds.length > 0 ||
       constraints.ids.placeIds.length > 0 ||
       constraints.ids.ingredientIds.length > 0;
-    // DoS bound (red team R4-P5): each soft id adds a full re-scan arm to
-    // the count query (+~85ms each, attacker-controlled by attribute word
-    // count). 8 covers every real query shape; beyond it the extra words
-    // still filter via provenance of the first 8.
-    const SOFT_ID_CAP = 8;
-    // ONE soft entry per CONCEPT (F5): plain attributes carry their single
-    // column home; a cuisine concept carries BOTH homes and is satisfied
-    // by either (OR within a concept, AND across concepts) — and it is
-    // counted ONCE in the starvation report (the duplicate-JSON-key trap).
-    const softConcepts: PooledSoftConcept[] = hasPrimarySubject
+    // DoS bound (red team R4-P5; F6): each soft concept adds a window
+    // count column + gate arm to the count query (+~85ms each,
+    // attacker-controlled by attribute word count). 8 covers every real
+    // query shape; beyond it the extra words still filter via provenance
+    // of the first 8. The cap is applied ONCE, to the ASSEMBLED list —
+    // the bound belongs to the QUERY, not the bucket (the old per-bucket
+    // slice let three buckets stack to 24 while this comment said 8).
+    const SOFT_CONCEPT_CAP = 8;
+    // ONE soft entry per CONCEPT (F3/F5): a plain attribute's arm is
+    // derived from its type (its single column home); a cuisine concept
+    // carries BOTH homes and is satisfied by either (OR within a concept,
+    // AND across concepts) — and it is counted ONCE in the starvation
+    // report (the duplicate-JSON-key trap).
+    const softConcepts: ConceptConstraint[] = hasPrimarySubject
       ? [
           ...constraints.ids.itemAttributeIds
             .filter((id) => !dietary.has(id) && !cuisineSet.has(id))
-            .slice(0, SOFT_ID_CAP)
-            .map(
-              (id): PooledSoftConcept => ({
-                id,
-                columns: ['food_attributes'],
-              }),
-            ),
+            .map((id) => plainAttributeSoftConcept(id, 'food_attributes')),
           ...constraints.ids.placeAttributeIds
             .filter((id) => !dietary.has(id) && !cuisineSet.has(id))
-            .slice(0, SOFT_ID_CAP)
-            .map(
-              (id): PooledSoftConcept => ({
-                id,
-                columns: ['restaurant_attributes'],
-              }),
+            .map((id) =>
+              plainAttributeSoftConcept(id, 'restaurant_attributes'),
             ),
-          ...cuisineConceptIds.slice(0, SOFT_ID_CAP).map(
-            (id): PooledSoftConcept => ({
-              id,
-              columns: ['food_attributes', 'restaurant_attributes'],
-            }),
+          ...cuisineConceptIds.map((id) =>
+            cuisineConceptConstraint(id, 'soft'),
           ),
-        ]
+        ].slice(0, SOFT_CONCEPT_CAP)
       : [];
     // DIETARY WALLS (owner semantics 2026-08-04): a dietary requirement is
     // per-projection — dish shows only with the DISH-side attribute; a
@@ -1682,8 +1678,8 @@ export class SearchService {
     // asked, not the WHERE we execute.
     // Cuisine ids leave membership in BOTH modes: as a soft concept they
     // move to gate provenance like any soft word; as a hard wall (no
-    // primary subject) they move to directives.cuisineConceptIds, whose
-    // builder arm is the two-column OR — never the single-column filter
+    // primary subject) they become wall concepts in directives.concepts,
+    // whose renderer is the two-home OR — never the single-column filter
     // the plain id lists compile to.
     const softSet = new Set(softConcepts.map((concept) => concept.id));
     const pooledConstraints: SearchConstraints = {
@@ -1730,20 +1726,28 @@ export class SearchService {
     // degenerates to the plain strict single query (an empty soft-id list
     // must not reach the builder — Prisma.join([]) throws).
     const hasSoftIds = softConcepts.length > 0;
+    // THE ONE CONSTRAINT LIST (F3): cuisine walls (only when the cuisine
+    // IS the ask — no primary subject), then dietary walls, then the soft
+    // concepts. The builder partitions by hardness; wall order is
+    // preserved (cuisine before dietary, as the two fragments used to
+    // compose).
+    const conceptConstraints: ConceptConstraint[] = [
+      ...(!hasPrimarySubject
+        ? cuisineConceptIds.map((id) => cuisineConceptConstraint(id, 'wall'))
+        : []),
+      ...dietaryWalls.map(dietaryWallConcept),
+      ...softConcepts,
+    ];
     const directives = {
       ...this.buildExecutionDirectives(
         params.request,
         constraints,
         params.planExpansion,
       ),
-      ...(dietaryWalls.length ? { dietaryWalls } : {}),
-      ...(cuisineConceptIds.length && !hasPrimarySubject
-        ? { cuisineConceptIds }
-        : {}),
+      ...(conceptConstraints.length ? { concepts: conceptConstraints } : {}),
       ...(hasSoftIds || similarItemIds.length
         ? {
             pooledGate: {
-              softConcepts,
               // One page = what the CLIENT asked for (red team A3): a
               // pageSize above the default must not come back short
               // because the gate closed at 25.

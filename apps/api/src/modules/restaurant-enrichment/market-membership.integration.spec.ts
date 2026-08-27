@@ -28,6 +28,7 @@ const IN_ID = '88888888-8888-4888-8888-888888880001';
 const SUBURB_ID = '88888888-8888-4888-8888-888888880002';
 const FAR_ID = '88888888-8888-4888-8888-888888880003';
 const NOEVID_ID = '88888888-8888-4888-8888-888888880004';
+const FOOD_ID = '88888888-8888-4888-8888-888888880005';
 const TERRITORY_PLACE_ID = '88888888-8888-4888-8888-888888880010';
 const ENGINE_ID = '88888888-8888-4888-8888-888888880011';
 const CREDITED = [IN_ID, SUBURB_ID, FAR_ID];
@@ -46,8 +47,15 @@ const noopLogger = () => {
 
 let runId: string;
 let inputId: string;
+// The reconcile marks the rescore dirty on re-inclusion (§12.6: markDirty is
+// the only enqueue collection paths may call) — stub it and assert on it.
+const markDirty = jest.fn(() => Promise.resolve());
 const service = () =>
-  new MarketMembershipService(prisma as never, noopLogger() as never);
+  new MarketMembershipService(
+    prisma as never,
+    noopLogger() as never,
+    { markDirty } as never,
+  );
 
 const excludedAt = async (id: string) =>
   (
@@ -162,6 +170,12 @@ afterAll(async () => {
   await prisma.engine.deleteMany({ where: { engineId: ENGINE_ID } });
   await prisma.$executeRaw`DELETE FROM place_geometries WHERE place_id = ${TERRITORY_PLACE_ID}::uuid`;
   await prisma.place.deleteMany({ where: { placeId: TERRITORY_PLACE_ID } });
+  await prisma.connection.deleteMany({ where: { placeId: { in: ALL } } });
+  await prisma.entity.deleteMany({ where: { entityId: FOOD_ID } });
+  // Deleting the run cascades its core_public_entity_scores rows.
+  await prisma.craveScoreRun.deleteMany({
+    where: { scoreVersion: `${TAG}-v` },
+  });
   await prisma.placeLocation.deleteMany({ where: { placeId: { in: ALL } } });
   await prisma.entity.deleteMany({ where: { entityId: { in: ALL } } });
   await prisma.$disconnect();
@@ -205,5 +219,92 @@ describe('market membership reconciler (v17 S4)', () => {
       where: { placeId: FAR_ID },
       data: { latitude: 27.8006, longitude: -97.3964 },
     });
+  });
+});
+
+describe('verdict → score-pool coupling (red-team L3 F2)', () => {
+  const scoreRow = (
+    scoreRunId: string,
+    subjectType: 'restaurant' | 'connection',
+    subjectId: string,
+  ) => ({
+    subjectType,
+    subjectId,
+    scoreRunId,
+    endorsementRaw: 1,
+    percentileRank: 0.5,
+    displayScore: 7.5,
+    scoreVersion: `${TAG}-v`,
+    displayCurveVersion: `${TAG}-v`,
+  });
+
+  it('excluding a scored place DELETES its restaurant AND dish score rows in the SAME reconcile — no waiting for the nightly rebuild', async () => {
+    // Start FAR in-market so the reconcile produces a fresh EXCLUDED verdict.
+    await prisma.placeLocation.updateMany({
+      where: { placeId: FAR_ID },
+      data: { latitude: 30.27, longitude: -97.74 },
+    });
+    await service().reconcile(FAR_ID);
+    expect(await excludedAt(FAR_ID)).toBeNull();
+
+    // Seed the score pool: FAR's restaurant row, one of FAR's dish
+    // (connection) rows, and an untargeted control row for IN.
+    await prisma.entity.create({
+      data: { entityId: FOOD_ID, name: `${TAG}-food`, type: 'item' },
+    });
+    const connection = await prisma.connection.create({
+      data: { placeId: FAR_ID, itemId: FOOD_ID },
+    });
+    const run = await prisma.craveScoreRun.create({
+      data: {
+        scoreVersion: `${TAG}-v`,
+        displayCurveVersion: `${TAG}-v`,
+        displayMin: 0,
+        displayMax: 10,
+        recencyReferenceDate: new Date(),
+      },
+    });
+    await prisma.publicEntityScore.createMany({
+      data: [
+        scoreRow(run.scoreRunId, 'restaurant', FAR_ID),
+        scoreRow(run.scoreRunId, 'connection', connection.connectionId),
+        scoreRow(run.scoreRunId, 'restaurant', IN_ID),
+      ],
+    });
+
+    // Move FAR back out of market; the reconcile flips the verdict AND
+    // prunes the pool atomically.
+    await prisma.placeLocation.updateMany({
+      where: { placeId: FAR_ID },
+      data: { latitude: 27.8006, longitude: -97.3964 },
+    });
+    await service().reconcile(FAR_ID);
+    expect(await excludedAt(FAR_ID)).not.toBeNull();
+
+    const remaining = await prisma.publicEntityScore.findMany({
+      where: { scoreRunId: run.scoreRunId },
+      select: { subjectType: true, subjectId: true },
+    });
+    expect(remaining).toEqual([
+      { subjectType: 'restaurant', subjectId: IN_ID },
+    ]);
+  });
+
+  it('re-inclusion marks the rescore dirty (the §12.6 enqueue) so the pool re-admits the place', async () => {
+    expect(await excludedAt(FAR_ID)).not.toBeNull();
+    markDirty.mockClear();
+    await prisma.placeLocation.updateMany({
+      where: { placeId: FAR_ID },
+      data: { latitude: 30.27, longitude: -97.74 },
+    });
+    await service().reconcile(FAR_ID);
+    expect(await excludedAt(FAR_ID)).toBeNull();
+    expect(markDirty).toHaveBeenCalledTimes(1);
+    // restore
+    await prisma.placeLocation.updateMany({
+      where: { placeId: FAR_ID },
+      data: { latitude: 27.8006, longitude: -97.3964 },
+    });
+    await service().reconcile(FAR_ID);
   });
 });

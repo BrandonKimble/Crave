@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import type { SignalKind } from './signals.service';
 import { freshSignalAttributionSql } from './ground-containment';
+import { marketIncludedSql } from '../restaurant-enrichment/servable-place-scope';
 import {
   redirectJoinSql,
   resolvedSubjectSql,
@@ -523,6 +524,11 @@ export class SignalDemandReadService {
       JOIN core_entities e
         ON e.entity_id = ${resolvedSubjectSql('s')}
        AND e.type = 'place'
+       -- Recall SUGGESTION lane (red-team L3 F1): an out-of-market place is
+       -- never suggested for re-search — search would serve nothing for it.
+       -- (Unlike a user's SAVED list, which keeps its rows — see the ruling
+       -- in user-list-results.assembler.ts.)
+       AND ${Prisma.raw(marketIncludedSql('e'))}
       WHERE s.actor_id = ${actorId}::uuid
         AND s.kind = 'entity_view'
         AND s.subject_id IS NOT NULL
@@ -767,6 +773,9 @@ export class SignalDemandReadService {
       JOIN core_entities e
         ON e.entity_id = ${resolvedSubjectSql('s')}
        AND e.type = 'place'
+       -- Recall SUGGESTION lane (red-team L3 F1): out-of-market places are
+       -- never suggested for re-search (same ruling as recentlyViewedPlaces).
+       AND ${Prisma.raw(marketIncludedSql('e'))}
       WHERE s.actor_id = ${actorId}::uuid
         AND s.kind = 'entity_view'
         AND s.subject_id IS NOT NULL

@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { notABallotDocumentSql } from '../../polls/supply/ballot-document-marker';
 import { randomUUID } from 'crypto';
 import { activePlaceEventsSourceSql } from '../reddit-collector/extraction-scope.service';
+import { marketIncludedSql } from '../../restaurant-enrichment/servable-place-scope';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import {
@@ -938,7 +939,9 @@ export class PublicCraveScoreService {
         -- OUT-OF-MARKET IS NEVER RANKED (v17 S4): a place excluded from
         -- every crediting community's market leaves the score pool too —
         -- its rows would otherwise distort every percentile it sat in.
-        AND r.market_excluded_at IS NULL
+        -- (Shared fragment, red-team L3 F1: the score lanes keep their own
+        -- stricter status = 'active' and compose only the verdict piece.)
+        AND ${Prisma.raw(marketIncludedSql('r'))}
       JOIN core_restaurant_item_mentions m ON m.connection_id = c.connection_id
       LEFT JOIN collection_source_documents d ON d.document_id = m.source_document_id
       LEFT JOIN sources src
@@ -982,8 +985,9 @@ export class PublicCraveScoreService {
         ON src.platform = d.platform AND lower(src.handle) = lower(d.community)
       WHERE e.type = 'place'
         AND e.status = 'active'
-        -- OUT-OF-MARKET IS NEVER RANKED (v17 S4), same as the dish lane.
-        AND e.market_excluded_at IS NULL
+        -- OUT-OF-MARKET IS NEVER RANKED (v17 S4), same as the dish lane —
+        -- composed through the shared fragment (red-team L3 F1).
+        AND ${Prisma.raw(marketIncludedSql('e'))}
         AND ${restFixtureFilter}
       GROUP BY e.entity_id, src.source_id, src.platform
     `;

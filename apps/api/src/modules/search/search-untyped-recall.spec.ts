@@ -48,7 +48,12 @@ function makeService(
     entityTextSearch as never,
     {} as never,
     dietary as never,
-    { getCuisineIds: () => Promise.resolve(new Set()) } as never,
+    {
+      // FacetRegistry double: dietary ids carry placement rank 0 (F4 —
+      // the rank rides the facet row, sourced from the dietary registry).
+      getPlacementRanks: () =>
+        Promise.resolve(new Map([...dietaryIds].map((id) => [id, 0]))),
+    } as never,
     {} as never,
     {} as never,
     {} as never,

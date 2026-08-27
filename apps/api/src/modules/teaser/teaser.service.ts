@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { identityScope } from '../../shared/locale';
 import { PrismaService } from '../../prisma/prisma.service';
 import { canonicalFold } from '../content-processing/entity-resolver/entity-identity';
+import { marketIncludedSql } from '../restaurant-enrichment/servable-place-scope';
 import { LoggerService } from '../../shared';
 import type {
   ContextOptionId,
@@ -295,6 +296,9 @@ export class TeaserService {
       JOIN core_public_entity_scores s
         ON s.subject_type = 'restaurant' AND s.subject_id = r.entity_id
       WHERE r.type = 'place' AND r.status = 'active'
+        -- OUT-OF-MARKET is never a teaser (red-team L3 F1: Grape Creek
+        -- Vineyards was serveable as an Austin teaser through this lane).
+        AND ${Prisma.raw(marketIncludedSql('r'))}
         AND (SELECT found FROM attrs) = ${attrNames.length}
         AND r.restaurant_attributes @> (SELECT ids FROM attrs)
         AND EXISTS (

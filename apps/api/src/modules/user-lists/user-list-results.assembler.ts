@@ -1,4 +1,5 @@
 import { DietaryConstraintRegistry } from '../search/dietary-constraints';
+import { dietaryWallConcept } from '../search/concept-membership.compiler';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { UserListType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -325,8 +326,23 @@ export class ListResultsAssembler {
     const dietaryWalls = await this.dietaryConstraints.resolveDietaryWalls({
       dietary: dto.dietary,
     });
-    const directives = dietaryWalls.length ? { dietaryWalls } : undefined;
+    const directives = dietaryWalls.length
+      ? { concepts: dietaryWalls.map(dietaryWallConcept) }
+      : undefined;
 
+    // MARKET-EXCLUSION RULING (red-team L3 F1, 2026-08-26): a user's SAVED
+    // list is deliberately NOT composed through servablePlaceConditionsSql —
+    // favorites are the user's own curation ("the primary 'this is mine'
+    // surface", product/favorites.md) and a saved place must not silently
+    // vanish because the corpus later ruled it out-of-market. The list's
+    // MEMBERSHIP reads (user_list_items joins in user-lists.service.ts) carry
+    // no market predicate for that reason.
+    // KNOWN TENSION, not resolved here: list detail renders THROUGH the
+    // search executor below, whose place floor DOES include the exclusion —
+    // so an excluded saved place is currently dropped from the rendered rows
+    // (it surfaces only in droppedItemCount). Making the executor honor an
+    // owner-surface opt-out is an owner decision; do not "fix" it by
+    // filtering the membership reads to match.
     const exec = isPlaceAxis
       ? await this.searchQueryExecutor.executeSingle({
           axis: 'restaurant',

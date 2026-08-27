@@ -1,7 +1,7 @@
 import { ServiceUnavailableException, Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
+import { RegistryCache } from './registry-cache';
 
 /** One dietary wall: a canonical name and the entity ids it walls with, per
  *  projection. A name may lack one side (vegetarian has no venue row today);
@@ -28,16 +28,41 @@ export type DietaryWall = {
 @Injectable()
 export class DietaryConstraintRegistry {
   private readonly logger: LoggerService;
-  private cache: {
-    pairs: ReadonlyMap<
-      string,
-      { itemAttributeId?: string; placeAttributeId?: string }
-    >;
-    expiresAt: number;
-  } | null = null;
-  /** The vocabulary is ~10 rows and changes only by curation; 5 minutes
-   *  bounds staleness without a per-search query. */
-  private static readonly TTL_MS = 5 * 60 * 1000;
+  /** The ONE registry cache (F7 — shared with FacetRegistry's cuisine
+   *  lane, no more copy-pasted cache blocks). The vocabulary is ~10 rows
+   *  and changes only by curation; 5 minutes bounds staleness without a
+   *  per-search query. Degrade policy is FAIL CLOSED (audit H2): a
+   *  dietary wall is a hard promise ("softening vegan is not degradation
+   *  — it is a wrong answer", top of this file), and an empty map
+   *  silently serves a vegan user non-vegan results after any
+   *  boot+DB-blip. Stale beats empty (served on a short backoff TTL so a
+   *  blip is not re-queried per request); with NO stale copy the search
+   *  FAILS LOUDLY instead of lying. Boot preload (onModuleInit) makes
+   *  the cold branch unreachable in practice.
+   */
+  private readonly cache = new RegistryCache<
+    ReadonlyMap<string, { itemAttributeId?: string; placeAttributeId?: string }>
+  >({
+    ttlMs: 5 * 60 * 1000,
+    errorTtlMs: 30 * 1000,
+    load: () => this.loadPairs(),
+    degrade: (error, stale) => {
+      this.logger.error('Dietary registry load failed', {
+        error:
+          error instanceof Error
+            ? { message: error.message }
+            : { message: String(error) },
+      });
+      if (stale) {
+        return stale;
+      }
+      throw new ServiceUnavailableException({
+        code: 'dietary_registry_unavailable',
+        message:
+          'dietary constraint registry unavailable and no cached copy exists — refusing to serve unwalled results',
+      });
+    },
+  });
 
   constructor(
     private readonly prisma: PrismaService,
@@ -140,119 +165,43 @@ export class DietaryConstraintRegistry {
     return walls;
   }
 
-  /**
-   * THE RESTAURANT-PROJECTION WALL, as SQL. A venue passes when it carries
-   * the venue-side attribute itself OR any of its dishes carries the
-   * dish-side one — deliberately NOT scoped to the query's connection match,
-   * because a vegan wall asks "is this a vegan-viable venue", not "does the
-   * matching dish happen to be vegan" (that is the dish projection's job).
-   *
-   * Returns one condition per wall so callers can AND them into whatever
-   * WHERE they are already assembling. `entitySurface` is the restaurant-entity
-   * alias in the caller's query (`r` in the ranked builder, `e` in coverage);
-   * that alias was the ONLY difference between the two byte-equivalent copies
-   * this replaces.
-   */
-  static placeWallConditions(
-    walls: readonly DietaryWall[],
-    entitySurface: string,
-  ): Prisma.Sql[] {
-    const alias = Prisma.raw(entitySurface);
-    const conditions: Prisma.Sql[] = [];
-    for (const wall of walls) {
-      const arms: Prisma.Sql[] = [];
-      if (wall.placeAttributeId) {
-        arms.push(
-          Prisma.sql`${alias}.restaurant_attributes @> ARRAY[${wall.placeAttributeId}]::uuid[]`,
-        );
-      }
-      if (wall.itemAttributeId) {
-        arms.push(
-          Prisma.sql`EXISTS (SELECT 1 FROM core_restaurant_items dc WHERE dc.restaurant_id = ${alias}.entity_id AND dc.food_attributes @> ARRAY[${wall.itemAttributeId}]::uuid[])`,
-        );
-      }
-      if (arms.length) {
-        conditions.push(Prisma.sql`(${Prisma.join(arms, ' OR ')})`);
-      }
-    }
-    return conditions;
-  }
-
-  /**
-   * THE DISH-PROJECTION WALL, as SQL. A dish serves only when it carries the
-   * dish-side attribute itself; a wall with no dish-side entity does not
-   * constrain dishes at all.
-   */
-  static dishWallConditions(
-    walls: readonly DietaryWall[],
-    connectionAlias: string,
-  ): Prisma.Sql[] {
-    const alias = Prisma.raw(connectionAlias);
-    return walls
-      .filter((wall) => wall.itemAttributeId)
-      .map(
-        (wall) =>
-          Prisma.sql`${alias}.food_attributes @> ARRAY[${wall.itemAttributeId}]::uuid[]`,
-      );
-  }
+  // The two wall SQL renderers that used to live here
+  // (placeWallConditions/dishWallConditions) dissolved into the ONE
+  // concept-membership compiler (red-team L3 F3): a dietary wall is a
+  // concept with per-axis asymmetric arms — `dietaryWallConcept()` in
+  // concept-membership.compiler.ts carries the semantics, and the same
+  // per-axis renderers serve dietary, cuisine, and plain soft concepts.
 
   /** The cached primitive. Pairs are what every caller actually needs; the
    *  id set is DERIVED from them. Previously `getDietaryIds` cached and
    *  `getDietaryPairs` issued an unconditional second query on top of it —
    *  so the docblock's "bounds staleness without a per-search query" was
    *  false on the pairs path, which is the one every dietary search takes. */
-  private async load(): Promise<
+  private load(): Promise<
     ReadonlyMap<string, { itemAttributeId?: string; placeAttributeId?: string }>
   > {
-    const now = Date.now();
-    if (this.cache && this.cache.expiresAt > now) {
-      return this.cache.pairs;
+    return this.cache.get();
+  }
+
+  private async loadPairs(): Promise<
+    ReadonlyMap<string, { itemAttributeId?: string; placeAttributeId?: string }>
+  > {
+    const rows = await this.prisma.entity.findMany({
+      where: { constraintClass: 'dietary', status: 'active' },
+      select: { entityId: true, name: true, type: true },
+    });
+    const pairs = new Map<
+      string,
+      { itemAttributeId?: string; placeAttributeId?: string }
+    >();
+    for (const row of rows) {
+      const key = row.name.toLowerCase();
+      const pair = pairs.get(key) ?? {};
+      if (row.type === 'item_attribute') pair.itemAttributeId = row.entityId;
+      if (row.type === 'place_attribute') pair.placeAttributeId = row.entityId;
+      pairs.set(key, pair);
     }
-    try {
-      const rows = await this.prisma.entity.findMany({
-        where: { constraintClass: 'dietary', status: 'active' },
-        select: { entityId: true, name: true, type: true },
-      });
-      const pairs = new Map<
-        string,
-        { itemAttributeId?: string; placeAttributeId?: string }
-      >();
-      for (const row of rows) {
-        const key = row.name.toLowerCase();
-        const pair = pairs.get(key) ?? {};
-        if (row.type === 'item_attribute') pair.itemAttributeId = row.entityId;
-        if (row.type === 'place_attribute')
-          pair.placeAttributeId = row.entityId;
-        pairs.set(key, pair);
-      }
-      this.cache = {
-        pairs,
-        expiresAt: now + DietaryConstraintRegistry.TTL_MS,
-      };
-      return pairs;
-    } catch (error) {
-      // Stale beats empty — but EMPTY IS FORBIDDEN (audit H2): a dietary
-      // wall is a hard promise ("softening vegan is not degradation — it is
-      // a wrong answer", top of this file), and an empty map silently serves
-      // a vegan user non-vegan results on the first request after any
-      // boot+DB-blip. With no stale cache to fall back on, the search FAILS
-      // LOUDLY instead of lying. Boot preload (onModuleInit) makes this
-      // branch unreachable in practice.
-      this.logger.error('Dietary registry load failed', {
-        error:
-          error instanceof Error
-            ? { message: error.message }
-            : { message: String(error) },
-      });
-      if (this.cache) {
-        return this.cache.pairs;
-      }
-      throw new ServiceUnavailableException({
-        code: 'dietary_registry_unavailable',
-        message:
-          'dietary constraint registry unavailable and no cached copy exists — refusing to serve unwalled results',
-      });
-    }
+    return pairs;
   }
 
   /** Boot preload (audit H2): the registry is ~12 curated rows; loading it

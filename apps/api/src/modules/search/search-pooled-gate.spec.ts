@@ -3,6 +3,7 @@ import { compileQueryPlanFromConstraints } from './search-constraints.compiler';
 import { SearchQueryBuilder } from './search-query.builder';
 import type { SearchConstraints } from './search-constraints';
 import type { SearchExecutionDirectives } from './search-execution-directives';
+import { plainAttributeSoftConcept } from './concept-membership.compiler';
 
 const ITEM_ID = '33333333-3333-3333-3333-333333333333';
 const SOFT_FOOD_ATTR = '44444444-4444-4444-4444-444444444444';
@@ -49,13 +50,14 @@ function directives(
   overrides: Partial<NonNullable<SearchExecutionDirectives['pooledGate']>> = {},
 ): SearchExecutionDirectives {
   return {
+    // F3/F5 concept shape: one soft ConceptConstraint per concept, its
+    // arm(s) derived from the attribute's type — a single-arm concept is
+    // the pre-concept behavior.
+    concepts: [
+      plainAttributeSoftConcept(SOFT_FOOD_ATTR, 'food_attributes'),
+      plainAttributeSoftConcept(SOFT_REST_ATTR, 'restaurant_attributes'),
+    ],
     pooledGate: {
-      // F5 concept shape: one entry per concept, each naming its column
-      // home(s) — a single-home concept is the pre-concept behavior.
-      softConcepts: [
-        { id: SOFT_FOOD_ATTR, columns: ['food_attributes'] },
-        { id: SOFT_REST_ATTR, columns: ['restaurant_attributes'] },
-      ],
       threshold: 25,
       ...overrides,
     },
@@ -233,7 +235,6 @@ describe('step-3 pooled richness gate (SQL shape)', () => {
   it('ring-only gate (no soft words) builds without empty-array joins', () => {
     const d: SearchExecutionDirectives = {
       pooledGate: {
-        softConcepts: [],
         threshold: 25,
         similarItemIds: ['66666666-6666-6666-6666-666666666666'],
       },

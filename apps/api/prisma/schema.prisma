@@ -134,7 +134,6 @@ model Entity {
   @@index([canonicalDomain], map: "idx_entities_canonical_domain")
   @@index([type, canonicalDomain], map: "idx_entities_type_canonical_domain")
   @@index([canonicalIngredients], map: "idx_entities_canonical_ingredients_gin", type: Gin)
-  @@index([placeAttributes], map: "idx_entities_restaurant_attributes")
   @@index([longitude, latitude], map: "idx_entities_location")
   @@index([address], map: "idx_entities_address")
   @@index([city], map: "idx_entities_city")

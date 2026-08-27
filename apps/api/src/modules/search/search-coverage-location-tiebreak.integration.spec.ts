@@ -53,6 +53,7 @@ const logger = {
 const service = new SearchCoverageService(
   prisma as never,
   new DietaryConstraintRegistry(prisma as never, logger),
+  { getCuisineIds: () => Promise.resolve(new Set()) } as never,
   logger,
 );
 

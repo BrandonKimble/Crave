@@ -1,11 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { identityScope } from '../../shared/locale';
-import { DietaryConstraintRegistry } from './dietary-constraints';
 import { activePlaceEventExistsSql } from '../content-processing/reddit-collector/extraction-scope.service';
+import { servablePlaceConditionsSql } from '../restaurant-enrichment/servable-place-scope';
+import {
+  conceptArmsOrSql,
+  conceptDishAxisSql,
+  conceptRestaurantAxisSql,
+} from './concept-membership.compiler';
 import { EntityScope, FilterClause, QueryPlan } from './dto/search-query.dto';
 import type {
-  PooledSoftConcept,
+  ConceptConstraint,
   SearchExecutionDirectives,
 } from './search-execution-directives';
 
@@ -94,12 +99,6 @@ interface ParsedFilters {
   itemAttributeIds: string[];
   ingredientIds: string[];
   itemAttributePrimary: boolean;
-  /** CUISINE DUAL-PROJECTION, hard membership (v17 S4; F5): each id is ONE
-   *  concept satisfied by EITHER column home — dish axis
-   *  `(c.food_attributes @> [id] OR fr.restaurant_attributes @> [id])`,
-   *  restaurant axis `(r.restaurant_attributes @> [id] OR EXISTS dish
-   *  carrying it)`. AND across ids, OR within one. */
-  cuisineConceptIds: string[];
   boundsPayload: BoundsPayload | null;
   polygonPayload: PolygonPayload | null;
   priceLevels: number[];
@@ -175,34 +174,35 @@ export class SearchQueryBuilder {
       ? Prisma.sql`COALESCE(tm.has_signal_match, FALSE)`
       : Prisma.sql`FALSE`;
 
-    // STEP-3 POOLED GATE (spec §1.4; F5 concept shape): tier 0 =
-    // restaurant satisfies EVERY soft CONCEPT, each by ANY of its column
-    // homes — venue side via containment on its own attributes, food side
-    // via a connection that matches the (hard) food arms AND carries the
-    // concept id. AND across concepts, OR within one: a dual-homed cuisine
-    // concept is satisfied by either side, never required on both. Soft
-    // ids are OUT of membership (the service passes hard-only ids in the
-    // plan).
+    // STEP-3 POOLED GATE (spec §1.4; F3/F5 concept shape): tier 0 =
+    // restaurant satisfies EVERY soft CONCEPT, each by ANY of its arms —
+    // venue side via containment on its own attributes, food side via a
+    // connection that matches the (hard) food arms AND carries the
+    // concept id (the deliberate tier-0 scoping — see the asymmetry
+    // comment on conceptRestaurantAxisSql). AND across concepts, OR
+    // within one: a dual-homed cuisine concept is satisfied by either
+    // side, never required on both. Soft ids are OUT of membership (the
+    // service passes hard-only ids in the plan); walls AND into it below.
     const pooledGate = directives?.pooledGate ?? null;
+    const concepts = directives?.concepts ?? [];
+    const softConceptsList = pooledGate
+      ? concepts.filter((c) => c.hardness === 'soft')
+      : [];
+    const wallConcepts = concepts.filter((c) => c.hardness === 'wall');
     const restConceptExpr = (
-      concept: PooledSoftConcept,
+      concept: ConceptConstraint,
       alias: string,
     ): Prisma.Sql =>
-      this.buildSoftConceptExpr(concept, {
-        rest: (id) =>
-          Prisma.sql`${Prisma.raw(alias)}.restaurant_attributes @> ARRAY[${id}]::uuid[]`,
-        food: (id) => Prisma.sql`EXISTS (
-                  SELECT 1 FROM core_restaurant_items c
-                  WHERE c.restaurant_id = ${Prisma.raw(alias)}.entity_id
-                    AND c.food_attributes @> ARRAY[${id}]::uuid[]
-                    ${connectionMatch.hasConditions ? Prisma.sql`AND ${connectionMatchSql}` : Prisma.sql``}
-                )`,
-      });
+      conceptRestaurantAxisSql(concept, alias, {
+        dishExistsScopeSql: connectionMatch.hasConditions
+          ? connectionMatchSql
+          : null,
+      }) ?? Prisma.sql`TRUE`;
     const pooledRestFullExpr = (alias: string): Prisma.Sql | null =>
       pooledGate
-        ? pooledGate.softConcepts.length
+        ? softConceptsList.length
           ? Prisma.sql`(${Prisma.join(
-              pooledGate.softConcepts.map((concept) =>
+              softConceptsList.map((concept) =>
                 restConceptExpr(concept, alias),
               ),
               ' AND ',
@@ -223,38 +223,21 @@ export class SearchQueryBuilder {
       ? Prisma.sql`AND (${this.buildInClause('r.entity_id', restrictIds)})`
       : Prisma.sql``;
 
-    // DIETARY WALLS, restaurant projection (owner semantics 2026-08-04):
-    // a restaurant passes each wall when the VENUE carries the attribute
-    // OR ANY of its dishes does. Arms drop when a side has no entity
-    // (vegetarian has no venue row today). NOTE: deliberately NOT scoped
-    // to the query's connection match — a vegan wall asks "is this a
-    // vegan-viable venue", not "does the matching dish happen to be
-    // vegan" (that is the DISH projection's job).
-    const dietaryPlaceWallConditions =
-      DietaryConstraintRegistry.placeWallConditions(
-        directives?.dietaryWalls ?? [],
-        'r',
-      );
-    const dietaryPlaceWallsSql = dietaryPlaceWallConditions.length
-      ? Prisma.sql`AND ${Prisma.join(dietaryPlaceWallConditions, ' AND ')}`
+    // CONCEPT WALLS, restaurant projection (F3 — one renderer for dietary
+    // AND cuisine): a restaurant passes each wall when the VENUE carries a
+    // restaurant arm OR ANY of its dishes carries a food arm. Per-axis
+    // arms come from the facet (dietary asymmetric, cuisine dual-home);
+    // the dish EXISTS is deliberately NOT scoped to the query's connection
+    // match — a wall asks "is this an X-viable venue", not "does the
+    // matching dish happen to be X" (that is the DISH projection's job;
+    // see conceptRestaurantAxisSql's asymmetry comment).
+    const placeWallConditions = wallConcepts
+      .map((concept) => conceptRestaurantAxisSql(concept, 'r'))
+      .filter((sql): sql is Prisma.Sql => sql !== null);
+    const placeWallsSql = placeWallConditions.length
+      ? Prisma.sql`AND ${Prisma.join(placeWallConditions, ' AND ')}`
       : Prisma.sql``;
-    // CUISINE WALL, restaurant projection (v17 S4; F5): one concept, two
-    // homes — the venue carries the cuisine attribute OR any of its dishes
-    // does. Hard membership only when the cuisine IS the ask (no primary
-    // subject); with a subject the same concept rides the pooled gate.
-    const cuisinePlaceWallConditions = filters.cuisineConceptIds.map(
-      (
-        id,
-      ) => Prisma.sql`(r.restaurant_attributes @> ARRAY[${id}]::uuid[] OR EXISTS (
-        SELECT 1 FROM core_restaurant_items c
-        WHERE c.restaurant_id = r.entity_id
-          AND c.food_attributes @> ARRAY[${id}]::uuid[]
-      ))`,
-    );
-    const cuisinePlaceWallsSql = cuisinePlaceWallConditions.length
-      ? Prisma.sql`AND ${Prisma.join(cuisinePlaceWallConditions, ' AND ')}`
-      : Prisma.sql``;
-    const combinedPlaceWhereSql = Prisma.sql`${placeWhereSql} AND ${inventoryExistsSql} AND ${placeAttributeMatchSql} AND ${itemOrSignalMatchSql} ${cuisinePlaceWallsSql} ${dietaryPlaceWallsSql} ${excludePlacesSql} ${restrictPlacesSql}`;
+    const combinedPlaceWhereSql = Prisma.sql`${placeWhereSql} AND ${inventoryExistsSql} AND ${placeAttributeMatchSql} AND ${itemOrSignalMatchSql} ${placeWallsSql} ${excludePlacesSql} ${restrictPlacesSql}`;
 
     // Build location conditions (bounds)
     const { sql: locationWhereSql, boundsApplied } =
@@ -571,9 +554,9 @@ WITH
 	SELECT COUNT(DISTINCT rrx.restaurant_id)::bigint AS total_restaurants,
 	  COALESCE(MAX(rrx.pooled_full_count), 0)::bigint AS full_restaurants,
 	  ${
-      pooledGate!.softConcepts.length > 0
+      softConceptsList.length > 0
         ? Prisma.sql`json_build_object(${Prisma.join(
-            pooledGate!.softConcepts.map(
+            softConceptsList.map(
               (concept, i) =>
                 Prisma.sql`${concept.id}::text, COALESCE(MAX(rrx.rswc_${Prisma.raw(String(i))}), 0)::int`,
             ),
@@ -585,10 +568,10 @@ WITH
 	  SELECT fr.entity_id AS restaurant_id,
 	    ${restTierExpr!} AS match_tier,
 	    count(*) FILTER (WHERE ${restTierExpr!} = 0) OVER () AS pooled_full_count${
-        pooledGate!.softConcepts.length
+        softConceptsList.length
           ? Prisma.sql`,
 	    ${Prisma.join(
-        pooledGate!.softConcepts.map(
+        softConceptsList.map(
           (concept, i) =>
             Prisma.sql`count(*) FILTER (WHERE ${restConceptExpr(concept, 'fr')}) OVER () AS rswc_${Prisma.raw(String(i))}`,
         ),
@@ -654,20 +637,22 @@ WITH
     // one execution holds the whole pool; the gate below decides whether
     // tier-1 rows are admitted.
     const pooledGate = directives?.pooledGate ?? null;
-    // F5 concept shape: AND across concepts, OR within one — a dual-homed
-    // cuisine concept is satisfied by the dish carrying it OR the venue
-    // carrying it, never required on both (the naive dual projection that
-    // gets stricter).
-    const dishConceptExpr = (concept: PooledSoftConcept): Prisma.Sql =>
-      this.buildSoftConceptExpr(concept, {
-        food: (id) => Prisma.sql`c.food_attributes @> ARRAY[${id}]::uuid[]`,
-        rest: (id) =>
-          Prisma.sql`fr.restaurant_attributes @> ARRAY[${id}]::uuid[]`,
-      });
+    const concepts = directives?.concepts ?? [];
+    const softConceptsList = pooledGate
+      ? concepts.filter((c) => c.hardness === 'soft')
+      : [];
+    const wallConcepts = concepts.filter((c) => c.hardness === 'wall');
+    // F3/F5 concept shape: AND across concepts, OR within one — a
+    // dual-homed cuisine concept is satisfied by the dish carrying it OR
+    // the venue carrying it, never required on both (the naive dual
+    // projection that gets stricter).
+    const dishConceptExpr = (concept: ConceptConstraint): Prisma.Sql =>
+      conceptDishAxisSql(concept, { connection: 'c', restaurant: 'fr' }) ??
+      Prisma.sql`TRUE`;
     const pooledFullExprSql = pooledGate
-      ? pooledGate.softConcepts.length
+      ? softConceptsList.length
         ? Prisma.sql`(${Prisma.join(
-            pooledGate.softConcepts.map(dishConceptExpr),
+            softConceptsList.map(dishConceptExpr),
             ' AND ',
           )})`
         : Prisma.sql`TRUE`
@@ -699,35 +684,26 @@ WITH
     const ringAdmissionSql = similarRingIds.length
       ? Prisma.sql`OR c.food_id = ANY(${similarRingIds}::uuid[])`
       : Prisma.sql``;
-    // DIETARY WALLS, dish projection (owner semantics 2026-08-04): a dish
-    // serves ONLY when it carries the dish-side attribute itself; a wall
-    // with no dish-side entity does not constrain dishes.
-    const dietaryDishWallConditions =
-      DietaryConstraintRegistry.dishWallConditions(
-        directives?.dietaryWalls ?? [],
-        'c',
-      );
-    const dietaryDishWallsSql = dietaryDishWallConditions.length
-      ? Prisma.sql`AND ${Prisma.join(dietaryDishWallConditions, ' AND ')}`
-      : Prisma.sql``;
     const dishOpenNowSql = this.planRequestsOpenNow(plan)
       ? Prisma.sql`AND ${this.buildOpenNowPredicateSql('sl')}`
       : Prisma.sql``;
-    // CUISINE WALL, dish projection (v17 S4; F5): the dish carries the
-    // cuisine in food_attributes OR its restaurant carries it in
-    // restaurant_attributes — the Mexican taco at the Korean spot surfaces
-    // through the dish arm; the Mexican restaurant's menu through the
-    // venue arm. AND across cuisine ids, OR within one.
-    const cuisineDishWallsSql = filters.cuisineConceptIds.length
-      ? Prisma.sql`AND ${Prisma.join(
-          filters.cuisineConceptIds.map(
-            (id) =>
-              Prisma.sql`(c.food_attributes @> ARRAY[${id}]::uuid[] OR fr.restaurant_attributes @> ARRAY[${id}]::uuid[])`,
-          ),
-          ' AND ',
-        )}`
+    // CONCEPT WALLS, dish projection (F3 — one renderer for dietary AND
+    // cuisine): each wall's dish-axis arms, ORed within a concept and
+    // ANDed across. A dietary wall carries only its dish-side arm here (a
+    // dish serves ONLY when IT carries the attribute — owner semantics
+    // 2026-08-04; a wall with no dish-side entity does not constrain
+    // dishes). A cuisine wall carries both homes: the Mexican taco at the
+    // Korean spot surfaces through the dish arm; the Mexican restaurant's
+    // menu through the venue arm.
+    const dishWallConditions = wallConcepts
+      .map((concept) =>
+        conceptDishAxisSql(concept, { connection: 'c', restaurant: 'fr' }),
+      )
+      .filter((sql): sql is Prisma.Sql => sql !== null);
+    const dishWallsSql = dishWallConditions.length
+      ? Prisma.sql`AND ${Prisma.join(dishWallConditions, ' AND ')}`
       : Prisma.sql``;
-    const combinedConnectionWhereSql = Prisma.sql`(${connectionWhereSql} ${ringAdmissionSql}) ${cuisineDishWallsSql} ${dietaryDishWallsSql} ${dishOpenNowSql} ${excludeConnectionsSql}`;
+    const combinedConnectionWhereSql = Prisma.sql`(${connectionWhereSql} ${ringAdmissionSql}) ${dishWallsSql} ${dishOpenNowSql} ${excludeConnectionsSql}`;
 
     // Build CTEs
     const placeCte = Prisma.sql`
@@ -889,17 +865,17 @@ LIMIT ${pagination.take}`;
     // (+~85ms each, attacker-controlled). Each id is now ONE window column
     // in the wrapper the count query already has — computed over the
     // PRE-GATE pool (starvation is a fact about the pool, not the page).
-    const softConcepts = pooledGate?.softConcepts ?? [];
+    const softConcepts = softConceptsList;
     // One window — and ONE JSON key — per CONCEPT (F5: the two-list shape
     // gave a dual-homed cuisine id two identical JSON keys, last write
     // wins). The wrapper reads the CTE's output columns, so the food home
     // is fci.food_attributes and the venue home fci.place_attributes_arr.
-    const conceptCountExpr = (concept: PooledSoftConcept): Prisma.Sql =>
-      this.buildSoftConceptExpr(concept, {
-        food: (id) => Prisma.sql`fci.food_attributes @> ARRAY[${id}]::uuid[]`,
-        rest: (id) =>
-          Prisma.sql`fci.place_attributes_arr @> ARRAY[${id}]::uuid[]`,
-      });
+    const conceptCountExpr = (concept: ConceptConstraint): Prisma.Sql =>
+      conceptArmsOrSql(concept.dishArms, (arm) =>
+        arm.column === 'food_attributes'
+          ? Prisma.sql`fci.food_attributes @> ARRAY[${arm.id}]::uuid[]`
+          : Prisma.sql`fci.place_attributes_arr @> ARRAY[${arm.id}]::uuid[]`,
+      ) ?? Prisma.sql`TRUE`;
     const softCountWindowsSql = softConcepts.length
       ? Prisma.sql`,
     ${Prisma.join(
@@ -987,7 +963,6 @@ FROM filtered_connections fc`;
         EntityScope.INGREDIENT,
       ),
       itemAttributePrimary: Boolean(directives?.primaryItemAttributeQuery),
-      cuisineConceptIds: directives?.cuisineConceptIds ?? [],
       boundsPayload: this.extractBoundsPayload(plan.placeFilters),
       polygonPayload: this.extractPolygonPayload(plan.placeFilters),
       priceLevels: this.extractPriceLevels(plan.placeFilters),
@@ -995,46 +970,20 @@ FROM filtered_connections fc`;
     };
   }
 
-  /** ONE soft CONCEPT's satisfaction expression (F5): OR across the
-   *  concept's column homes, rendered by the caller's per-column arm
-   *  builders (aliases differ per site). Single-home concepts stay a bare
-   *  containment — byte-equivalent to the pre-concept shape. */
-  private buildSoftConceptExpr(
-    concept: PooledSoftConcept,
-    arms: {
-      food: (id: string) => Prisma.Sql;
-      rest: (id: string) => Prisma.Sql;
-    },
-  ): Prisma.Sql {
-    const parts = concept.columns.map((column) =>
-      column === 'food_attributes'
-        ? arms.food(concept.id)
-        : arms.rest(concept.id),
-    );
-    return parts.length === 1
-      ? parts[0]
-      : Prisma.sql`(${Prisma.join(parts, ' OR ')})`;
-  }
-
   private buildPlaceConditions(
     filters: ParsedFilters,
     options?: { includePlaceAttributes?: boolean },
   ): { sql: Prisma.Sql } {
     const includePlaceAttributes = options?.includePlaceAttributes ?? true;
-    // ARCHIVED IS NEVER SERVED — as a PREDICATE, not an accident of
-    // score-table membership (final-final red team MEDIUM-1: the only
-    // thing hiding 242 archived-but-scored restaurants was the location
-    // gate; any archive path that doesn't strip locations would surface
-    // them with nothing standing in the way).
+    // THE SERVABLE-PLACE FLOOR, through the one shared fragment (red-team
+    // L3 F1): place row, ARCHIVED IS NEVER SERVED (final-final red team
+    // MEDIUM-1: 242 archived-but-scored restaurants hidden only by the
+    // location gate), and MARKET MEMBERSHIP (v17 S4: out-of-market places
+    // are excluded, never deleted; verdict stored by the market-membership
+    // reconciler, NULL = in market). Never hand-roll these predicates —
+    // compose servablePlaceConditionsSql.
     const conditions: Prisma.Sql[] = [
-      Prisma.sql`r.type = 'place'`,
-      Prisma.sql`r.status <> 'archived'`,
-      // MARKET MEMBERSHIP (v17 S4, ruled 2026-08-26): a grounded place
-      // outside every crediting community's metro is deterministically
-      // excluded from search — never deleted (place-grounded restaurants
-      // are never deleted). The verdict is stored (market-membership
-      // reconciler); NULL = in market.
-      Prisma.sql`r.market_excluded_at IS NULL`,
+      Prisma.raw(servablePlaceConditionsSql('r')),
     ];
 
     if (filters.placeIds.length) {

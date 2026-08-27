@@ -27,6 +27,8 @@ import { Prisma } from '@prisma/client';
 import { recallScope } from '../../shared/locale';
 import { parseOnboardingAnswers } from '@crave-search/shared';
 import { activePlaceEventCountSql } from '../content-processing/reddit-collector/extraction-scope.service';
+import { marketIncludedSql } from '../restaurant-enrichment/servable-place-scope';
+import { CUISINE_FACET_ROW_WHERE_SQL } from '../search/facet.registry';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { LiveCitiesReader, type LiveCity } from '../places/live-cities.reader';
@@ -250,10 +252,10 @@ export class CuratedListBuilderService {
   // ---------- global recipes (pure functions over the candidate rows) ----------
 
   /**
-   * Recipe 1 — cuisine best-ofs. Cuisine identity = the attribute ids the
-   * cuisine-extraction pipeline recorded (restaurant_metadata->
-   * 'cuisineExtraction'->'attributeIds' — the measured cuisine subset of the
-   * open restaurant_attributes vocabulary). Cuisines rank by MEASURED
+   * Recipe 1 — cuisine best-ofs. Cuisine identity = the CANONICAL
+   * facet='cuisine' attribute rows (the same vocabulary search placement
+   * and projection read — F4 killed the private JSON-mirror derivation
+   * this used to carry). Cuisines rank by MEASURED
    * mention volume (sum of the member restaurants' connection
    * mention_count); members rank by the public crave score percentile.
    */
@@ -831,6 +833,10 @@ export class CuratedListBuilderService {
       JOIN place_geometries pg ON pg.place_id = ${cityPlaceId}::uuid
       WHERE e.type = 'place'
         AND e.status = 'active'
+        -- OUT-OF-MARKET never feeds curated lists (red-team L3 F1: the
+        -- score join + city polygon only protected this INDIRECTLY, with a
+        -- one-night stale window; the verdict is now a direct predicate).
+        AND ${Prisma.raw(marketIncludedSql('e'))}
         AND e.latitude IS NOT NULL
         AND e.longitude IS NOT NULL
         AND ST_Covers(
@@ -883,22 +889,21 @@ export class CuratedListBuilderService {
   }
 
   /**
-   * The cuisine subset of the attribute vocabulary: attribute ids the
-   * cuisine-extraction pipeline recorded on any restaurant (measured — the
-   * pipeline's own classification, not a name heuristic).
+   * The cuisine subset of the attribute vocabulary — THE CANONICAL FACET
+   * ROWS (`facet = 'cuisine'`, shared predicate with search's
+   * FacetRegistry). This used to derive a PRIVATE second cuisine set from
+   * `restaurant_metadata->'cuisineExtraction'->'attributeIds'` (red-team
+   * L3 F4): a per-restaurant JSON mirror that drifts from the curated
+   * facet the moment the judge merges, archives, or mints a cuisine row.
+   * One vocabulary, one definition.
    */
   private async cuisineAttributeIds(): Promise<Set<string>> {
     const rows = await this.prisma.$queryRaw<Array<{ attribute_id: string }>>(
       Prisma.sql`
         /*curated:cuisine_attribute_ids*/
-        SELECT DISTINCT jsonb_array_elements_text(
-                 restaurant_metadata->'cuisineExtraction'->'attributeIds'
-               ) AS attribute_id
+        SELECT entity_id AS attribute_id
         FROM core_entities
-        WHERE type = 'place'
-          AND jsonb_typeof(
-                restaurant_metadata->'cuisineExtraction'->'attributeIds'
-              ) = 'array'
+        WHERE ${Prisma.raw(CUISINE_FACET_ROW_WHERE_SQL)}
       `,
     );
     return new Set(rows.map((row) => row.attribute_id));

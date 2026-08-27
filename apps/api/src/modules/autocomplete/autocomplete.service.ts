@@ -11,6 +11,7 @@ import {
   AutocompleteMatchDto,
 } from './dto/autocomplete.dto';
 import { EntitySearchService } from './entity-search.service';
+import { marketIncludedSql } from '../restaurant-enrichment/servable-place-scope';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   SearchQuerySuggestionService,
@@ -1408,9 +1409,12 @@ export class AutocompleteService {
       WITH scoped_restaurants AS (
         -- Leg 2 markets extermination: the market-scoped arm is DEAD; corpus
         -- support is global (matching the global demand lanes above).
+        -- OUT-OF-MARKET places leave the denominator too (red-team L3 F1:
+        -- this count skewed attribute demand by every excluded row).
         SELECT r.entity_id AS restaurant_id
         FROM core_entities r
         WHERE r.type = 'place'
+          AND ${Prisma.raw(marketIncludedSql('r'))}
       ),
       attribute_refs AS (
         SELECT UNNEST(r.restaurant_attributes) AS attribute_id, r.entity_id AS restaurant_id

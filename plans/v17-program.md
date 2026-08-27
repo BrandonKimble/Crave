@@ -67,6 +67,24 @@ S4. Enumerator build (knowledge-attributes, cuisine facet #1) + the
 S5. Bench run: inventory → proofs → owner approval (hash) → replay (~$12)
     → diff (with the refusal section) → review → owner activation call.
 
+## Market-membership grain ruling (redteam L3-F5, 2026-08-26)
+
+The `market_excluded_at` verdict stays a SINGLE GLOBAL column: it answers
+"is this place inside ANYONE'S market?" (union semantics across crediting
+communities), which is genuinely global — exclusion means nobody's market
+wants it. Do NOT add a community_id to the verdict; per-(entity, community)
+membership is a DIFFERENT question and would change what the column means.
+
+Documented trigger — WHEN NY (or any second community) onboards: the score
+pool (`core_public_entity_scores` percentile lanes) and the demand lanes
+(signal-demand reads, autocomplete corpus denominators) must take
+per-community IN-market scoping, because their percentiles/denominators are
+computed over one pool and would mix cities. That scoping is a per-community
+attribution table derivable on demand from the same territory join the
+reconcile already uses — build it AT onboarding, not before. Search itself
+stays correct regardless (viewport-scoped). This is a trigger to act on,
+not code to write today.
+
 ## Owner decision queue (from the forgotten-commitments sweep — not v17)
 
 Slug/share pages (every shared link 302s today, launch-blocking);

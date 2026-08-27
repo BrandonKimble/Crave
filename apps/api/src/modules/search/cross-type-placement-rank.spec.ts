@@ -16,6 +16,10 @@ import type { EntityType } from '@prisma/client';
 
 type Candidate = { entityId: string; type: EntityType; name: string };
 
+// F4: placement precedence is a FACET-CARRIED RANK (FacetRegistry rows:
+// dietary 0, cuisine 1), not hardcoded tiers — pickPlacedWinner sorts by
+// (facet rank, type order). The helper builds the rank map the way
+// FacetRegistry.getPlacementRanks does.
 const pick = (
   candidates: Candidate[],
   dietary: string[] = [],
@@ -26,11 +30,13 @@ const pick = (
   ) as unknown as {
     pickPlacedWinner: (
       c: Candidate[],
-      d: ReadonlySet<string>,
-      k: ReadonlySet<string>,
+      facetRanks: ReadonlyMap<string, number>,
     ) => Candidate;
   };
-  return svc.pickPlacedWinner(candidates, new Set(dietary), new Set(cuisine));
+  const ranks = new Map<string, number>();
+  for (const id of cuisine) ranks.set(id, 1);
+  for (const id of dietary) ranks.set(id, 0);
+  return svc.pickPlacedWinner(candidates, ranks);
 };
 
 const c = (id: string, type: string): Candidate => ({

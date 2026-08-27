@@ -8,7 +8,7 @@
  *   - a MEXICAN spot whose venue attributes carry it while its enchilada
  *     connection does NOT (venue arm),
  *   - a CONTROL spot with neither.
- * One query, cuisineConceptIds=[mexican]: both arms surface; the control
+ * One query, concepts=[cuisine wall 'mexican']: both arms surface; the control
  * does not — proving the concept is an OR across the two homes, not a
  * single-column filter and not an AND.
  *
@@ -17,6 +17,7 @@
 import { PrismaClient } from '@prisma/client';
 import { SearchQueryBuilder } from './search-query.builder';
 import { compileQueryPlanFromConstraints } from './search-constraints.compiler';
+import { cuisineConceptConstraint } from './concept-membership.compiler';
 import type { SearchConstraints } from './search-constraints';
 
 const TAG = 'itest-cuisine-dual';
@@ -183,7 +184,7 @@ describe('one cuisine concept, two homes — executed against the corpus', () =>
       plan: compileQueryPlanFromConstraints(constraints()),
       pagination: { skip: 0, take: 100000 },
       searchCenter: null,
-      directives: { cuisineConceptIds: [MEX_ID] },
+      directives: { concepts: [cuisineConceptConstraint(MEX_ID, 'wall')] },
     });
     const rows =
       await prisma.$queryRaw<Array<{ connection_id: string }>>(dataSql);
@@ -199,7 +200,7 @@ describe('one cuisine concept, two homes — executed against the corpus', () =>
       plan: compileQueryPlanFromConstraints(constraints()),
       pagination: { skip: 0, take: 100000 },
       searchCenter: null,
-      directives: { cuisineConceptIds: [MEX_ID] },
+      directives: { concepts: [cuisineConceptConstraint(MEX_ID, 'wall')] },
     });
     const rows =
       await prisma.$queryRaw<Array<{ restaurant_id: string }>>(dataSql);

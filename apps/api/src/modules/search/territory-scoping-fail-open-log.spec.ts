@@ -61,7 +61,7 @@ function makeService(coverage: { resolveViewportCoverage: jest.Mock }) {
     entityTextSearch as never,
     coverage as never,
     dietary as never,
-    { getCuisineIds: () => Promise.resolve(new Set()) } as never,
+    { getPlacementRanks: () => Promise.resolve(new Map()) } as never,
     { recordResidue: jest.fn(() => Promise.resolve()) } as never,
     signals as never,
     { oracle: () => [] } as never,

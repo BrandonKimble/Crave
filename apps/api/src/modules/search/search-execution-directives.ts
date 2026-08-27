@@ -1,12 +1,61 @@
-/** A column home a soft concept can be satisfied from. */
-export type SoftConceptColumn = 'food_attributes' | 'restaurant_attributes';
+/** A storage column an attribute concept can be satisfied from. */
+export type ConceptColumn = 'food_attributes' | 'restaurant_attributes';
 
-/** One soft word of the pooled gate: a concept (attribute entity id) plus
- *  the column homes any one of which satisfies it — OR within a concept,
- *  AND across concepts. */
-export interface PooledSoftConcept {
+/** One (column, attribute-id) arm of a concept. A concept may bind a
+ *  DIFFERENT id per column: a dietary pair walls with its dish-side entity
+ *  on food_attributes and its venue-side entity on restaurant_attributes,
+ *  while a cuisine concept carries the same id in both homes. */
+export interface ConceptArm {
+  column: ConceptColumn;
   id: string;
-  columns: SoftConceptColumn[];
+}
+
+/**
+ * THE ONE ATTRIBUTE-CONSTRAINT PRIMITIVE (red-team L3 F3, 2026-08-26).
+ *
+ * Every attribute constraint — dietary wall, cuisine concept, plain
+ * item/place attribute — is ONE shape: an identity, a hardness, and its
+ * per-axis column arms. Arms are ORed WITHIN a concept (any home
+ * satisfies it) and concepts are ANDed ACROSS; hardness decides where the
+ * AND lands:
+ *
+ *  - 'wall'  — ANDed into the WHERE membership (dietary: softening the
+ *    constraint is a wrong answer, not degradation; cuisine with no
+ *    primary subject: the cuisine IS the ask).
+ *  - 'soft'  — the concept rides the pooled richness gate as per-row
+ *    provenance (spec §1.4): tier 0 = a row satisfies EVERY soft concept,
+ *    each by ANY of its arms; tier-1 rows admitted only when tier-0 rows
+ *    cannot fill one page.
+ *
+ * The arms are FACET-DERIVED (the attribute knows its homes, callers
+ * never re-hardcode columns — see concept-membership.compiler.ts):
+ *  - dietary pair → per-axis ASYMMETRIC: dish axis food_attributes only
+ *    (a wall with no dish-side entity does not constrain dishes);
+ *    restaurant axis venue containment OR dish EXISTS.
+ *  - cuisine → both homes on both axes (the Mexican taco at the Korean
+ *    spot surfaces through the dish arm; the Mexican restaurant's menu
+ *    through the venue arm — never two AND'd twins, the naive dual
+ *    projection that gets STRICTER, F5).
+ *  - plain place attribute → restaurant_attributes; plain item
+ *    attribute → food_attributes.
+ *
+ * This one field replaces the three sibling representations the F3 red
+ * team found: `dietaryWalls` (bespoke pair shape with its own two SQL
+ * renderers), `cuisineConceptIds` (a bare id list whose columns were
+ * re-hardcoded at every builder site), and the residual single-column
+ * soft-concept wrapping in the service.
+ */
+export interface ConceptConstraint {
+  /** Identity/report key — the starvation JSON key for soft concepts. */
+  id: string;
+  hardness: 'wall' | 'soft';
+  /** Dish-axis arms, ORed. Empty ⇒ the concept does not constrain the
+   *  dish projection (dietary walls with no dish-side entity). */
+  dishArms: ConceptArm[];
+  /** Restaurant-axis arms, ORed. A food_attributes arm renders as a dish
+   *  EXISTS ("any of its dishes carries it"); a restaurant_attributes arm
+   *  as venue containment. */
+  restaurantArms: ConceptArm[];
 }
 
 export interface SearchExecutionDirectives {
@@ -25,53 +74,23 @@ export interface SearchExecutionDirectives {
    */
   twinIngredientIds?: string[];
   /**
+   * THE typed attribute-constraint list (F3): walls AND softs together,
+   * partitioned by hardness at the builder. Soft concepts are rendered
+   * only when `pooledGate` is present (they are gate provenance, not
+   * membership); walls always AND into the WHERE of both projections.
+   */
+  concepts?: ConceptConstraint[];
+  /**
    * STEP-3 POOLED RICHNESS GATE (spec §1.4; owner rulings 2026-08-01):
-   * soft (non-dietary) attribute constraints leave the WHERE membership and
-   * become per-row PROVENANCE — a row matching EVERY soft id is tier 0
+   * soft attribute constraints leave the WHERE membership and become
+   * per-row PROVENANCE — a row matching EVERY soft concept is tier 0
    * ("all words"), anything else tier 1. The gate admits tier-1 rows ONLY
    * when tier-0 rows cannot fill one page (threshold), in the SAME
-   * execution: page 1 filled with all-word matches when they exist,
-   * otherwise partial matches join, score-ordered within tier. tier →
-   * match_tier → exactMatch, so the chip and pooled ordering ride the
-   * existing plumbing.
-   *
+   * execution. tier → match_tier → exactMatch, so the chip and pooled
+   * ordering ride the existing plumbing. The soft concepts themselves
+   * live in `concepts` (hardness 'soft').
    */
-  /** DIETARY WALLS (owner semantics 2026-08-04), per-projection:
-   *  DISH projection — every wall with a foodAttributeId requires
-   *  `c.food_attributes @> [fa]` (dish-side only; a wall with no
-   *  dish-side id does not constrain dishes).
-   *  RESTAURANT projection — every wall requires
-   *  `(fr.restaurant_attributes @> [ra] OR EXISTS(dish with fa))`,
-   *  arms dropped when the side has no entity. Sourced from BOTH the
-   *  toggle strip (request.dietary names) and query-text grounding
-   *  (a grounded dietary id activates its whole pair). */
-  dietaryWalls?: Array<{
-    name: string;
-    itemAttributeId?: string;
-    placeAttributeId?: string;
-  }>;
-  /**
-   * CUISINE DUAL-PROJECTION, hard membership (v17 S4; F5): a grounded
-   * facet='cuisine' attribute is ONE concept with two storage homes — the
-   * dish-side `food_attributes` array (knowledge projection) and the
-   * restaurant-side `restaurant_attributes` array (testimony + Places +
-   * cuisine_llm). When the query has no primary subject the concept is a
-   * WALL, satisfied by EITHER home (never an AND that gets stricter):
-   * dish axis `(c.food_attributes @> [id] OR fr.restaurant_attributes @>
-   * [id])`, restaurant axis `(r.restaurant_attributes @> [id] OR EXISTS
-   * dish carrying it)`. With a primary subject the same concept rides the
-   * pooled gate as one soft concept spanning both columns.
-   */
-  cuisineConceptIds?: string[];
   pooledGate?: {
-    /**
-     * ONE soft entry per CONCEPT (F5): a concept lists the column homes
-     * that can satisfy it, and tier-0 requires every concept satisfied by
-     * ANY of its columns. The old parallel id lists made a dual-homed
-     * cuisine id two AND'd requirements (stricter, the exact starvation
-     * this exists to prevent) and duplicated its starvation JSON key.
-     */
-    softConcepts: PooledSoftConcept[];
     threshold: number;
     /** TIER-2 SIMILAR RING (round-5 ideal, spec §7.2 dissolved): the dense
      *  sibling ids ride the SAME dish scan as provenance tier 2 — admitted

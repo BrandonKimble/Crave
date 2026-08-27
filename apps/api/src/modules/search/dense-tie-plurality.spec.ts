@@ -40,7 +40,7 @@ function makeService(): SearchQueryInterpretationService {
     {} as never,
     {} as never,
     {} as never,
-    { getCuisineIds: () => Promise.resolve(new Set()) } as never,
+    { getPlacementRanks: () => Promise.resolve(new Map()) } as never,
     {} as never,
     {} as never,
     {} as never,
@@ -72,11 +72,10 @@ function decideDense(
       decideDenseLink: (
         i: EntityResolutionInput,
         c: typeof candidates,
-        d: ReadonlySet<string>,
-        k: ReadonlySet<string>,
+        facetRanks: ReadonlyMap<string, number>,
       ) => EntityResolutionResult;
     }
-  ).decideDenseLink(input, candidates, new Set<string>(), new Set<string>());
+  ).decideDenseLink(input, candidates, new Map<string, number>());
 }
 
 describe('the dense lane reveals its tie plurality', () => {
