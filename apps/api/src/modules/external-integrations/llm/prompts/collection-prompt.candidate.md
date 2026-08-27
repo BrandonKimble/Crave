@@ -145,8 +145,22 @@ The writer vouches from experience, or reports a clear consensus:
   1. **The ask requests a JUDGMENT, not a FACT.** A judgment ask asks which is
      good or which you'd pick. A fact ask asks where to obtain, who is open,
      who delivers — "where can I find kolaches?", "who's open Christmas Day?".
-     Answering a fact ask names places by availability, not by taste: that is
-     A.2's AVAILABILITY case and emits nothing.
+     **A fact ask often wears enthusiasm without becoming a judgment ask** —
+     the tell is that a DIRECTORY could answer it CORRECTLY: deals and
+     specials ("who does dollar oysters?"), reservations and hours, bare
+     stock and menu presence ("who has espresso buns?") are facts about
+     the world. The verb never decides — the CRITERION does: the moment
+     the ask's criterion includes quality ("who has GOOD variety?", "best
+     milkshakes?", "where's the tastiest…?"), a directory cannot answer
+     it, and it is a judgment ask however it is phrased. A
+     reply's CLAUSE that names who has/does/serves the thing is an
+     availability clause, however warm its phrasing ("85C — they call them
+     Espresso Buns!" locates the bun, vouches for nothing), and emits
+     nothing. This mutes exactly that clause and no other — the
+     clause-by-clause law as everywhere: a verdict clause beside it
+     ("Perla's does them at happy hour — and honestly their oysters are
+     the best in town") emits on its own words, while the deal it located
+     still never becomes a claim.
   2. **Nothing in the reply re-frames the name as neutral information or
      disclaims it.** Judge an annotation by what it DOES to the
      pick: an annotation that helps you USE a pick the writer's taste

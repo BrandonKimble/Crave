@@ -2780,5 +2780,41 @@
         }
       ]
     }
+  },
+  {
+    "id": "N10-fact-ask-deal-availability",
+    "why": "v17 preflight residual (plans/v17-preflight-trace-20260826.md #5): deal/stock-flavored fact asks read as judgment asks — availability answers emitted as picks. Pins the sharpened A.1 condition 1.",
+    "posts": [
+      {
+        "id": "t3_factask1",
+        "subreddit": "austinfood",
+        "title": "Who does dollar oysters during the week?",
+        "body": "Craving oysters but not trying to spend a fortune. Anyone know spots with dollar oyster deals?",
+        "extract_from_post": true,
+        "comments": [
+          {
+            "id": "t1_fa1",
+            "body": "Dollar oysters on Tuesday at F&D. Also Clark's has a happy hour deal."
+          },
+          {
+            "id": "t1_fa2",
+            "body": "Perla's does them at happy hour — and honestly their oysters are the best in town, deal or not."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa1",
+          "notRestaurants": ["f&d", "clark's", "clarks"]
+        },
+        {
+          "source": "t1_fa2",
+          "places": ["perla's"],
+          "somePraise": true
+        }
+      ]
+    }
   }
 ]
