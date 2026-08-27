@@ -12,6 +12,7 @@ import { SpendExpectationMonitorService } from './spend-expectation-monitor.serv
 import { VendorQuotaWatcherService } from './vendor-quota-watcher.service';
 import { BootSpendGuardAlertService } from '../../../shared/queues/boot-spend-guard-alert.service';
 import { SourceTableCollapseAlarmService } from './source-table-collapse-alarm.service';
+import { ProdLlmPostureService } from './prod-llm-posture.service';
 
 /**
  * Shared services module for external integrations
@@ -41,6 +42,11 @@ import { SourceTableCollapseAlarmService } from './source-table-collapse-alarm.s
     // Source-table row-collapse alarm (08-16 silent-wipe incident): boot +
     // nightly census of the unrebuildable tables against persisted high water.
     SourceTableCollapseAlarmService,
+    // Money-spine audit 2026-08-26 item 2: prod boots STATE their LLM spend
+    // posture (disarmed info line, or a loud armed-lanes alert) so the
+    // iteration-phase disarm ruling is a fact the code asserts, not a memory
+    // living only in Railway env flags.
+    ProdLlmPostureService,
   ],
   exports: [
     ReconciliationMultiplierService,

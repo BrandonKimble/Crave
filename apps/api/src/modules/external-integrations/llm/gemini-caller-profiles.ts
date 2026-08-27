@@ -61,6 +61,17 @@ export interface GeminiCallerProfile {
  *  moved, not changed). */
 const INTERACTIVE_QUERY_TIMEOUT_MS = 30_000;
 
+/** THE one thinking-context default for a caller with no profile entry
+ *  (money-spine audit 2026-08-26, finding 6). The sync path (callLLMApi)
+ *  defaulted 'content' while the batch assembler (buildCallerBatchRequest)
+ *  defaulted 'query' — the same unprofiled caller thought harder or less
+ *  hard depending on which transport carried it. 'content' is the
+ *  conservative pick (LOW thinking, the extraction guard) because an
+ *  unprofiled caller is an unknown workload, and under-thinking fails
+ *  quality silently while over-thinking only costs pennies. Both sites
+ *  import this; neither writes its own literal. */
+export const DEFAULT_THINKING_CONTEXT: ThinkingContext = 'content';
+
 const FLASH = 'gemini-3-flash-preview';
 const FLASH_LITE = 'gemini-3.1-flash-lite-preview';
 const MODEL_MAX_OUTPUT = 65536;
@@ -125,11 +136,20 @@ export const GEMINI_CALLER_PROFILES: Record<string, GeminiCallerProfile> = {
     maxOutputTokens: MODEL_MAX_OUTPUT,
     timeoutMs: INTERACTIVE_QUERY_TIMEOUT_MS,
   },
+  // USER-FACING: awaited inside createPoll (polls.service.ts). The poll
+  // survives a dead LLM (F9600 falls back to 'discussion'), but without an
+  // abort ceiling a WEDGED vendor call holds the poster's request for the
+  // session-default llm.timeout — minutes. Fail fast like the other
+  // interactive query-class callers (money-spine audit 2026-08-26).
   'poll.infer_subject': {
     model: FLASH_LITE,
     context: 'query',
     maxOutputTokens: MODEL_MAX_OUTPUT,
+    timeoutMs: INTERACTIVE_QUERY_TIMEOUT_MS,
   },
+  // BACKGROUND-ONLY (attribute-ontology worker queue — no user request ever
+  // awaits chooseAttributeName), so it keeps the session-default hang guard
+  // rather than the interactive 30s ceiling (verified 2026-08-26).
   'attribute.canonicalize_name': {
     model: FLASH_LITE,
     context: 'query',
@@ -261,10 +281,12 @@ export const PROFILE_THINKING_LEVELS: Record<string, string> =
       .map(([caller, profile]) => [caller, profile.thinkingLevel!]),
   );
 
-/** Profile lookup. Unknown callers return undefined — callLLMApi warns via
- *  its dead-man path and falls back to session defaults, because refusing
- *  the request over a missing table entry would turn a bookkeeping gap into
- *  an outage. The completeness SPEC is what keeps the table exhaustive. */
+/** Profile lookup. Unknown callers return undefined — callLLMApi falls back
+ *  to session defaults for them, because refusing the request over a missing
+ *  table entry would turn a bookkeeping gap into an outage. (An UNTAGGED
+ *  call is different: callLLMApi throws at entry — the old warn-and-default
+ *  dead-man path is gone.) The completeness SPEC is what keeps the table
+ *  exhaustive. */
 export function callerProfile(
   caller: string | undefined,
 ): GeminiCallerProfile | undefined {

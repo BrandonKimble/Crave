@@ -20,6 +20,7 @@ import {
 } from './gemini-context-cache.registry';
 import {
   callerProfile,
+  DEFAULT_THINKING_CONTEXT,
   PROFILE_THINKING_LEVELS,
 } from './gemini-caller-profiles';
 import {
@@ -195,8 +196,8 @@ interface LLMGenerationOptions {
    *  'entity-resolution.match', 'residue.interpret') so per-class spend is
    *  measurable. NON-OPTIONAL (F4931): the compiler now refuses a call site
    *  that omits it, so the taxonomy is a type property, not a text-scanned
-   *  one. The generic 'llm.callGeminiApi' fallback remains only as a
-   *  runtime dead-man for an empty-string tag. */
+   *  one — and callLLMApi THROWS at entry on an empty/blank tag (the old
+   *  'llm.callGeminiApi' warn-and-default dead-man is gone). */
   usageCaller: string;
 }
 
@@ -276,9 +277,20 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     this.logger = this.loggerService.setContext('LLMService');
     this.llmConfig = {
       apiKey: this.configService.get<string>('llm.apiKey') || '',
-      model:
-        this.configService.get<string>('llm.model') ||
-        'gemini-2.5-flash-preview-09-2025',
+      // configuration.ts owns the default ('gemini-3-flash-preview'); an
+      // absent value here means config never loaded — refuse loudly rather
+      // than invent a model id. (The old inline fallback was a fossil that
+      // wasn't even in GEMINI_RATES, so any call it ever served would have
+      // metered at UNKNOWN_MODEL_RATES.)
+      model: (() => {
+        const model = this.configService.get<string>('llm.model');
+        if (!model) {
+          throw new Error(
+            'llm.model missing from configuration — configuration.ts always supplies a default, so this means config did not load',
+          );
+        }
+        return model;
+      })(),
       // Honest fallbacks mirror configuration.ts (2026-07-11 fold-in); the
       // old `|| 0` fallbacks silently disabled every timeout — a prod hang
       // risk on the interactive query path.
@@ -1323,7 +1335,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     }
     const thinking = this.getThinkingConfig(
       model,
-      profile?.context ?? 'query',
+      profile?.context ?? DEFAULT_THINKING_CONTEXT,
       undefined,
       params.caller,
     );
@@ -3439,7 +3451,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         profile?.maxOutputTokens ?? (this.llmConfig.maxTokens || 65536),
     };
     const thinkingContext =
-      options.thinkingContext ?? profile?.context ?? 'content';
+      options.thinkingContext ?? profile?.context ?? DEFAULT_THINKING_CONTEXT;
     const baseThinkingConfig = this.getThinkingConfig(
       targetModel,
       thinkingContext,

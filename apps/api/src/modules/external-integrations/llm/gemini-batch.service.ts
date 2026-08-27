@@ -449,7 +449,7 @@ export class GeminiBatchService implements OnModuleDestroy {
   ): Promise<void> {
     const failedResumeRow = await this.prisma.llmBatchJob.findUnique({
       where: { jobId },
-      select: { resumeContext: true },
+      select: { resumeContext: true, model: true },
     });
     const failedCampaignId = campaignIdFromResumeContext(
       failedResumeRow?.resumeContext,
@@ -465,10 +465,28 @@ export class GeminiBatchService implements OnModuleDestroy {
       failedUsage.model ||= entry.response?.modelVersion ?? '';
     }
     if (failedInlined.length > 0) {
+      // Price by the REQUESTED model (the job row's own id — the string
+      // GEMINI_RATES is keyed by). The vendor's response-side modelVersion
+      // can be a dated variant that misses the rate table and silently
+      // prices at UNKNOWN_MODEL_RATES (per-field max, ~3x flash) — money-
+      // spine audit 2026-08-26. modelVersion stays informational (logged
+      // below when it diverges).
+      const failedRequestedModel = failedResumeRow?.model || undefined;
+      if (
+        failedRequestedModel &&
+        failedUsage.model &&
+        failedUsage.model !== failedRequestedModel
+      ) {
+        this.logger.info('Batch vendor modelVersion differs from requested', {
+          jobId,
+          requested: failedRequestedModel,
+          modelVersion: failedUsage.model,
+        });
+      }
       this.usageLedger.record({
         service: 'gemini',
         operation: 'batchGenerateContent',
-        model: failedUsage.model || undefined,
+        model: failedRequestedModel ?? (failedUsage.model || undefined),
         mode: 'batch',
         inputTokens: failedUsage.input,
         outputTokens: failedUsage.output,
@@ -749,11 +767,23 @@ export class GeminiBatchService implements OnModuleDestroy {
     // small select, only on the terminal-success path (not every poll tick).
     const resumeContextRow = await this.prisma.llmBatchJob.findUnique({
       where: { jobId },
-      select: { resumeContext: true },
+      select: { resumeContext: true, model: true },
     });
     const campaignId = campaignIdFromResumeContext(
       resumeContextRow?.resumeContext,
     );
+    // Price by the REQUESTED model (the id GEMINI_RATES is keyed by), not
+    // the vendor's response-side modelVersion — a dated variant string would
+    // miss the rate table and silently price at UNKNOWN_MODEL_RATES (~3x
+    // flash). modelVersion stays informational, logged when it diverges.
+    const requestedModel = resumeContextRow?.model || undefined;
+    if (requestedModel && usage.model && usage.model !== requestedModel) {
+      this.logger.info('Batch vendor modelVersion differs from requested', {
+        jobId,
+        requested: requestedModel,
+        modelVersion: usage.model,
+      });
+    }
 
     // Idempotent by dedupeKey (one row per job): a crash/retry re-record is
     // skipped at the unique index, so ordering vs the status flip no longer
@@ -761,7 +791,7 @@ export class GeminiBatchService implements OnModuleDestroy {
     this.usageLedger.record({
       service: 'gemini',
       operation: 'batchGenerateContent',
-      model: usage.model || undefined,
+      model: requestedModel ?? (usage.model || undefined),
       mode: 'batch',
       inputTokens: usage.input,
       outputTokens: usage.output,
