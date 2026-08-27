@@ -123,6 +123,12 @@ async function main(): Promise<void> {
         console.log('Review closed — phase is now activation (owner gate).');
         break;
       }
+      case 'abandon': {
+        const run = await activeRun();
+        await bench.abandon(run.runId, rest.join(' '));
+        console.log('Run abandoned (pre-spend) — the active slot is free.');
+        break;
+      }
       case 'outcome': {
         const run = await activeRun();
         await bench.recordOutcome(

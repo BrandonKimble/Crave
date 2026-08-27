@@ -528,6 +528,35 @@ export class IterationBenchService {
   /** Closing is automatic bookkeeping: outcome recorded, run banked as the
    *  next estimate's history. Campaign completion stays with the existing
    *  complete-campaign script (one owner for that transition). */
+  /**
+   * Abandon a run whose candidate was superseded BEFORE any money moved.
+   * Legal only in the pre-spend phases (inventory/proofs/approval) — once a
+   * replay is approved, the only exits are the activation gate's outcomes,
+   * so spend can never be orphaned. The reason is recorded on the run row;
+   * the one-active-run-per-kind slot frees for the successor candidate.
+   */
+  async abandon(runId: string, reason: string): Promise<void> {
+    const run = await this.load(runId);
+    const preSpend = ['inventory', 'proofs', 'approval'];
+    if (!preSpend.includes(run.phase)) {
+      throw new Error(
+        `Run is in '${run.phase}' — abandon is only legal pre-spend (${preSpend.join('/')}); use recordOutcome at activation.`,
+      );
+    }
+    if (!reason.trim()) throw new Error('abandon requires a reason.');
+    await this.prisma.iterationRun.update({
+      where: { runId },
+      data: {
+        status: 'closed',
+        phase: 'closed',
+        phaseState: {
+          ...(run.phaseState as Record<string, unknown>),
+          abandoned: { reason: reason.trim(), at: new Date().toISOString() },
+        },
+      },
+    });
+  }
+
   async recordOutcome(
     runId: string,
     outcome: 'activated' | 'rejected',
