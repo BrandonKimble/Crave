@@ -101,6 +101,12 @@ type SourceEnrichmentMaps = {
   /** Text the OBSERVED-SPAN refusal checks against, per source: a post's
    *  title + body, a comment's body (v17 observed-span contract). */
   spanTextById: Map<string, string>;
+  /** Resolution-order parent per source (v17 loop3): a comment points at its
+   *  parent comment when that parent is in the same post, else at the post;
+   *  a post points at nothing. This is the same depth-aware chain the prompt
+   *  resolves ask-inherited names through, so the ingredient checker can
+   *  verify against every text a dish NAME is licensed to come from. */
+  parentSourceIdById: Map<string, string | null>;
 };
 
 /** A banked observed-span contract refusal (red team F8: never dropped). */
@@ -1468,11 +1474,22 @@ export class ExtractionPipelineService implements OnModuleInit {
     // so the model canonicalized to its pantry lexicon ("fermented crab" →
     // `salted crab`, "the dirty earl" → `earl grey tea`). Same contract shape
     // as the place span, scoped to the SLOT: each ingredient must appear
-    // (word-boundary, C.5's singular/plural variance only) in the union of
-    // the mention's own source text and the place source's text. A failing
-    // ingredient is DROPPED FROM THE ARRAY and banked — the mention itself
-    // survives, because an invented ingredient must not kill a real dish
-    // claim the place contract already verified.
+    // (word-boundary, C.5's singular/plural + diacritic variance only) in
+    // the union of every text the prompt licenses the dish NAME to come
+    // from (v17 loop3 — the bench caught ~230 wrongly-refused prompt-legal
+    // ingredients, mostly C.5 rule 2 in-dish-name words on ASK-INHERITED
+    // names whose text lives in the ask, not the cited reply):
+    //   1. the emitted item name itself — an ingredient inside the dish
+    //      name is C.5-licensed by construction ("apple fritter" → apple),
+    //      and it is the cheapest check, so it goes first;
+    //   2. the mention's own source + place source texts (the original
+    //      scope);
+    //   3. the resolution-order parent chain up to the post — the sources
+    //      the prompt resolves ask-inherited names through ("best apple
+    //      fritter?" ask → child reply "the one at X").
+    // A failing ingredient is DROPPED FROM THE ARRAY and banked — the
+    // mention itself survives, because an invented ingredient must not
+    // kill a real dish claim the place contract already verified.
     let admittedIngredients = isDishMention(wireMention)
       ? wireMention.ingredients
       : undefined;
@@ -1482,16 +1499,28 @@ export class ExtractionPipelineService implements OnModuleInit {
         spanText,
         enrichment.spanTextById.get(canonicalPlaceSourceId) ?? '',
       ];
+      // Resolution-order chain: walk parents from the mention's source to
+      // the post root (cycle-guarded), appending each source's span text.
+      const seen = new Set<string>([canonicalSourceId]);
+      let cursor = enrichment.parentSourceIdById.get(canonicalSourceId);
+      while (cursor && !seen.has(cursor)) {
+        seen.add(cursor);
+        scopeTexts.push(enrichment.spanTextById.get(cursor) ?? '');
+        cursor = enrichment.parentSourceIdById.get(cursor) ?? null;
+      }
       const kept: string[] = [];
       for (const ingredient of wireMention.ingredients) {
-        if (ingredientSpanAppearsInSource(ingredient, scopeTexts)) {
+        if (
+          ingredientSpanAppearsInSource(ingredient, [wireMention.item]) ||
+          ingredientSpanAppearsInSource(ingredient, scopeTexts)
+        ) {
           kept.push(ingredient);
         } else {
           refusals.push({
             extractionInputId,
             sourceDocumentId,
             reason: 'ingredient_not_in_source',
-            detail: `"${ingredient}" not found in source ${canonicalSourceId} or place source ${canonicalPlaceSourceId} (dish: "${wireMention.item}")`,
+            detail: `"${ingredient}" not found in dish name, source ${canonicalSourceId}, place source ${canonicalPlaceSourceId}, or resolution chain (dish: "${wireMention.item}")`,
             mention: wireMention,
           });
         }
@@ -2222,8 +2251,11 @@ export class ExtractionPipelineService implements OnModuleInit {
     const contentById = new Map<string, string>();
     const postContextBySource = new Map<string, string>();
     const spanTextById = new Map<string, string>();
+    const parentSourceIdById = new Map<string, string | null>();
 
     llmPosts.forEach((post) => {
+      const commentIds = new Set((post.comments ?? []).map((c) => c.id));
+      parentSourceIdById.set(post.id, null);
       metadataById.set(post.id, {
         type: 'post',
         ups: post.score ?? 0,
@@ -2253,6 +2285,12 @@ export class ExtractionPipelineService implements OnModuleInit {
         postContextBySource.set(comment.id, post.content ?? '');
         // Observed-span check text for a COMMENT source: its body (v17).
         spanTextById.set(comment.id, comment.content ?? '');
+        // Resolution-order parent: another comment in this post, else the post.
+        const parentId = comment.parent_id;
+        parentSourceIdById.set(
+          comment.id,
+          parentId && commentIds.has(parentId) ? parentId : post.id,
+        );
       });
     });
 
@@ -2261,6 +2299,7 @@ export class ExtractionPipelineService implements OnModuleInit {
       contentById,
       postContextBySource,
       spanTextById,
+      parentSourceIdById,
     };
   }
 

@@ -46,38 +46,104 @@ LEFT JOIN collection_extraction_input_documents eid
    JOIN shadow_runs sr ON sr.extraction_run_id = ei.extraction_run_id
    WHERE ei.input_id = eid.input_id AND ei.raw_output IS NOT NULL);
 
+-- RESOLVE-SHIFT RE-PAIRING (v17 loop3 bench: 50% of "lost support" rows were
+-- the SAME establishment landing on a NEW entity id — resolver drift, not
+-- lost knowledge). Before a lost entity is listed for owner decision, try to
+-- pair it with a shadow entity that shares (type, identity_key) OR an exact
+-- canonical-name match with at least one overlapping evidence document.
+-- Matched pairs move to the RESOLVE-SHIFT section; LOST SUPPORT reads real
+-- losses only.
+CREATE TEMP TABLE active_entity_docs AS
+SELECT x.entity_id, x.document_id
+FROM (
+  SELECT ev.entity_id, ev.source_document_id AS document_id
+  FROM core_restaurant_entity_events ev
+  JOIN target_docs d ON d.document_id = ev.source_document_id
+   AND d.active_extraction_run_id = ev.extraction_run_id
+  UNION
+  SELECT ev.restaurant_id, ev.source_document_id
+  FROM core_restaurant_entity_events ev
+  JOIN target_docs d ON d.document_id = ev.source_document_id
+   AND d.active_extraction_run_id = ev.extraction_run_id
+) x;
+
+CREATE TEMP TABLE shadow_entity_docs AS
+SELECT x.entity_id, x.document_id
+FROM (
+  SELECT ev.entity_id, ev.source_document_id AS document_id
+  FROM core_restaurant_entity_events ev
+  JOIN shadow_runs sr ON sr.extraction_run_id = ev.extraction_run_id
+  UNION
+  SELECT ev.restaurant_id, ev.source_document_id
+  FROM core_restaurant_entity_events ev
+  JOIN shadow_runs sr ON sr.extraction_run_id = ev.extraction_run_id
+) x;
+
+CREATE TEMP TABLE lost_entities AS
+SELECT DISTINCT a.entity_id
+FROM active_entity_docs a
+WHERE a.entity_id NOT IN (SELECT entity_id FROM shadow_entity_docs);
+
+CREATE TEMP TABLE resolve_shifts AS
+SELECT DISTINCT ON (pairs.old_entity_id)
+  pairs.old_entity_id,
+  pairs.new_entity_id,
+  pairs.name,
+  pairs.type,
+  pairs.doc_overlap
+FROM (
+  SELECT
+    olde.entity_id AS old_entity_id,
+    newe.entity_id AS new_entity_id,
+    olde.name,
+    olde.type,
+    (NULLIF(olde.identity_key, '') IS NOT NULL
+     AND newe.identity_key = olde.identity_key) AS identity_match,
+    (SELECT count(DISTINCT ad.document_id)
+     FROM active_entity_docs ad
+     JOIN shadow_entity_docs sd ON sd.document_id = ad.document_id
+      AND sd.entity_id = newe.entity_id
+     WHERE ad.entity_id = olde.entity_id) AS doc_overlap
+  FROM lost_entities le
+  JOIN core_entities olde
+    ON olde.entity_id = le.entity_id AND olde.status = 'active'
+  JOIN core_entities newe
+    ON newe.entity_id <> olde.entity_id
+   AND newe.type = olde.type
+   AND EXISTS (SELECT 1 FROM shadow_entity_docs sd
+               WHERE sd.entity_id = newe.entity_id)
+   AND (
+     (NULLIF(olde.identity_key, '') IS NOT NULL
+      AND newe.identity_key = olde.identity_key)
+     OR lower(newe.name) = lower(olde.name)
+   )
+) pairs
+-- an identity_key match pairs on its own; a bare name match must also share
+-- at least one evidence document, or a same-name stranger would swallow a
+-- real loss.
+WHERE pairs.identity_match OR pairs.doc_overlap > 0
+ORDER BY pairs.old_entity_id, pairs.doc_overlap DESC, pairs.new_entity_id;
+
 \echo ''
-\echo '=== LOST SUPPORT (active evidence, zero shadow evidence) ==='
+\echo '=== RESOLVE-SHIFT (same identity/name re-landed on a new shadow entity) ==='
+\echo '--- bookkeeping, not lost knowledge: re-run resolution, no owner decision'
+SELECT old_entity_id, new_entity_id, name, type, doc_overlap
+FROM resolve_shifts
+ORDER BY type, name
+LIMIT 500;
+
+\echo ''
+\echo '=== LOST SUPPORT (active evidence, zero shadow evidence, no re-pair) ==='
 \echo '--- anchored=t rows are OWNER-DECISION; anchored=f are informational'
-WITH active_entities AS (
-  SELECT DISTINCT ev.entity_id
-  FROM core_restaurant_entity_events ev
-  JOIN target_docs d ON d.document_id = ev.source_document_id
-   AND d.active_extraction_run_id = ev.extraction_run_id
-  UNION
-  SELECT DISTINCT ev.restaurant_id
-  FROM core_restaurant_entity_events ev
-  JOIN target_docs d ON d.document_id = ev.source_document_id
-   AND d.active_extraction_run_id = ev.extraction_run_id
-),
-shadow_entities AS (
-  SELECT DISTINCT ev.entity_id
-  FROM core_restaurant_entity_events ev
-  JOIN shadow_runs sr ON sr.extraction_run_id = ev.extraction_run_id
-  UNION
-  SELECT DISTINCT ev.restaurant_id
-  FROM core_restaurant_entity_events ev
-  JOIN shadow_runs sr ON sr.extraction_run_id = ev.extraction_run_id
-)
 SELECT
   e.entity_id,
   e.name,
   e.type,
   (p.entity_id IS NOT NULL) AS anchored
-FROM active_entities a
+FROM lost_entities a
 JOIN core_entities e ON e.entity_id = a.entity_id AND e.status = 'active'
 LEFT JOIN preserved_entities p ON p.entity_id = e.entity_id
-WHERE a.entity_id NOT IN (SELECT entity_id FROM shadow_entities)
+WHERE a.entity_id NOT IN (SELECT old_entity_id FROM resolve_shifts)
 ORDER BY anchored DESC, e.type, e.name
 LIMIT 500;
 

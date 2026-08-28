@@ -222,4 +222,23 @@ describe('ingredientSpanAppearsInSource (junk RC2)', () => {
     expect(ingredientSpanAppearsInSource('pesto', ['', ''])).toBe(false);
     expect(ingredientSpanAppearsInSource('pesto', [])).toBe(false);
   });
+
+  it('folds diacritics both ways, composing with number variance (v17 loop3)', () => {
+    // The bench's failing pair: plural AND accent differ together.
+    expect(
+      ingredientSpanAppearsInSource('jalapeno', ['loaded with jalapeños']),
+    ).toBe(true);
+    // The reverse direction: emitted accent, source plain.
+    expect(
+      ingredientSpanAppearsInSource('jalapeño', ['extra jalapenos please']),
+    ).toBe(true);
+    // Fold alone, no number variance.
+    expect(ingredientSpanAppearsInSource('pate', ['the pâté was silky'])).toBe(
+      true,
+    );
+    // Folding is not a license for other edits.
+    expect(
+      ingredientSpanAppearsInSource('jalapeno', ['loaded with habaneros']),
+    ).toBe(false);
+  });
 });

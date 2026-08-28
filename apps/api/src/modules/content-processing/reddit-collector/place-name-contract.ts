@@ -170,9 +170,27 @@ function ingredientNumberVariants(span: string): string[] {
 }
 
 /**
+ * Diacritic fold for the INGREDIENT comparison only (v17 loop3): the bench
+ * caught "jalapeno" refused against a source that wrote "jalapeños" —
+ * plural AND accent differ together, and the number-variance generator ran
+ * on the accent-carrying form so no variant could ever match. The honest
+ * minimal fold: strip combining marks from BOTH sides before generating
+ * number variants, so accent presence never decides an ingredient's fate
+ * in either direction (emitted plain vs accented source, and vice versa).
+ * The PLACE contract is untouched — place names keep their diacritics.
+ */
+function foldDiacritics(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{M}+/gu, '')
+    .normalize('NFC');
+}
+
+/**
  * THE INGREDIENT REFUSAL CHECK (junk RC2): does this emitted ingredient
  * appear — as a whole phrase, at word boundaries — in the given source
- * texts? Same mechanical normalization as the place contract; the only
+ * texts? Same mechanical normalization as the place contract plus a
+ * diacritic fold on both sides (loop3, the jalapeño case); the only other
  * tolerated variance is NUMBER on the head token (C.5's singular mandate),
  * mirroring how the place check tolerates only the possessive clitic B.3
  * licenses. "fermented crab" never verifies an emitted `salted crab`, and
@@ -182,11 +200,11 @@ export function ingredientSpanAppearsInSource(
   ingredient: string,
   sourceTexts: readonly string[],
 ): boolean {
-  const span = normalizeSpanMechanically(ingredient);
+  const span = foldDiacritics(normalizeSpanMechanically(ingredient));
   if (!span) return false;
   const variants = ingredientNumberVariants(span);
   return sourceTexts.some((sourceText) => {
-    const text = normalizeSpanMechanically(sourceText);
+    const text = foldDiacritics(normalizeSpanMechanically(sourceText));
     if (!text) return false;
     return variants.some((variant) => occursAtWordBoundary(text, variant));
   });

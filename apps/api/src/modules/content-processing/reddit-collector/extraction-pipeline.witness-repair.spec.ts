@@ -179,17 +179,51 @@ describe('admitWireMention ingredient observed-span contract (v17 loop2, junk RC
     });
   });
 
-  it('licenses singular/plural variance only (C.5 mirror)', () => {
-    // c2: "Second Maudie's — also try Polvos." has no food nouns; use the
-    // post text via place source: title "Best queso in town?" — emitted
-    // singular `rec` matches body "recs" through head-token inflection.
+  it('licenses the resolution-order chain: an ask-text word verifies (v17 loop3)', () => {
+    // "recs" lives only in the POST body — the mention's ask. Loop2 scoped
+    // the union to own + place source and wrongly dropped it; loop3 walks
+    // the resolution-order parent chain (c1 → p1), the same sources the
+    // prompt licenses ask-inherited names from, so it now admits (with
+    // C.5 head-token singular/plural variance: emitted `rec` vs "recs").
     const { admitted, refusals } = admit({
       place_observed: "maudie's",
       place_source_id: 'SRC002',
       ingredients: ['rec'],
     });
-    // "recs" lives in the POST body, not the mention's own comment or place
-    // source — outside the union, so it drops: scope is own + place source.
+    expect(admitted).not.toBeNull();
+    expect(
+      (admitted as unknown as { ingredients: string[] }).ingredients,
+    ).toEqual(['rec']);
+    expect(refusals).toHaveLength(0);
+  });
+
+  it('licenses an ingredient inside the emitted dish name itself (C.5 rule 2, v17 loop3)', () => {
+    // The bench's headline wrong-refusal: "best apple fritter?" ask-inherited
+    // dish name — no source text in this fixture writes "apple", but the
+    // emitted item does, and an in-dish-name ingredient is C.5-licensed by
+    // construction.
+    const { admitted, refusals } = admit({
+      item: 'apple fritter',
+      place_observed: "maudie's",
+      place_source_id: 'SRC002',
+      ingredients: ['apple'],
+    });
+    expect(admitted).not.toBeNull();
+    expect(
+      (admitted as unknown as { ingredients: string[] }).ingredients,
+    ).toEqual(['apple']);
+    expect(refusals).toHaveLength(0);
+  });
+
+  it('still refuses a fabricated contents-of ingredient (carnitas → pork)', () => {
+    // Knowledge-derived contents: `pork` is not in the dish name, the source
+    // union, or the ask chain — the fabrication catch survives loop3.
+    const { admitted, refusals } = admit({
+      item: 'carnitas',
+      place_observed: "maudie's",
+      place_source_id: 'SRC002',
+      ingredients: ['pork'],
+    });
     expect(admitted).not.toBeNull();
     expect(
       (admitted as unknown as { ingredients: string[] }).ingredients,
