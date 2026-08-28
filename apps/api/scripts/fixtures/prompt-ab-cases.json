@@ -3195,5 +3195,186 @@
         }
       ]
     }
+  },
+  {
+    "id": "N25-affirmation-test-not-list",
+    "why": "Miss-population RC1 (2026-08-27, ~120 misses): the adoption law is a TEST — does the reply exist to put weight behind the parent? — never a phrase list.",
+    "posts": [
+      {
+        "id": "t3_af1",
+        "subreddit": "austinfood",
+        "title": "Best breakfast tacos?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_af1",
+            "body": "Veracruz All Natural. The migas taco changed my life."
+          },
+          {
+            "id": "t1_af2",
+            "parent_id": "t1_af1",
+            "body": "This is the way."
+          },
+          {
+            "id": "t1_af3",
+            "parent_id": "t1_af1",
+            "body": "Facts."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_af2",
+          "places": ["veracruz all natural"],
+          "somePraise": true
+        },
+        {
+          "source": "t1_af3",
+          "places": ["veracruz all natural"],
+          "somePraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "N26-kitchen-vs-shelf-ready-retail",
+    "why": "Junk RC1 (2026-08-27, 16 mints): ready-to-consume retail is still SHELF — who made it for whom, not whether cooking remains; a product brand is never a restaurant.",
+    "posts": [
+      {
+        "id": "t3_sh1",
+        "subreddit": "austinfood",
+        "title": "Wine deals?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_sh1",
+            "body": "The cabs I've had from HEB have been fantastic lately, especially the Caymus. And their milk is unbeatable."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_sh1",
+          "notRestaurants": ["heb", "h-e-b", "caymus", "fairlife"],
+          "notFoods": ["cab", "cabernet", "milk", "wine"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N27-ingredient-as-written",
+    "why": "Junk RC2 (2026-08-27, 9 mints): ingredients obey the as-written law — no canonicalizing to pantry forms, no inference from dish names. (Pin fixed 2026-08-27: attaching possessive strips per B.3 — 'bun belly' is the lawful form; listing variants as AND was the N15 bug repeated.) (Re-derived 2026-08-27: truncation to the ingredient NOUN ('crab paste') is a truthful sub-span and lawful; RC2's crime is SUBSTITUTION — the forbidden side pins that.)",
+    "posts": [
+      {
+        "id": "t3_ing1",
+        "subreddit": "austinfood",
+        "title": "Best banh mi?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_ing1",
+            "body": "Bun Belly's banh mi with fermented crab paste is unreal."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_ing1",
+          "places": ["bun belly"],
+          "someIngredients": ["crab paste"],
+          "notIngredients": ["salted crab", "tea leaf"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N28-remembered-verdict-vs-gone",
+    "why": "Junk RC3 (2026-08-27): memory never outranks a stated ending — RIP'd dish praise is a eulogy.",
+    "posts": [
+      {
+        "id": "t3_rem1",
+        "subreddit": "austinfood",
+        "title": "Dishes you miss?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_rem1",
+            "body": "RIP the borscht at Russian House — best soup I ever had in this town."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_rem1",
+          "notFoods": ["borscht", "soup"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N29-narration-is-not-a-verdict",
+    "why": "Junk RC4 (2026-08-27, ~15 mints): the dish-side final gate — narrated habit/receipt food with no verdict points at nothing.",
+    "posts": [
+      {
+        "id": "t3_nar1",
+        "subreddit": "austinfood",
+        "title": "First time at Din Ho",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_nar1",
+            "body": "I usually get the roast duck and we also ordered the salt and pepper squid and two waters. Anyway the service was quick."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_nar1",
+          "notFoods": ["roast duck", "salt and pepper squid"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N30-attribute-needs-testimony-clause",
+    "why": "Junk RC5a (2026-08-27, ~10 mints): an attribute-only place mention needs a Step-A-passing clause — price observations state words but earn nothing.",
+    "posts": [
+      {
+        "id": "t3_att1",
+        "subreddit": "austinfood",
+        "title": "Downtown dinner",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_att1",
+            "body": "Heads up, Red Ash is $100+ a head now and reservations only."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_att1",
+          "notRestaurants": ["red ash"]
+        }
+      ]
+    }
   }
 ]

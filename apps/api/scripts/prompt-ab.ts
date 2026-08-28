@@ -85,6 +85,8 @@ type Expect = {
   items?: string[];
   /** These must NOT appear as food anywhere. */
   notFoods?: string[];
+  someIngredients?: string[];
+  notIngredients?: string[];
   /** These must NOT appear in any attribute array. */
   notAttributes?: string[];
   /** These must NOT appear as a restaurant name (mechanical comparison). */
@@ -125,6 +127,8 @@ const EXPECT_KEYS = new Set([
   'places',
   'items',
   'notFoods',
+  'someIngredients',
+  'notIngredients',
   'notAttributes',
   'notRestaurants',
   'attributes',
@@ -290,6 +294,15 @@ function gradeExpect(
   for (const f of expect.items ?? []) {
     if (!has(items, f) && !has(categories, f))
       failures.push(`missing food "${f}"`);
+  }
+  const ingredients = mentions.flatMap((m) =>
+    Array.isArray(m.ingredients) ? (m.ingredients as string[]) : [],
+  );
+  for (const f of expect.someIngredients ?? []) {
+    if (!has(ingredients, f)) failures.push(`missing ingredient "${f}"`);
+  }
+  for (const f of expect.notIngredients ?? []) {
+    if (has(ingredients, f)) failures.push(`FORBIDDEN ingredient "${f}"`);
   }
   for (const f of expect.notFoods ?? []) {
     if (has(items, f) || has(categories, f))

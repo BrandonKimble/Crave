@@ -93,7 +93,12 @@ mixed sources are the norm — in both directions:
   post exists to ask. A REMEMBERED verdict is still a verdict: "I remember
   Uchi being one of the best restaurants in the city" emits, and the
   writer's present question about whether it still holds does not un-say
-  it (nor is it a closure — the place is open; B.1's PLACE STATUS rule). The asker's OTHER clauses still earn nothing on their
+  it (nor is it a closure — the place is open; B.1's PLACE STATUS rule).
+  **But memory never outranks a stated ending**: a remembered verdict
+  whose own sentence says the place or dish is GONE ("RIP the borscht —
+  best soup in town", "loved the sloppy jac before they took it off the
+  menu") is a eulogy — B.1's PLACE STATUS and Gate 2's must-still-exist
+  own that sentence, and nothing emits. The asker's OTHER clauses still earn nothing on their
   own: "I've only been to Cuba512" states experience with no verdict, and
   the ask's own comparison anchors ("birria Landon the best Mexican?") are
   questions, not claims.
@@ -205,13 +210,17 @@ The writer vouches from experience, or reports a clear consensus:
 - **Asking for feedback on an experience already had IS testimony.** "2026 NYC
   Food Trip Review — how did I do?" reports meals eaten; the question at the
   end does not undo them.
-- **A short agreement ADOPTS the parent's testimony as the writer's own —
-  POLARITY included.** "+1", "this", "agreed", "seconded", "came here to
-  say this" under a parent
-  that vouches for a place puts this writer's judgment behind the same
-  claims — and under a parent that PANS ("+1 on Launderette… no taste in
-  the food") it seconds the pan and emits nothing positive — resolve the referent by the depth-aware order and credit the same
-  restaurant (and dish, when unambiguous) from THIS source's id. An agreement
+- **AN AFFIRMATION ADOPTS the parent's testimony as the writer's own —
+  POLARITY included.** The test, not a phrase list: **does this reply
+  exist to put the writer's own weight behind the parent's claim?**
+  However the affirmation is worded — "+1", "this", "agreed", "Facts",
+  "Correct", "This is the way", "This is the correct answer", "Truth",
+  "Seconding \_\_\_", an emoji of assent — if endorsing the parent is
+  what the reply DOES, the writer's judgment lands behind the same
+  claims. Under a parent that PANS ("+1 on Launderette… no taste in the
+  food") it seconds the pan and emits nothing positive. Resolve the
+  referent by the depth-aware order and credit the same restaurant (and
+  dish, when unambiguous) from THIS source's id. An agreement
   with an ambiguous referent credits nothing. **A bare verdict with an
   unstated subject is the same move**: "God it's so good", "so good!!",
   "obsessed" under a parent describing one unambiguous place resolves by the
@@ -497,31 +506,38 @@ scope.
 
 ### B.2 Is the claim about food this place serves?
 
-**THE PLACE TEST: is this claim about food PREPARED AND SERVED BY this place,
-to eat now — or about goods SOLD PACKAGED to take home and prepare later?**
+**THE PLACE TEST: did THIS PLACE'S KITCHEN make this food for the writer —
+or did a SHELF hold it?** Kitchen-made-for-you is the claim this system
+exists for; shelf goods — bought off a shelf, out of a case, from a list
+of products — are retail, and retail earns nothing here **even when the
+product is ready to consume as-is**: a bottle of wine, a jug of milk, a
+packaged bar, a six-pack needs no preparing, and is still a shelf good.
+The question is who made it and for whom — not whether cooking remains.
 
 This is a test on **the claim, not on the venue.** The same business
 legitimately produces both kinds, and the text always tells you which:
 
-- **SERVED (keep)**: "their fish tacos", "the meat pastries from the ladies in
-  the windows", "tacos that have no business being as good as they are",
+- **KITCHEN (keep)**: "their fish tacos", "the meat pastries from the ladies
+  in the windows", "tacos that have no business being as good as they are",
   "potato wedges when they fresh", "their breakfast tacos during breakfast
-  hours", "the deli's turkey with pepper bacon".
-- **PACKAGED (drop)**: "gets watery when you cook it on the stove", "in the
+  hours", "the deli's turkey with pepper bacon" — made here, for you.
+- **SHELF (drop)**: "gets watery when you cook it on the stove", "in the
   chest freezer between the meat and fish counters", "buy a 40 lb bag",
   "store-bought, packaged stuff", "they sell a very light, fresh marinara",
-  "get the circulars or check the app for coupons", a linked product page.
+  "the cabs I've had from HEB", "their milk is unbeatable", a linked
+  product page — held here, made elsewhere or for no one in particular.
+  A product's brand ("Caymus", "Fairlife") is never a restaurant.
 
 A grocery store with a taquería counter yields real claims from the counter and
 none from the aisles. A restaurant that sells its sauce in bottles is the
-mirror image. **Read the mode of consumption, never the kind of business.**
+mirror image. **Read who made it for whom, never the kind of business.**
 
 **An ANSWER-TEST pick inherits the ask's MODE.** A bare name carries no food
 language of its own, so the claim it makes is the claim the ask requested —
 and when the ask requested a place to SHOP ("best middle eastern grocery
 store?", "good butcher?", "where do you buy…?"), every pick answers a
-shopping question. Those claims are about goods packaged to take home and
-fail the PLACE TEST: emit nothing, however warm the list — and for EVERY
+SHELF question — the claim is about goods a shelf held, whoever's kitchen
+is on the sign — and fails the PLACE TEST: emit nothing, however warm the list — and for EVERY
 entry on it: a pick whose name says "bakery and deli" or "meat market" is
 still answering the grocery ask, and the ask's shopping mode, not the
 name's tokens, decides. Likewise, praising
@@ -881,12 +897,21 @@ croissant/scone/muffin/macaron/cookie → "pastry" (and "dessert" when sweet);
 latte/cappuccino/cold brew → "coffee"; chai/matcha → "tea"; banh mi/torta/
 hoagie/panini → "sandwich"; pho/ramen/udon/pozole → "soup".
 
-### C.4 One dish per connection
+### C.4 One dish per connection — and every dish points to its verdict
 
 Each restaurant→food connection is ONE composed dish. Never emit separate
 mentions for component ingredients or related nouns. Two restaurants praised
 for the same dish produce two entries with identical `item` and distinct
 restaurants.
+
+**The dish-side final gate, the mirror of D.5's:** before a dish emits,
+point to the words of THIS source that make it a CLAIM — a verdict on
+this dish, or the inherited ask subject of a pick. Food that is merely
+NARRATED ("I usually get the roast duck", a receipt, "we ordered X, Y,
+Z" with no verdicts, food inside someone else's story) or that only
+rides a PLACE verdict ("this place is amazing" beside an unjudged menu
+recital) points at nothing — no dish emits, however many foods the
+words name.
 
 ### C.5 Ingredients
 
@@ -895,11 +920,17 @@ the same kind of claim as everything else: something the writer said, not
 something you know. Two sources only:
 
 1. Additive clauses: "pasta **with burrata, chanterelles, and pesto**" →
-   `["burrata", "chanterelle mushroom", "pesto"]`.
+   `["burrata", "chanterelle", "pesto"]` — singularized, never expanded
+   (no synthesized "mushroom").
 2. Ingredient nouns inside the dish name: "gruyere popover" → `["gruyere"]`.
 
 **Never add ingredients from your own knowledge**: "al pastor taco" → `[]`
-unless the source names contents. Singular, lowercase. An empty list is the
+unless the source names contents. **And the ingredient is the WORD THE
+SOURCE WROTE — the same as-written law as names (B.3)**: "fermented crab"
+never becomes `salted crab`, "peach tea glazed" contains no `tea leaf`,
+"coq au vin" is a dish name, not a claim that wine is in your glass —
+if the noun you are about to write does not appear in the source, you
+inferred it: drop it. Singular, lowercase. An empty list is the
 expected output for most mentions.
 
 ---
@@ -949,9 +980,10 @@ states HOW GOOD it is.** Only descriptions are attributes.
 
 - `spicy`, `crispy`, `smoky`, `grilled`, `vegan`, `cozy`, `outdoor seating`,
   `indian`, `comfort food` → describe → attributes.
-- `delicious`, `iconic`, `worth the trip` — and every word of their kind,
-  however novel ("elite", "hidden gem", "seasoned perfectly") → judge →
-  **NOT attributes. Drop them.**
+- `delicious`, `flavorful`, `iconic`, `worth the trip` — and every word
+  of their kind, however novel ("elite", "hidden gem", "seasoned
+  perfectly") → judge → **NOT attributes. Drop them.** ("flavorful" is
+  the recurring offender: it feels descriptive and only ever judges.)
 - The test: **could the same word describe a BAD dish?** "spicy" yes (a dish
   can be badly spicy) → attribute. "delicious" no → praise, drop.
 - The very praise that made this source eligible in Step A is what feeds
@@ -1095,8 +1127,11 @@ Scope follows **what the property describes**, not where the word sits.
 - Attach an attribute **only to the mention whose text supports it.** An
   attribute stated for one dish or one restaurant never attaches to another.
 - **Final gate**: before emitting ANY term, re-run D.1 and D.2, then point to
-  its source: the words of THIS source that state it, or a fit-asserting
-  pick's ask constraints (the
+  its source: the words of THIS source that state it — **in a clause that
+  passed Step A** (a price observation, a booking fact, or an
+  availability aside states words but earns nothing: an attribute-only
+  place mention still needs its clause to be testimony) — or a
+  fit-asserting pick's ask constraints (the
   opening rule). A term whose only support is a parent's wording or your
   knowledge of the venue does not pass. If it judges quality, fails the
   STANDALONE TEST, is a bare ingredient or filler, or has no in-source
