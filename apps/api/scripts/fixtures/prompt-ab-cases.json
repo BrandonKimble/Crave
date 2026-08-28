@@ -3324,8 +3324,8 @@
     }
   },
   {
-    "id": "N29-narration-is-not-a-verdict",
-    "why": "Junk RC4 (2026-08-27, ~15 mints): the dish-side final gate — narrated habit/receipt food with no verdict points at nothing.",
+    "id": "N29-habit-is-goto-narration-is-not",
+    "why": "Re-derived AGAIN 2026-08-28 under the trip-report account law: 'I usually get the roast duck and we also ordered the salt and pepper squid' offers an eaten list as an account — both emit. The model was right; my pin fought our own ruling.",
     "posts": [
       {
         "id": "t3_nar1",
@@ -3345,7 +3345,8 @@
       "perSource": [
         {
           "source": "t1_nar1",
-          "notFoods": ["roast duck", "salt and pepper squid"]
+          "items": ["roast duck", "salt and pepper squid"],
+          "notFoods": []
         }
       ]
     }
@@ -3373,6 +3374,309 @@
         {
           "source": "t1_att1",
           "notRestaurants": ["red ash"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N31-dish-as-written",
+    "why": "Loop-3 (owner-ruled 2026-08-28): dish names obey the as-written law — no correction license at all; the downstream ONE-THING judge unifies variants. 'crudo' never becomes 'steamed'; 'cevichi' stays cevichi. (notFoods 'ceviche' removed: tolerant food-matcher artifact against the expected as-written 'cevichi'.)",
+    "posts": [
+      {
+        "id": "t3_l3a",
+        "subreddit": "austinfood",
+        "title": "Uchiko highlights?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_l3a",
+            "body": "The striped bass crudo is phenomenal."
+          },
+          {
+            "id": "t1_l3a2",
+            "body": "And the cevichi at El Alma is great too."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_l3a",
+          "items": ["striped bass crudo"],
+          "notFoods": ["steamed bass"]
+        },
+        {
+          "source": "t1_l3a2",
+          "items": ["cevichi"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N32-name-restating-affirmation",
+    "why": "Loop-3 (adoption 32% recovery): an affirmation that restates the name IS the writer's own pick.",
+    "posts": [
+      {
+        "id": "t3_l3b",
+        "subreddit": "austinfood",
+        "title": "Underrated dinner spots",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_l3b1",
+            "body": "Odd Duck."
+          },
+          {
+            "id": "t1_l3b2",
+            "parent_id": "t1_l3b1",
+            "body": "Seconding Odd Duck!"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_l3b2",
+          "places": ["odd duck"],
+          "somePraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "N33-dish-status-unnamed-phrasing",
+    "why": "Loop-3 (RC3 alive): DISH STATUS is a principle, not an example list — any stated removal kills, in any phrasing.",
+    "posts": [
+      {
+        "id": "t3_l3c",
+        "subreddit": "austinfood",
+        "title": "Dishes that haunt you",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_l3c",
+            "body": "The salmon meatballs at Snack Bar were incredible. The meal disappeared from the menu and then so did Snack Bar."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_l3c",
+          "notFoods": ["salmon meatball", "salmon meatballs"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N34-dish-born-only-from-vouching-clause",
+    "why": "Loop-3 (RC4, largest cluster): Gate 3's testimony bind — price complaints, pans, deals, photo reactions birth no dish.",
+    "posts": [
+      {
+        "id": "t3_l3d",
+        "subreddit": "austinfood",
+        "title": "Pizza gripes and deals",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_l3d1",
+            "body": "They're asking like $30 for a medium pizza now. Insane."
+          },
+          {
+            "id": "t1_l3d2",
+            "body": "Half off oysters and sparkling wine on Wednesdays at the bar."
+          },
+          {
+            "id": "t1_l3d3",
+            "body": "This looks great, that schmear tho"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_l3d1",
+          "notFoods": ["medium pizza", "pizza"]
+        },
+        {
+          "source": "t1_l3d2",
+          "notFoods": ["oyster", "sparkling wine"]
+        },
+        {
+          "source": "t1_l3d3",
+          "notFoods": ["schmear"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N35-terms-head-and-venue-name-mirrors",
+    "why": "Loop-3, owner-lens corrected 2026-08-28: 'sake pairing' is a dish AS SPOKEN (food word + Gate 1's ONE arm — the Elvis-combo law); only the PEEL to bare 'pairing' is forbidden. Venue-name-in-order-name stays forbidden. ('pairing' notFood removed: token-subset artifact of the expected 'sake pairing'.)",
+    "posts": [
+      {
+        "id": "t3_l3e",
+        "subreddit": "austinfood",
+        "title": "Sake night",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_l3e1",
+            "body": "Get the sake pairing at Kemuri, it's fantastic."
+          },
+          {
+            "id": "t1_l3e2",
+            "body": "Don't miss the Suerte tacos, best in town."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_l3e1",
+          "places": ["kemuri"],
+          "notFoods": [],
+          "items": ["sake pairing"]
+        },
+        {
+          "source": "t1_l3e2",
+          "places": ["suerte"],
+          "items": ["taco"],
+          "notFoods": ["suerte taco"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N36-home-finished-is-shelf",
+    "why": "Loop-3 (RC1 residual): a good finished at home is the shelf's, however proud the result.",
+    "posts": [
+      {
+        "id": "t3_l3f",
+        "subreddit": "austinfood",
+        "title": "Secret weapon groceries",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_l3f",
+            "body": "I've made killer fuckin pizzas with that HEB dough."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_l3f",
+          "notRestaurants": ["heb", "h-e-b"],
+          "notFoods": ["dough", "pizza dough", "pizza"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N37-cuisine-sheds-filler",
+    "why": "Loop-3 (RC5b): 'great German food' → german; the tradition word alone, canonical.",
+    "posts": [
+      {
+        "id": "t3_l3g",
+        "subreddit": "austinfood",
+        "title": "Hidden gems?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_l3g",
+            "body": "Scholz Garten has great German food and a huge patio."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_l3g",
+          "places": ["scholz garten"],
+          "attributes": ["german", "patio"],
+          "notAttributes": ["german food"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N38-aspect-praise-becomes-strength",
+    "why": "Owner-ruled 2026-08-28: praise of a named aspect stores as the aspect's strength (the good-value precedent generalized); whole-thing praise still converts to nothing.",
+    "posts": [
+      {
+        "id": "t3_l3h",
+        "subreddit": "austinfood",
+        "title": "Date night?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_l3h",
+            "body": "Sundance is amazing — the atmosphere is killer and the decor is fabulous."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_l3h",
+          "places": ["sundance"],
+          "somePraise": true,
+          "attributes": ["great atmosphere", "great decor"],
+          "notAttributes": [
+            "amazing",
+            "killer",
+            "killer atmosphere",
+            "fabulous"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N39-fit-asserts-only-what-was-asked",
+    "why": "Loop-3 (real doc t3_14x363r): the fit assertion carries the ask's ACTUAL constraint words — a birthday steak ask that says 'not break the bank' licenses affordable, never an invented 'professional wait staff'.",
+    "posts": [
+      {
+        "id": "t3_l3i",
+        "subreddit": "austinfood",
+        "title": "Steakhouse for his birthday?",
+        "body": "Where do I take him for his birthday that will satisfy his meaty heart and also not break the bank?",
+        "extract_from_post": true,
+        "comments": [
+          {
+            "id": "t1_l3i",
+            "body": "I'd take a look at Bartlett's."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_l3i",
+          "places": ["bartlett's"],
+          "somePraise": true,
+          "notAttributes": [
+            "professional wait staff",
+            "great service",
+            "romantic"
+          ]
         }
       ]
     }

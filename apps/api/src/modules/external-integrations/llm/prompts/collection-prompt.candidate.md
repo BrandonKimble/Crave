@@ -137,7 +137,10 @@ The writer vouches from experience, or reports a clear consensus:
   should I eat", "best pizza", "favorite spot", "anywhere good for X", "what's
   worth it", "recs for" — a reply that **names one or more places is
   testimony, complete as written.** The writer chose those names out of
-  everything they could have said; the choice is the endorsement. This is true
+  everything they could have said; the choice is the endorsement — and
+  the same act in every form: naming first-hand, RESTATING a name already
+  offered ("Seconding Odd Duck!"), or putting bare assent behind one
+  ("+1", "Facts") all place the writer's weight on that name. This is true
   of a single bare name with no other words at all ("Adrienne's in FiDi"), of
   a list ("Pho phong luu, Tan My, Fresh Bowl, Sip Pho if central"), of an
   annotated list ("Cabernet Grill for dinner / Sunset Grill for breakfast"),
@@ -215,9 +218,10 @@ The writer vouches from experience, or reports a clear consensus:
   exist to put the writer's own weight behind the parent's claim?**
   However the affirmation is worded — "+1", "this", "agreed", "Facts",
   "Correct", "This is the way", "This is the correct answer", "Truth",
-  "Seconding \_\_\_", an emoji of assent — if endorsing the parent is
-  what the reply DOES, the writer's judgment lands behind the same
-  claims. Under a parent that PANS ("+1 on Launderette… no taste in the
+  an emoji of assent — if endorsing the parent is what the reply DOES,
+  the writer's judgment lands behind the same claims. **An affirmation
+  that RESTATES the name ("Seconding Odd Duck!") is even simpler: it is
+  the writer's own pick, complete as written — no referent to resolve.** Under a parent that PANS ("+1 on Launderette… no taste in the
   food") it seconds the pan and emits nothing positive. Resolve the
   referent by the depth-aware order and credit the same restaurant (and
   dish, when unambiguous) from THIS source's id. An agreement
@@ -528,7 +532,10 @@ legitimately produces both kinds, and the text always tells you which:
   product page — held here, made elsewhere or for no one in particular.
   A product's brand ("Caymus", "Fairlife") is never a restaurant.
 
-A grocery store with a taquería counter yields real claims from the counter and
+A good the writer finishes or cooks AT HOME is the shelf's, however
+proud the result ("I've made killer pizzas with that HEB dough" claims
+the writer's kitchen, not H-E-B's). A grocery store with a taquería
+counter yields real claims from the counter and
 none from the aisles. A restaurant that sells its sauce in bottles is the
 mirror image. **Read who made it for whom, never the kind of business.**
 
@@ -654,8 +661,10 @@ judged once you know what it was modifying; peeling first is what turns
 
 ### C.1 Is there a dish at all?
 
-Find this source's own FOOD LANGUAGE and walk it through three gates, in
-order. The venue's name is never food language: praising the truck
+Find the food language of THE CLAUSES THAT PASSED STEP A — a clause that
+earned nothing contributes no food, however much it names (Step A passes
+clauses, never whole sources; C inherits exactly that scoping) — and walk
+it through three gates, in order. The venue's name is never food language: praising the truck
 "Birria-Landia" praises no dish called "birria"; "Ramen Del Barrio" names
 no ramen claim.
 
@@ -714,13 +723,15 @@ does the phrase tell you about — none, one, or several?**
 
 **Gate 2 — THE ORDER TEST.** _Could you say this to a server as the thing
 you want to order?_ Anything orderable is a dish, drinks included — an
-espresso or a cocktail exactly like a taco. **And it must still EXIST**:
-a dish the text says is gone — "RIP", "discontinued", "they took it off
-the menu", "back when they still made it" — is not orderable by anyone;
-it emits nothing, and the restaurant is untouched (a dead dish is not a
-closed place). Only VERBED removal kills: "off the menu" as an idiom of
-ordering ("I enjoy several things off the menu") is a live dish being
-eaten, not a dead one. Failing by definition:
+espresso or a cocktail exactly like a taco. **And it must still EXIST — DISH STATUS, resolved once
+per dish per post object, the exact mirror of B.1's PLACE STATUS**: any
+in-scope clause stating the dish no longer exists — removed, replaced,
+renamed away, "disappeared from the menu", or the writer's fondness
+explicitly withdrawn as past — marks that dish DEAD, and no clause about
+it emits, however warm the memory (the restaurant is untouched: a dead
+dish is not a closed place). Only VERBED removal kills: "off the menu"
+as an idiom of ordering ("I enjoy several things off the menu") is a
+live dish being eaten, not a dead one. Failing by definition:
 
 - wanting-anything words — "food", "a meal", "the food here", "drinks"/"a
   drink" bare — name the desire to eat or drink, not a thing the server
@@ -736,7 +747,14 @@ eaten, not a dead one. Failing by definition:
 What fails here is not lost: the cuisine or style lands in Step D as an
 attribute where it describes.
 
-**Gate 3 — THE VERDICT.** Something survived → compose it in C.2. Nothing
+**Gate 3 — THE VERDICT: a dish is born only from a vouching clause.**
+Something survived Gates 1–2 AND its clause passed Step A → compose it in
+C.2. Food language in a clause that earned nothing — a price complaint
+("$30 for a medium pizza"), a pan ("no flavor at all"), a deal or
+availability line ("half off oysters on Wednesdays", "Rocky's also has
+it"), narration or a receipt, a photo reaction ("this LOOKS great"), a
+reply-chain riff — names food and births NO dish: the clause's verdict
+is what a dish is made of, and that clause has none. Nothing
 survived → the mention is restaurant-only (a PLACE mention, no dish
 fields — F.2) — with ONE inheritance, defined here and only here. **AN
 UNQUALIFIED PICK** — a source that passes the TESTIMONY TEST while
@@ -811,11 +829,22 @@ inherited — Step E.)
    but keep "noodles" where the singular is awkward); minimal punctuation.
    **Never reorder tokens** — emit the word order the source used — and keep
    every letter as the writer spelled it, diacritics included ("phở", never
-   "pho", when the source wrote the marks). **A dish is a CONCEPT, not an
-   identity — the mirror image of B.3's name law**: correct an obvious
-   misspelling toward the standard dish word ("cevichi" → "ceviche",
-   "carbonera" → "carbonara"), and strip menu bookkeeping ("seafood boil
-   combo #5" — the "#5" numbers the menu, not the food).
+   "pho", when the source wrote the marks). **Dish names obey the same as-written law as
+   place names (B.3)**: emit the words the source wrote — "cevichi"
+   stays `cevichi`, never "corrected" to ceviche, and never a different
+   word ("crudo" is not "steamed") — a downstream judge unifies variants
+   of the same dish; your transcript is its evidence. Strip only menu
+   bookkeeping ("seafood boil combo #5" — the "#5" numbers the menu, not
+   the food). A pro-form is not a name: "the mushroom based one" resolves
+   to the dish it points at or emits nothing.
+
+**Never PEEL a phrase down to its bare terms-word**: "get the sake
+pairing" is a dish AS SPOKEN (`sake pairing` — the food word tells you
+what arrives, Gate 1's ONE arm); peeled to bare `pairing` it is
+terms-only and never an order-name. **And a venue's name is never part
+of an order-name**: "Don't miss the Suerte tacos" orders tacos AT
+Suerte — `taco`, never `suerte taco` (C.1: the venue's name is never
+food language).
 
 **Never emit a truncated or abbreviated food token.** If a word is cut short
 ("jap" for jalapeño), write the full word or drop it. A truncated token can
@@ -897,21 +926,12 @@ croissant/scone/muffin/macaron/cookie → "pastry" (and "dessert" when sweet);
 latte/cappuccino/cold brew → "coffee"; chai/matcha → "tea"; banh mi/torta/
 hoagie/panini → "sandwich"; pho/ramen/udon/pozole → "soup".
 
-### C.4 One dish per connection — and every dish points to its verdict
+### C.4 One dish per connection
 
 Each restaurant→food connection is ONE composed dish. Never emit separate
 mentions for component ingredients or related nouns. Two restaurants praised
 for the same dish produce two entries with identical `item` and distinct
 restaurants.
-
-**The dish-side final gate, the mirror of D.5's:** before a dish emits,
-point to the words of THIS source that make it a CLAIM — a verdict on
-this dish, or the inherited ask subject of a pick. Food that is merely
-NARRATED ("I usually get the roast duck", a receipt, "we ordered X, Y,
-Z" with no verdicts, food inside someone else's story) or that only
-rides a PLACE verdict ("this place is amazing" beside an unjudged menu
-recital) points at nothing — no dish emits, however many foods the
-words name.
 
 ### C.5 Ingredients
 
@@ -976,7 +996,15 @@ a fit-asserting pick's ask constraints (this step's opening rule).
 ### D.1 Does it describe, or does it judge?
 
 **A real attribute states a property the food or place objectively HAS. Praise
-states HOW GOOD it is.** Only descriptions are attributes.
+states HOW GOOD it is.** Only descriptions are attributes — with ONE
+principled conversion: **praise OF A NAMED ASPECT becomes that aspect's
+strength**, exactly as praised price already becomes `good value` — "the
+atmosphere is killer" → `great atmosphere`, "fabulous decor" → `great
+decor`, "service was flawless" → `great service`: a diner filtering for
+atmosphere wants exactly the places whose atmosphere people praise.
+Whole-thing praise with no aspect ("amazing", "delicious", "iconic")
+still converts to nothing — it has no aspect to strengthen, and it is
+already the claim's endorsement.
 
 - `spicy`, `crispy`, `smoky`, `grilled`, `vegan`, `cozy`, `outdoor seating`,
   `indian`, `comfort food` → describe → attributes.
@@ -1123,7 +1151,9 @@ Scope follows **what the property describes**, not where the word sits.
 
 - Lowercase; natural singular; deduplicate within each array.
 - **Prefer the plainest common form** of a property — do not invent a novel
-  phrasing when a standard one exists.
+  phrasing when a standard one exists. A cuisine sheds its filler: "great
+  German food" → `german`, "solid TX Mex" → `tex-mex` — the tradition
+  word alone, canonical spelling.
 - Attach an attribute **only to the mention whose text supports it.** An
   attribute stated for one dish or one restaurant never attaches to another.
 - **Final gate**: before emitting ANY term, re-run D.1 and D.2, then point to
