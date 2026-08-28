@@ -4,6 +4,47 @@ import { LLMModelInput, LLMComment } from './llm.types';
 
 const DEFAULT_MAX_CHUNK_COMMENTS = 80;
 const DEFAULT_MAX_CHUNK_TOKEN_ESTIMATE = 35000;
+/**
+ * DOCS-PER-CHUNK CAP (miss-population RC4, 2026-08-27 — structural).
+ * Packing was governed by the token budget ALONE, which produced chunks
+ * averaging ~57 documents (max 143) — and emission decayed monotonically
+ * with position inside the chunk: 43.2% of first-quintile doc-slots carried
+ * evidence vs 35.5% in the last (−18% relative). A single call asked to run
+ * the full extraction loop for 100+ sources gives the later ones measurably
+ * less attention; no prompt sentence closes that gap. The honest lever is a
+ * doc-count cap ALONGSIDE the token budget: stop adding a thread when the
+ * chunk already holds this many comments (a single larger thread stays
+ * whole — thread coherence is never split).
+ *
+ * Default 30 targets a ~25–30-doc average (threads pack greedily under the
+ * cap; only unsplittable mega-threads exceed it).
+ *
+ * COST MULTIPLIER (computed, not guessed): halving docs/chunk roughly
+ * doubles the call count, but the per-call overhead is the SYSTEM prompt,
+ * which is batch-cached (~19k tokens for the v17 candidate: 76KB / 4 —
+ * read at 0.1x input price ≈ 1.9k token-equivalents per call) plus the
+ * repeated post
+ * context. Payload runs up to the 35k-token target per chunk, so the
+ * marginal cost of one extra call is ~2k token-equivalents against a
+ * ~15–35k payload — total input cost multiplier ≈ 1.1–1.3x for 2x calls,
+ * not 2x. Output tokens are unchanged (same mentions, split across calls).
+ */
+const DEFAULT_MAX_DOCS_PER_CHUNK = 30;
+
+/** Same boot-refuse contract as resolveChunkTargetTokens (F4954): absent →
+ *  default; set-but-invalid crashes startup instead of silently coercing. */
+export function resolveChunkMaxDocs(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === '') {
+    return DEFAULT_MAX_DOCS_PER_CHUNK;
+  }
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(
+      `LLM_CHUNK_MAX_DOCS must be a positive integer when set; got '${raw}'.`,
+    );
+  }
+  return parsed;
+}
 
 /**
  * Resolve LLM_CHUNK_TARGET_TOKENS at BOOT, not per chunk (F4954).
@@ -68,6 +109,8 @@ export class LLMChunkingService implements OnModuleInit {
   private logger!: LoggerService;
   /** Resolved once at boot (onModuleInit) — refuses a set-but-invalid value. */
   private maxTokensPerChunk = DEFAULT_MAX_CHUNK_TOKEN_ESTIMATE;
+  /** Resolved once at boot; the attention-decay cap (see the header note). */
+  private maxDocsPerChunk = DEFAULT_MAX_DOCS_PER_CHUNK;
 
   constructor(
     @Inject(LoggerService) private readonly loggerService: LoggerService,
@@ -80,18 +123,22 @@ export class LLMChunkingService implements OnModuleInit {
     this.maxTokensPerChunk = resolveChunkTargetTokens(
       process.env.LLM_CHUNK_TARGET_TOKENS,
     );
+    this.maxDocsPerChunk = resolveChunkMaxDocs(process.env.LLM_CHUNK_MAX_DOCS);
   }
 
   private getChunkingLimits(): {
     maxCommentsPerChunk: number;
     maxCharsPerChunk: number;
     maxTokensPerChunk: number;
+    maxDocsPerChunk: number;
   } {
     const maxTokensPerChunk = this.maxTokensPerChunk;
     return {
       // Thread-coherence bound only (a single degenerate mega-thread), not a
-      // packing knob — packing is governed by the token target alone.
+      // packing knob — packing is governed by the token target plus the
+      // docs-per-chunk attention cap (miss RC4).
       maxCommentsPerChunk: DEFAULT_MAX_CHUNK_COMMENTS,
+      maxDocsPerChunk: this.maxDocsPerChunk,
       // DERIVED from the token target (4 chars/token estimate). The old
       // independent LLM_MAX_CHUNK_CHARS=12000 knob silently capped every
       // chunk at ~3k tokens, making the token target unreachable — the
@@ -223,8 +270,12 @@ export class LLMChunkingService implements OnModuleInit {
 
       const postChunkStartIndex = chunks.length;
       const postMetadataStartIndex = chunkMetadata.length;
-      const { maxCommentsPerChunk, maxCharsPerChunk, maxTokensPerChunk } =
-        this.getChunkingLimits();
+      const {
+        maxCommentsPerChunk,
+        maxCharsPerChunk,
+        maxTokensPerChunk,
+        maxDocsPerChunk,
+      } = this.getChunkingLimits();
       const softTokenThreshold = Math.max(
         1000,
         Math.floor(maxTokensPerChunk * 0.8),
@@ -284,6 +335,11 @@ export class LLMChunkingService implements OnModuleInit {
         const exceedsLimits =
           proposedCharLength > maxCharsPerChunk ||
           proposedTokenEstimate > maxTokensPerChunk ||
+          // ATTENTION CAP (miss RC4): a HARD doc-count bound — adding this
+          // thread would push the chunk past the docs-per-chunk cap, so it
+          // starts a new chunk (a lone thread bigger than the cap still
+          // stays whole: thread coherence is never split).
+          proposedCommentCount > maxDocsPerChunk ||
           (proposedCommentCount > maxCommentsPerChunk &&
             proposedTokenEstimate >= softTokenThreshold);
 
@@ -518,11 +574,12 @@ export class LLMChunkingService implements OnModuleInit {
     chunks: LLMModelInput[],
     metadata: ChunkMetadata[],
   ): ChunkResult {
-    const { maxTokensPerChunk } = this.getChunkingLimits();
+    const { maxTokensPerChunk, maxDocsPerChunk } = this.getChunkingLimits();
     const packedChunks: LLMModelInput[] = [];
     const packedMetadata: ChunkMetadata[] = [];
     let currentPosts: Map<string, LLMModelInput['posts'][number]> | null = null;
     let currentTokens = 0;
+    let currentDocs = 0;
     let currentMeta: ChunkMetadata | null = null;
 
     const flush = () => {
@@ -534,6 +591,7 @@ export class LLMChunkingService implements OnModuleInit {
       });
       currentPosts = null;
       currentTokens = 0;
+      currentDocs = 0;
       currentMeta = null;
     };
 
@@ -551,7 +609,14 @@ export class LLMChunkingService implements OnModuleInit {
         currentPostIds.has(chunk.posts[0].id);
       if (
         currentPosts &&
-        (!sameSinglePost || currentTokens + tokens > maxTokensPerChunk)
+        (!sameSinglePost ||
+          currentTokens + tokens > maxTokensPerChunk ||
+          // ATTENTION CAP (miss RC4): packing was token-governed only, which
+          // built 57-avg/143-max-doc chunks and cost the tail ~18% relative
+          // emission. Same law as grouping: merging must not push the packed
+          // chunk past the docs cap (a lone oversized raw chunk still ships
+          // whole — coherence).
+          currentDocs + meta.commentCount > maxDocsPerChunk)
       ) {
         flush();
       }
@@ -583,6 +648,7 @@ export class LLMChunkingService implements OnModuleInit {
         }
       }
       currentTokens += tokens;
+      currentDocs += meta.commentCount;
     }
     flush();
 

@@ -143,6 +143,57 @@ export class ReplayService implements OnModuleInit {
       );
     }
 
+    // ONE SHADOW EXTRACTION PER SOURCE RUN PER PROMPT (junk RC7, v17 loop2).
+    // The resolver's rehearsal sandbox deliberately hides one shadow run's
+    // mints from every other run (entity-resolution.service.ts, the
+    // rehearsal-visibility filter) — correct for coherence, but it means a
+    // source run replayed to completion TWICE under one candidate prompt
+    // mints identical-identity_key rehearsal twins ("fast food burger" x2,
+    // 2026-08-27 diff). Items carry no partial-unique identity index (only
+    // attributes do), so nothing downstream collapses them. The honest
+    // chokepoint is here, before any spend: a shadow replay of a source run
+    // that already has a running/completed replay under the SAME candidate
+    // prompt hash is a duplicate and is skipped, loudly.
+    if (params.activate !== true && params.promptVersion !== undefined) {
+      const prompt = await this.prismaService.llmPrompt.findFirst({
+        where: { kind: 'collection_system', version: params.promptVersion },
+        select: { contentHash: true },
+      });
+      if (prompt) {
+        const duplicates = await this.prismaService.$queryRaw<
+          Array<{ extraction_run_id: string; status: string }>
+        >`
+          SELECT extraction_run_id, status
+          FROM collection_extraction_runs
+          WHERE system_prompt_hash = ${prompt.contentHash}
+            AND status IN ('running', 'completed')
+            AND metadata->>'replayOfExtractionRunId' = ${params.sourceExtractionRunId}`;
+        if (duplicates.length > 0) {
+          this.logger.warn(
+            'Shadow replay skipped: source run already replayed under this prompt hash',
+            {
+              sourceExtractionRunId: params.sourceExtractionRunId,
+              promptVersion: params.promptVersion,
+              existingRuns: duplicates.map((run) => ({
+                extractionRunId: run.extraction_run_id,
+                status: run.status,
+              })),
+            },
+          );
+          return {
+            sourceExtractionRunId: params.sourceExtractionRunId,
+            extractionRunId: duplicates[0].extraction_run_id,
+            collectionRunId: undefined,
+            documentCount: 0,
+            chunkCount: 0,
+            placeCount: 0,
+            connectionCount: 0,
+            activated: false,
+          };
+        }
+      }
+    }
+
     const sourceDocuments = this.collectSourceDocumentsFromInputs(
       sourceRun.inputs,
     );

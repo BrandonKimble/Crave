@@ -1,5 +1,6 @@
 import {
   canonicalizeObservedPlaceName,
+  ingredientSpanAppearsInSource,
   normalizeSpanMechanically,
   observedSpanAppearsInSource,
 } from './place-name-contract';
@@ -133,5 +134,92 @@ describe('observedSpanAppearsInSource', () => {
   it('refuses empty spans and empty sources', () => {
     expect(observedSpanAppearsInSource('', text)).toBe(false);
     expect(observedSpanAppearsInSource('lucali', '')).toBe(false);
+  });
+});
+
+describe('ingredientSpanAppearsInSource (junk RC2)', () => {
+  it('admits an ingredient the source wrote, verbatim', () => {
+    expect(
+      ingredientSpanAppearsInSource('gruyere', ['the gruyere popover slaps']),
+    ).toBe(true);
+  });
+
+  it("licenses C.5's singular mandate against a plural source (head token)", () => {
+    expect(
+      ingredientSpanAppearsInSource('chanterelle', [
+        'pasta with burrata, chanterelles, and pesto',
+      ]),
+    ).toBe(true);
+    expect(
+      ingredientSpanAppearsInSource('berry', ['loaded with fresh berries']),
+    ).toBe(true);
+    expect(ingredientSpanAppearsInSource('peach', ['peaches on top'])).toBe(
+      true,
+    );
+  });
+
+  it('licenses the reverse direction (emitted plural, source singular)', () => {
+    expect(
+      ingredientSpanAppearsInSource('noodles', ['an extra side of noodle']),
+    ).toBe(true);
+  });
+
+  it('inflects only the HEAD token of a multi-word ingredient', () => {
+    expect(
+      ingredientSpanAppearsInSource('black bean', [
+        'tacos with black beans and rice',
+      ]),
+    ).toBe(true);
+  });
+
+  it('refuses pantry canonicalization: substitution, expansion, translation', () => {
+    // The RC2 walk, pinned: same-concept substitution.
+    expect(
+      ingredientSpanAppearsInSource('salted crab', ['the fermented crab one']),
+    ).toBe(false);
+    // Peeled word re-expanded to the pantry-noun form.
+    expect(
+      ingredientSpanAppearsInSource('tea leaf', [
+        'peach tea glazed pork belly',
+      ]),
+    ).toBe(false);
+    // Nickname expansion.
+    expect(
+      ingredientSpanAppearsInSource('earl grey tea', ['get the dirty earl']),
+    ).toBe(false);
+    // Translation of a dish name into contents.
+    expect(
+      ingredientSpanAppearsInSource('wine', ['the coq au vin is perfect']),
+    ).toBe(false);
+    // Synthesized head noun ("sauce") beyond the source's words.
+    expect(
+      ingredientSpanAppearsInSource('rojas adobadas sauce', [
+        'Enchiladas rojas adobadas',
+      ]),
+    ).toBe(false);
+    // Completed compound ("seed" inserted).
+    expect(
+      ingredientSpanAppearsInSource('sesame seed bun', [
+        'loved the sesame bun',
+      ]),
+    ).toBe(false);
+  });
+
+  it('anchors at word boundaries and matches across the source union', () => {
+    expect(ingredientSpanAppearsInSource('oro', ['chicharron de loro'])).toBe(
+      false,
+    );
+    expect(
+      ingredientSpanAppearsInSource('pesto', [
+        'no mention here',
+        'their pesto is unreal',
+      ]),
+    ).toBe(true);
+  });
+
+  it('refuses empty spans and empty sources', () => {
+    expect(ingredientSpanAppearsInSource('', ['text'])).toBe(false);
+    expect(ingredientSpanAppearsInSource('pesto', ['', ''])).toBe(false);
+    expect(ingredientSpanAppearsInSource('pesto', [])).toBe(false);
   });
 });

@@ -83,7 +83,17 @@ LIMIT 500;
 
 \echo ''
 \echo '=== NEW UNDER SHADOW (entities only the candidate prompt produced) ==='
-SELECT DISTINCT e.entity_id, e.name, e.type
+-- ONE ROW PER IDENTITY (junk RC7): the rehearsal sandbox hides shadow runs
+-- from each other, so a doc completed in two shadow runs used to mint
+-- identical-identity_key rehearsal twins and this section counted them as
+-- two "new entities". The double-extraction itself is now refused at the
+-- replay chokepoint (replay.service.ts); this dedupe keeps the report
+-- honest about any residue — identity_rows > 1 flags a cross-run twin.
+SELECT
+  (min(e.entity_id::text))::uuid AS entity_id,
+  min(e.name) AS name,
+  e.type,
+  count(DISTINCT e.entity_id) AS identity_rows
 FROM core_restaurant_entity_events ev
 JOIN shadow_runs sr ON sr.extraction_run_id = ev.extraction_run_id
 JOIN core_entities e ON e.entity_id = ev.entity_id
@@ -93,7 +103,8 @@ WHERE NOT EXISTS (
   WHERE old.entity_id = ev.entity_id
     AND old.extraction_run_id NOT IN (SELECT extraction_run_id FROM shadow_runs)
 )
-ORDER BY e.type, e.name
+GROUP BY e.type, COALESCE(NULLIF(e.identity_key, ''), e.entity_id::text)
+ORDER BY e.type, min(e.name)
 LIMIT 500;
 
 \echo ''

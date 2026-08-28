@@ -793,7 +793,11 @@ export class EntityResolutionService implements OnModuleInit {
         // Archived rows forward via the alias tier; rehearsal rows are
         // visible ONLY to their own run (plans/shadow-sandbox.md): a live
         // run must never adopt an invisible mint, and a rehearsal must see
-        // its own so its chunks cohere.
+        // its own so its chunks cohere. This sandbox means two COMPLETED
+        // shadow runs over the same doc would mint identity twins (junk
+        // RC7, 2026-08-27) — that double-extraction is refused upstream at
+        // the replay chokepoint (replay.service.ts, one shadow extraction
+        // per source run per prompt hash), never patched here.
         AND: [
           { status: { not: EntityStatus.archived } },
           rehearsalRunId

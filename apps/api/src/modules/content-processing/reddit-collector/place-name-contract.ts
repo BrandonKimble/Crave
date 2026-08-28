@@ -132,6 +132,67 @@ function occursAtWordBoundary(text: string, variant: string): boolean {
 }
 
 /**
+ * Number-inflection variants for an INGREDIENT span (v17 loop2, junk RC2).
+ * C.5 orders the emitted form "singular, lowercase", so a compliant emission
+ * legitimately differs from the source text by number ONLY: the source wrote
+ * "chanterelles"/"berries" and the model emits `chanterelle`/`berry`. The
+ * inflection lives on the HEAD (final) token of the phrase, so variants are
+ * generated there and nowhere else — anything beyond number variance
+ * (expansion, translation, substitution, a synthesized head noun) is exactly
+ * the pantry-canonicalization RC2 exists to refuse.
+ */
+function ingredientNumberVariants(span: string): string[] {
+  const tokens = span.split(' ');
+  const head = tokens[tokens.length - 1];
+  const heads = new Set<string>([head]);
+  // Emitted singular ↔ source plural.
+  heads.add(`${head}s`);
+  heads.add(`${head}es`);
+  if (head.endsWith('y') && head.length > 1) {
+    heads.add(`${head.slice(0, -1)}ies`);
+  }
+  // Emitted plural ↔ source singular (the prompt says singular, but the
+  // contract tolerates the model failing to singularize — the WORD is still
+  // the source's word; C.5's "noodles"-style natural plurals land here too).
+  if (head.endsWith('ies') && head.length > 3) {
+    heads.add(head.slice(0, -3) + 'y');
+  }
+  if (head.endsWith('es') && head.length > 2) {
+    heads.add(head.slice(0, -2));
+  }
+  if (head.endsWith('s') && head.length > 1) {
+    heads.add(head.slice(0, -1));
+  }
+  const prefix = tokens.slice(0, -1).join(' ');
+  return [...heads]
+    .filter((h) => h.length > 0)
+    .map((h) => (prefix ? `${prefix} ${h}` : h));
+}
+
+/**
+ * THE INGREDIENT REFUSAL CHECK (junk RC2): does this emitted ingredient
+ * appear — as a whole phrase, at word boundaries — in the given source
+ * texts? Same mechanical normalization as the place contract; the only
+ * tolerated variance is NUMBER on the head token (C.5's singular mandate),
+ * mirroring how the place check tolerates only the possessive clitic B.3
+ * licenses. "fermented crab" never verifies an emitted `salted crab`, and
+ * "peach tea glazed" never verifies `tea leaf`.
+ */
+export function ingredientSpanAppearsInSource(
+  ingredient: string,
+  sourceTexts: readonly string[],
+): boolean {
+  const span = normalizeSpanMechanically(ingredient);
+  if (!span) return false;
+  const variants = ingredientNumberVariants(span);
+  return sourceTexts.some((sourceText) => {
+    const text = normalizeSpanMechanically(sourceText);
+    if (!text) return false;
+    return variants.some((variant) => occursAtWordBoundary(text, variant));
+  });
+}
+
+/**
  * THE REFUSAL CHECK: does the observed span appear inside the cited source's
  * text? A lookup, not a judgment (v17-coherence-redteam F1): both sides get
  * the identical mechanical normalization, the occurrence must be anchored at

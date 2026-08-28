@@ -157,3 +157,56 @@ describe('admitWireMention witness repair (v17)', () => {
     expect(admitted?.place_source_id).toBe('c2');
   });
 });
+
+describe('admitWireMention ingredient observed-span contract (v17 loop2, junk RC2)', () => {
+  it('keeps ingredients the source union wrote and drops the invented one — mention survives', () => {
+    // Own source c1: "Maudie's queso is the move." — `queso` verifies;
+    // `salted crab` appears nowhere in scope and is the RC2 pantry move.
+    const { admitted, refusals } = admit({
+      place_observed: "maudie's",
+      place_source_id: 'SRC002',
+      ingredients: ['queso', 'salted crab'],
+    });
+    expect(admitted).not.toBeNull();
+    expect(
+      (admitted as unknown as { ingredients: string[] }).ingredients,
+    ).toEqual(['queso']);
+    expect(refusals).toHaveLength(1);
+    expect(refusals[0].reason).toBe('ingredient_not_in_source');
+    expect(refusals[0].detail).toContain('"salted crab"');
+    expect(refusals[0].mention).toMatchObject({
+      ingredients: ['queso', 'salted crab'],
+    });
+  });
+
+  it('licenses singular/plural variance only (C.5 mirror)', () => {
+    // c2: "Second Maudie's — also try Polvos." has no food nouns; use the
+    // post text via place source: title "Best queso in town?" — emitted
+    // singular `rec` matches body "recs" through head-token inflection.
+    const { admitted, refusals } = admit({
+      place_observed: "maudie's",
+      place_source_id: 'SRC002',
+      ingredients: ['rec'],
+    });
+    // "recs" lives in the POST body, not the mention's own comment or place
+    // source — outside the union, so it drops: scope is own + place source.
+    expect(admitted).not.toBeNull();
+    expect(
+      (admitted as unknown as { ingredients: string[] }).ingredients,
+    ).toEqual([]);
+    expect(refusals).toHaveLength(1);
+    expect(refusals[0].reason).toBe('ingredient_not_in_source');
+  });
+
+  it('an all-verified array passes untouched and banks nothing', () => {
+    const { admitted, refusals } = admit({
+      place_observed: "maudie's",
+      place_source_id: 'SRC002',
+      ingredients: ['queso'],
+    });
+    expect(refusals).toHaveLength(0);
+    expect(
+      (admitted as unknown as { ingredients: string[] }).ingredients,
+    ).toEqual(['queso']);
+  });
+});

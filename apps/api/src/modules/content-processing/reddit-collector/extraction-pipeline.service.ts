@@ -43,6 +43,7 @@ import { UnifiedProcessingService } from './unified-processing.service';
 import { BatchJob } from './batch-processing-queue.types';
 import {
   canonicalizeObservedPlaceName,
+  ingredientSpanAppearsInSource,
   observedSpanAppearsInSource,
 } from './place-name-contract';
 import { isDishMention } from '../../external-integrations/llm/llm.types';
@@ -1195,8 +1196,15 @@ export class ExtractionPipelineService implements OnModuleInit {
       // pushing live refusals from 0.5% to 10% silently shrank the corpus
       // behind a logger.warn. The rate reaches the ops-alert seam here, per
       // run, deduped per pipeline+day so a bad day is one dashboard row.
-      const offered = flatMentions.length + contractRefusals.length;
-      const refusalRate = contractRefusals.length / offered;
+      // The rate is MENTION refusals over mentions offered. An
+      // 'ingredient_not_in_source' row banks a dropped SLOT value — its
+      // mention was admitted — so it belongs in the bank but not in this
+      // denominator/numerator (it would double-count the mention).
+      const mentionRefusals = contractRefusals.filter(
+        (row) => row.reason !== 'ingredient_not_in_source',
+      ).length;
+      const offered = flatMentions.length + mentionRefusals;
+      const refusalRate = offered > 0 ? mentionRefusals / offered : 0;
       if (
         offered >= REFUSAL_RATE_ALARM_MIN_MENTIONS &&
         refusalRate >= REFUSAL_RATE_ALARM_THRESHOLD
@@ -1207,7 +1215,7 @@ export class ExtractionPipelineService implements OnModuleInit {
           title: 'Observed-span refusal rate above threshold',
           body:
             `Run ${args.extractionRunId} (${args.baseParams.pipeline}): ` +
-            `${contractRefusals.length}/${offered} mentions refused ` +
+            `${mentionRefusals}/${offered} mentions refused ` +
             `(${(refusalRate * 100).toFixed(1)}% >= ${REFUSAL_RATE_ALARM_THRESHOLD * 100}%). ` +
             `The contract may be refusing real names, or the prompt/model drifted — ` +
             `read the banked rows in collection_extraction_contract_refusals.`,
@@ -1455,6 +1463,42 @@ export class ExtractionPipelineService implements OnModuleInit {
       return refuse('empty_canonical_name', placeObserved);
     }
 
+    // INGREDIENT OBSERVED-SPAN CONTRACT (v17 loop2, junk RC2): the ingredient
+    // slot was the only emitted-text slot with zero mechanical enforcement,
+    // so the model canonicalized to its pantry lexicon ("fermented crab" →
+    // `salted crab`, "the dirty earl" → `earl grey tea`). Same contract shape
+    // as the place span, scoped to the SLOT: each ingredient must appear
+    // (word-boundary, C.5's singular/plural variance only) in the union of
+    // the mention's own source text and the place source's text. A failing
+    // ingredient is DROPPED FROM THE ARRAY and banked — the mention itself
+    // survives, because an invented ingredient must not kill a real dish
+    // claim the place contract already verified.
+    let admittedIngredients = isDishMention(wireMention)
+      ? wireMention.ingredients
+      : undefined;
+    if (isDishMention(wireMention) && wireMention.ingredients?.length) {
+      const scopeTexts = [
+        enrichment.spanTextById.get(canonicalSourceId) ?? '',
+        spanText,
+        enrichment.spanTextById.get(canonicalPlaceSourceId) ?? '',
+      ];
+      const kept: string[] = [];
+      for (const ingredient of wireMention.ingredients) {
+        if (ingredientSpanAppearsInSource(ingredient, scopeTexts)) {
+          kept.push(ingredient);
+        } else {
+          refusals.push({
+            extractionInputId,
+            sourceDocumentId,
+            reason: 'ingredient_not_in_source',
+            detail: `"${ingredient}" not found in source ${canonicalSourceId} or place source ${canonicalPlaceSourceId} (dish: "${wireMention.item}")`,
+            mention: wireMention,
+          });
+        }
+      }
+      admittedIngredients = kept;
+    }
+
     // THE UNION TRAVELS WHOLE (redteam-l1 F1): derived provenance is ADDED
     // alongside the wire shape — never spread over it into an
     // everything-optional carrier. `general_praise` is NOT re-stored here:
@@ -1463,6 +1507,9 @@ export class ExtractionPipelineService implements OnModuleInit {
     // semantics derives it from the SHAPE at the point of use.
     return {
       ...wireMention,
+      ...(admittedIngredients !== undefined
+        ? { ingredients: admittedIngredients }
+        : {}),
       place,
       place_surface: placeObserved,
       place_observed: placeObserved,
