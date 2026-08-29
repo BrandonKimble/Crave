@@ -24,11 +24,15 @@ describe('ReplayService shadow duplicate guard', () => {
   }): {
     service: ReplayService;
     processStoredInputs: jest.Mock;
+    reject: jest.Mock;
   } {
     const processStoredInputs = jest.fn().mockResolvedValue({
       extractionRunId: 'new-run',
       dbResult: { affectedPlaceIds: [], affectedConnectionIds: [] },
     });
+    const reject = jest
+      .fn()
+      .mockResolvedValue({ entities: 0, surfaces: 0, verdicts: 0 });
     const prisma = {
       extractionRun: {
         findUnique: jest.fn().mockResolvedValue({
@@ -71,6 +75,7 @@ describe('ReplayService shadow duplicate guard', () => {
     const service = new ReplayService(
       prisma as never,
       { processStoredInputs } as never,
+      { reject } as never,
       {
         setContext: jest.fn().mockReturnValue({
           info: jest.fn(),
@@ -81,7 +86,7 @@ describe('ReplayService shadow duplicate guard', () => {
       } as never,
     );
     service.onModuleInit();
-    return { service, processStoredInputs };
+    return { service, processStoredInputs, reject };
   }
 
   it('skips a shadow replay whose source run already completed under the prompt hash', async () => {
@@ -99,7 +104,7 @@ describe('ReplayService shadow duplicate guard', () => {
   });
 
   it('proceeds when no running/completed replay exists under the hash (failed runs retry)', async () => {
-    const { service, processStoredInputs } = buildService({
+    const { service, processStoredInputs, reject } = buildService({
       existingRuns: [],
     });
     const summary = await service.replayExtractionRun({
@@ -107,6 +112,44 @@ describe('ReplayService shadow duplicate guard', () => {
       promptVersion: 17,
     });
     expect(processStoredInputs).toHaveBeenCalledTimes(1);
+    expect(reject).not.toHaveBeenCalled();
     expect(summary.extractionRunId).toBe('new-run');
+  });
+
+  it('sweeps a failed prior replay before retrying (no rehearsal twins)', async () => {
+    const { service, processStoredInputs, reject } = buildService({
+      existingRuns: [
+        { extraction_run_id: 'failed-run-1', status: 'failed' },
+        { extraction_run_id: 'failed-run-2', status: 'failed' },
+      ],
+    });
+    const summary = await service.replayExtractionRun({
+      sourceExtractionRunId: 'source-run',
+      promptVersion: 17,
+    });
+    expect(reject).toHaveBeenCalledTimes(1);
+    expect(reject).toHaveBeenCalledWith(['failed-run-1', 'failed-run-2']);
+    expect(processStoredInputs).toHaveBeenCalledTimes(1);
+    expect(summary.extractionRunId).toBe('new-run');
+    // The sweep runs BEFORE the retry mints anything.
+    expect(reject.mock.invocationCallOrder[0]).toBeLessThan(
+      processStoredInputs.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('still skips on completed even when a failed sibling exists (no sweep)', async () => {
+    const { service, processStoredInputs, reject } = buildService({
+      existingRuns: [
+        { extraction_run_id: 'failed-run-1', status: 'failed' },
+        { extraction_run_id: 'prior-run', status: 'completed' },
+      ],
+    });
+    const summary = await service.replayExtractionRun({
+      sourceExtractionRunId: 'source-run',
+      promptVersion: 17,
+    });
+    expect(processStoredInputs).not.toHaveBeenCalled();
+    expect(reject).not.toHaveBeenCalled();
+    expect(summary.extractionRunId).toBe('prior-run');
   });
 });

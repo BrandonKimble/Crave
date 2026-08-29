@@ -13,6 +13,7 @@ import {
   ExtractionPipelineService,
   StoredExtractionInputChunk,
 } from './extraction-pipeline.service';
+import { RehearsalGenerationService } from './rehearsal-generation.service';
 
 type ReplaySourceDocument = {
   documentId: string;
@@ -74,6 +75,7 @@ export class ReplayService implements OnModuleInit {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly extractionPipelineService: ExtractionPipelineService,
+    private readonly rehearsalGenerationService: RehearsalGenerationService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
@@ -160,14 +162,15 @@ export class ReplayService implements OnModuleInit {
         select: { contentHash: true },
       });
       if (prompt) {
-        const duplicates = await this.prismaService.$queryRaw<
+        const priorRuns = await this.prismaService.$queryRaw<
           Array<{ extraction_run_id: string; status: string }>
         >`
           SELECT extraction_run_id, status
           FROM collection_extraction_runs
           WHERE system_prompt_hash = ${prompt.contentHash}
-            AND status IN ('running', 'completed')
+            AND status IN ('running', 'completed', 'failed')
             AND metadata->>'replayOfExtractionRunId' = ${params.sourceExtractionRunId}`;
+        const duplicates = priorRuns.filter((run) => run.status !== 'failed');
         if (duplicates.length > 0) {
           this.logger.warn(
             'Shadow replay skipped: source run already replayed under this prompt hash',
@@ -190,6 +193,29 @@ export class ReplayService implements OnModuleInit {
             connectionCount: 0,
             activated: false,
           };
+        }
+        // FAILED-RUN RESIDUE SWEEP (v17 mechanical): a failed prior replay
+        // does not block the retry — but its rehearsal-born entities and
+        // surfaces persist (items carry no unique identity index, so the
+        // adopt path never fires for them) and the retry re-mints
+        // identity_key twins. Before spending, sweep the failed run's
+        // rehearsal residue through the sanctioned rejection machinery —
+        // entities archived (adopt-able later by flip's archived-with-born-
+        // run clause), surfaces and rehearsal verdicts deleted — so the
+        // retry is the ONLY rehearsal generation for this (source run,
+        // prompt hash).
+        const failedRunIds = priorRuns
+          .filter((run) => run.status === 'failed')
+          .map((run) => run.extraction_run_id);
+        if (failedRunIds.length > 0) {
+          const swept =
+            await this.rehearsalGenerationService.reject(failedRunIds);
+          this.logger.info('Swept failed shadow replay residue before retry', {
+            sourceExtractionRunId: params.sourceExtractionRunId,
+            promptVersion: params.promptVersion,
+            failedRunIds,
+            ...swept,
+          });
         }
       }
     }

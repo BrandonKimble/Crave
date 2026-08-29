@@ -241,4 +241,40 @@ describe('ingredientSpanAppearsInSource (junk RC2)', () => {
       ingredientSpanAppearsInSource('jalapeno', ['loaded with habaneros']),
     ).toBe(false);
   });
+
+  it('accepts a bound-morpheme compound (v17 mechanical)', () => {
+    expect(
+      ingredientSpanAppearsInSource('cheese', ['best cheeseburger in town']),
+    ).toBe(true);
+    expect(
+      ingredientSpanAppearsInSource('burger', ['best cheeseburger in town']),
+    ).toBe(true);
+    // Composes with number variance on the containing word.
+    expect(
+      ingredientSpanAppearsInSource('cheese', ['their cheeseburgers rule']),
+    ).toBe(true);
+    // Not a raw-substring license: the remainder must be a plausible
+    // morpheme, so short-remainder embeddings still refuse.
+    expect(ingredientSpanAppearsInSource('rice', ['worth the price'])).toBe(
+      false,
+    );
+    expect(ingredientSpanAppearsInSource('oro', ['chicharron de loro'])).toBe(
+      false,
+    );
+    // Multi-word ingredients never morpheme-match.
+    expect(
+      ingredientSpanAppearsInSource('salted crab', ['saltedcrabapple thing']),
+    ).toBe(false);
+  });
+
+  it('folds hyphen-vs-space drift both ways (v17 mechanical)', () => {
+    expect(
+      ingredientSpanAppearsInSource('chili garlic', [
+        'the chili-garlic crisp is addictive',
+      ]),
+    ).toBe(true);
+    expect(
+      ingredientSpanAppearsInSource('chili-garlic', ['their chili garlic oil']),
+    ).toBe(true);
+  });
 });

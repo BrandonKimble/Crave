@@ -187,26 +187,69 @@ function foldDiacritics(value: string): string {
 }
 
 /**
+ * Hyphen fold for the INGREDIENT comparison only (v17 mechanical): the
+ * residual wrong refusals included hyphen-vs-space drift — the source wrote
+ * "chili-garlic" and the model emitted `chili garlic` (or vice versa).
+ * Hyphens become spaces on BOTH sides before variant generation, so the
+ * join character never decides an ingredient's fate. The PLACE contract is
+ * untouched.
+ */
+function foldHyphens(value: string): string {
+  return value.replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Bound-morpheme occurrence (v17 mechanical): "cheese" inside
+ * "cheeseburger" verifies — the ingredient appears WHOLLY, as a bound
+ * morpheme, inside a single longer source word. Strictly narrower than a
+ * raw substring hit: single-token ingredients only, anchored at the START
+ * or END of the containing word, and the remaining morpheme must be a
+ * plausible word chunk (>= 3 chars) — so `oro` never verifies against
+ * "loro" (remainder "l") and `rice` never verifies against "price"
+ * (remainder "p"); the word-boundary pin stays green.
+ */
+const MIN_MORPHEME_REMAINDER = 3;
+function occursAsBoundMorpheme(text: string, variant: string): boolean {
+  if (variant.includes(' ')) return false;
+  for (const word of text.split(/[^\p{L}\p{N}]+/u)) {
+    const remainder = word.length - variant.length;
+    if (remainder < MIN_MORPHEME_REMAINDER) continue;
+    if (word.startsWith(variant) || word.endsWith(variant)) return true;
+  }
+  return false;
+}
+
+/**
  * THE INGREDIENT REFUSAL CHECK (junk RC2): does this emitted ingredient
  * appear — as a whole phrase, at word boundaries — in the given source
  * texts? Same mechanical normalization as the place contract plus a
- * diacritic fold on both sides (loop3, the jalapeño case); the only other
- * tolerated variance is NUMBER on the head token (C.5's singular mandate),
- * mirroring how the place check tolerates only the possessive clitic B.3
- * licenses. "fermented crab" never verifies an emitted `salted crab`, and
+ * diacritic fold and a hyphen fold on both sides (loop3 jalapeño case;
+ * mechanical-round chili-garlic case); the only other tolerated variances
+ * are NUMBER on the head token (C.5's singular mandate) and the
+ * bound-morpheme compound case ("cheese" inside "cheeseburger"), mirroring
+ * how the place check tolerates only the possessive clitic B.3 licenses.
+ * "fermented crab" never verifies an emitted `salted crab`, and
  * "peach tea glazed" never verifies `tea leaf`.
  */
 export function ingredientSpanAppearsInSource(
   ingredient: string,
   sourceTexts: readonly string[],
 ): boolean {
-  const span = foldDiacritics(normalizeSpanMechanically(ingredient));
+  const span = foldHyphens(
+    foldDiacritics(normalizeSpanMechanically(ingredient)),
+  );
   if (!span) return false;
   const variants = ingredientNumberVariants(span);
   return sourceTexts.some((sourceText) => {
-    const text = foldDiacritics(normalizeSpanMechanically(sourceText));
+    const text = foldHyphens(
+      foldDiacritics(normalizeSpanMechanically(sourceText)),
+    );
     if (!text) return false;
-    return variants.some((variant) => occursAtWordBoundary(text, variant));
+    return variants.some(
+      (variant) =>
+        occursAtWordBoundary(text, variant) ||
+        occursAsBoundMorpheme(text, variant),
+    );
   });
 }
 

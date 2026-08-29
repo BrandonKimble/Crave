@@ -84,6 +84,37 @@ SELECT DISTINCT a.entity_id
 FROM active_entity_docs a
 WHERE a.entity_id NOT IN (SELECT entity_id FROM shadow_entity_docs);
 
+-- FUZZY NAME FOLD (v17 mechanical): the exact-lowercase name match missed
+-- resolver drift that only changed punctuation/spacing or trimmed suffix
+-- tokens ("Rudys" vs "Rudy's Bar & Grill", "H Mart" vs "Hmart",
+-- "Stein's Deli" vs "Stein's Market and Deli"). fold = lowercase, strip
+-- apostrophes entirely (rudy's -> rudys), every other non-alphanumeric run
+-- becomes one space. Names then also pair when their space-squashed folds
+-- are equal (H Mart/Hmart) or one side's brand tokens are a subset of the
+-- other's (Rudys <= rudys bar grill). Fuzzy pairs still REQUIRE >=1 shared
+-- evidence document — a similarly-named stranger never swallows a real loss.
+CREATE FUNCTION pg_temp.fold_name(text) RETURNS text
+LANGUAGE sql IMMUTABLE AS $fn$
+  SELECT btrim(regexp_replace(
+           regexp_replace(
+             regexp_replace(lower($1), '[''’‘ʼ]', '', 'g'),
+             '[^a-z0-9]+', ' ', 'g'),
+           '\s+', ' ', 'g'))
+$fn$;
+
+CREATE TEMP TABLE lost_cand AS
+SELECT e.entity_id, e.name, e.type, e.identity_key,
+       pg_temp.fold_name(e.name) AS folded
+FROM lost_entities le
+JOIN core_entities e ON e.entity_id = le.entity_id AND e.status = 'active';
+
+CREATE TEMP TABLE shadow_cand AS
+SELECT e.entity_id, e.name, e.type, e.identity_key,
+       pg_temp.fold_name(e.name) AS folded
+FROM core_entities e
+WHERE EXISTS (SELECT 1 FROM shadow_entity_docs sd
+              WHERE sd.entity_id = e.entity_id);
+
 CREATE TEMP TABLE resolve_shifts AS
 SELECT DISTINCT ON (pairs.old_entity_id)
   pairs.old_entity_id,
@@ -104,18 +135,24 @@ FROM (
      JOIN shadow_entity_docs sd ON sd.document_id = ad.document_id
       AND sd.entity_id = newe.entity_id
      WHERE ad.entity_id = olde.entity_id) AS doc_overlap
-  FROM lost_entities le
-  JOIN core_entities olde
-    ON olde.entity_id = le.entity_id AND olde.status = 'active'
-  JOIN core_entities newe
+  FROM lost_cand olde
+  JOIN shadow_cand newe
     ON newe.entity_id <> olde.entity_id
    AND newe.type = olde.type
-   AND EXISTS (SELECT 1 FROM shadow_entity_docs sd
-               WHERE sd.entity_id = newe.entity_id)
    AND (
      (NULLIF(olde.identity_key, '') IS NOT NULL
       AND newe.identity_key = olde.identity_key)
      OR lower(newe.name) = lower(olde.name)
+     -- punctuation/apostrophe/space fold: "glorias" = "gloria's",
+     -- "hmart" = "h mart"
+     OR (olde.folded <> '' AND newe.folded <> ''
+         AND replace(newe.folded, ' ', '') = replace(olde.folded, ' ', ''))
+     -- brand-token containment: one folded name's tokens are a subset of
+     -- the other's ("rudys" in "rudys bar grill"; "steins deli" in
+     -- "steins market and deli")
+     OR (olde.folded <> '' AND newe.folded <> ''
+         AND (string_to_array(newe.folded, ' ') <@ string_to_array(olde.folded, ' ')
+              OR string_to_array(olde.folded, ' ') <@ string_to_array(newe.folded, ' ')))
    )
 ) pairs
 -- an identity_key match pairs on its own; a bare name match must also share
