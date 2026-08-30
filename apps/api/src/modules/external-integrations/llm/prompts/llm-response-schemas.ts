@@ -46,13 +46,14 @@ export const SEARCH_QUERY_RESPONSE_JSON_SCHEMA = {
 
 export const CUISINE_EXTRACTION_RESPONSE_JSON_SCHEMA = {
   type: 'object',
-  description: 'Venue facts stated by an editorial summary',
+  description:
+    'Venue facts established by the venue name, editorial summary, and place types',
   properties: {
     cuisines: {
       type: 'array',
       items: { type: 'string' },
       description:
-        'Cuisines passing THE TRADITION TEST — the name of a cooking tradition a diner would give when asked "what kind of food do they make?"; empty when the summary supports none (the cheap error) — never a dish, diet, format, or quality stretched into one',
+        'Cuisines passing THE TRADITION TEST — the name of a cooking tradition a diner would give when asked "what kind of food do they make?"; a cuisine-shaped word in the venue NAME counts only when it claims the kitchen (never a product word like "French Bread", a proper name, or a homograph); empty when the evidence supports none (the cheap error) — never a dish, diet, format, or quality stretched into one',
     },
     attributes: {
       type: 'array',

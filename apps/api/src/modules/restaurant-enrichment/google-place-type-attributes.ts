@@ -370,50 +370,6 @@ export function isClassifiedGooglePlaceType(type: string): boolean {
   );
 }
 
-/**
- * PRODUCT-COUNTER VENUE KINDS (D5 venue-name cuisine lane, 2026-08-30).
- *
- * A cuisine word in a venue's NAME is right ~98% of the time
- * (plans/cuisine-name-signal-measurement.md); every measured failure is a
- * product-word homograph at a venue whose offer is a COUNTER PRODUCT —
- * baked goods, sweets, or drinks — where the cuisine word modifies the
- * product, not the kitchen ("Texas French Bread" the bakery, "Go Greek
- * Yogurt", "Jeremiah's Italian Ice", "Great American Cookies").
- *
- * This set names those venue-kind ATTRIBUTES (values of the non-cuisine
- * map above): when a place carries places_api evidence for any of them,
- * an uncorroborated name-derived cuisine claim is OUTVOTED in the
- * projection (place-attribute-projection.ts). It classifies Google's
- * venue taxonomy — never name words — so the homographs lose by vote,
- * not by a word list. Meal-service kinds (restaurant, bistro, diner,
- * cafe, deli, bars/pubs, every food-specific *_restaurant) stay out so
- * "Truth BBQ" (barbecue_restaurant) and "Chez Zee American Bistro" keep
- * their honest name signal. Measured cost of the conservative edge: a
- * handful of honest tradition-bakeries ("Poseidon Greek Bakery") lose
- * their name tag too — accepted; the homograph must never win.
- */
-export const PRODUCT_VENUE_KIND_ATTRIBUTE_NAMES: readonly string[] = [
-  'acai shop',
-  'bagel shop',
-  'bakery',
-  'brewery',
-  'cake shop',
-  'candy store',
-  'chocolate factory',
-  'chocolate shop',
-  'coffee roastery',
-  'coffee shop',
-  'coffee stand',
-  'confectionery',
-  'dessert restaurant',
-  'dessert shop',
-  'donut shop',
-  'ice cream shop',
-  'juice shop',
-  'pastry shop',
-  'winery',
-];
-
 export const GOOGLE_PLACE_TYPE_ATTRIBUTE_MAP: Record<string, string> = {
   ...GOOGLE_PLACE_CUISINE_TYPE_MAP,
   ...GOOGLE_PLACE_NON_CUISINE_TYPE_MAP,

@@ -14,6 +14,10 @@ import {
   rekeyEntityDimensionEventsToCanonical,
 } from '../reddit-collector/extraction-scope.service';
 import { LoggerService } from '../../../shared';
+import {
+  bannedMergeReasonClass,
+  refusedMergeHoldReason,
+} from '../../../shared/merge-reason-tripwire';
 import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
 import { LLMService } from '../../external-integrations/llm/llm.service';
 import { EntityAnchorRehomeService } from './entity-anchor-rehome.service';
@@ -124,7 +128,17 @@ export interface DedupeVerdictSubject {
   aName: string;
   bId: string;
   bName: string;
-  via: 'token-multiset+judge' | 'similarity+judge' | 'embedding+judge';
+  via:
+    | 'token-multiset+judge'
+    | 'similarity+judge'
+    | 'embedding+judge'
+    // Deterministic auto lanes — ledgered since 2026-08-30 (merge-batch
+    // audit action #4: the ~6 auto merges of the wave sweep wrote NO ledger
+    // row and were unauditable; every merge now records its verdict —
+    // outcome 'merge', reason naming the deterministic rule — BEFORE the
+    // effect, the same verdict-then-effect contract as the judge lane).
+    | 'number-auto'
+    | 'token-multiset-auto';
   /** Present on 'merge' verdicts only; a 'hold' orders nothing. */
   plan: ItemMergePlan | null;
 }
@@ -442,7 +456,12 @@ export class ItemDedupeMergeService {
           via: 'number',
         });
       } else {
-        await this.mergeItemPair(sweepType, pair.a_id, pair.b_id);
+        await this.mergeItemPair(
+          sweepType,
+          pair,
+          'number-auto',
+          'deterministic number-variant fold (food-lemma: same item up to a numeral)',
+        );
         consumedByNumberLane.add(pair.a_id);
         consumedByNumberLane.add(pair.b_id);
       }
@@ -588,7 +607,12 @@ export class ItemDedupeMergeService {
           via: 'auto',
         });
       } else {
-        await this.mergeItemPair(sweepType, pair.a_id, pair.b_id);
+        await this.mergeItemPair(
+          sweepType,
+          pair,
+          'token-multiset-auto',
+          'deterministic identical token multiset (canonical fold, stopwords dropped, accents agree)',
+        );
         // Same stale-snapshot guard as the number lane (R4): an id this
         // merge consumed must not reach the judge lane below.
         consumedByNumberLane.add(pair.a_id);
@@ -703,19 +727,21 @@ export class ItemDedupeMergeService {
 
   /** Full merge: pick winner by evidence, fold connections, bank the loser's
    *  name+surfaces on the winner, archive the loser. The deterministic lanes'
-   *  entry point; the judge lane goes through settleDedupeVerdict so the plan
-   *  is stored BEFORE the effect runs. */
+   *  entry point — SAME verdict-then-effect contract as the judge lane
+   *  (merge-batch audit action #4): the plan is stored as a claim_verdicts
+   *  row (outcome 'merge', reason naming the deterministic rule) BEFORE the
+   *  effect runs, so every auto merge is auditable and crash-resumable. */
   private async mergeItemPair(
     sweepType: DedupeSweepType,
-    idA: string,
-    idB: string,
+    pair: { a_id: string; a_name: string; b_id: string; b_name: string },
+    via: 'number-auto' | 'token-multiset-auto',
+    reason: string,
   ): Promise<void> {
-    if (idA === idB) {
+    if (pair.a_id === pair.b_id) {
       return; // self-merge annihilates the ledger (round-11 D1)
     }
-    await this.executeItemMergePlan(
-      await this.planItemMerge(sweepType, idA, idB),
-    );
+    const plan = await this.planItemMerge(sweepType, pair.a_id, pair.b_id);
+    await this.settleDedupeVerdict(pair, via, 'merge', reason, plan);
   }
 
   /** Evidence behind a name, per vocabulary: an item's evidence is its
@@ -1077,11 +1103,23 @@ export class ItemDedupeMergeService {
     });
     if (!due.length) return;
 
-    // D2 context standard: the sweep judge used to see two bare names —
-    // which is why it could never safely unify the omakase swarm. Every
-    // hearing now carries each side's home restaurants and a same-place
-    // flag (shared restaurant_id), the evidence the home-restaurant rule
-    // reads.
+    // D2 context standard: the sweep judge used to see two bare names.
+    // Every hearing now carries each side's home restaurants — the evidence
+    // the venue-name rule and the doubt-says-new rule read.
+    //
+    // NO same_place FLAG ON SWEEP HEARINGS (merge-batch audit 2026-08-30,
+    // root cause #1): the sweep judges pairs of corpus-wide AGGREGATES, and
+    // the old flag was footprint OVERLAP (place_ids ∩ ≠ ∅) — true for any
+    // specific dish sharing one venue with a 22-restaurant generic. The
+    // judge read it as a same-restaurant license and invented the banned
+    // "category/specification/format fold, same restaurant" classes — the
+    // 47 wrong merges. Under the corpus-global law (entity merge = identity
+    // only; same-restaurant unification belongs to extraction pro-forms,
+    // plans/named-offering-fragmentation-study.md §4) NO honest version of
+    // the flag licenses anything a sweep fold may do, so it is not sent at
+    // all. The birth judge's same_place (thread restaurant vs candidate
+    // homes, entity-resolution.service.ts) is a different, honest fact and
+    // stays — it scopes the venue-name identity rule for MENTION hearings.
     const dueIds = Array.from(
       new Set(due.flatMap((pair) => [pair.a_id, pair.b_id])),
     );
@@ -1113,12 +1151,6 @@ export class ItemDedupeMergeService {
        WHERE c.food_id = ANY(${dueIds}::uuid[])
        GROUP BY c.food_id`);
     const homesById = new Map(homeRows.map((r) => [r.food_id, r]));
-    const sharesHome = (aId: string, bId: string): boolean | undefined => {
-      const a = homesById.get(aId)?.place_ids ?? [];
-      const b = new Set(homesById.get(bId)?.place_ids ?? []);
-      if (!a.length || !b.size) return undefined;
-      return a.some((placeId) => b.has(placeId));
-    };
 
     // THE REAL KIND (coverage audit F-8): the judge prompt carries an
     // ingredient doctrine section — sending an ingredient pair as 'item'
@@ -1133,7 +1165,6 @@ export class ItemDedupeMergeService {
             id: 1,
             name: pair.b_name,
             homePlaces: homesById.get(pair.b_id)?.homes ?? undefined,
-            samePlace: sharesHome(pair.a_id, pair.b_id),
           },
         ],
       })),
@@ -1162,7 +1193,18 @@ export class ItemDedupeMergeService {
         via,
       });
       const plan = await this.planItemMerge(sweepType, pair.a_id, pair.b_id);
-      await this.settleDedupeVerdict(pair, via, 'merge', reason, plan);
+      const settled = await this.settleDedupeVerdict(
+        pair,
+        via,
+        'merge',
+        reason,
+        plan,
+      );
+      if (settled !== 'merge') {
+        // The reason tripwire refused the merge and recorded a hold.
+        summary.judgeRejected += 1;
+        continue;
+      }
       consumed.add(pair.a_id);
       consumed.add(pair.b_id);
       summary.judgeMerged += 1;
@@ -1193,14 +1235,33 @@ export class ItemDedupeMergeService {
     return new Set(rows.map((row) => row.claim_key));
   }
 
-  /** Commit the verdict, THEN obey it (amendment (c)). */
+  /** Commit the verdict, THEN obey it (amendment (c)).
+   *
+   *  THE REASON TRIPWIRE runs HERE, at the recording chokepoint, so every
+   *  lane that can order a merge passes through it: a merge whose stated
+   *  ground names a banned class (category/specification/format fold,
+   *  broader/narrower, same-restaurant fold) is refused and recorded as a
+   *  fail-closed 'hold' with a loud log — the 2026-08-30 batch proved the
+   *  judge announces its banned folds in its own reasons. */
   private async settleDedupeVerdict(
     pair: { a_id: string; a_name: string; b_id: string; b_name: string },
     via: DedupeVerdictSubject['via'],
     outcome: 'merge' | 'hold',
     reason: string,
     plan: ItemMergePlan | null,
-  ): Promise<void> {
+  ): Promise<'merge' | 'hold'> {
+    if (outcome === 'merge') {
+      const banned = bannedMergeReasonClass(reason);
+      if (banned) {
+        this.logger.error(
+          'MERGE REFUSED — judge reason names a banned class; recording hold',
+          { a: pair.a_name, b: pair.b_name, via, bannedClass: banned, reason },
+        );
+        outcome = 'hold';
+        reason = refusedMergeHoldReason(banned, reason);
+        plan = null;
+      }
+    }
     const claimKey = entityDedupeLane.canonicalClaimKey({
       entityId: pair.a_id,
       otherEntityId: pair.b_id,
@@ -1230,6 +1291,7 @@ export class ItemDedupeMergeService {
       ENTITY_DEDUPE_RULE_VERSION,
       entityDedupeLane.keyFoldVersion,
     );
+    return outcome;
   }
 
   /**

@@ -1390,21 +1390,30 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  async extractCuisineFromSummary(
-    summary: string,
-  ): Promise<LLMCuisineExtractionResult> {
-    const trimmedSummary = summary?.trim() ?? '';
-    if (!trimmedSummary) {
+  async extractVenueCuisineFacts(input: {
+    /** The venue's own name — first-class evidence (owner-ruled 2026-08-30). */
+    name: string;
+    summary?: string | null;
+    types?: string[];
+  }): Promise<LLMCuisineExtractionResult> {
+    const trimmedName = input.name?.trim() ?? '';
+    const trimmedSummary = input.summary?.trim() ?? '';
+    if (!trimmedName && !trimmedSummary) {
       return { cuisines: [], attributes: [] };
     }
 
-    this.logger.info('Extracting cuisines from summary', {
+    this.logger.info('Extracting venue cuisine facts', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'extract_cuisine_summary',
+      nameLength: trimmedName.length,
       summaryLength: trimmedSummary.length,
     });
 
-    const prompt = this.buildCuisineExtractionPrompt(trimmedSummary);
+    const prompt = this.buildCuisineExtractionPrompt(
+      trimmedName,
+      trimmedSummary,
+      input.types ?? [],
+    );
     // Cuisine extraction is a simple per-restaurant classify → cheap Lite tier.
     // Model comes from THE caller profile (gemini-caller-profiles.ts) —
     // one table, keyed by the ledger's caller column.
@@ -2695,8 +2704,12 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     return JSON.stringify({ query });
   }
 
-  private buildCuisineExtractionPrompt(summary: string): string {
-    return JSON.stringify({ summary });
+  private buildCuisineExtractionPrompt(
+    name: string,
+    summary: string,
+    types: string[],
+  ): string {
+    return JSON.stringify({ name, summary, types });
   }
 
   private normalizeSearchQueryForCache(query: string): string {

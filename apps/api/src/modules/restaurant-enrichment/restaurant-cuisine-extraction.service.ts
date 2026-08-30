@@ -20,8 +20,8 @@ import { join } from 'path';
 
 /**
  * INPUT-FINGERPRINT (S4): the hash that keys one completed venue-facts
- * computation — the editorial summary text, the Google place types, and the
- * prompt text itself. The reconciler (worker re-enqueues after every
+ * computation — the venue name, the editorial summary text, the Google place
+ * types, and the prompt text itself. The reconciler (worker re-enqueues after every
  * enrichment/refresh) skips a restaurant whose fingerprint is unchanged and
  * recomputes when any input or the prompt changes. This replaces the
  * once-ever `extractedAt` gate (F369): the machinery F369's comment said
@@ -65,7 +65,7 @@ type CuisineExtractionMetadata = {
   /** S4: their resolved place_attribute entity ids (active or pending). */
   editorialAttributeIds?: string[];
   matchedTypes?: string[];
-  /** S4: hash of (summary, types, prompt) this computation answered. */
+  /** Hash of (name, summary, types, prompt) this computation answered. */
   inputFingerprint?: string;
 };
 
@@ -139,7 +139,9 @@ export class PlaceCuisineExtractionService {
     const googlePlaces = this.toRecord(metadata.googlePlaces);
     const placeTypes = this.extractPlaceTypes(googlePlaces);
     const summaryText = this.extractEditorialSummary(googlePlaces);
+    const venueName = (entity.name ?? '').trim();
     const inputFingerprint = this.computeInputFingerprint(
+      venueName,
       summaryText,
       placeTypes,
     );
@@ -186,12 +188,19 @@ export class PlaceCuisineExtractionService {
     let rawAttributes: string[] = [];
     let source: CuisineExtractionSource;
 
-    if (summaryText) {
-      // We HAD evidence (an editorial summary) and asked the LLM — the
-      // summary is the venue-facts source (cuisines AND attributes), so it
-      // is consulted even when place types already yielded cuisines.
-      const llmResult =
-        await this.llmService.extractCuisineFromSummary(summaryText);
+    if (venueName || summaryText) {
+      // ONE CUISINE JUDGE, ALL SIGNALS (owner-ruled 2026-08-30): the venue
+      // NAME is first-class evidence alongside the editorial summary and
+      // place types — the judge reads all three and rules whether each
+      // cuisine-shaped name word claims the KITCHEN'S TRADITION (never a
+      // product word, proper name, or homograph). A place always has a
+      // name, so the judge is always asked; the deterministic name-vote
+      // lane this replaces is deleted.
+      const llmResult = await this.llmService.extractVenueCuisineFacts({
+        name: venueName,
+        summary: summaryText,
+        types: placeTypes,
+      });
       rawCuisines = this.unionStringArrays(
         rawCuisines,
         llmResult.cuisines ?? [],
@@ -205,14 +214,12 @@ export class PlaceCuisineExtractionService {
     } else if (rawCuisines.length) {
       source = 'types';
     } else {
-      // NO EVIDENCE: no place types matched and there is no editorial summary
-      // to ask the LLM with — the common case for a freshly-grounded
-      // restaurant whose Places record has no summary yet. Writing a
-      // 'none'/extractedAt record here would make the once-ever gate at :104
-      // stamp it done PERMANENTLY, so when refreshStaleLocations re-polls and
-      // a summary finally appears, this restaurant would never be re-asked.
-      // Write NO record: the absence IS "not yet asked", and the next run
-      // re-tries once first evidence exists (F4948).
+      // NO EVIDENCE: no name, no summary, and no place types matched — a
+      // degenerate row (places always carry a name; this survives only as
+      // the F4948 safety shape). Writing a 'none'/extractedAt record here
+      // would make the fingerprint gate stamp it done PERMANENTLY, so when
+      // evidence later appears this place would never be re-asked. Write NO
+      // record: the absence IS "not yet asked" (F4948).
       this.logger.debug('Cuisine extraction deferred (no evidence yet)', {
         placeId: entity.entityId,
         source: options.source,
@@ -290,14 +297,19 @@ export class PlaceCuisineExtractionService {
     });
   }
 
-  /** S4: the (summary, types, prompt) hash the fingerprint gate compares. */
+  /** The (name, summary, types, prompt) hash the fingerprint gate compares.
+   *  The NAME joined the judge's inputs 2026-08-30 (one-cuisine-judge
+   *  rederivation), so a renamed place — or this fingerprint-shape change
+   *  itself — recomputes, exactly like a prompt edit. */
   private computeInputFingerprint(
+    venueName: string,
     summaryText: string | null,
     placeTypes: string[],
   ): string {
     return createHash('sha256')
       .update(
         JSON.stringify({
+          name: venueName,
           summary: summaryText ?? '',
           types: [...placeTypes].sort(),
           prompt: CUISINE_PROMPT_FINGERPRINT,

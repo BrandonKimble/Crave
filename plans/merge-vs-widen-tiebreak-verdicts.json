@@ -1,0 +1,1575 @@
+{
+  "generatedAt": "2026-08-30T21:10:41.105319Z",
+  "ruleVersions": {
+    "attribute": 4,
+    "ingredient": 5
+  },
+  "rows": [
+    {
+      "kind": "attribute",
+      "fromId": "7332a24e-d8a3-48ce-bdcd-f9eedc677b68",
+      "fromName": "absinthe bar",
+      "toId": "f26bc48f-ce90-4979-bb67-d69c6ef25e20",
+      "toName": "bar",
+      "verdict": "reject",
+      "reason": "a general bar is unlikely to carry the niche spirit and traditional preparation ritual promised by the absinthe bar filter"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "8042bc5c-9d3f-40f8-ad43-71884f2ccf7e",
+      "fromName": "acai shop",
+      "toId": "a68d3979-7831-40cb-a511-44e45293a68e",
+      "toName": "sandwich shop",
+      "verdict": "reject",
+      "reason": "a sandwich shop serves savory bread-based meals rather than the fruit-based bowls found at an acai shop"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "b693becc-a4ce-4b31-b35e-c7f3218a816d",
+      "fromName": "affordable",
+      "toId": "fb707b6c-770a-4c3d-b703-fde255179b85",
+      "toName": "modern",
+      "verdict": "reject",
+      "reason": "a modern establishment can be prohibitively expensive and fail the user's budget constraint"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "3b243eb1-137e-4230-bbd4-e2f17e5d2b5c",
+      "fromName": "bagel shop",
+      "toId": "a68d3979-7831-40cb-a511-44e45293a68e",
+      "toName": "sandwich shop",
+      "verdict": "reject",
+      "reason": "a general sandwich shop may focus on heroes or paninis and lack the specific boiled-and-baked bagels requested"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "3b243eb1-137e-4230-bbd4-e2f17e5d2b5c",
+      "fromName": "bagel shop",
+      "toId": "fea816d8-1756-417a-8c88-60f541cb4b61",
+      "toName": "trendy",
+      "verdict": "reject",
+      "reason": "a trendy lounge or bistro will not satisfy a specific craving for boiled-and-baked dough rings"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "e3f98478-36da-4ef0-b987-b8e37c0fc41f",
+      "fromName": "bakery",
+      "toId": "ed49d85f-5613-4944-9b2e-24644e8cebeb",
+      "toName": "cake shop",
+      "verdict": "satisfies",
+      "reason": "a shop specializing in cakes is a specific type of bakery that fulfills the general search for baked goods"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "e3f98478-36da-4ef0-b987-b8e37c0fc41f",
+      "fromName": "bakery",
+      "toId": "830bdfa2-0214-43a6-af51-a359716d757a",
+      "toName": "confectionery",
+      "verdict": "reject",
+      "reason": "confectioneries focus on sugar-based candies and sweets which represent a different food identity than flour-based baked goods"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "e3f98478-36da-4ef0-b987-b8e37c0fc41f",
+      "fromName": "bakery",
+      "toId": "00e01382-8949-4d6c-a0b8-e1dc020dfe3a",
+      "toName": "hot tub",
+      "verdict": "reject",
+      "reason": "a bakery is a food production establishment and shares no functional or categorical identity with a hot tub facility"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "e3f98478-36da-4ef0-b987-b8e37c0fc41f",
+      "fromName": "bakery",
+      "toId": "1222f525-73ca-4d79-9523-bfc41a00ed9d",
+      "toName": "pastry shop",
+      "verdict": "satisfies",
+      "reason": "a pastry shop is a specialized bakery that fulfills the promise of baked goods"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "e3f98478-36da-4ef0-b987-b8e37c0fc41f",
+      "fromName": "bakery",
+      "toId": "a68d3979-7831-40cb-a511-44e45293a68e",
+      "toName": "sandwich shop",
+      "verdict": "reject",
+      "reason": "a sandwich shop focuses on savory meals and may not offer the cakes or pastries promised by a bakery tag"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "f26bc48f-ce90-4979-bb67-d69c6ef25e20",
+      "fromName": "bar",
+      "toId": "7332a24e-d8a3-48ce-bdcd-f9eedc677b68",
+      "toName": "absinthe bar",
+      "verdict": "satisfies",
+      "reason": "an absinthe bar is a specific type of bar that fulfills the general request for a drinking establishment"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "f26bc48f-ce90-4979-bb67-d69c6ef25e20",
+      "fromName": "bar",
+      "toId": "202ac270-dbcc-4d5e-bfc5-23d20368433d",
+      "toName": "bar and grill",
+      "verdict": "satisfies",
+      "reason": "a bar and grill is a specific type of bar that fulfills the general request for a drinking establishment"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "f26bc48f-ce90-4979-bb67-d69c6ef25e20",
+      "fromName": "bar",
+      "toId": "686db312-5ed8-4395-8c19-e4178b2adc29",
+      "toName": "champagne bar",
+      "verdict": "satisfies",
+      "reason": "a champagne bar is a specific type of bar that fulfills the general request for a drinking establishment"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "f26bc48f-ce90-4979-bb67-d69c6ef25e20",
+      "fromName": "bar",
+      "toId": "7138b400-8ddd-4e37-9ea9-d0c1580a92c0",
+      "toName": "cocktail bar",
+      "verdict": "satisfies",
+      "reason": "a cocktail bar is a specific type of bar that fulfills the general request for a drinking establishment"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "f26bc48f-ce90-4979-bb67-d69c6ef25e20",
+      "fromName": "bar",
+      "toId": "21ef2883-8773-47d3-a40d-e1595afea33b",
+      "toName": "pub",
+      "verdict": "satisfies",
+      "reason": "a pub is a specific type of bar that serves the core purpose of providing drinks in a social setting"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "202ac270-dbcc-4d5e-bfc5-23d20368433d",
+      "fromName": "bar and grill",
+      "toId": "f26bc48f-ce90-4979-bb67-d69c6ef25e20",
+      "toName": "bar",
+      "verdict": "reject",
+      "reason": "a general bar may not have the kitchen or full meal service promised by the grill attribute"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "a349add5-42a3-4c20-80fb-be8a68eb55ad",
+      "fromName": "bar food",
+      "toId": "21ef2883-8773-47d3-a40d-e1595afea33b",
+      "toName": "pub",
+      "verdict": "satisfies",
+      "reason": "pubs are fundamentally defined by serving the casual fare expected by someone searching for bar food"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "41a6b6ed-4b7f-40bc-81ee-83f8d06aa5df",
+      "fromName": "brewpub",
+      "toId": "21ef2883-8773-47d3-a40d-e1595afea33b",
+      "toName": "pub",
+      "verdict": "reject",
+      "reason": "a general pub may not brew its own beer on-site as promised by the brewpub filter"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "949581d9-0d0b-429a-91cb-1a361ef9d800",
+      "fromName": "buttery",
+      "toId": "f4384bb3-8e6f-48ba-b81c-1c0e83e33233",
+      "toName": "tender",
+      "verdict": "reject",
+      "reason": "a soft or tender texture is a distinct physical property that does not imply the presence of a high-fat buttery flavor profile"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "ed49d85f-5613-4944-9b2e-24644e8cebeb",
+      "fromName": "cake shop",
+      "toId": "e3f98478-36da-4ef0-b987-b8e37c0fc41f",
+      "toName": "bakery",
+      "verdict": "reject",
+      "reason": "a general bakery may focus on breads or savory items and lack the specialized cake selection promised by a cake shop tag"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "ed49d85f-5613-4944-9b2e-24644e8cebeb",
+      "fromName": "cake shop",
+      "toId": "1222f525-73ca-4d79-9523-bfc41a00ed9d",
+      "toName": "pastry shop",
+      "verdict": "satisfies",
+      "reason": "a pastry shop typically carries cakes as part of its standard repertoire of sweet baked goods"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "686db312-5ed8-4395-8c19-e4178b2adc29",
+      "fromName": "champagne bar",
+      "toId": "f26bc48f-ce90-4979-bb67-d69c6ef25e20",
+      "toName": "bar",
+      "verdict": "reject",
+      "reason": "a general bar may lack the specialized selection of sparkling wines promised by the champagne bar filter"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "19f39f68-8b57-4c38-b672-12a5bbb35eb5",
+      "fromName": "cheesy",
+      "toId": "878cabee-ce41-4018-8036-360ad02958f7",
+      "toName": "gooey",
+      "verdict": "reject",
+      "reason": "gooey textures can come from caramel or syrups without containing any cheese"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "f6c1afd5-6ed9-44cc-b74b-f74c34a9e7f8",
+      "fromName": "chewy",
+      "toId": "16cc2388-56c9-4c6b-8687-16cddc38bb34",
+      "toName": "fudgy",
+      "verdict": "satisfies",
+      "reason": "chewy and fudgy are adjacent shades of the same dense and resistant food texture"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "f6c1afd5-6ed9-44cc-b74b-f74c34a9e7f8",
+      "fromName": "chewy",
+      "toId": "878cabee-ce41-4018-8036-360ad02958f7",
+      "toName": "gooey",
+      "verdict": "satisfies",
+      "reason": "the searcher receives an adjacent shade of the same dense and pliable texture class"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "05bf06bc-9db9-4280-830a-49776a518e1b",
+      "fromName": "chocolate shop",
+      "toId": "1222f525-73ca-4d79-9523-bfc41a00ed9d",
+      "toName": "pastry shop",
+      "verdict": "reject",
+      "reason": "a pastry shop may not have the specialized selection of truffles and artisanal chocolates promised by a chocolate shop tag"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "cbbf5522-7cec-490d-8a9e-3cd34ae33e6e",
+      "fromName": "citrus",
+      "toId": "397faa7a-e2e8-4986-abb4-5cd06b25fd77",
+      "toName": "lemony",
+      "verdict": "satisfies",
+      "reason": "lemon is a specific and common instance of the broader citrus flavor profile"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "cbbf5522-7cec-490d-8a9e-3cd34ae33e6e",
+      "fromName": "citrus",
+      "toId": "2d7191f9-7e1f-46ed-bea4-47fa84abd5b9",
+      "toName": "not overly sweet",
+      "verdict": "reject",
+      "reason": "a dish can be savory or bitter without containing any citrus fruit"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "cbbf5522-7cec-490d-8a9e-3cd34ae33e6e",
+      "fromName": "citrus",
+      "toId": "232f468a-d507-45b1-a5ed-0b787d9875e8",
+      "toName": "organic",
+      "verdict": "reject",
+      "reason": "organic status describes farming methods rather than a specific flavor profile"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "cbbf5522-7cec-490d-8a9e-3cd34ae33e6e",
+      "fromName": "citrus",
+      "toId": "7aefdaf8-bdb4-4a11-a92f-fc1f6d6de210",
+      "toName": "sour",
+      "verdict": "reject",
+      "reason": "sourness can come from vinegar or fermentation and lacks the specific fruit profile of citrus"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "7138b400-8ddd-4e37-9ea9-d0c1580a92c0",
+      "fromName": "cocktail bar",
+      "toId": "f26bc48f-ce90-4979-bb67-d69c6ef25e20",
+      "toName": "bar",
+      "verdict": "reject",
+      "reason": "a general bar might only serve beer and wine without the spirits or mixed drinks promised by the cocktail bar filter"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "a1442070-08d9-4b34-bc3e-814f0c2c4f8e",
+      "fromName": "cold",
+      "toId": "16d9b342-76f8-43b4-b913-d0b239d38ebd",
+      "toName": "iced",
+      "verdict": "satisfies",
+      "reason": "an iced item is by definition a cold item"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "a1442070-08d9-4b34-bc3e-814f0c2c4f8e",
+      "fromName": "cold",
+      "toId": "0d9b9ac2-b491-4d87-8ba5-e90b15a957f1",
+      "toName": "intense",
+      "verdict": "reject",
+      "reason": "intensity is a flavor or sensory profile that does not guarantee the low temperature promised"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "a1442070-08d9-4b34-bc3e-814f0c2c4f8e",
+      "fromName": "cold",
+      "toId": "7890b26e-6130-4666-9d4b-e6d93e3cf51d",
+      "toName": "old school",
+      "verdict": "reject",
+      "reason": "a temperature requirement is not fulfilled by a promise about a traditional or nostalgic style"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "a1442070-08d9-4b34-bc3e-814f0c2c4f8e",
+      "fromName": "cold",
+      "toId": "e22a1a1c-9e8d-4ecf-be4e-04eb6103d3c0",
+      "toName": "warm",
+      "verdict": "reject",
+      "reason": "warm rolls are the opposite temperature of the cold items requested"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "830bdfa2-0214-43a6-af51-a359716d757a",
+      "fromName": "confectionery",
+      "toId": "e3f98478-36da-4ef0-b987-b8e37c0fc41f",
+      "toName": "bakery",
+      "verdict": "reject",
+      "reason": "a bakery specializes in breads and pastries rather than the sugar-work and candies expected from a confectionery"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "830bdfa2-0214-43a6-af51-a359716d757a",
+      "fromName": "confectionery",
+      "toId": "1222f525-73ca-4d79-9523-bfc41a00ed9d",
+      "toName": "pastry shop",
+      "verdict": "reject",
+      "reason": "a pastry shop focuses on baked dough products which is a different category of sweets than the sugar-based candies found in a confectionery"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "7200a4ab-8302-414f-a913-63746c0e8c60",
+      "fromName": "creamy",
+      "toId": "4b48fd58-a677-4b11-a1e6-b120cf0a7bbc",
+      "toName": "soft",
+      "verdict": "reject",
+      "reason": "soft solids like rolls or ice do not deliver the liquid-like silkiness promised by creamy"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "b74fcba3-4e65-409c-986b-81bb87e9c8f7",
+      "fromName": "deli",
+      "toId": "90677d09-9766-4089-8d62-b63d519271f8",
+      "toName": "delivery",
+      "verdict": "reject",
+      "reason": "a delivery service is a logistics method and does not provide the sandwiches or specialty meats promised by a deli"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "b74fcba3-4e65-409c-986b-81bb87e9c8f7",
+      "fromName": "deli",
+      "toId": "74529285-67cf-4b71-a303-51e12b089571",
+      "toName": "delivery only",
+      "verdict": "reject",
+      "reason": "a delivery-only business model does not provide the food identity or counter service promised by a deli"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "b74fcba3-4e65-409c-986b-81bb87e9c8f7",
+      "fromName": "deli",
+      "toId": "afb66d5d-0013-49f2-9d87-a84a0d796b1c",
+      "toName": "free delivery",
+      "verdict": "reject",
+      "reason": "a logistics service like free delivery does not guarantee the specific food category of a deli"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "b74fcba3-4e65-409c-986b-81bb87e9c8f7",
+      "fromName": "deli",
+      "toId": "852dbcab-2631-4da7-9c42-b5c105cec108",
+      "toName": "lunch specials",
+      "verdict": "reject",
+      "reason": "a pricing promotion like lunch specials does not define the identity of a deli establishment"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "b74fcba3-4e65-409c-986b-81bb87e9c8f7",
+      "fromName": "deli",
+      "toId": "a68d3979-7831-40cb-a511-44e45293a68e",
+      "toName": "sandwich shop",
+      "verdict": "satisfies",
+      "reason": "a sandwich shop fulfills the primary expectation of a deli for quick-service handheld meals"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "8bfc66fb-ad03-48f6-b9a8-505f16e89a7b",
+      "fromName": "delicate",
+      "toId": "4b48fd58-a677-4b11-a1e6-b120cf0a7bbc",
+      "toName": "soft",
+      "verdict": "satisfies",
+      "reason": "soft items like cinnamon rolls deliver the light and gentle physical experience promised by delicate"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "8bfc66fb-ad03-48f6-b9a8-505f16e89a7b",
+      "fromName": "delicate",
+      "toId": "f4384bb3-8e6f-48ba-b81c-1c0e83e33233",
+      "toName": "tender",
+      "verdict": "satisfies",
+      "reason": "tender meats deliver the gentle and refined physical experience promised by delicate"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "90677d09-9766-4089-8d62-b63d519271f8",
+      "fromName": "delivery",
+      "toId": "b74fcba3-4e65-409c-986b-81bb87e9c8f7",
+      "toName": "deli",
+      "verdict": "reject",
+      "reason": "a deli is a food category and does not guarantee the off-site transport service promised by the delivery filter"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "74529285-67cf-4b71-a303-51e12b089571",
+      "fromName": "delivery only",
+      "toId": "b74fcba3-4e65-409c-986b-81bb87e9c8f7",
+      "toName": "deli",
+      "verdict": "reject",
+      "reason": "a deli is a food category and does not guarantee the specific lack of dine-in options promised by the delivery-only filter"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "1e1e07f5-6d6a-4e36-8a3f-b2c9d8c44417",
+      "fromName": "eclectic",
+      "toId": "fb707b6c-770a-4c3d-b703-fde255179b85",
+      "toName": "modern",
+      "verdict": "satisfies",
+      "reason": "modernity and eclectic curation are overlapping shades of a contemporary dining atmosphere"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "08630647-825b-439d-8a47-461cf61a7f3d",
+      "fromName": "expensive",
+      "toId": "fea816d8-1756-417a-8c88-60f541cb4b61",
+      "toName": "trendy",
+      "verdict": "reject",
+      "reason": "many trendy spots are casual or mid-priced and do not meet the specific promise of a high-end luxury experience"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "4bc12790-8e9a-4e4f-b1fc-18f6dd73fda2",
+      "fromName": "falafel",
+      "toId": "b6796c46-d905-48dd-986b-0a956f276077",
+      "toName": "kebab shop",
+      "verdict": "reject",
+      "reason": "tie-break law: falafel is a different food than the kebab family \u2014 a cross-food identity difference"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "d40c6269-0b8a-42f5-9eea-406d546bccc8",
+      "fromName": "fluffy",
+      "toId": "4b48fd58-a677-4b11-a1e6-b120cf0a7bbc",
+      "toName": "soft",
+      "verdict": "satisfies",
+      "reason": "soft items like cinnamon rolls deliver the airy texture promised by fluffy"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "afb66d5d-0013-49f2-9d87-a84a0d796b1c",
+      "fromName": "free delivery",
+      "toId": "b74fcba3-4e65-409c-986b-81bb87e9c8f7",
+      "toName": "deli",
+      "verdict": "reject",
+      "reason": "a deli is a food category that may or may not offer the specific financial perk of free delivery"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "e8af29f6-e344-4301-bd93-f9c72da99534",
+      "fromName": "frozen drink",
+      "toId": "16d9b342-76f8-43b4-b913-d0b239d38ebd",
+      "toName": "iced",
+      "verdict": "reject",
+      "reason": "a drink with ice cubes does not deliver the blended slushy texture of a frozen drink"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "16cc2388-56c9-4c6b-8687-16cddc38bb34",
+      "fromName": "fudgy",
+      "toId": "f6c1afd5-6ed9-44cc-b74b-f74c34a9e7f8",
+      "toName": "chewy",
+      "verdict": "satisfies",
+      "reason": "fudgy and chewy are adjacent shades of the same dense and resistant food texture"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "16cc2388-56c9-4c6b-8687-16cddc38bb34",
+      "fromName": "fudgy",
+      "toId": "878cabee-ce41-4018-8036-360ad02958f7",
+      "toName": "gooey",
+      "verdict": "satisfies",
+      "reason": "fudgy and gooey are adjacent shades of a dense and rich dessert texture"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "16cc2388-56c9-4c6b-8687-16cddc38bb34",
+      "fromName": "fudgy",
+      "toId": "38f4753f-e233-4272-806f-4a59be425226",
+      "toName": "indulgent",
+      "verdict": "reject",
+      "reason": "indulgent is a broad category of treats that includes many textures other than dense fudge"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "16cc2388-56c9-4c6b-8687-16cddc38bb34",
+      "fromName": "fudgy",
+      "toId": "586f4ed7-9824-495b-a5c5-32b582d02c17",
+      "toName": "meaty",
+      "verdict": "reject",
+      "reason": "meaty and fudgy describe entirely different food categories and ingredient bases"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "16cc2388-56c9-4c6b-8687-16cddc38bb34",
+      "fromName": "fudgy",
+      "toId": "dba943d0-b79b-47ac-a01b-b0f2235c329f",
+      "toName": "rich",
+      "verdict": "satisfies",
+      "reason": "fudgy and rich are adjacent shades of the same heavy and concentrated flavor experience"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "1ce3f4dd-8f40-407e-9f59-774cb712d926",
+      "fromName": "funky",
+      "toId": "fea816d8-1756-417a-8c88-60f541cb4b61",
+      "toName": "trendy",
+      "verdict": "satisfies",
+      "reason": "a trendy spot delivers the same contemporary social energy promised by a funky label"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "1a7019ce-c27c-4431-90f8-5ba216edea1b",
+      "fromName": "gastropub",
+      "toId": "21ef2883-8773-47d3-a40d-e1595afea33b",
+      "toName": "pub",
+      "verdict": "reject",
+      "reason": "a general pub may offer standard snacks rather than the elevated culinary focus promised by the gastropub filter"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "878cabee-ce41-4018-8036-360ad02958f7",
+      "fromName": "gooey",
+      "toId": "19f39f68-8b57-4c38-b672-12a5bbb35eb5",
+      "toName": "cheesy",
+      "verdict": "satisfies",
+      "reason": "melted cheese is a primary and expected source of a gooey food texture"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "878cabee-ce41-4018-8036-360ad02958f7",
+      "fromName": "gooey",
+      "toId": "f6c1afd5-6ed9-44cc-b74b-f74c34a9e7f8",
+      "toName": "chewy",
+      "verdict": "satisfies",
+      "reason": "the searcher receives an adjacent shade of the same dense and pliable texture class"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "878cabee-ce41-4018-8036-360ad02958f7",
+      "fromName": "gooey",
+      "toId": "16cc2388-56c9-4c6b-8687-16cddc38bb34",
+      "toName": "fudgy",
+      "verdict": "satisfies",
+      "reason": "gooey and fudgy are adjacent shades of a dense and rich dessert texture"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "878cabee-ce41-4018-8036-360ad02958f7",
+      "fromName": "gooey",
+      "toId": "0436e849-389e-48b4-9ae7-314d739bc2fb",
+      "toName": "juicy",
+      "verdict": "reject",
+      "reason": "a liquid-rich meat or fruit does not deliver the viscous semi-solid promise of a gooey item"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "878cabee-ce41-4018-8036-360ad02958f7",
+      "fromName": "gooey",
+      "toId": "2d550898-bacb-4b87-bd13-694c87375686",
+      "toName": "sweet",
+      "verdict": "reject",
+      "reason": "a flavor profile does not guarantee the specific viscous texture promised"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "970451e8-bfda-4a9e-b017-e55ed1badb4e",
+      "fromName": "grass fed",
+      "toId": "586f4ed7-9824-495b-a5c5-32b582d02c17",
+      "toName": "meaty",
+      "verdict": "reject",
+      "reason": "a promise about animal diet is not fulfilled by a general description of food volume or flavor"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "970451e8-bfda-4a9e-b017-e55ed1badb4e",
+      "fromName": "grass fed",
+      "toId": "de853b60-a4ac-492b-907e-94ce1ac5b8d7",
+      "toName": "no preservatives",
+      "verdict": "reject",
+      "reason": "a promise about animal diet is not fulfilled by a promise about additive-free processing"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "970451e8-bfda-4a9e-b017-e55ed1badb4e",
+      "fromName": "grass fed",
+      "toId": "c0455ba6-3ea0-4f47-afa7-605d425970bd",
+      "toName": "non-gmo",
+      "verdict": "reject",
+      "reason": "a promise about animal diet is not fulfilled by a promise about genetic modification"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "970451e8-bfda-4a9e-b017-e55ed1badb4e",
+      "fromName": "grass fed",
+      "toId": "59458b0a-2700-424d-9e1e-deae1e50742f",
+      "toName": "pasture raised",
+      "verdict": "satisfies",
+      "reason": "pasture-raised animals are generally understood to be grass-fed as part of their natural grazing environment"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "b6b055ea-02c4-4944-a545-9fff92f98f9c",
+      "fromName": "gyros",
+      "toId": "b6796c46-d905-48dd-986b-0a956f276077",
+      "toName": "kebab shop",
+      "verdict": "reject",
+      "reason": "tie-break law: the asked word names a specific food a kebab shop may not serve \u2014 an identity difference"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "b6b055ea-02c4-4944-a545-9fff92f98f9c",
+      "fromName": "gyros",
+      "toId": "afa83a8c-0f6d-4da8-9131-cd41b4546a4d",
+      "toName": "shawarma",
+      "verdict": "reject",
+      "reason": "tie-break law: shawarma is a different named food of a different tradition \u2014 an identity difference, not a shade"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "00e01382-8949-4d6c-a0b8-e1dc020dfe3a",
+      "fromName": "hot tub",
+      "toId": "e3f98478-36da-4ef0-b987-b8e37c0fc41f",
+      "toName": "bakery",
+      "verdict": "reject",
+      "reason": "a bakery cannot provide the recreational water immersion experience promised by a hot tub filter"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "fbccbff6-ddc0-4fc7-8af5-2a123e5fb141",
+      "fromName": "ice cream shop",
+      "toId": "fea816d8-1756-417a-8c88-60f541cb4b61",
+      "toName": "trendy",
+      "verdict": "reject",
+      "reason": "a trendy cocktail bar or clothing-boutique cafe does not provide the specific ice cream products requested"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "16d9b342-76f8-43b4-b913-d0b239d38ebd",
+      "fromName": "iced",
+      "toId": "a1442070-08d9-4b34-bc3e-814f0c2c4f8e",
+      "toName": "cold",
+      "verdict": "reject",
+      "reason": "a cold item like a chilled soup or refrigerated soda lacks the specific presence of ice promised by the filter"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "16d9b342-76f8-43b4-b913-d0b239d38ebd",
+      "fromName": "iced",
+      "toId": "e8af29f6-e344-4301-bd93-f9c72da99534",
+      "toName": "frozen drink",
+      "verdict": "satisfies",
+      "reason": "a frozen margarita or blended drink delivers the icy refreshment promised"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "16d9b342-76f8-43b4-b913-d0b239d38ebd",
+      "fromName": "iced",
+      "toId": "042653d2-f070-45f0-aa1c-5da1caf6df2c",
+      "toName": "spiced",
+      "verdict": "reject",
+      "reason": "a spiced stew like pepian does not deliver the chilled beverage experience promised"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "16d9b342-76f8-43b4-b913-d0b239d38ebd",
+      "fromName": "iced",
+      "toId": "4cf2bb15-1205-4e09-98ba-4c9d60fdb1b4",
+      "toName": "thin",
+      "verdict": "reject",
+      "reason": "a thin crust pizza does not deliver the chilled beverage experience promised"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "38f4753f-e233-4272-806f-4a59be425226",
+      "fromName": "indulgent",
+      "toId": "16cc2388-56c9-4c6b-8687-16cddc38bb34",
+      "toName": "fudgy",
+      "verdict": "satisfies",
+      "reason": "a fudgy texture is a specific and classic example of an indulgent food experience"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "0d9b9ac2-b491-4d87-8ba5-e90b15a957f1",
+      "fromName": "intense",
+      "toId": "a1442070-08d9-4b34-bc3e-814f0c2c4f8e",
+      "toName": "cold",
+      "verdict": "reject",
+      "reason": "coldness is a temperature state that does not guarantee the high flavor concentration promised"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "23f9d73c-7649-438b-9498-c19d0317ef81",
+      "fromName": "irish pub",
+      "toId": "21ef2883-8773-47d3-a40d-e1595afea33b",
+      "toName": "pub",
+      "verdict": "reject",
+      "reason": "a general pub lacks the specific cultural atmosphere and traditional irish beverage options promised by the filter"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "0436e849-389e-48b4-9ae7-314d739bc2fb",
+      "fromName": "juicy",
+      "toId": "878cabee-ce41-4018-8036-360ad02958f7",
+      "toName": "gooey",
+      "verdict": "reject",
+      "reason": "a viscous semi-solid does not deliver the liquid-rich moisture promised by a juicy item"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "b6796c46-d905-48dd-986b-0a956f276077",
+      "fromName": "kebab shop",
+      "toId": "4bc12790-8e9a-4e4f-b1fc-18f6dd73fda2",
+      "toName": "falafel",
+      "verdict": "reject",
+      "reason": "tie-break law: a falafel-only spot lacks the spit-roasted meats a kebab-shop seeker asked for \u2014 an identity difference"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "b6796c46-d905-48dd-986b-0a956f276077",
+      "fromName": "kebab shop",
+      "toId": "b6b055ea-02c4-4944-a545-9fff92f98f9c",
+      "toName": "gyros",
+      "verdict": "satisfies",
+      "reason": "gyros are a core type of spit-roasted meat that fulfills the expectation of a kebab-style meal"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "b6796c46-d905-48dd-986b-0a956f276077",
+      "fromName": "kebab shop",
+      "toId": "a68d3979-7831-40cb-a511-44e45293a68e",
+      "toName": "sandwich shop",
+      "verdict": "reject",
+      "reason": "a general sandwich shop like a pizzeria or diner lacks the specific Middle Eastern grilled meat identity of a kebab shop"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "b6796c46-d905-48dd-986b-0a956f276077",
+      "fromName": "kebab shop",
+      "toId": "afa83a8c-0f6d-4da8-9131-cd41b4546a4d",
+      "toName": "shawarma",
+      "verdict": "satisfies",
+      "reason": "shawarma is a specific style of meat preparation that fits the broader category of grilled meats found at a kebab shop"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "59cdb30d-2465-412d-a49a-9bafc37d4a62",
+      "fromName": "lebanese",
+      "toId": "afa83a8c-0f6d-4da8-9131-cd41b4546a4d",
+      "toName": "shawarma",
+      "verdict": "reject",
+      "reason": "shawarma is a specific street food item that does not guarantee the full breadth of Lebanese regional cuisine"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "397faa7a-e2e8-4986-abb4-5cd06b25fd77",
+      "fromName": "lemony",
+      "toId": "cbbf5522-7cec-490d-8a9e-3cd34ae33e6e",
+      "toName": "citrus",
+      "verdict": "reject",
+      "reason": "a general citrus tag could refer to orange or lime which lacks the specific tartness promised by lemony"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "397faa7a-e2e8-4986-abb4-5cd06b25fd77",
+      "fromName": "lemony",
+      "toId": "2d7191f9-7e1f-46ed-bea4-47fa84abd5b9",
+      "toName": "not overly sweet",
+      "verdict": "reject",
+      "reason": "low sugar content does not guarantee the presence of lemon or citrus acidity"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "397faa7a-e2e8-4986-abb4-5cd06b25fd77",
+      "fromName": "lemony",
+      "toId": "0a09ddfe-4995-4f9e-93c8-8d3681a19505",
+      "toName": "saucy",
+      "verdict": "reject",
+      "reason": "saucy refers to the physical amount of liquid or condiment rather than a citrus flavor"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "397faa7a-e2e8-4986-abb4-5cd06b25fd77",
+      "fromName": "lemony",
+      "toId": "7aefdaf8-bdb4-4a11-a92f-fc1f6d6de210",
+      "toName": "sour",
+      "verdict": "reject",
+      "reason": "sourness can come from vinegar or fermentation without providing the specific citrus notes of lemon"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "96cbeefc-9fd4-4a97-ad48-4998b78044f6",
+      "fromName": "local",
+      "toId": "59458b0a-2700-424d-9e1e-deae1e50742f",
+      "toName": "pasture raised",
+      "verdict": "reject",
+      "reason": "a promise about geographic proximity is not fulfilled by a promise about animal living conditions"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "852dbcab-2631-4da7-9c42-b5c105cec108",
+      "fromName": "lunch specials",
+      "toId": "b74fcba3-4e65-409c-986b-81bb87e9c8f7",
+      "toName": "deli",
+      "verdict": "reject",
+      "reason": "a deli is a specific shop type that may not offer the discounted lunch specials the user is seeking"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "586f4ed7-9824-495b-a5c5-32b582d02c17",
+      "fromName": "meaty",
+      "toId": "16cc2388-56c9-4c6b-8687-16cddc38bb34",
+      "toName": "fudgy",
+      "verdict": "reject",
+      "reason": "fudgy is a dessert texture that does not satisfy a craving for savory meat"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "586f4ed7-9824-495b-a5c5-32b582d02c17",
+      "fromName": "meaty",
+      "toId": "970451e8-bfda-4a9e-b017-e55ed1badb4e",
+      "toName": "grass fed",
+      "verdict": "reject",
+      "reason": "a general description of food volume or flavor is not fulfilled by a promise about animal diet"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "f6d59c64-ba83-4ae4-991a-77e657ed9abb",
+      "fromName": "middle eastern",
+      "toId": "afa83a8c-0f6d-4da8-9131-cd41b4546a4d",
+      "toName": "shawarma",
+      "verdict": "satisfies",
+      "reason": "shawarma is a quintessential Middle Eastern dish that delivers on the regional flavor profile requested"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "7d26fa16-0015-4bfc-ad5a-e96303fb301b",
+      "fromName": "moderate prices",
+      "toId": "fb707b6c-770a-4c3d-b703-fde255179b85",
+      "toName": "modern",
+      "verdict": "reject",
+      "reason": "a modern design does not promise that the menu prices will be mid-range or budget-friendly"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "fb707b6c-770a-4c3d-b703-fde255179b85",
+      "fromName": "modern",
+      "toId": "b693becc-a4ce-4b31-b35e-c7f3218a816d",
+      "toName": "affordable",
+      "verdict": "reject",
+      "reason": "modernity is a design or culinary philosophy while affordability is a strictly financial attribute"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "fb707b6c-770a-4c3d-b703-fde255179b85",
+      "fromName": "modern",
+      "toId": "1e1e07f5-6d6a-4e36-8a3f-b2c9d8c44417",
+      "toName": "eclectic",
+      "verdict": "satisfies",
+      "reason": "both terms describe a departure from conventional or classic restaurant formats toward a curated mix of styles"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "fb707b6c-770a-4c3d-b703-fde255179b85",
+      "fromName": "modern",
+      "toId": "7d26fa16-0015-4bfc-ad5a-e96303fb301b",
+      "toName": "moderate prices",
+      "verdict": "reject",
+      "reason": "the aesthetic style of a room is unrelated to the financial cost of the meal"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "fb707b6c-770a-4c3d-b703-fde255179b85",
+      "fromName": "modern",
+      "toId": "7383ef5e-abcb-40c0-be67-41085723bb25",
+      "toName": "non-traditional",
+      "verdict": "satisfies",
+      "reason": "non-traditional approaches to food and decor are adjacent shades of the same contemporary vibe"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "fb707b6c-770a-4c3d-b703-fde255179b85",
+      "fromName": "modern",
+      "toId": "fea816d8-1756-417a-8c88-60f541cb4b61",
+      "toName": "trendy",
+      "verdict": "satisfies",
+      "reason": "modern and trendy are adjacent shades of a contemporary aesthetic and social vibe"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "de853b60-a4ac-492b-907e-94ce1ac5b8d7",
+      "fromName": "no preservatives",
+      "toId": "970451e8-bfda-4a9e-b017-e55ed1badb4e",
+      "toName": "grass fed",
+      "verdict": "reject",
+      "reason": "a promise about additive-free processing is not fulfilled by a promise about animal diet"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "de853b60-a4ac-492b-907e-94ce1ac5b8d7",
+      "fromName": "no preservatives",
+      "toId": "59458b0a-2700-424d-9e1e-deae1e50742f",
+      "toName": "pasture raised",
+      "verdict": "reject",
+      "reason": "a promise about additive-free processing is not fulfilled by a promise about animal living conditions"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "c0455ba6-3ea0-4f47-afa7-605d425970bd",
+      "fromName": "non-gmo",
+      "toId": "970451e8-bfda-4a9e-b017-e55ed1badb4e",
+      "toName": "grass fed",
+      "verdict": "reject",
+      "reason": "a promise about genetic modification is not fulfilled by a promise about animal diet"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "c0455ba6-3ea0-4f47-afa7-605d425970bd",
+      "fromName": "non-gmo",
+      "toId": "59458b0a-2700-424d-9e1e-deae1e50742f",
+      "toName": "pasture raised",
+      "verdict": "reject",
+      "reason": "a promise about genetic modification is not fulfilled by a promise about animal living conditions"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "7383ef5e-abcb-40c0-be67-41085723bb25",
+      "fromName": "non-traditional",
+      "toId": "fb707b6c-770a-4c3d-b703-fde255179b85",
+      "toName": "modern",
+      "verdict": "satisfies",
+      "reason": "modern styling is a specific way of delivering a non-traditional experience"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "2d7191f9-7e1f-46ed-bea4-47fa84abd5b9",
+      "fromName": "not overly sweet",
+      "toId": "cbbf5522-7cec-490d-8a9e-3cd34ae33e6e",
+      "toName": "citrus",
+      "verdict": "satisfies",
+      "reason": "citrus flavors are inherently tart and rarely associated with high sugar levels"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "2d7191f9-7e1f-46ed-bea4-47fa84abd5b9",
+      "fromName": "not overly sweet",
+      "toId": "397faa7a-e2e8-4986-abb4-5cd06b25fd77",
+      "toName": "lemony",
+      "verdict": "satisfies",
+      "reason": "lemony dishes are characterized by tartness rather than cloying sweetness"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "7890b26e-6130-4666-9d4b-e6d93e3cf51d",
+      "fromName": "old school",
+      "toId": "a1442070-08d9-4b34-bc3e-814f0c2c4f8e",
+      "toName": "cold",
+      "verdict": "reject",
+      "reason": "a promise about a traditional or nostalgic style is not fulfilled by a temperature requirement"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "232f468a-d507-45b1-a5ed-0b787d9875e8",
+      "fromName": "organic",
+      "toId": "cbbf5522-7cec-490d-8a9e-3cd34ae33e6e",
+      "toName": "citrus",
+      "verdict": "reject",
+      "reason": "citrus fruits are not necessarily grown using organic standards"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "1222f525-73ca-4d79-9523-bfc41a00ed9d",
+      "fromName": "pastry shop",
+      "toId": "e3f98478-36da-4ef0-b987-b8e37c0fc41f",
+      "toName": "bakery",
+      "verdict": "reject",
+      "reason": "a general bakery might only sell bread or bagels and lack the delicate sweet confections promised by a pastry shop"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "1222f525-73ca-4d79-9523-bfc41a00ed9d",
+      "fromName": "pastry shop",
+      "toId": "ed49d85f-5613-4944-9b2e-24644e8cebeb",
+      "toName": "cake shop",
+      "verdict": "satisfies",
+      "reason": "cakes are a core category of pastry and a cake shop delivers the sweet baked experience the searcher is looking for"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "1222f525-73ca-4d79-9523-bfc41a00ed9d",
+      "fromName": "pastry shop",
+      "toId": "05bf06bc-9db9-4280-830a-49776a518e1b",
+      "toName": "chocolate shop",
+      "verdict": "reject",
+      "reason": "a chocolate shop focuses on cocoa-based candies rather than the baked flour-based items promised by a pastry shop filter"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "1222f525-73ca-4d79-9523-bfc41a00ed9d",
+      "fromName": "pastry shop",
+      "toId": "830bdfa2-0214-43a6-af51-a359716d757a",
+      "toName": "confectionery",
+      "verdict": "reject",
+      "reason": "a confectionery provides candies and chocolates rather than the flour-based laminated doughs and pastries promised by the search"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "59458b0a-2700-424d-9e1e-deae1e50742f",
+      "fromName": "pasture raised",
+      "toId": "970451e8-bfda-4a9e-b017-e55ed1badb4e",
+      "toName": "grass fed",
+      "verdict": "satisfies",
+      "reason": "grass-fed meat is the primary quality sought by those looking for pasture-raised livestock products"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "59458b0a-2700-424d-9e1e-deae1e50742f",
+      "fromName": "pasture raised",
+      "toId": "96cbeefc-9fd4-4a97-ad48-4998b78044f6",
+      "toName": "local",
+      "verdict": "reject",
+      "reason": "a promise about animal living conditions is not fulfilled by a promise about geographic proximity"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "59458b0a-2700-424d-9e1e-deae1e50742f",
+      "fromName": "pasture raised",
+      "toId": "de853b60-a4ac-492b-907e-94ce1ac5b8d7",
+      "toName": "no preservatives",
+      "verdict": "reject",
+      "reason": "a promise about animal living conditions is not fulfilled by a promise about additive-free processing"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "59458b0a-2700-424d-9e1e-deae1e50742f",
+      "fromName": "pasture raised",
+      "toId": "c0455ba6-3ea0-4f47-afa7-605d425970bd",
+      "toName": "non-gmo",
+      "verdict": "reject",
+      "reason": "a promise about animal living conditions is not fulfilled by a promise about genetic modification"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "21ef2883-8773-47d3-a40d-e1595afea33b",
+      "fromName": "pub",
+      "toId": "f26bc48f-ce90-4979-bb67-d69c6ef25e20",
+      "toName": "bar",
+      "verdict": "reject",
+      "reason": "a general bar may lack the food service or casual community atmosphere expected of a pub"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "21ef2883-8773-47d3-a40d-e1595afea33b",
+      "fromName": "pub",
+      "toId": "a349add5-42a3-4c20-80fb-be8a68eb55ad",
+      "toName": "bar food",
+      "verdict": "reject",
+      "reason": "a place tagged only with a food category does not guarantee the physical environment or social atmosphere of a pub"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "21ef2883-8773-47d3-a40d-e1595afea33b",
+      "fromName": "pub",
+      "toId": "41a6b6ed-4b7f-40bc-81ee-83f8d06aa5df",
+      "toName": "brewpub",
+      "verdict": "satisfies",
+      "reason": "a brewpub is a specific type of pub that fulfills the general request for a casual drinking house"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "21ef2883-8773-47d3-a40d-e1595afea33b",
+      "fromName": "pub",
+      "toId": "1a7019ce-c27c-4431-90f8-5ba216edea1b",
+      "toName": "gastropub",
+      "verdict": "satisfies",
+      "reason": "a gastropub is a specific type of pub that fulfills the general request for a casual drinking house"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "21ef2883-8773-47d3-a40d-e1595afea33b",
+      "fromName": "pub",
+      "toId": "23f9d73c-7649-438b-9498-c19d0317ef81",
+      "toName": "irish pub",
+      "verdict": "satisfies",
+      "reason": "an irish pub is a specific type of pub that fulfills the general request for a casual drinking house"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "dba943d0-b79b-47ac-a01b-b0f2235c329f",
+      "fromName": "rich",
+      "toId": "16cc2388-56c9-4c6b-8687-16cddc38bb34",
+      "toName": "fudgy",
+      "verdict": "satisfies",
+      "reason": "rich and fudgy are adjacent shades of the same heavy and concentrated flavor experience"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "a68d3979-7831-40cb-a511-44e45293a68e",
+      "fromName": "sandwich shop",
+      "toId": "8042bc5c-9d3f-40f8-ad43-71884f2ccf7e",
+      "toName": "acai shop",
+      "verdict": "reject",
+      "reason": "an acai shop serves fruit bowls and smoothies which are a different food class than savory sandwiches"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "a68d3979-7831-40cb-a511-44e45293a68e",
+      "fromName": "sandwich shop",
+      "toId": "3b243eb1-137e-4230-bbd4-e2f17e5d2b5c",
+      "toName": "bagel shop",
+      "verdict": "satisfies",
+      "reason": "bagel shops are a specific type of sandwich shop that delivers on the promise of bread-based handheld meals"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "a68d3979-7831-40cb-a511-44e45293a68e",
+      "fromName": "sandwich shop",
+      "toId": "e3f98478-36da-4ef0-b987-b8e37c0fc41f",
+      "toName": "bakery",
+      "verdict": "reject",
+      "reason": "a bakery often focuses on sweets or loaves and may lack the savory prepared sandwiches the user expects"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "a68d3979-7831-40cb-a511-44e45293a68e",
+      "fromName": "sandwich shop",
+      "toId": "b74fcba3-4e65-409c-986b-81bb87e9c8f7",
+      "toName": "deli",
+      "verdict": "satisfies",
+      "reason": "a deli is a specific type of sandwich shop that delivers on the promise of prepared meats and breads"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "a68d3979-7831-40cb-a511-44e45293a68e",
+      "fromName": "sandwich shop",
+      "toId": "b6796c46-d905-48dd-986b-0a956f276077",
+      "toName": "kebab shop",
+      "verdict": "satisfies",
+      "reason": "kebab shops serve meat in pita or wraps which functions as a specific regional style of sandwich"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "0a09ddfe-4995-4f9e-93c8-8d3681a19505",
+      "fromName": "saucy",
+      "toId": "397faa7a-e2e8-4986-abb4-5cd06b25fd77",
+      "toName": "lemony",
+      "verdict": "reject",
+      "reason": "a lemony dish might be a dry rub or a light zest rather than being covered in sauce"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "afa83a8c-0f6d-4da8-9131-cd41b4546a4d",
+      "fromName": "shawarma",
+      "toId": "b6b055ea-02c4-4944-a545-9fff92f98f9c",
+      "toName": "gyros",
+      "verdict": "reject",
+      "reason": "tie-break law: gyros is a different named food of a different tradition \u2014 an identity difference, not a shade"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "afa83a8c-0f6d-4da8-9131-cd41b4546a4d",
+      "fromName": "shawarma",
+      "toId": "b6796c46-d905-48dd-986b-0a956f276077",
+      "toName": "kebab shop",
+      "verdict": "reject",
+      "reason": "a kebab shop may focus exclusively on skewered cubes of meat and not offer the specific shaved-meat preparation of shawarma"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "afa83a8c-0f6d-4da8-9131-cd41b4546a4d",
+      "fromName": "shawarma",
+      "toId": "59cdb30d-2465-412d-a49a-9bafc37d4a62",
+      "toName": "lebanese",
+      "verdict": "reject",
+      "reason": "a Lebanese restaurant may focus on stews or seafood without ever serving the specific spit-roasted meat dish requested"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "afa83a8c-0f6d-4da8-9131-cd41b4546a4d",
+      "fromName": "shawarma",
+      "toId": "f6d59c64-ba83-4ae4-991a-77e657ed9abb",
+      "toName": "middle eastern",
+      "verdict": "reject",
+      "reason": "the broad Middle Eastern category includes many cuisines that may not serve the specific shawarma meat preparation"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "b1d4961c-47f7-4415-b457-e3b4016dbffe",
+      "fromName": "smooth",
+      "toId": "4b48fd58-a677-4b11-a1e6-b120cf0a7bbc",
+      "toName": "soft",
+      "verdict": "satisfies",
+      "reason": "softness and smoothness are adjacent shades of the same gentle physical texture"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "4b48fd58-a677-4b11-a1e6-b120cf0a7bbc",
+      "fromName": "soft",
+      "toId": "7200a4ab-8302-414f-a913-63746c0e8c60",
+      "toName": "creamy",
+      "verdict": "reject",
+      "reason": "creamy describes a fat-based mouthfeel while soft describes the structural yield of solids like rolls or ice"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "4b48fd58-a677-4b11-a1e6-b120cf0a7bbc",
+      "fromName": "soft",
+      "toId": "8bfc66fb-ad03-48f6-b9a8-505f16e89a7b",
+      "toName": "delicate",
+      "verdict": "satisfies",
+      "reason": "delicate items like shave ice deliver the gentle physical resistance promised by soft"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "4b48fd58-a677-4b11-a1e6-b120cf0a7bbc",
+      "fromName": "soft",
+      "toId": "d40c6269-0b8a-42f5-9eea-406d546bccc8",
+      "toName": "fluffy",
+      "verdict": "satisfies",
+      "reason": "fluffy rolls deliver the low-resistance physical texture promised by soft"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "4b48fd58-a677-4b11-a1e6-b120cf0a7bbc",
+      "fromName": "soft",
+      "toId": "b1d4961c-47f7-4415-b457-e3b4016dbffe",
+      "toName": "smooth",
+      "verdict": "satisfies",
+      "reason": "smoothness and softness are adjacent shades of the same gentle physical texture"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "4b48fd58-a677-4b11-a1e6-b120cf0a7bbc",
+      "fromName": "soft",
+      "toId": "f4384bb3-8e6f-48ba-b81c-1c0e83e33233",
+      "toName": "tender",
+      "verdict": "reject",
+      "reason": "tender refers to the yield of meat fibers while soft can describe unrelated textures like bread or ice"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "7aefdaf8-bdb4-4a11-a92f-fc1f6d6de210",
+      "fromName": "sour",
+      "toId": "cbbf5522-7cec-490d-8a9e-3cd34ae33e6e",
+      "toName": "citrus",
+      "verdict": "satisfies",
+      "reason": "citrus fruits are a primary and expected source of the sour flavor profile in food and drink"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "7aefdaf8-bdb4-4a11-a92f-fc1f6d6de210",
+      "fromName": "sour",
+      "toId": "397faa7a-e2e8-4986-abb4-5cd06b25fd77",
+      "toName": "lemony",
+      "verdict": "satisfies",
+      "reason": "lemon is a primary and expected source of a sour flavor profile"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "042653d2-f070-45f0-aa1c-5da1caf6df2c",
+      "fromName": "spiced",
+      "toId": "16d9b342-76f8-43b4-b913-d0b239d38ebd",
+      "toName": "iced",
+      "verdict": "reject",
+      "reason": "an iced drink does not deliver the aromatic spice profile of a dish like pepian"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "2d550898-bacb-4b87-bd13-694c87375686",
+      "fromName": "sweet",
+      "toId": "878cabee-ce41-4018-8036-360ad02958f7",
+      "toName": "gooey",
+      "verdict": "reject",
+      "reason": "a texture profile does not guarantee the specific sugary flavor promised"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "f4384bb3-8e6f-48ba-b81c-1c0e83e33233",
+      "fromName": "tender",
+      "toId": "949581d9-0d0b-429a-91cb-1a361ef9d800",
+      "toName": "buttery",
+      "verdict": "reject",
+      "reason": "a rich buttery flavor does not guarantee the specific physical texture of meat or dough yielding easily to the teeth"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "f4384bb3-8e6f-48ba-b81c-1c0e83e33233",
+      "fromName": "tender",
+      "toId": "8bfc66fb-ad03-48f6-b9a8-505f16e89a7b",
+      "toName": "delicate",
+      "verdict": "satisfies",
+      "reason": "delicate textures in food deliver the easy-to-chew promise of tender meats"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "f4384bb3-8e6f-48ba-b81c-1c0e83e33233",
+      "fromName": "tender",
+      "toId": "4b48fd58-a677-4b11-a1e6-b120cf0a7bbc",
+      "toName": "soft",
+      "verdict": "reject",
+      "reason": "soft is a broad texture class that fails to promise the specific structural breakdown of meat implied by tender"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "f4384bb3-8e6f-48ba-b81c-1c0e83e33233",
+      "fromName": "tender",
+      "toId": "e22a1a1c-9e8d-4ecf-be4e-04eb6103d3c0",
+      "toName": "warm",
+      "verdict": "reject",
+      "reason": "a temperature description provides no information about the structural tenderness of the food item"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "4cf2bb15-1205-4e09-98ba-4c9d60fdb1b4",
+      "fromName": "thin",
+      "toId": "16d9b342-76f8-43b4-b913-d0b239d38ebd",
+      "toName": "iced",
+      "verdict": "reject",
+      "reason": "an iced drink does not deliver the structural thinness of a pizza crust"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "fea816d8-1756-417a-8c88-60f541cb4b61",
+      "fromName": "trendy",
+      "toId": "3b243eb1-137e-4230-bbd4-e2f17e5d2b5c",
+      "toName": "bagel shop",
+      "verdict": "reject",
+      "reason": "a user looking for a fashionable scene may be disappointed by a utilitarian breakfast counter"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "fea816d8-1756-417a-8c88-60f541cb4b61",
+      "fromName": "trendy",
+      "toId": "08630647-825b-439d-8a47-461cf61a7f3d",
+      "toName": "expensive",
+      "verdict": "reject",
+      "reason": "high prices do not guarantee a place is currently fashionable or popular with a trendy crowd"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "fea816d8-1756-417a-8c88-60f541cb4b61",
+      "fromName": "trendy",
+      "toId": "1ce3f4dd-8f40-407e-9f59-774cb712d926",
+      "toName": "funky",
+      "verdict": "satisfies",
+      "reason": "funky and trendy are adjacent shades of a non-traditional and stylish social atmosphere"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "fea816d8-1756-417a-8c88-60f541cb4b61",
+      "fromName": "trendy",
+      "toId": "fbccbff6-ddc0-4fc7-8af5-2a123e5fb141",
+      "toName": "ice cream shop",
+      "verdict": "reject",
+      "reason": "a fashionable atmosphere is a different category of desire than a specific craving for frozen dairy desserts"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "fea816d8-1756-417a-8c88-60f541cb4b61",
+      "fromName": "trendy",
+      "toId": "fb707b6c-770a-4c3d-b703-fde255179b85",
+      "toName": "modern",
+      "verdict": "satisfies",
+      "reason": "trendy and modern are adjacent shades of a contemporary aesthetic and social vibe"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "e22a1a1c-9e8d-4ecf-be4e-04eb6103d3c0",
+      "fromName": "warm",
+      "toId": "a1442070-08d9-4b34-bc3e-814f0c2c4f8e",
+      "toName": "cold",
+      "verdict": "reject",
+      "reason": "cold items are the opposite temperature of the warm rolls requested"
+    },
+    {
+      "kind": "attribute",
+      "fromId": "e22a1a1c-9e8d-4ecf-be4e-04eb6103d3c0",
+      "fromName": "warm",
+      "toId": "f4384bb3-8e6f-48ba-b81c-1c0e83e33233",
+      "toName": "tender",
+      "verdict": "reject",
+      "reason": "a food being tender does not ensure it will be served at a warm temperature rather than cold or room temperature"
+    },
+    {
+      "kind": "ingredient",
+      "fromId": "2cc5854e-09be-4afb-b459-a38642844cc8",
+      "fromName": "applewood bacon",
+      "toId": "02d0af37-2806-494c-80bf-10831735c264",
+      "toName": "bacon",
+      "verdict": "satisfies",
+      "reason": "the diner receives the requested ingredient and likely will not mind the absence of a specific wood smoke variety"
+    },
+    {
+      "kind": "ingredient",
+      "fromId": "02d0af37-2806-494c-80bf-10831735c264",
+      "fromName": "bacon",
+      "toId": "2cc5854e-09be-4afb-b459-a38642844cc8",
+      "toName": "applewood bacon",
+      "verdict": "satisfies",
+      "reason": "the diner receives the requested ingredient with a specific wood smoke that fits perfectly within the general bacon category"
+    },
+    {
+      "kind": "ingredient",
+      "fromId": "02d0af37-2806-494c-80bf-10831735c264",
+      "fromName": "bacon",
+      "toId": "97d70af6-65de-4c53-8f49-58110e0e0862",
+      "toName": "bacon bits",
+      "verdict": "satisfies",
+      "reason": "the diner receives the requested ingredient in a smaller physical format without changing the flavor profile"
+    },
+    {
+      "kind": "ingredient",
+      "fromId": "02d0af37-2806-494c-80bf-10831735c264",
+      "fromName": "bacon",
+      "toId": "77943927-69cd-4b0e-9495-684b16ebede0",
+      "toName": "canadian bacon",
+      "verdict": "reject",
+      "reason": "the diner expects fatty cured belly but receives lean back meat which lacks the characteristic grease and texture of bacon"
+    },
+    {
+      "kind": "ingredient",
+      "fromId": "02d0af37-2806-494c-80bf-10831735c264",
+      "fromName": "bacon",
+      "toId": "78732d14-59ef-4b69-b149-7ceb3219fb55",
+      "toName": "pancetta",
+      "verdict": "satisfies",
+      "reason": "the diner receives the expected cured and fatty pork belly profile in a slightly different regional style"
+    },
+    {
+      "kind": "ingredient",
+      "fromId": "02d0af37-2806-494c-80bf-10831735c264",
+      "fromName": "bacon",
+      "toId": "054038f9-567d-495b-8b47-57db0f7f8577",
+      "toName": "pepper bacon",
+      "verdict": "satisfies",
+      "reason": "the diner receives the requested ingredient with a minor topical seasoning that does not alter the core bacon experience"
+    },
+    {
+      "kind": "ingredient",
+      "fromId": "97d70af6-65de-4c53-8f49-58110e0e0862",
+      "fromName": "bacon bits",
+      "toId": "02d0af37-2806-494c-80bf-10831735c264",
+      "toName": "bacon",
+      "verdict": "satisfies",
+      "reason": "the diner receives the requested ingredient in a whole form that can easily be crumbled to meet the same culinary need"
+    },
+    {
+      "kind": "ingredient",
+      "fromId": "77943927-69cd-4b0e-9495-684b16ebede0",
+      "fromName": "canadian bacon",
+      "toId": "02d0af37-2806-494c-80bf-10831735c264",
+      "toName": "bacon",
+      "verdict": "reject",
+      "reason": "the diner expects a lean ham-like round of back meat and receives a fatty strip of belly instead"
+    },
+    {
+      "kind": "ingredient",
+      "fromId": "24996eb5-24ab-4645-b9c5-2fc520387c89",
+      "fromName": "crispy pork belly",
+      "toId": "78732d14-59ef-4b69-b149-7ceb3219fb55",
+      "toName": "pancetta",
+      "verdict": "reject",
+      "reason": "the diner expects the specific texture of roasted fresh meat and receives a salty cured product instead"
+    },
+    {
+      "kind": "ingredient",
+      "fromId": "3678d64a-47ec-46e6-99ba-3d11ee7544dd",
+      "fromName": "cured meat",
+      "toId": "78732d14-59ef-4b69-b149-7ceb3219fb55",
+      "toName": "pancetta",
+      "verdict": "satisfies",
+      "reason": "the diner asked for a broad category and receives a specific high-quality example of that category"
+    },
+    {
+      "kind": "ingredient",
+      "fromId": "baba8328-0b83-4c40-897e-ab4f4dcf6afa",
+      "fromName": "guanciale",
+      "toId": "78732d14-59ef-4b69-b149-7ceb3219fb55",
+      "toName": "pancetta",
+      "verdict": "reject",
+      "reason": "the diner specifically requested the unique texture and funk of cured jowl and receives standard cured belly instead"
+    },
+    {
+      "kind": "ingredient",
+      "fromId": "78732d14-59ef-4b69-b149-7ceb3219fb55",
+      "fromName": "pancetta",
+      "toId": "02d0af37-2806-494c-80bf-10831735c264",
+      "toName": "bacon",
+      "verdict": "reject",
+      "reason": "the diner specifically requested an unsmoked Italian cure and would be disappointed by the heavy smoke of American bacon"
+    },
+    {
+      "kind": "ingredient",
+      "fromId": "78732d14-59ef-4b69-b149-7ceb3219fb55",
+      "fromName": "pancetta",
+      "toId": "24996eb5-24ab-4645-b9c5-2fc520387c89",
+      "toName": "crispy pork belly",
+      "verdict": "reject",
+      "reason": "the diner expects a salty cured ingredient and receives a fresh meat preparation that lacks the curing process"
+    },
+    {
+      "kind": "ingredient",
+      "fromId": "78732d14-59ef-4b69-b149-7ceb3219fb55",
+      "fromName": "pancetta",
+      "toId": "3678d64a-47ec-46e6-99ba-3d11ee7544dd",
+      "toName": "cured meat",
+      "verdict": "reject",
+      "reason": "the diner asked for a specific ingredient and receives a vague category that could include many items they did not want"
+    },
+    {
+      "kind": "ingredient",
+      "fromId": "78732d14-59ef-4b69-b149-7ceb3219fb55",
+      "fromName": "pancetta",
+      "toId": "baba8328-0b83-4c40-897e-ab4f4dcf6afa",
+      "toName": "guanciale",
+      "verdict": "reject",
+      "reason": "the diner expects cured belly and receives cured jowl which has a significantly different fat-to-meat ratio and funkier flavor"
+    },
+    {
+      "kind": "ingredient",
+      "fromId": "78732d14-59ef-4b69-b149-7ceb3219fb55",
+      "fromName": "pancetta",
+      "toId": "1fb77e4a-3fd4-49eb-b949-3654e6827ae2",
+      "toName": "pork belly",
+      "verdict": "reject",
+      "reason": "the diner expects a salty cured product and receives raw or roasted uncured meat with a completely different salt level and texture"
+    },
+    {
+      "kind": "ingredient",
+      "fromId": "054038f9-567d-495b-8b47-57db0f7f8577",
+      "fromName": "pepper bacon",
+      "toId": "02d0af37-2806-494c-80bf-10831735c264",
+      "toName": "bacon",
+      "verdict": "satisfies",
+      "reason": "the diner receives the requested ingredient but misses only a specific surface spice which is a minor shade of the same product"
+    },
+    {
+      "kind": "ingredient",
+      "fromId": "1fb77e4a-3fd4-49eb-b949-3654e6827ae2",
+      "fromName": "pork belly",
+      "toId": "78732d14-59ef-4b69-b149-7ceb3219fb55",
+      "toName": "pancetta",
+      "verdict": "reject",
+      "reason": "the diner expects a fresh or roasted meat preparation and receives a salty cured product instead"
+    }
+  ]
+}

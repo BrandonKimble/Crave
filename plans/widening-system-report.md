@@ -273,3 +273,84 @@ release ledger enforces the bump).
    is moot until/unless the surface is unfolded; "live music →
    piano bar" heard via nomination anyway (satisfies) but cannot bind
    without a live target entity.
+
+## Tie-break law (owner ruling 2026-08-30, rule v4/v5)
+
+The merge-vs-widen study found the coin-flip hole: on genuinely uncertain
+directions the promise test alone left ~3% of rows drifting run-to-run,
+and two owner pairs (fudgy/gooey, soft/tender) flipping across sessions
+with coherent reasons on both sides. The fix is not row rulings but a
+LAW derived from the doctrine's own asymmetric-cost reasoning:
+
+**When the satisfaction test comes out genuinely uncertain for a
+direction, ask WHAT KIND of difference separates the words.**
+- **Same-domain adjacency** — shades of one quality (texture↔texture,
+  mood↔mood, vibe↔vibe within one food domain) → **satisfies**: an
+  adjacent extra row never annoys; the filter reads as generous. The
+  KIND of difference is symmetric, so both directions satisfy.
+- **Cross-domain or identity difference** — different food, ingredient,
+  cut/cure/preparation, dietary class, or temperature-of-food-class →
+  **reject**: a wrong-food row poisons the filter where an adjacent-shade
+  row merely pads it. Both directions reject.
+
+Encoded in both rule templates at the decision point with worked
+examples both sides (fudgy→gooey brownie; tender-promises-meat vs
+soft-spans-shave-ice; applewood bacon vs plain bacon; guanciale's jowl
+vs pancetta's belly). Releases: attribute **v4** (d63255f146bb),
+ingredient **v5** (53c9ee96e664).
+
+### Certification and gold pins
+
+`--gold` now carries 13 cases (7 new pins: fudgy↔gooey satisfies both
+ways, soft↔tender reject both ways, shawarma→gyros reject,
+applewood bacon→bacon satisfies, guanciale→pancetta reject).
+**13/13 PASS ×3, zero flakes** (dev Gemini, temperature 0).
+
+### Stability matrix, before vs after (full 174-pair docket ×3, staging vocabulary)
+
+| | v2/v3 (study) | v4/v5 |
+|---|---|---|
+| identical across 3 runs | 168/174 (96.6%) | **172/174 (98.9%)** |
+| previously-unstable 6 rows | flip together in one run | **all 6 stable 3/3** |
+| fudgy↔gooey | cross-session coin-flip | satisfies both ways 3/3 (matches pin) |
+| soft↔tender | cross-session coin-flip | reject both ways 3/3 (matches pin) |
+| still unstable | — | falafel↔kebab shop (2 rows; law-edited to reject in the reviewed table) |
+
+One law-vs-judge conflict: the docket stably calls shawarma↔gyros
+"adjacent shades of spit-roasted meat wraps" (satisfies), but the law
+classes different named foods of different traditions as an identity
+difference — the gold pin (reject, passing ×3 with venue carriers) and
+the reviewed table carry the law's determination; the reviewed-table-
+binds mechanism exists for exactly this.
+
+### The applied delta (staging, 2026-08-30)
+
+New reviewed table: `plans/merge-vs-widen-tiebreak-verdicts.json`
+(sha256 647a7cc8ca99…, majority-of-3 + five law edits: gyros→kebab shop,
+falafel↔kebab shop, shawarma↔gyros all → reject). **27 of 174 verdicts
+changed** vs the applied v2/v3 table (sha 519e1460…):
+
+- 22 reject→satisfies, all same-domain adjacencies the old rule's
+  doubt-rejects starved: modern↔trendy (the study's "gap pair" now
+  widens both ways), fudgy→gooey, fudgy→chewy/rich, gooey↔chewy,
+  soft↔smooth, delicate→soft/tender, fluffy→soft, deli→sandwich shop,
+  pasture raised→grass fed, eclectic→modern, funky→trendy,
+  not overly sweet→citrus; ingredients pepper/applewood bacon→bacon,
+  bacon→bacon bits.
+- 5 satisfies→reject, all identity differences: gyros/falafel/shawarma
+  cluster (4 rows) and **pancetta→guanciale** — the jowl-vs-belly line
+  now cuts both ways, consistent with guanciale→pancetta's standing
+  reject. (soft→creamy and confectionery→pastry shop also flipped to
+  reject inside the 27.)
+- The two prior owner-lens flips: meaty→grass fed stays reject on the
+  judge's own verdict; soft→smooth returns to satisfies because the law
+  itself rules texture adjacency — the law supersedes that row-lens edit.
+
+Applied via `widening-docket.ts --apply` on staging: settled=174,
+alreadyDecided=0, sideGone=0. Post-apply `entity_satisfies`: 55
+satisfies + 101 reject at v4, 8 satisfies + 10 reject at v5 (the v2/v3
+edges upserted away; their ledger rows remain historical under
+rule-version keying). Net satisfies edges: 50 → **63**.
+
+`yarn build` green, widening suites 19/19, `yarn invariants` green
+(43 invariants, 88 proofs).

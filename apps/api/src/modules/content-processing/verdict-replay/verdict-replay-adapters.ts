@@ -310,12 +310,10 @@ class EntityDedupeReplayAdapter implements VerdictReplayAdapter {
         'ingredient',
       )),
     ]);
-    const sharesHome = (aId: string, bId: string): boolean | undefined => {
-      const a = homes.get(aId)?.placeIds ?? [];
-      const b = new Set(homes.get(bId)?.placeIds ?? []);
-      if (!a.length || !b.size) return undefined;
-      return a.some((placeId) => b.has(placeId));
-    };
+    // NO same_place on sweep-replay hearings — the sweep's own wire dropped
+    // it (merge-batch audit 2026-08-30: footprint overlap masqueraded as
+    // "same restaurant" on corpus-global pairs); the replay mirrors the
+    // live wire exactly.
     for (const kind of ['item', 'ingredient'] as const) {
       const slice = live.filter((l) => l.kind === kind);
       for (let i = 0; i < slice.length; i += 10) {
@@ -330,7 +328,6 @@ class EntityDedupeReplayAdapter implements VerdictReplayAdapter {
                 id: 1,
                 name: entities.get(s.bId)?.name ?? s.bName,
                 homePlaces: homes.get(s.bId)?.homes ?? undefined,
-                samePlace: sharesHome(s.aId, s.bId),
               },
             ],
           })),

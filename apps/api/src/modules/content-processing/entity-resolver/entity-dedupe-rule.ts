@@ -79,6 +79,11 @@ const RULE_RELEASES: readonly RuleRelease[] = [
     fingerprint: 'c103e4b0772e',
     note: 'Acceptance pins 2026-08-30: two instances of existing doctrine the judge was missing — a subtype dressed as a spelling variant is still a subtype (scotch whiskey ≠ whisky: bourbon is whisky, not scotch), and a PRODUCT never folds into the tradition/flavor category whose name it carries (barbecue sauce ≠ bbq — the judge itself ruled bbq sauce vs bbq new, so the fold was transitivity-inconsistent). Gold pins scotch-whiskey-not-whisky + barbecue-sauce-not-bbq added; re-certified 27/27 x3',
   },
+  {
+    version: 5,
+    fingerprint: 'e0236ace3f8a',
+    note: 'Merge-batch repair 2026-08-30 (plans/merge-batch-audit.md): THE CORPUS-GLOBAL LAW replaces the home-restaurant fold section — item/ingredient entities are corpus-global, so merge = IDENTITY ONLY (fragmentation study §4). The narration-decoration and channel-wording same-restaurant fold clauses are DELETED (that unification belongs to extraction pro-forms / emit-as-spoken, never an entity fold); venue-name decoration stays as an identity ruling; "same restaurant" is declared never a ground for match, and category/specification/format/broader-narrower named as self-refuting reasons. same_place is re-scoped to mention hearings only (the sweep no longer sends it — its footprint-overlap flag licensed the 47 wrong merges). The bump re-opens every judged pair; the 48 overturned verdicts sit as holds',
+  },
 ];
 
 function resolveRuleVersion(): number {

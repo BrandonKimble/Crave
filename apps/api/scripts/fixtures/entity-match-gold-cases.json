@@ -1,5 +1,5 @@
 {
-  "comment": "Sameness-court gold pins (2026-08-30). Every WRONG verdict from plans/judge-ledger-audit.md is pinned on its correct side, plus both-sides pins for each doctrine boundary (home-restaurant rule, modifier classes, reject vs new, diacritics, subtype-never-folds). Context fields mirror the D2 wire: mention/threadPlace/termHomePlaces on the case, homePlaces/samePlace on candidates. Real corpus quotes throughout.",
+  "comment": "Sameness-court gold pins (2026-08-30), amended same day by the merge-batch repair (plans/merge-batch-audit.md): the corpus-global law made entity merge IDENTITY-ONLY, so the narration/channel same-restaurant fold pins flipped to new, and every wrong-class from the executed sweep batch is pinned on its correct side (with the true synonyms pinned merge). Context fields mirror the D2 wire: mention/threadPlace/termHomePlaces on the case, homePlaces/samePlace (mention hearings only) on candidates.",
   "cases": [
     {
       "id": "shanghai-lumpia-keeps",
@@ -173,7 +173,7 @@
     },
     {
       "id": "course-count-narration-folds",
-      "why": "narration decoration (course count + 'experience') at the same restaurant is one offering",
+      "why": "corpus-global law: narration decoration is EXTRACTION's job (emit-as-spoken + pro-forms, fragmentation study rec #1) — an entity fold would drag every other venue's omakase credit; merge is identity only",
       "kind": "item",
       "term": "20 course omakase experience",
       "mention": "Come check out Sushi Endo, it's a wonderful 20 course omakase experience located in West campus.",
@@ -185,11 +185,11 @@
           "samePlace": true
         }
       ],
-      "expected": "match"
+      "expected": "new"
     },
     {
       "id": "channel-wording-folds",
-      "why": "channel modifier (take home) names how the same kitchen's offering reaches you",
+      "why": "corpus-global law: channel wording is one venue's retelling — same-restaurant unification belongs to extraction/connection layers, never an entity fold; merge is identity only",
       "kind": "item",
       "term": "take home omakase",
       "threadPlace": "Lucky Robot Restaurant",
@@ -200,7 +200,7 @@
           "samePlace": true
         }
       ],
-      "expected": "match"
+      "expected": "new"
     },
     {
       "id": "dietary-variant-never-folds",
@@ -368,6 +368,150 @@
         }
       ],
       "expected": "new"
+    },
+    {
+      "id": "carnitas-not-carnitas-tacos",
+      "why": "wave-sweep wrong merge (audit): format fold — carnitas (the meat/dish, 15 restaurants) is corpus-global; 'tacos' is a format a diner orders on purpose",
+      "kind": "item",
+      "term": "carnitas",
+      "termHomePlaces": ["Valentina's Tex Mex BBQ", "La Barbecue", "Suerte"],
+      "candidates": [
+        {
+          "name": "carnitas tacos",
+          "homePlaces": ["Valentina's Tex Mex BBQ", "Cuantos Tacos"]
+        }
+      ],
+      "expected": "new"
+    },
+    {
+      "id": "carnitas-tacos-not-carnitas",
+      "why": "the same pair in the other direction — a subtype/format never folds into its base in EITHER direction",
+      "kind": "item",
+      "term": "carnitas tacos",
+      "termHomePlaces": ["Valentina's Tex Mex BBQ", "Cuantos Tacos"],
+      "candidates": [
+        {
+          "name": "carnitas",
+          "homePlaces": ["Valentina's Tex Mex BBQ", "La Barbecue", "Suerte"]
+        }
+      ],
+      "expected": "new"
+    },
+    {
+      "id": "beef-fajitas-not-fajitas",
+      "why": "wave-sweep wrong merge (audit): protein specification — 35-restaurant generic fajitas fused into beef; spec never folds into category",
+      "kind": "item",
+      "term": "beef fajitas",
+      "termHomePlaces": ["Tacos Durango", "Asadero Los Gero's"],
+      "candidates": [
+        {
+          "name": "fajitas",
+          "homePlaces": ["Matt's El Rancho", "Tacos Durango", "Chuy's"]
+        }
+      ],
+      "expected": "new"
+    },
+    {
+      "id": "ceviche-de-pescado-not-ceviche",
+      "why": "wave-sweep wrong merge (audit): fish-ceviche subtype vs 22-restaurant global generic; footprint overlap at one venue is not same-restaurant evidence",
+      "kind": "item",
+      "term": "ceviche de pescado",
+      "termHomePlaces": ["Este", "La Playa"],
+      "candidates": [
+        {
+          "name": "ceviche",
+          "homePlaces": ["Este", "Uchi Austin", "Seareinas"]
+        }
+      ],
+      "expected": "new"
+    },
+    {
+      "id": "caesar-wrap-not-chicken-wrap",
+      "why": "wave-sweep wrong merge (audit, coordinator-flagged): two different orderable wraps, not one thing",
+      "kind": "item",
+      "term": "chicken wrap",
+      "termHomePlaces": ["Zoe's Kitchen"],
+      "candidates": [
+        {
+          "name": "caesar wrap",
+          "homePlaces": ["Newk's Eatery"]
+        }
+      ],
+      "expected": "new"
+    },
+    {
+      "id": "omakase-not-sushi-omakase",
+      "why": "fragmentation-study pin (rec #2): a style-qualified format is like a dietary-qualified one — OTOKO runs a sushi omakase AND a kaiseki omakase; folding erases the choice",
+      "kind": "item",
+      "term": "sushi omakase",
+      "termHomePlaces": ["OTOKO"],
+      "candidates": [
+        {
+          "name": "omakase",
+          "homePlaces": ["OTOKO", "Soto", "Uchi Austin"]
+        }
+      ],
+      "expected": "new"
+    },
+    {
+      "id": "bbq-pork-not-pork",
+      "why": "wave-sweep wrong merge (audit): a preparation never folds into the base ingredient — 68 dish references moved onto bare pork",
+      "kind": "ingredient",
+      "term": "bbq pork",
+      "candidates": [
+        {
+          "name": "pork"
+        }
+      ],
+      "expected": "new"
+    },
+    {
+      "id": "bell-pepper-not-peppers",
+      "why": "wave-sweep wrong merge (audit, coordinator-flagged): generic 'peppers' (jalapeno? serrano?) is broader than bell pepper — category never folds",
+      "kind": "ingredient",
+      "term": "peppers",
+      "candidates": [
+        {
+          "name": "bell pepper"
+        }
+      ],
+      "expected": "new"
+    },
+    {
+      "id": "bbq-sauce-is-barbecue-sauce",
+      "why": "true synonym keep-side control from the same batch: spelling/abbreviation of ONE condiment — must still merge after the doctrine tightening",
+      "kind": "ingredient",
+      "term": "bbq sauce",
+      "candidates": [
+        {
+          "name": "barbecue sauce"
+        }
+      ],
+      "expected": "match"
+    },
+    {
+      "id": "boke-choy-is-bok-choy",
+      "why": "true synonym control from the batch: an obvious typo is the same ingredient wearing different letters",
+      "kind": "ingredient",
+      "term": "boke choy",
+      "candidates": [
+        {
+          "name": "bok choy"
+        }
+      ],
+      "expected": "match"
+    },
+    {
+      "id": "ribeye-word-order-matches",
+      "why": "true synonym control from the batch: word order variant of one cut — identity, not specification",
+      "kind": "ingredient",
+      "term": "beef ribeye",
+      "candidates": [
+        {
+          "name": "ribeye beef"
+        }
+      ],
+      "expected": "match"
     }
   ]
 }

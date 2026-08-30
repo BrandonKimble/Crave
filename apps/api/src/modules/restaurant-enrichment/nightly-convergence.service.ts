@@ -80,12 +80,12 @@ export class NightlyConvergenceService {
         'knowledge-cuisine-projection',
         () => this.dishKnowledge.projectKnowledgeCuisines(),
       ],
-      // D5 (2026-08-30): the two deterministic venue-cuisine evidence lanes
-      // — dish-set implications (reads the knowledge cuisines the phase
-      // above just converged) and the venue-name signal — recomputed from
-      // state, diffed against their own source classes, re-projected.
-      // Deterministic and free, so like the grain bridge it runs regardless
-      // of any LLM lane's flag.
+      // D5 (2026-08-30): the deterministic dish-set venue-cuisine evidence
+      // lane (reads the knowledge cuisines the phase above just converged)
+      // — recomputed from state, diffed against its own source class,
+      // re-projected. Deterministic and free, so like the grain bridge it
+      // runs regardless of any LLM lane's flag. (The venue-NAME signal is
+      // NOT here: the name is an input of the LLM venue-facts judge.)
       ['venue-cuisine-evidence', () => this.venueCuisineEvidence.reconcile()],
       // R11 census: a Google place type stored on a grounded restaurant that
       // google-place-type-attributes.ts classifies as neither kind nor noise

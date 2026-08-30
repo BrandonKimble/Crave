@@ -128,5 +128,383 @@
     "expect": {
       "notAttributes": ["beloved"]
     }
+  },
+  {
+    "id": "trap-texas-french-bread",
+    "why": "Measured trap: 'French' modifies the PRODUCT (french bread) at a bakery/cafe — never the kitchen.",
+    "venueName": "Texas French Bread",
+    "summary": "Chill, cozy bakery/cafe offering a sandwich menu for lunch & bistro fare & wine for dinner.",
+    "types": [
+      "bakery",
+      "bistro",
+      "breakfast_restaurant",
+      "coffee_shop",
+      "cafe",
+      "wholesaler",
+      "manufacturer",
+      "food_store",
+      "store",
+      "restaurant",
+      "food",
+      "point_of_interest",
+      "establishment"
+    ],
+    "expect": {
+      "notCuisines": ["french"]
+    }
+  },
+  {
+    "id": "trap-tocabe-american-indian",
+    "why": "Measured trap: 'American Indian' = Native American, never the cuisine of India (homograph).",
+    "venueName": "Tocabe, An American Indian Eatery",
+    "summary": "Contemporary, counter-serve Native American spot with build-your-own tacos, bison ribs & nachos.",
+    "types": [
+      "american_restaurant",
+      "restaurant",
+      "food",
+      "point_of_interest",
+      "establishment"
+    ],
+    "expect": {
+      "notCuisines": ["indian"]
+    }
+  },
+  {
+    "id": "trap-french-quarter-grille",
+    "why": "Measured trap: 'French Quarter' is the New Orleans neighborhood (proper name); the kitchen is Cajun.",
+    "venueName": "French Quarter Grille",
+    "summary": "Casual space with New Orleans-inspired paintings offering gumbo & other classic Cajun eats.",
+    "types": [
+      "cajun_restaurant",
+      "american_restaurant",
+      "bar",
+      "restaurant",
+      "food",
+      "point_of_interest",
+      "establishment"
+    ],
+    "expect": {
+      "cuisines": ["cajun"],
+      "notCuisines": ["french"]
+    }
+  },
+  {
+    "id": "trap-romans",
+    "why": "Measured trap: 'Roman' is a person's name; the summary says New American small plates.",
+    "venueName": "Roman's",
+    "summary": "Hip, vintage-chic neighborhood spot preparing locally sourced New American small plates.",
+    "types": [
+      "italian_restaurant",
+      "wine_bar",
+      "cocktail_bar",
+      "bar",
+      "restaurant",
+      "food",
+      "point_of_interest",
+      "establishment"
+    ],
+    "expect": {
+      "notCuisines": ["roman"]
+    }
+  },
+  {
+    "id": "trap-go-greek-yogurt",
+    "why": "Measured trap: 'Greek' modifies the product (greek yogurt) at a dessert counter.",
+    "venueName": "Go Greek Yogurt",
+    "types": [
+      "dessert_shop",
+      "confectionery",
+      "food_store",
+      "store",
+      "food",
+      "point_of_interest",
+      "establishment"
+    ],
+    "expect": {
+      "notCuisines": ["greek"]
+    }
+  },
+  {
+    "id": "trap-great-american-cookies",
+    "why": "Measured trap: 'American' is brand flourish on a cookie product, not a kitchen claim.",
+    "venueName": "Great American Cookies",
+    "summary": "Mall-based chain selling cookies & brownies offering some specialty flavors, plus cookie cakes.",
+    "types": [
+      "bakery",
+      "confectionery",
+      "food_store",
+      "store",
+      "food",
+      "point_of_interest",
+      "establishment"
+    ],
+    "expect": {
+      "notCuisines": ["american"]
+    }
+  },
+  {
+    "id": "trap-all-american-bagel",
+    "why": "Measured trap: 'All American' brand word at a bagel/coffee shop — product venue, no kitchen claim.",
+    "venueName": "All American Bagel & Barista Company",
+    "types": [
+      "bagel_shop",
+      "coffee_shop",
+      "breakfast_restaurant",
+      "cafe",
+      "bakery",
+      "food_store",
+      "restaurant",
+      "point_of_interest",
+      "food",
+      "store",
+      "establishment"
+    ],
+    "expect": {
+      "notCuisines": ["american"]
+    }
+  },
+  {
+    "id": "trap-culture-yogurt",
+    "why": "Measured trap: 'American Yogurt Company' — the word sits on the product at a yogurt shop.",
+    "venueName": "Culture An American Yogurt Company",
+    "types": [
+      "dessert_shop",
+      "confectionery",
+      "food_store",
+      "store",
+      "food",
+      "point_of_interest",
+      "establishment"
+    ],
+    "expect": {
+      "notCuisines": ["american"]
+    }
+  },
+  {
+    "id": "trap-mexican-doggis",
+    "why": "Measured trap: a hot-dog stand Google types american — 'Mexican' styles the dogs, not a Mexican kitchen.",
+    "venueName": "MEXICAN DOGGIS",
+    "types": [
+      "hot_dog_stand",
+      "meal_takeaway",
+      "american_restaurant",
+      "restaurant",
+      "food",
+      "point_of_interest",
+      "establishment"
+    ],
+    "expect": {
+      "notCuisines": ["mexican"]
+    }
+  },
+  {
+    "id": "trap-western-yunnan",
+    "why": "Measured trap: 'Western' is a region of Yunnan (homograph) — the kitchen is Yunnan Chinese.",
+    "venueName": "Western Yunnan Crossing Bridge Noodle",
+    "types": [
+      "chinese_noodle_restaurant",
+      "soup_restaurant",
+      "restaurant",
+      "food",
+      "point_of_interest",
+      "establishment"
+    ],
+    "expect": {
+      "notCuisines": ["western"]
+    }
+  },
+  {
+    "id": "trap-jagerhaus",
+    "why": "Measured trap: the summary confirms only the German beer hall — 'Mediterranean' in the name is unsupported.",
+    "venueName": "Jägerhaus German Mediterranean Restaurant",
+    "summary": "Classic German beer hall & gastropub offering traditional Bavarian fare & Oktoberfest events.",
+    "types": [
+      "german_restaurant",
+      "beer_garden",
+      "european_restaurant",
+      "bar",
+      "restaurant",
+      "food",
+      "point_of_interest",
+      "establishment"
+    ],
+    "expect": {
+      "cuisines": ["german"],
+      "notCuisines": ["mediterranean"]
+    }
+  },
+  {
+    "id": "trap-jeremiahs-italian-ice",
+    "why": "Measured trap: 'Italian Ice' is a product name at a frozen-treat counter.",
+    "venueName": "Jeremiah's Italian Ice",
+    "summary": "Counter-serve stand with frozen treats, including soft-serve cones, ices & its signature Jelati in many flavors.",
+    "types": [
+      "ice_cream_shop",
+      "dessert_shop",
+      "confectionery",
+      "food_store",
+      "store",
+      "food",
+      "point_of_interest",
+      "establishment"
+    ],
+    "expect": {
+      "notCuisines": ["italian"]
+    }
+  },
+  {
+    "id": "trap-great-british-baking",
+    "why": "Measured trap: 'British Baking' rides the TV-show title at a bakery — product/pun, not a kitchen claim.",
+    "venueName": "The Great British Baking Company",
+    "types": [
+      "bakery",
+      "food_store",
+      "store",
+      "food",
+      "point_of_interest",
+      "establishment"
+    ],
+    "expect": {
+      "notCuisines": ["british"]
+    }
+  },
+  {
+    "id": "trap-spaghetti-western",
+    "why": "Name-only pun: a film genre — 'western' is never the kitchen (the kitchen, if anything, is italian).",
+    "venueName": "Spaghetti Western",
+    "expect": {
+      "notCuisines": ["western"]
+    }
+  },
+  {
+    "id": "trap-pardon-my-french",
+    "why": "Name-only idiom/pun bar — 'french' makes no kitchen claim; ambiguous alone -> nothing.",
+    "venueName": "Pardon My French",
+    "expect": {
+      "notCuisines": ["french"]
+    }
+  },
+  {
+    "id": "name-only-chaba-thai",
+    "why": "Name-only place with an unambiguous kitchen claim — the name is the only knowledge there is.",
+    "venueName": "Chaba Thai",
+    "expect": {
+      "cuisines": ["thai"]
+    }
+  },
+  {
+    "id": "name-only-aha-indian",
+    "why": "The owner's own case: '<word> + venue' shaped names were never wrong in the corpus.",
+    "venueName": "Aha Indian",
+    "expect": {
+      "cuisines": ["indian"]
+    }
+  },
+  {
+    "id": "name-types-gyu-kaku",
+    "why": "Name + types agree (japanese BBQ) — both traditions the diner would tap.",
+    "venueName": "Gyu-Kaku Japanese BBQ",
+    "types": [
+      "japanese_restaurant",
+      "bar",
+      "restaurant",
+      "point_of_interest",
+      "food",
+      "establishment"
+    ],
+    "expect": {
+      "cuisines": ["japanese"]
+    }
+  },
+  {
+    "id": "honest-tradition-bakery-poseidon",
+    "why": "A GENUINE tradition venue that is a bakery: spanakopita & baklava make it greek — the old vote wrongly suppressed this.",
+    "venueName": "Poseidon Greek Bakery",
+    "summary": "Veteran mom-&-pop outfit supplying sweet & savory fare from phyllo & spanakopita to baklava.",
+    "types": [
+      "bakery",
+      "food_store",
+      "point_of_interest",
+      "food",
+      "store",
+      "establishment"
+    ],
+    "expect": {
+      "cuisines": ["greek"]
+    }
+  },
+  {
+    "id": "foreign-pho-phong-luu",
+    "why": "Vietnamese-language name; only generic types — the name's language announces the kitchen.",
+    "venueName": "Phở Phong Lưu",
+    "summary": "Unpretentious Vietnamese choice specializing in noodle soup, plus fried rice & spring rolls.",
+    "types": ["restaurant", "food", "point_of_interest", "establishment"],
+    "expect": {
+      "cuisines": ["vietnamese"]
+    }
+  },
+  {
+    "id": "foreign-saigon-le-vendeur",
+    "why": "Ungrounded, name-only: 'Saigon' names the tradition's food culture.",
+    "venueName": "Saigon Le Vendeur",
+    "expect": {
+      "cuisines": ["vietnamese"]
+    }
+  },
+  {
+    "id": "foreign-bawarchi-biryani",
+    "why": "Ungrounded, name-only: Urdu/Hindi 'bawarchi' + biryani — no cuisine word in any vocabulary, but the concept is unmistakable.",
+    "venueName": "Bawarchi Biryani",
+    "expect": {
+      "cuisines": ["indian"]
+    }
+  },
+  {
+    "id": "concept-pho-king",
+    "why": "Ungrounded, name-only: the signature dish IN the name points at one tradition unmistakably.",
+    "venueName": "Pho King",
+    "expect": {
+      "cuisines": ["vietnamese"]
+    }
+  },
+  {
+    "id": "concept-taqueria-torres",
+    "why": "Ungrounded, name-only: 'Taqueria' is a Mexican venue word — concept, not a vocab cuisine word.",
+    "venueName": "Taqueria Torres",
+    "expect": {
+      "cuisines": ["mexican"]
+    }
+  },
+  {
+    "id": "hybrid-texmex-carries-mexican",
+    "why": "HYBRID law with the name+summary shape: Tex-Mex carries mexican too (overlapping, not nested).",
+    "venueName": "Taqueria Guadalajara",
+    "summary": "Familiar Tex-Mex eats such as breakfast tacos & sandwiches dispensed in a modest setting.",
+    "types": [
+      "mexican_restaurant",
+      "latin_american_restaurant",
+      "breakfast_restaurant",
+      "restaurant",
+      "food",
+      "point_of_interest",
+      "establishment"
+    ],
+    "expect": {
+      "cuisines": ["tex-mex", "mexican"]
+    }
+  },
+  {
+    "id": "non-food-venue-museum",
+    "why": "A grounded NON-FOOD venue: its name makes no kitchen claim at all (the measured museum trap).",
+    "venueName": "National Museum of African American History and Culture",
+    "types": [
+      "museum",
+      "tourist_attraction",
+      "point_of_interest",
+      "establishment"
+    ],
+    "expect": {
+      "emptyCuisines": true
+    }
   }
 ]

@@ -90,10 +90,9 @@ function buildService(options: { holdLedgered: boolean }) {
     async () => [];
   (service as never as Record<string, unknown>).mergeItemPair = async (
     _type: string,
-    aId: string,
-    bId: string,
+    pair: { a_id: string; b_id: string },
   ) => {
-    mergedPairs.push([aId, bId]);
+    mergedPairs.push([pair.a_id, pair.b_id]);
   };
   return { service, mergedPairs };
 }

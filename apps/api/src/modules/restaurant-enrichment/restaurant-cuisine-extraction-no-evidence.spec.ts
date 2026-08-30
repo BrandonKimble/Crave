@@ -2,28 +2,26 @@ import { EntityType } from '@prisma/client';
 import { PlaceCuisineExtractionService } from './restaurant-cuisine-extraction.service';
 
 /**
- * NO EVIDENCE IS NOT A COMPLETED EXTRACTION (F4948).
+ * ONE CUISINE JUDGE, ALL SIGNALS (owner-ruled 2026-08-30) + F4948.
  *
- * The once-ever gate reads `restaurantMetadata.cuisineExtraction.extractedAt`.
- * A freshly-grounded restaurant with no matching place types and no editorial
- * summary has NOTHING to extract from — the LLM cannot even be asked. The old
- * code wrote `source: 'none'` and STAMPED `extractedAt` anyway, so the gate
- * marked it done permanently: when refreshStaleLocations later re-polled and
- * an editorial summary finally appeared, the restaurant was never re-asked.
+ * The venue NAME is first-class evidence: the judge is asked whenever a
+ * name or a summary exists — which for a real place is ALWAYS, since
+ * places carry names. The old "no evidence -> defer" branch survives only
+ * for the degenerate no-name/no-summary/no-types row (F4948's law: no
+ * evidence is not a completed extraction — write NO record, so the
+ * fingerprint gate reads "not yet asked" and re-tries when evidence
+ * appears).
  *
- * The fix makes "no evidence" representationally distinct from
- * "extracted, found nothing": no-evidence writes NO record (its absence is
- * exactly what the gate reads as "not yet asked"), so first-evidence-later
- * re-tries. MUTATION: revert the service's `else { return; }` back to writing
- * a 'none' record and the first assertion below reds.
+ * MUTATION: gate the LLM call on the summary again (the pre-2026-08-30
+ * shape) and the name-only assertion below reds.
  */
-describe('cuisine extraction does not stamp "no evidence" as done (F4948)', () => {
+describe('cuisine judge reads the venue name as first-class evidence', () => {
   type EntityUpdateArgs = { data: Record<string, unknown> };
 
   function makeService(opts: {
     entity: Record<string, unknown>;
     update: jest.Mock<Promise<unknown>, [EntityUpdateArgs]>;
-    extractCuisineFromSummary: jest.Mock;
+    extractVenueCuisineFacts: jest.Mock;
   }) {
     const logger = {
       setContext: () => logger,
@@ -50,12 +48,12 @@ describe('cuisine extraction does not stamp "no evidence" as done (F4948)', () =
     };
     const attributeOntologyQueue = { queueAdjudication: jest.fn() };
     const llmService = {
-      extractCuisineFromSummary: opts.extractCuisineFromSummary,
+      extractVenueCuisineFacts: opts.extractVenueCuisineFacts,
     };
     const aliasManagement = {
       // Return no valid aliases so attribute resolution (DB creates /
       // transactions) is skipped — `source` is decided before this filtering,
-      // so the once-ever stamp under test is unaffected.
+      // so the stamp under test is unaffected.
       validateScopeConstraints: () => ({ validAliases: [] as string[] }),
     };
     const service = new PlaceCuisineExtractionService(
@@ -68,72 +66,35 @@ describe('cuisine extraction does not stamp "no evidence" as done (F4948)', () =
     return { service, prisma, llmService };
   }
 
-  const NO_EVIDENCE_ENTITY = {
+  const NAME_ONLY_ENTITY = {
     entityId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-    name: 'Fresh Ungrounded Spot',
+    name: 'Chaba Thai',
     type: EntityType.place,
     placeAttributes: [],
-    // No matching place types, and no editorial summary to ask the LLM with.
+    // No matching place types and no editorial summary — the name is the
+    // only evidence, and it IS evidence now.
     placeMetadata: { googlePlaces: { types: [], editorialSummary: null } },
   };
 
-  it('a no-evidence restaurant writes NO cuisineExtraction record (gate stays open)', async () => {
+  it('a name-only place IS judged — the name alone is evidence', async () => {
     const update = jest
       .fn<Promise<unknown>, [EntityUpdateArgs]>()
       .mockResolvedValue({});
-    const extractCuisineFromSummary = jest.fn();
-    const { service } = makeService({
-      entity: NO_EVIDENCE_ENTITY,
-      update,
-      extractCuisineFromSummary,
-    });
-
-    await service.extractCuisineForPlace(NO_EVIDENCE_ENTITY.entityId);
-
-    // The LLM was never asked (there was nothing to ask with)...
-    expect(extractCuisineFromSummary).not.toHaveBeenCalled();
-    // ...and NOTHING was persisted — in particular no extractedAt stamp that
-    // the once-ever gate would read as "done". This is the assertion that
-    // reds if the no-evidence branch is reverted to writing a record.
-    const stampedDone = update.mock.calls.some((call) => {
-      const meta = call[0]?.data?.placeMetadata as
-        | Record<string, unknown>
-        | undefined;
-      const extraction = meta?.cuisineExtraction as
-        | Record<string, unknown>
-        | undefined;
-      return Boolean(extraction?.extractedAt);
-    });
-    expect(stampedDone).toBe(false);
-  });
-
-  it('once a summary appears, the LLM IS asked (the re-try the gate allows)', async () => {
-    const update = jest
-      .fn<Promise<unknown>, [EntityUpdateArgs]>()
-      .mockResolvedValue({});
-    const extractCuisineFromSummary = jest
+    const extractVenueCuisineFacts = jest
       .fn()
       .mockResolvedValue({ cuisines: ['thai'], attributes: [] });
-    const withSummary = {
-      ...NO_EVIDENCE_ENTITY,
-      placeMetadata: {
-        googlePlaces: {
-          types: [],
-          editorialSummary: 'A cozy Thai kitchen in East Austin.',
-        },
-      },
-    };
     const { service } = makeService({
-      entity: withSummary,
+      entity: NAME_ONLY_ENTITY,
       update,
-      extractCuisineFromSummary,
+      extractVenueCuisineFacts,
     });
 
-    await service.extractCuisineForPlace(withSummary.entityId);
+    await service.extractCuisineForPlace(NAME_ONLY_ENTITY.entityId);
 
-    // First evidence arrived -> the extraction actually runs (no permanent
-    // short-circuit from a prior no-evidence stamp).
-    expect(extractCuisineFromSummary).toHaveBeenCalledTimes(1);
+    expect(extractVenueCuisineFacts).toHaveBeenCalledTimes(1);
+    expect(extractVenueCuisineFacts).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Chaba Thai' }),
+    );
     const stampedDone = update.mock.calls.some((call) => {
       const meta = call[0]?.data?.placeMetadata as
         | Record<string, unknown>
@@ -146,33 +107,57 @@ describe('cuisine extraction does not stamp "no evidence" as done (F4948)', () =
     expect(stampedDone).toBe(true);
   });
 
-  it('the LLM asked but finding nothing IS recorded as done (llm_found_nothing)', async () => {
+  it('a truly evidence-free row (no name, no summary, no types) writes NO record (F4948)', async () => {
     const update = jest
       .fn<Promise<unknown>, [EntityUpdateArgs]>()
       .mockResolvedValue({});
-    const extractCuisineFromSummary = jest
-      .fn()
-      .mockResolvedValue({ cuisines: [], attributes: [] });
-    const withSummary = {
-      ...NO_EVIDENCE_ENTITY,
-      placeMetadata: {
-        googlePlaces: {
-          types: [],
-          editorialSummary: 'An unremarkable spot with no cuisine signal.',
-        },
-      },
-    };
+    const extractVenueCuisineFacts = jest.fn();
     const { service } = makeService({
-      entity: withSummary,
+      entity: { ...NAME_ONLY_ENTITY, name: '  ' },
       update,
-      extractCuisineFromSummary,
+      extractVenueCuisineFacts,
     });
 
-    await service.extractCuisineForPlace(withSummary.entityId);
+    await service.extractCuisineForPlace(NAME_ONLY_ENTITY.entityId);
 
-    // We HAD evidence and asked; a distinct typed value records that so the
-    // gate does not re-spend on the same unchanged summary.
-    expect(extractCuisineFromSummary).toHaveBeenCalledTimes(1);
+    // The LLM was never asked (there was nothing to ask with)...
+    expect(extractVenueCuisineFacts).not.toHaveBeenCalled();
+    // ...and NOTHING was persisted — in particular no extractedAt stamp that
+    // the fingerprint gate would read as "done".
+    const stampedDone = update.mock.calls.some((call) => {
+      const meta = call[0]?.data?.placeMetadata as
+        | Record<string, unknown>
+        | undefined;
+      const extraction = meta?.cuisineExtraction as
+        | Record<string, unknown>
+        | undefined;
+      return Boolean(extraction?.extractedAt);
+    });
+    expect(stampedDone).toBe(false);
+  });
+
+  it('the judge asked but finding nothing IS recorded as done (llm_found_nothing)', async () => {
+    const update = jest
+      .fn<Promise<unknown>, [EntityUpdateArgs]>()
+      .mockResolvedValue({});
+    const extractVenueCuisineFacts = jest
+      .fn()
+      .mockResolvedValue({ cuisines: [], attributes: [] });
+    const ambiguousName = {
+      ...NAME_ONLY_ENTITY,
+      name: "Roman's",
+    };
+    const { service } = makeService({
+      entity: ambiguousName,
+      update,
+      extractVenueCuisineFacts,
+    });
+
+    await service.extractCuisineForPlace(ambiguousName.entityId);
+
+    // We HAD evidence (the name) and asked; a distinct typed value records
+    // that so the gate does not re-spend on the same unchanged inputs.
+    expect(extractVenueCuisineFacts).toHaveBeenCalledTimes(1);
     const recorded = update.mock.calls.find((call) => {
       const meta = call[0]?.data?.placeMetadata as
         | Record<string, unknown>

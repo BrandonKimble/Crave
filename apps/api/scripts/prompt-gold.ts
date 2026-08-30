@@ -84,8 +84,12 @@ type GoldCase = {
   chooserInput?: LLMPlaceChooserInput;
   /** dish-knowledge: one dish name. */
   dish?: string;
-  /** cuisine: the editorial summary. */
+  /** cuisine: the editorial summary (may be empty — name-only venues). */
   summary?: string;
+  /** cuisine: the venue's own name (first-class evidence, 2026-08-30). */
+  venueName?: string;
+  /** cuisine: the venue's Google place types (context for the judge). */
+  types?: string[];
   /** attribute-placement: the term + vocabulary + candidate shortlist. */
   term?: string;
   attrKind?: 'place_attribute' | 'item_attribute';
@@ -161,7 +165,12 @@ function payload(kind: Kind, testCase: GoldCase): string {
     return JSON.stringify({ question: testCase.text });
   if (kind === 'dish-knowledge')
     return JSON.stringify({ dishes: [{ index: 0, name: testCase.dish }] });
-  if (kind === 'cuisine') return JSON.stringify({ summary: testCase.summary });
+  if (kind === 'cuisine')
+    return JSON.stringify({
+      name: testCase.venueName ?? '',
+      summary: testCase.summary ?? '',
+      types: testCase.types ?? [],
+    });
   if (kind === 'attribute-placement')
     return JSON.stringify({
       term: testCase.term,

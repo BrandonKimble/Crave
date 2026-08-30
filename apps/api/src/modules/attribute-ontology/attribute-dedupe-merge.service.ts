@@ -3,6 +3,10 @@ import { EntityType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { isEnvFlagEnabled } from '../../shared/config/env-flag';
+import {
+  bannedMergeReasonClass,
+  refusedMergeHoldReason,
+} from '../../shared/merge-reason-tripwire';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { EmbeddingService } from '../external-integrations/llm/embedding.service';
 import {
@@ -439,7 +443,19 @@ export class AttributeDedupeMergeService {
           b: pair.bName,
         });
         const plan = await this.planMerge(type, pair.aId, pair.bId);
-        await this.settleVerdict(type, pair, 'merge', reason, plan, source);
+        const settled = await this.settleVerdict(
+          type,
+          pair,
+          'merge',
+          reason,
+          plan,
+          source,
+        );
+        if (settled !== 'merge') {
+          // The reason tripwire refused the merge and recorded a hold.
+          summary.judgeRejected += 1;
+          continue;
+        }
         consumed.add(pair.aId);
         consumed.add(pair.bId);
         summary.judgeMerged += 1;
@@ -516,7 +532,12 @@ export class AttributeDedupeMergeService {
     return total;
   }
 
-  /** Commit the verdict, THEN obey it (the ledger's amendment (c)). */
+  /** Commit the verdict, THEN obey it (the ledger's amendment (c)).
+   *
+   *  THE REASON TRIPWIRE (shared with the entity dedupe lane —
+   *  shared/merge-reason-tripwire.ts) runs at this recording chokepoint:
+   *  a merge whose stated ground names a banned class is refused and
+   *  recorded as a fail-closed 'hold' with a loud log. */
   private async settleVerdict(
     type: AttributeEntityType,
     pair: AttributeMergeCandidate,
@@ -524,7 +545,25 @@ export class AttributeDedupeMergeService {
     reason: string,
     plan: AttributeMergePlan | null,
     source: HearingSource,
-  ): Promise<void> {
+  ): Promise<'merge' | 'hold'> {
+    if (outcome === 'merge') {
+      const banned = bannedMergeReasonClass(reason);
+      if (banned) {
+        this.logger.error(
+          'MERGE REFUSED — judge reason names a banned class; recording hold',
+          {
+            type,
+            a: pair.aName,
+            b: pair.bName,
+            bannedClass: banned,
+            reason,
+          },
+        );
+        outcome = 'hold';
+        reason = refusedMergeHoldReason(banned, reason);
+        plan = null;
+      }
+    }
     const claimKey = attributeMergeLane.canonicalClaimKey({
       entityId: pair.aId,
       otherEntityId: pair.bId,
@@ -556,6 +595,7 @@ export class AttributeDedupeMergeService {
       ATTRIBUTE_MERGE_RULE_VERSION,
       attributeMergeLane.keyFoldVersion,
     );
+    return outcome;
   }
 
   /** THE ONE PLACE A VERDICT TOUCHES THE CORPUS — live hearings and

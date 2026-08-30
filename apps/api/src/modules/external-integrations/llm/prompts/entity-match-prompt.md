@@ -32,9 +32,10 @@ A judgment may also carry EVIDENCE fields — use every one you are given:
   They count as that candidate's names: a term that matches an alias the way
   it would match the name is the same entity.
 - per candidate, `home_places` — the restaurant(s) that candidate is served
-  at (items/ingredients), and `same_place` — true when the candidate lives
-  at the same restaurant the term was mentioned at. This is the OTOKO rule
-  made mechanical (below).
+  at (items/ingredients), and `same_place` — sent only on mention hearings:
+  true when the candidate lives at the very restaurant the term was
+  mentioned at. It scopes the venue-name rule (below); it is NEVER by
+  itself a reason to match.
 
 ## THE ONE-THING TEST
 
@@ -89,40 +90,53 @@ repertoire. Dietary words are specifications, not synonyms:
 "vegan reuben" ≠ "veggie reuben" (vegan and vegetarian are different
 promises a diner relies on).
 
-## THE HOME-RESTAURANT RULE (the OTOKO rule)
+## THE CORPUS-GLOBAL LAW — merge is identity only
 
-The same words at different restaurants are different offerings when the
-name is a venue's own composition; and one restaurant's decorated retelling
-of a dish is the same dish. `same_place` / `home_places` / `thread_place`
-decide which case you are in:
+Item and ingredient entities are CORPUS-GLOBAL: one "omakase" entity is
+shared by every restaurant that serves one, one "carnitas" entity carries
+every venue's carnitas credit. A `match` verdict therefore renames the
+losing name's evidence at EVERY restaurant it appears — so a match is a
+ruling about IDENTITY (the same thing under a different name, wherever it
+appears), never a tidy-up of one restaurant's wording.
 
-- **Venue-name decoration folds.** When the term is a candidate's name plus
-  tokens of the very restaurant it lives at, the extra words are the VENUE,
-  not the dish: "soto omakase" mentioned in a thread about Soto, where
-  candidate "omakase" is served at Soto → match. The venue's name is never
-  part of the dish's identity.
-- **Narration decoration folds — at the same restaurant.** Course counts,
-  "experience", and other storytelling glued onto the plain name are the
-  speaker's flourish, not a second offering: "20 course omakase experience"
-  at a restaurant whose "omakase" candidate lives at that same restaurant →
-  match. Across restaurants the same words stay separate — you cannot know
-  two venues' menus collapse.
-- **Channel wording folds — at the same restaurant.** "take home omakase",
-  "in-home omakase" name how the same kitchen's offering reaches you, not a
-  different dish: with `same_place` true against that kitchen's "omakase",
-  match.
-- **A genuine variant never folds, even at one restaurant.** A dietary or
-  ingredient modifier names an offering the venue itself distinguishes:
-  "vegetarian omakase" ≠ "omakase" at the same restaurant (a diner picks
-  between them). And when the mention itself CONTRASTS two offerings ("a
-  sushi omakase on Wednesdays; a kaiseki omakase other nights"), the
-  contrast is proof of two things — never merge what the source
-  distinguishes.
+**"Same restaurant" is never a ground for match.** One venue's decorated
+retelling of its own dish — course counts and storytelling ("20 course
+omakase experience"), channel wording ("take home omakase"), a price or
+menu format glued onto the plain name — may well be the same offering AT
+THAT VENUE, but unifying it is the extraction layer's job (pro-form
+resolution within the thread), not this court's: an entity fold would drag
+every OTHER venue's credit along with it. When two names differ by such
+decoration, the honest verdict here is `new` — the entities stay separate
+and extraction heals the source.
+
+`home_places` / `thread_place` / `same_place` still carry evidence this
+court does use:
+
+- **Venue-name decoration folds — an identity ruling.** A venue's own name
+  is never part of a dish's identity, so a term that is a candidate's name
+  plus tokens of the very restaurant it lives at IS that candidate: "soto
+  omakase" mentioned in a thread about Soto, where candidate "omakase" is
+  served at Soto → match. (Extraction already bans venue names inside dish
+  names; these are legacy rows being healed.) A MENU NUMBER is the same
+  kind of venue labeling: when the mention itself states the mapping
+  ("No. 16 Noodles with meat and bean sauce is the bees knees"), the
+  numbered name and the plain name are one dish — a name variant, match.
+- **A genuine variant never folds, even at one restaurant.** A dietary,
+  ingredient, style, or format modifier names an offering a diner picks on
+  purpose: "vegetarian omakase" ≠ "omakase", "sushi omakase" ≠ "omakase"
+  (a venue can run both a sushi and a kaiseki omakase — OTOKO does). And
+  when the mention itself CONTRASTS two offerings ("a sushi omakase on
+  Wednesdays; a kaiseki omakase other nights"), the contrast is proof of
+  two things — never merge what the source distinguishes.
 - **Without home evidence, doubt says `new`** — the same words at an
-  unknown restaurant may be a different composition (two unrelated
-  "omakase"s are still one CONCEPT, but "OTOKO's tea omakase" and another
-  venue's "tea omakase" earned separate hearings; leave unification to a
-  hearing that has the evidence).
+  unknown restaurant may be a different composition ("OTOKO's tea omakase"
+  and another venue's "tea omakase" earned separate hearings; leave
+  unification to a hearing that has the evidence).
+
+**Self-refuting reasons.** "Category fold", "specification fold", "format
+fold", "broader/narrower", and "same restaurant" are not merge classes —
+a match whose own reason would name one of them is a match this doctrine
+forbids; the verdict for such a pair is `new`.
 
 ## REJECT — when the term is not an entity at all
 
