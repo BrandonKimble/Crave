@@ -160,7 +160,7 @@ WHERE entity_id IN (SELECT entity_id FROM doomed_entities);
 -- re-extraction resolves onto these rows or the next wipe re-flags again.
 UPDATE core_entities SET constraint_class = 'dietary'
 WHERE status = 'active'
-  AND type IN ('food_attribute', 'restaurant_attribute')
+  AND type IN ('item_attribute', 'place_attribute')
   AND lower(name) IN
     ('vegan','vegetarian','gluten free','gluten-free','halal','kosher','pescatarian');
 

@@ -23,7 +23,6 @@
  * prompt-activate.ts <N> so LIVE collection extracts under the new prompt.
  */
 import { NestFactory } from '@nestjs/core';
-import { createHash } from 'crypto';
 import {
   consumeActivationPlan,
   resolveActivationPlan,
@@ -92,9 +91,10 @@ async function main(): Promise<void> {
       // were retained, so this restores the previous graph exactly; the
       // projection rebuild re-derives it. Refuses if the old version's
       // events were already discarded.
-      const promptHashForRollback = createHash('sha256')
-        .update(prompt.content)
-        .digest('hex');
+      // The registry's contentHash IS the run-stamped system_prompt_hash
+      // (prompt content folded with the response schema — one behavioral
+      // contract); recomputing over content alone finds zero runs.
+      const promptHashForRollback = prompt.contentHash;
       const flips = await prisma.$queryRaw<
         Array<{ document_id: string; old_run_id: string }>
       >`
@@ -188,9 +188,9 @@ async function main(): Promise<void> {
           `activate-shadow only flips documents onto a candidate's shadow runs.`,
       );
     }
-    const promptHash = createHash('sha256')
-      .update(prompt.content)
-      .digest('hex');
+    // Same law as the rollback path: the registry's contentHash is the
+    // schema-folded fingerprint the runs were stamped with.
+    const promptHash = prompt.contentHash;
 
     // Shadow runs for these communities: completed runs under the candidate
     // hash whose input documents belong to the target communities.

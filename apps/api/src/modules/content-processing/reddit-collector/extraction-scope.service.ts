@@ -69,6 +69,42 @@ export class ExtractionScopeService {
   }
 
   /**
+   * Every restaurant whose ACTIVE evidence sits on runs stamped with the
+   * given prompt hash, scoped to communities. The activation repair path:
+   * after a pointer flip, this IS the projection-rebuild set (both event
+   * ledgers, same D7 reasoning as affectedPlacesForDocuments).
+   */
+  async activePlacesForPromptHash(
+    promptHash: string,
+    communities: string[],
+  ): Promise<string[]> {
+    if (communities.length === 0) return [];
+    const rows = await this.prisma.$queryRaw<Array<{ place_id: string }>>(
+      Prisma.sql`
+        SELECT DISTINCT ev.restaurant_id AS place_id
+        FROM core_restaurant_entity_events ev
+        JOIN collection_source_documents d
+          ON d.document_id = ev.source_document_id
+         AND d.active_extraction_run_id = ev.extraction_run_id
+        JOIN collection_extraction_runs r
+          ON r.extraction_run_id = d.active_extraction_run_id
+        WHERE r.system_prompt_hash = ${promptHash}
+          AND d.community = ANY(${communities})
+        UNION
+        SELECT DISTINCT ev.restaurant_id AS place_id
+        FROM core_restaurant_events ev
+        JOIN collection_source_documents d
+          ON d.document_id = ev.source_document_id
+         AND d.active_extraction_run_id = ev.extraction_run_id
+        JOIN collection_extraction_runs r
+          ON r.extraction_run_id = d.active_extraction_run_id
+        WHERE r.system_prompt_hash = ${promptHash}
+          AND d.community = ANY(${communities})`,
+    );
+    return rows.map((row) => row.place_id);
+  }
+
+  /**
    * Every restaurant a document set touches. MUST union both event ledgers:
    * a restaurant whose evidence is only restaurant-level (praise with no
    * dish entity) lives solely in core_restaurant_events, and omitting it
@@ -78,10 +114,10 @@ export class ExtractionScopeService {
     if (documentIds.length === 0) return [];
     const rows = await this.prisma.$queryRaw<Array<{ place_id: string }>>(
       Prisma.sql`
-        SELECT DISTINCT restaurant_id FROM core_restaurant_entity_events
+        SELECT DISTINCT restaurant_id AS place_id FROM core_restaurant_entity_events
         WHERE source_document_id = ANY(${documentIds}::uuid[])
         UNION
-        SELECT DISTINCT restaurant_id FROM core_restaurant_events
+        SELECT DISTINCT restaurant_id AS place_id FROM core_restaurant_events
         WHERE source_document_id = ANY(${documentIds}::uuid[])`,
     );
     return rows.map((row) => row.place_id);
