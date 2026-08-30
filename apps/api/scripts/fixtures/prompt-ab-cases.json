@@ -3680,5 +3680,595 @@
         }
       ]
     }
+  },
+  {
+    "id": "N40-affirmation-own-mention",
+    "why": "Loop-4 walk (2026-08-28): the adoption backslide's mechanism — an affirmation is a NEW claim from THIS source; the parent's emission never absorbs it. Pins the exact wild failure ('This is the winner.').",
+    "posts": [
+      {
+        "id": "t3_l4a",
+        "subreddit": "austinfood",
+        "title": "Best veggie burger?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_l4a1",
+            "body": "Bouldin Creek Cafe"
+          },
+          {
+            "id": "t1_l4a2",
+            "parent_id": "t1_l4a1",
+            "body": "This is the winner."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_l4a1",
+          "places": ["bouldin creek cafe"],
+          "somePraise": true
+        },
+        {
+          "source": "t1_l4a2",
+          "places": ["bouldin creek cafe"],
+          "somePraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "N41-ampersand-two-brands-split",
+    "why": "Loop-4 walk (2026-08-28): '&' joining two branded names is two establishments sharing one verdict — both emit; the Rudy's Bar & Grill shape (generic second side) stays one name.",
+    "posts": [
+      {
+        "id": "t3_l4b",
+        "subreddit": "austinfood",
+        "title": "Coastal seafood worth the drive?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_l4b1",
+            "body": "Captain Brad's & Captain Tom's are both great for fried shrimp."
+          },
+          {
+            "id": "t1_l4b2",
+            "body": "Rudy's Bar & Grill has a solid burger too."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_l4b1",
+          "places": ["captain brad's", "captain tom's"]
+        },
+        {
+          "source": "t1_l4b2",
+          "places": ["rudy's bar & grill"],
+          "notRestaurants": ["rudy's bar", "grill"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N42-vouch-test-findability-slices",
+    "why": "Issue-1 (ask-taxonomy study): the Cherrywood leak — a findability ask answered with a menu-detail-rich stock fact ('sells cold slices of pie and cake') stays true of mediocre food; the VOUCH TEST refuses it.",
+    "contract": "v17",
+    "posts": [
+      {
+        "id": "t3_n42",
+        "subreddit": "austinfood",
+        "title": "Where can I find pie or cake by the slice?",
+        "body": "Craving a single slice, not a whole pie. Anywhere sell just slices?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_n42",
+            "body": "Cherrywood Coffeehouse sells cold slices of pie and cake."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_n42",
+          "emitsNothing": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "N43-vouch-test-variety-fact",
+    "why": "Issue-1: 'has a wide variety of enchiladas, including shrimp' is menu-presence stated with dish specificity — still true of mediocre enchiladas; no dish, no praise.",
+    "contract": "v17",
+    "posts": [
+      {
+        "id": "t3_n43",
+        "subreddit": "austinfood",
+        "title": "Cheese enchiladas with queso blanco inside — who does that?",
+        "body": "Looking for a place that makes them that way.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_n43",
+            "body": "El Mercado has a wide variety of enchiladas, including shrimp."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_n43",
+          "emitsNothing": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "N44-vouch-test-deal-fact",
+    "why": "Issue-1 + issue-2: a deal answer to a deal ask ('$2 Al Pastor Trompo tacos on Tuesdays') never births food or praise; under the value arm it may assert only place-side value fit.",
+    "contract": "v17",
+    "posts": [
+      {
+        "id": "t3_n44",
+        "subreddit": "austinfood",
+        "title": "Taco Tuesday deals?",
+        "body": "What are the best taco deals around town on Tuesdays?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_n44",
+            "body": "One Taco on Anderson has $2 Al Pastor Trompo tacos on Tuesdays."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_n44",
+          "notFoods": ["taco", "al pastor"],
+          "noPraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "N45-vouch-test-oyster-deal-correction",
+    "why": "Issue-1 (the exact stored leak, t1_jvsqy9k): a deal-fact correction inside a judgment thread — '$1 raw East Coast Oysters every Tuesday' stays true of mediocre oysters; no food, no praise (place-side value fit tolerated).",
+    "contract": "v17",
+    "posts": [
+      {
+        "id": "t3_n45",
+        "subreddit": "austinfood",
+        "title": "Best oyster bars in Austin?",
+        "body": "Who's doing great oysters these days?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_n45",
+            "body": "Higher Ground isn't an oyster bar, but they have $1 raw East Coast Oysters every Tuesday until they sell out."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_n45",
+          "notFoods": ["oyster"],
+          "noPraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "N46-vouch-test-ingredient-presence",
+    "why": "Issue-1: ingredient-presence stated for two places ('both put it in their bun bo hue') is a recipe fact, not a vouch for either bowl.",
+    "contract": "v17",
+    "posts": [
+      {
+        "id": "t3_n46",
+        "subreddit": "austinfood",
+        "title": "Which bun bo hue spots use the blood cubes?",
+        "body": "I want the traditional style with huyết.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_n46",
+            "body": "Fresh Bowl and Tan My both put it in their bun bo hue."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_n46",
+          "emitsNothing": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "N47-vouch-test-has-it-stock",
+    "why": "Issue-1: 'The Meteor has it' answering a stock/procurement ask asserts only stock — a clause, not a bare nomination, and it fails the VOUCH TEST.",
+    "contract": "v17",
+    "posts": [
+      {
+        "id": "t3_n47",
+        "subreddit": "austinfood",
+        "title": "Does anyone in town sell fresh sourdough starter?",
+        "body": "Mine died and I don't want to start over from scratch.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_n47",
+            "body": "The Meteor has it."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_n47",
+          "emitsNothing": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "N48-vouch-test-menu-explainer",
+    "why": "Issue-1: explaining how a menu works from knowledge, with no first-person experience and no verdict, is a fact answer — no dish is born.",
+    "contract": "v17",
+    "posts": [
+      {
+        "id": "t3_n48",
+        "subreddit": "austinfood",
+        "title": "Confused by the Desi Den menu — what is the butter chicken combo?",
+        "body": "Do you get sides with it or is it just the curry?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_n48",
+            "body": "The butter chicken comes as part of the two-item combo — you pick two sides, and it's the same portion as the regular entree."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_n48",
+          "emitsNothing": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "N49-bare-nomination-craving-ask",
+    "why": "Issue-1 protection: a craving-shaped bare ask names a want, not an obtainment problem — 'Julio's.' under 'Spumoni???' is a pick and emits with praise.",
+    "contract": "v17",
+    "posts": [
+      {
+        "id": "t3_n49",
+        "subreddit": "austinfood",
+        "title": "Spumoni??? Where can it be found in Austin????",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_n49",
+            "body": "Julio's."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_n49",
+          "places": ["julio's"],
+          "somePraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "N50-bare-nomination-stock-ask-refuses",
+    "why": "Issue-1: the same bare 'Julio's.' under a stock/obtainment ask inherits the fact question and asserts only stock — nothing emits.",
+    "contract": "v17",
+    "posts": [
+      {
+        "id": "t3_n50",
+        "subreddit": "austinfood",
+        "title": "Who stocks tamales for the holidays?",
+        "body": "Need a couple dozen to take home and reheat for the family.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_n50",
+            "body": "Julio's."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_n50",
+          "emitsNothing": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "N51-endorsement-inside-fact-thread",
+    "why": "Issue-1 protection (t1_jyt07rx): a vouching clause inside an HOURS thread still emits on its own words — the ask never mutes a clause's own vouch.",
+    "contract": "v17",
+    "posts": [
+      {
+        "id": "t3_n51",
+        "subreddit": "austinfood",
+        "title": "What time does Arturo's open on weekends?",
+        "body": "Trying to grab breakfast before a hike.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_n51",
+            "body": "Arturo's is great. I used to work nearby and miss their tacos and coffee."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_n51",
+          "places": ["arturo's"],
+          "items": ["taco", "coffee"],
+          "somePraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "N52-habitual-choice-passes-vouch",
+    "why": "Issue-1 protection: habitual choice passes the VOUCH TEST — a mediocre dish would not keep being chosen; 'I usually get the roast duck' emits.",
+    "contract": "v17",
+    "posts": [
+      {
+        "id": "t3_n52",
+        "subreddit": "austinfood",
+        "title": "Din Ho worth it these days?",
+        "body": "Haven't been in years.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_n52",
+            "body": "I usually get the roast duck when I go. Been going for years."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_n52",
+          "places": ["din ho"],
+          "items": ["roast duck"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N53-praised-deal-affordable",
+    "why": "Issue-2 (owner ruling): '$10 Steak Frites - best deal in Austin!' praises the DEAL — the place stores affordable; the food inside the deal never becomes a dish.",
+    "contract": "v17",
+    "posts": [
+      {
+        "id": "t3_n53",
+        "subreddit": "austinfood",
+        "title": "Happy hour deals worth leaving the office for?",
+        "body": "What are the best food deals around downtown?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_n53",
+            "body": "$10 Steak Frites at Justine's happy hour - best deal in Austin!"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_n53",
+          "places": ["justine's"],
+          "attributes": ["affordable"],
+          "notFoods": ["steak frites"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N54-deal-as-answer-affordable",
+    "why": "Issue-2 (owner ruling): a deal OFFERED as the answer to a value-seeking ask is the value domain's bare nomination — the place earns affordable, no dish, no praise flag.",
+    "contract": "v17",
+    "posts": [
+      {
+        "id": "t3_n54",
+        "subreddit": "austinfood",
+        "title": "Best kid-friendly food deals?",
+        "body": "Feeding a family of five on a budget - what deals should I know about?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_n54",
+            "body": "Kids eat free at Dickey's on Sunday (with a $12 adult purchase)."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_n54",
+          "places": ["dickey's"],
+          "attributes": ["affordable"],
+          "noPraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "N55-expensive-but-worth-it-polarity",
+    "why": "Issue-2 (real corpus, Mr. Catfish): value polarity is absolute — 'pretty expensive but worth it' is praise and NEVER stores affordable or cheap.",
+    "contract": "v17",
+    "posts": [
+      {
+        "id": "t3_n55",
+        "subreddit": "austinfood",
+        "title": "Fried catfish worth the money?",
+        "body": "Looking for a real catfish plate.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_n55",
+            "body": "Mr. Catfish is pretty expensive but it was really good - worth it, fed 2 people with leftovers."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_n55",
+          "places": ["mr. catfish"],
+          "somePraise": true,
+          "notAttributes": ["affordable", "cheap"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N56-landing-low-defeats",
+    "why": "Issue-3 (owner ruling, JewBoy Sliders): the verdict is where the clause LANDS — 'nice and crispy but very average' ends average and defeats the fries; 'good, but definitely nothing special' defeats the burgers.",
+    "contract": "v17",
+    "posts": [
+      {
+        "id": "t3_n56",
+        "subreddit": "austinfood",
+        "title": "JewBoy Sliders review",
+        "body": "Went to JewBoy Sliders finally. Honestly it was mid. Burgers were good, but definitely nothing special. The fries were nice and crispy but very average.",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t3_n56",
+          "notFoods": ["fry", "burger"],
+          "noPraise": true,
+          "notAttributes": ["crispy"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N57-reluctant-yes-stands",
+    "why": "Issue-3 (owner ruling, Torchy's queso): a verdict conceded UPWARD out of a reluctant/negative frame stands — 'regretfully yes' answering 'is the queso still good?' endorses the queso; the replicate-at-home aside re-scopes nothing.",
+    "contract": "v17",
+    "posts": [
+      {
+        "id": "t3_n57",
+        "subreddit": "austinfood",
+        "title": "Is Torchys queso still good?",
+        "body": "Haven't been in years and I keep hearing they're a shell of their former self.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_n57",
+            "body": "Lol regretfully yes. Although it's pretty easy to replicate at home if you don't want to make the trip."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_n57",
+          "places": ["torchys"],
+          "items": ["queso"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N58-deal-answer-inherits-no-dish",
+    "why": "Issue-1/2 wild (t1_jvsqy9k, real thread): a deal offered as the answer to 'oyster bars with good happy hours?' nominates the DEAL — affordable at most, never an inherited oyster dish.",
+    "contract": "v17",
+    "posts": [
+      {
+        "id": "t3_n58",
+        "subreddit": "austinfood",
+        "title": "Are there any oyster bars with good happy hours around?",
+        "body": "Preferably places to eat them raw, thanks!",
+        "extract_from_post": true,
+        "comments": [
+          {
+            "id": "t1_n58",
+            "body": "Higher Ground isn’t an oyster bar - it’s a cocktail lounge & kitchen -they have $1 raw East Coast Oysters every Tuesday until they sell out."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_n58",
+          "notFoods": ["oyster"],
+          "noPraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "N59-mild-reassert-vs-price-gripe",
+    "why": "Issue-3 wild (t1_jwejc9d, real thread): 'quality still solid' reasserted against a price/shrinkage complaint stands — the denying frame must be about the food's quality to strip a mild word.",
+    "contract": "v17",
+    "posts": [
+      {
+        "id": "t3_n59",
+        "subreddit": "austinfood",
+        "title": "Need a trust fund to order Tiff’s",
+        "body": "$21 a dozen now?! I don’t order very often but this seems like a big jump from what I remember. Does anyone have their price history on hand?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_n59",
+            "body": "I only order from them when they send me a 50% off email / text.  That's it.  Join their newsletter on website and you'll get them.  Still somewhat expensive but that's the best discount you'll get from them.  I've been eating their cookies since 2005-ish, and let me tell you they've shrunk by about 20%.  But quality still solid."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_n59",
+          "places": ["tiff’s"],
+          "items": ["cookie"]
+        }
+      ]
+    }
   }
 ]

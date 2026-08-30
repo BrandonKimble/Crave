@@ -137,10 +137,11 @@ The writer vouches from experience, or reports a clear consensus:
   should I eat", "best pizza", "favorite spot", "anywhere good for X", "what's
   worth it", "recs for" — a reply that **names one or more places is
   testimony, complete as written.** The writer chose those names out of
-  everything they could have said; the choice is the endorsement — and
-  the same act in every form: naming first-hand, RESTATING a name already
-  offered ("Seconding Odd Duck!"), or putting bare assent behind one
-  ("+1", "Facts") all place the writer's weight on that name. This is true
+  everything they could have said; the choice is the endorsement —
+  whether the name is offered first-hand or RESTATED from earlier in the
+  thread ("Seconding Odd Duck!" is this writer's own pick, complete as
+  written). A reply that endorses WITHOUT naming ("+1", "Facts") is the
+  AFFIRMATION move below — a different act with its own rule. This is true
   of a single bare name with no other words at all ("Adrienne's in FiDi"), of
   a list ("Pho phong luu, Tan My, Fresh Bowl, Sip Pho if central"), of an
   annotated list ("Cabernet Grill for dinner / Sunset Grill for breakfast"),
@@ -152,29 +153,51 @@ The writer vouches from experience, or reports a clear consensus:
   writer's own taste chose them, a classified list is still an answer, judged
   entry by entry — every entry under every heading. Two conditions, both
   required:
-  1. **The ask requests a JUDGMENT, not a FACT.** A judgment ask asks which is
-     good or which you'd pick. A fact ask asks where to obtain, who is open,
-     who delivers — "where can I find kolaches?", "who's open Christmas Day?".
-     **A fact ask often wears enthusiasm without becoming a judgment ask** —
-     the tell is that a DIRECTORY could answer it CORRECTLY: deals and
-     specials ("who does dollar oysters?"), reservations and hours, bare
-     stock and menu presence ("who has espresso buns?") are facts about
-     the world. The verb never decides — the CRITERION does, because a pick
-     endorses exactly what the ask's criterion asks for: a FOOD-TASTE
-     criterion ("who has GOOD variety?", "best milkshakes?", "where's
-     the tastiest…?") makes every pick food testimony, however the ask
-     is phrased; any OTHER criterion — availability, and equally any
-     non-taste characterization ("most likely to have stoned cooks?",
-     "rudest staff?", a joke superlative) — makes its picks assert fit
-     with THAT, which is not food testimony and emits nothing. A
-     reply's CLAUSE that names who has/does/serves the thing is an
-     availability clause, however warm its phrasing ("85C — they call them
-     Espresso Buns!" locates the bun, vouches for nothing), and emits
-     nothing. This mutes exactly that clause and no other — the
-     clause-by-clause law as everywhere: a verdict clause beside it
-     ("Perla's does them at happy hour — and honestly their oysters are
-     the best in town") emits on its own words, while the deal it located
-     still never becomes a claim.
+  1. **The ask requests a JUDGMENT, not a FACT — and the ask decides ONLY
+     the fate of BARE NOMINATIONS.** A judgment ask asks which is good or
+     which you'd pick. A fact ask asks where to obtain, who is open, who
+     delivers, what it costs. The VERB never decides — "sells", "where to
+     buy", "who has" appear on both sides — the ask's CRITERION does, read
+     as what the asker is POLLING the crowd for. An ask that names food
+     the asker wants to EAT — a craving, a memory, an occasion
+     ("Spumoni??? Where can it be found in Austin????", "Goat tacos in
+     Austin? Anyone serve them?", "enchiladas worth it?") — polls the
+     crowd's TASTE: nobody posts a craving to a food forum wanting the
+     phonebook list, they want the one worth eating. That is a judgment
+     ask however procurement-shaped its words. An ask that names an
+     OBTAINMENT problem — stock and menu presence ("who has espresso
+     buns?", "where can I buy masa?", "who sells single slices?"), hours
+     and openings ("who's open Christmas Day?"), deals and prices ("who
+     does dollar oysters?"), identification — polls the crowd's KNOWLEDGE
+     of the world: a fact ask, however excited its phrasing. A FOOD-TASTE
+     criterion ("who has GOOD variety?", "best milkshakes?", "where's the
+     tastiest…?") makes every pick food testimony, however the ask is
+     phrased; any non-taste characterization criterion ("most likely to
+     have stoned cooks?", "rudest staff?", a joke superlative) makes its
+     picks assert fit with THAT, which is not food testimony and emits
+     nothing.
+     **What the criterion decides is whether a BARE nomination testifies**
+     — a name offered with no claim of its own has nothing to judge but
+     the question it answers: "Julio's." under "Spumoni???" answers what's
+     GOOD and emits; the same "Julio's." under "who stocks tamales for
+     the holidays?" asserts only stock and emits nothing. (This gates
+     TESTIMONY only — what a passing pick then INHERITS from a judgment
+     ask, its dish words and constraints, is C.1 Gate 3's and Step D's
+     business, unchanged, for bare and verdict-worded picks alike:
+     "Taquería El Califa, sin duda" under "¿los mejores tacos?" still
+     inherits `taco`.) A reply CLAUSE
+     that carries its own words is never decided by the ask — every such
+     clause faces A.2's VOUCH TEST on its own text, in both directions:
+     an availability clause inside a judgment thread still emits nothing
+     ("85C — they call them Espresso Buns!" locates the bun, vouches for
+     nothing), and a vouching clause inside a fact thread still emits
+     ("Arturo's is great. I used to work nearby and miss their tacos and
+     coffee." — replying to an HOURS question — emits on its own words,
+     while the hours fact it sat beside claims nothing). The
+     clause-by-clause law as everywhere: a verdict clause beside a deal
+     clause ("Perla's does them at happy hour — and honestly their
+     oysters are the best in town") emits on its own words, while the
+     deal it located still never becomes a claim.
   2. **Nothing in the reply re-frames the name as neutral information or
      disclaims it.** Judge an annotation by what it DOES to the
      pick: an annotation that helps you USE a pick the writer's taste
@@ -214,21 +237,32 @@ The writer vouches from experience, or reports a clear consensus:
   Food Trip Review — how did I do?" reports meals eaten; the question at the
   end does not undo them.
 - **AN AFFIRMATION ADOPTS the parent's testimony as the writer's own —
-  POLARITY included.** The test, not a phrase list: **does this reply
-  exist to put the writer's own weight behind the parent's claim?**
-  However the affirmation is worded — "+1", "this", "agreed", "Facts",
-  "Correct", "This is the way", "This is the correct answer", "Truth",
-  an emoji of assent — if endorsing the parent is what the reply DOES,
-  the writer's judgment lands behind the same claims. **An affirmation
-  that RESTATES the name ("Seconding Odd Duck!") is even simpler: it is
-  the writer's own pick, complete as written — no referent to resolve.** Under a parent that PANS ("+1 on Launderette… no taste in the
-  food") it seconds the pan and emits nothing positive. Resolve the
+  a NEW claim, emitted FROM THIS SOURCE'S id, polarity included.** The
+  test, not a phrase list: **does this reply exist to put the writer's
+  own weight behind the parent's claim?** However it is worded — "+1",
+  "this", "agreed", "Facts", "Correct", "This is the way", "This is the
+  winner", "Truth", an emoji of assent — if endorsing the parent is what
+  the reply DOES, this writer's judgment becomes its own mention: the
+  parent's emission does not absorb it, because two people vouching is
+  twice the evidence. (An affirmation that RESTATES the name is the
+  ANSWER TEST's pick instead — it names.) Under a parent that PANS
+  ("+1 on Launderette… no taste in the food") it seconds the pan and
+  emits nothing positive. Resolve the
   referent by the depth-aware order and credit the same restaurant (and
   dish, when unambiguous) from THIS source's id. An agreement
   with an ambiguous referent credits nothing. **A bare verdict with an
   unstated subject is the same move**: "God it's so good", "so good!!",
   "obsessed" under a parent describing one unambiguous place resolves by the
-  same depth-aware order and adopts that referent. And when the referent's
+  same depth-aware order and adopts that referent. The adoption
+  reproduces the parent's endorsement in THIS writer's name, SHAPE
+  included: the parent's dish claims adopt as dish mentions, and the
+  parent's place-level endorsement (a pick's carrier) adopts as this
+  source's own place carrier at `general_praise: true` — an affirmation
+  under a pick always emits its own carrier. (Referent resolution is
+  untouched by this: a bare verdict resolves by the depth-aware order to
+  the nearest source that actually NAMES the subject, however many
+  levels up — an intermediate reply that itself emitted nothing, like a
+  hearsay comment, is not the referent and blocks nothing.) And when the referent's
   food fails Step C (a wrapper like "lunch buffet", or no dish at all), the
   adopted claim is a restaurant-only carrier (`general_praise: true`) — a
   failed dish never cancels the adopted endorsement into silence.
@@ -285,21 +319,80 @@ The writer vouches from experience, or reports a clear consensus:
   operational annotation** (hours, ranges, addresses as a roster). Ask: _did
   this writer's taste choose these names, or did a fact about the world?_
   Emit nothing.
-- **AVAILABILITY or POPULARITY alone.** "X has Y", "they sell it by the pound",
-  "it's always packed", "there's a location on 5th", "they're doing great".
-  Stating that food exists, that others go, or that the BUSINESS is
-  succeeding is not a verdict on its food.
+- **AVAILABILITY, STOCK, DEALS, MENU FACTS — run THE VOUCH TEST.** For
+  every clause that connects food to a place — whether the clause names
+  the place or reaches it by reference (a clause whose place or dish
+  arrives through the depth-aware resolution is tested exactly the same)
+  — ask ONE question: **if this
+  food were mediocre, would this sentence become false?** The test
+  judges claims about the VENUE'S OFFERINGS — what they have, sell,
+  carry, serve, charge. A writer's OWN eaten account ("I got the duck",
+  "we also ordered the squid" inside an offered trip account) is A.1's
+  territory — experience narration and the trip-report law own it, and
+  choosing, eating, and telling is itself the writer's act, not a stock
+  fact. For the venue-offering claims: still true →
+  the clause states a fact about the world — existence, stock, menu
+  presence, variety, format, price, a deal, a schedule, popularity,
+  business success — and emits nothing, whatever verb carries it ("has",
+  "sells", "carries", "serves", "does", "puts it in") and however
+  dish-specific the detail. Becomes false → the clause is a vouch, and it
+  emits. A taste verdict fails to be true of a mediocre dish; so does
+  habitual choice ("I usually get the roast duck", "my go-to" — a
+  mediocre dish would not keep being chosen; repeated return IS the
+  verdict). The trap to respect is the MENU-DETAIL-RICH fact: "Cherrywood
+  Coffeehouse sells cold slices of pie and cake", "El Mercado has a wide
+  variety of enchiladas, including shrimp", "One Taco has $2 al pastor
+  trompo tacos on Tuesdays", "they have $1 raw East Coast Oysters every
+  Tuesday until they sell out", "Fresh Bowl and Tan My both put it in
+  their bun bo hue", "The Meteor has it" — each names food with
+  dish-level specificity, each stays TRUE of mediocre food, and each
+  emits nothing: not as a dish, not as praise. Explaining how a menu
+  works from knowledge rather than eating is the same fact ("the butter
+  chicken comes as part of the combo — you pick two sides" carries no
+  first-person experience and no verdict). "It's always packed", "they're
+  doing great" state that OTHERS go or the business succeeds — still true
+  of mediocre food; not this writer's vouch. **A clause that passes the
+  vouch test has only passed THIS test**: it still walks Steps B and C
+  like every claim — habitual love for a CLOSED place is a eulogy (B.1's
+  PLACE STATUS), and habitual procurement from a SHELF is retail (B.2).
+  **VALUE is the test's one neighbor domain.** The mediocre-food question
+  decides FOOD testimony only; a deal or price faces its value cousin —
+  _would this be false if it were a BAD deal?_ Praising a deal ("$10 Steak Frites at Justine's — best deal in
+  Austin!") is value testimony: it praises the DEAL, so the place earns
+  `affordable` (C.1's value arm may add the praise carrier and `good
+  value`) — and NO dish: the food inside a deal is priced, not vouched;
+  a mediocre steak frites leaves "best deal in Austin" standing, so no
+  `steak frites` claim exists, however warm the exclamation. And
+  OFFERING a deal as one's answer to a deals/value-seeking ask is the
+  value domain's bare nomination: the writer chose this deal out of every
+  deal they know, and the choice asserts it is worth having — **emit a
+  PLACE mention with `affordable` in `place_attributes`**, no dish and
+  `general_praise: false` — the nomination is of the DEAL, not the
+  kitchen, so it is never an ANSWER-TEST praise carrier — while the
+  deal's foods and prices still emit nothing as food. (This is a DINER answering with a deal they chose —
+  not the business's own promotion: a marketing post or promo-code roster
+  is A.2's announcement/directory case and stays silent.)
+  **Polarity is absolute**: a value word enters only with its own sign —
+  "pretty expensive but worth it", "$25-30 drinks, but very much worth
+  it" are praise and never `affordable`, however glowing the verdict;
+  "expensive" stated is `expensive`. Such worth-it praise rides the
+  PLACE carrier, and the priced thing still walks Step C's gates on its
+  own (bare "drinks" names no dish; a priced item stays price-only).
   **This holds even when the availability answers a FINDABILITY ask.** A
   "where can I find \_\_\_?" ask makes "Quack's on 43rd has them. Also Epoch
   sells them sometimes" a helpful and RESPONSIVE reply — and still not
   testimony, because the writer said where to _get_ the thing, never that it
   is good. A reply may mix an availability answer with its own real
-  testimony; the availability item still never becomes a food claim: "Casa
+  testimony; each clause faces the vouch test alone, and the availability
+  item still never becomes a food claim: "Casa
   Columbia still has it on tap, and the food there is delicious" praises the
   food generally (a restaurant-only mention) — the thing on tap was located,
-  never vouched for, and does not emit as `item`. **But when the ask requested a PICK rather than a location, naming
-  a place IS the verdict — see the ANSWER TEST in A.1.** Discriminate by what
-  the ask wanted, never by how much the reply said.
+  never vouched for, and does not emit as `item`. **A BARE nomination has
+  no clause to test** — a name alone inherits the question it answers,
+  and the ask's criterion decides it (the ANSWER TEST in A.1): under a
+  judgment ask the name IS the verdict; under a stock/hours/price ask it
+  asserts only the fact. Discriminate a bare name by what
+  the ask wanted; discriminate a clause by its own words, never by how much the reply said.
 - **HEARSAY or DESIRE.** "I've heard", "supposedly", "want to try", "never been
   but interested" — including hearsay dressed in commitment ("I bought a
   giftcard… I hear it is a very lovely venue" — money spent is not food
@@ -309,19 +402,42 @@ The writer vouches from experience, or reports a clear consensus:
   bad", "perfectly fine", "decent for what it is". These withhold endorsement;
   they are not
   positive claims. The test is the NET DIRECTION of the clause, not a word
-  list — and for the mild words ("solid", "decent") POSITION decides the
-  direction: standing alone as the whole verdict they lean positive
-  ("their breakfast tacos are solid" emits — A.1's no-minimum-eloquence
-  law); explicitly qualified they withhold ("solid enough", "decent for
-  what it is"). This is the ONE interaction with the "but" law below: a
-  mild word joined by "but" to a NEGATIVE verdict about the same
-  establishment is a concession — "I wasn't huge on De Nada but they had
-  a decent hard shell taco" softens the miss and endorses nothing (the
-  cool frame denies the mild word its positive lean); the "but" law's
-  subject-change rule still governs everything stronger than mild ("I
-  love Uroko, but…" stands because "love" needs no lean). Any qualifier
-  that pulls the verdict downward defeats it — "liked
-  it — but didn't love", "average quality but absurd portions", a middling
+  list — **and net direction is WHERE THE CLAUSE LANDS on its own
+  subject, never its warmest word.** Hold the asymmetry of travel:
+  - **Praise qualified DOWNWARD lands low and is defeated.** "liked it —
+    but didn't love", "good, but definitely nothing special", "the fries
+    were nice and crispy but very average" — the fries END average;
+    averageness is the last word on that subject, no dish emits, and a
+    descriptor like "crispy" never rides a defeated verdict into output.
+  - **A verdict conceded UPWARD out of a reluctant or negative frame
+    lands high and STANDS.** Answering "Is the queso still good?" with
+    "Lol regretfully yes" affirms the queso — the writer went out of
+    their way to affirm it against their own reluctance, and reluctance
+    is not a downgrade; neither is an aside that re-scopes nothing about
+    how good the food is ("though it's pretty easy to replicate at
+    home"). Assenting to a quality question IS the writer's own verdict
+    on the ask's named target, dish and place resolved from the ask.
+  - **The mild words ("solid", "decent") are the one exception — they
+    carry no force of their own, so POSITION decides their direction**:
+    standing alone as the whole verdict they lean positive
+    ("their breakfast tacos are solid" emits — A.1's no-minimum-eloquence
+    law); explicitly qualified they withhold ("solid enough", "decent for
+    what it is"); and conceded from a cooler frame they take the frame's
+    direction — "I wasn't huge on De Nada but they had
+    a decent hard shell taco" softens the miss and endorses nothing (the
+    cool frame denies the mild word its positive lean; a REAL verdict
+    conceded the same way — "…but their queso is genuinely great", the
+    "regretfully yes" — needs no lean and stands). The denying frame
+    must itself be about the FOOD's quality: a complaint on another
+    axis — price, shrinking portions, a wait — is a different subject,
+    and a mild word reasserted against it stands alone on the taste
+    axis ("they've shrunk by about 20%. But quality still solid"
+    endorses the cookies; the gripe was never about how they taste). The "but" law's
+    subject-change rule still governs everything stronger than mild ("I
+    love Uroko, but…" stands because "love" needs no lean).
+
+  Any qualifier
+  that pulls the verdict downward defeats it — "average quality but absurd portions", a middling
   score amid higher-rated siblings ("porchetta ribs (7.3)" when the writer's
   favorites rate 8+). **When an entry carries a rating, THE SCORE IS that
   entry's verdict**: having ordered and eaten it (A.1's experience
@@ -460,7 +576,13 @@ ask's slot supplies the frame the reply's own words lack.
 ("Uchi/ko"), apostrophes ("Joe's"), hyphens ("Tan-Tan"), periods ("LOS TACOS
 No.1"), ampersands ("Rudy's Bar & Grill"). Split only on a separator with
 whitespace on BOTH sides, and only when each piece independently reads as a
-name. "Uchi, Uchiko and Suerte" is three names; "Uchi/ko" is one. **A LINE
+name — the "&" question is WHAT the "&" joins: parts of one brand, where
+one side is a generic word that names nothing alone ("Rudy's Bar &
+Grill" — "Grill" is no one's name), or TWO NAMED PLACES, where each side
+carries its own brand ("Captain Brad's & Captain Tom's" is two
+establishments sharing one verdict — emit both; dropping the second name
+of such a pair is the same most-common-miss as dropping it from a comma
+series). "Uchi, Uchiko and Suerte" is three names; "Uchi/ko" is one. **A LINE
 BREAK is a series separator too** — a reply listing one name per line
 ("Yafa Deli ⏎ Crispy Burger") is a list of distinct places, each judged on
 its own.
@@ -767,7 +889,11 @@ source had written it — "best burger in EV?" → `burger`; "crispy
 shoestring fries?" → `shoestring fry` with `crispy` peeling into
 `item_attributes` by D's normal tests. WHO inherits is the only gate:
 only an unqualified pick — a reply that hedges or re-scopes the ask's
-terms ("ask them to fry it twice") inherits none of them — and
+terms ("ask them to fry it twice") inherits none of them, and a DEAL
+offered as the answer (A.2's value arm) is never an unqualified pick:
+it nominates the deal, not the food, and inherits no dish however
+plainly the ask named one ("oyster happy hours?" answered with a $1
+oyster deal stays a place-plus-`affordable` mention, no dish) — and
 an ask whose food language fails the gates inherits nothing: "craving red
 sauce italian food" targets no orderable dish. Two boundary shapes:
 a dish wrapped in a venue type is still a DISH ask ("best burger joint?",
@@ -970,7 +1096,11 @@ pick answering a constrained ask asserts fit** — the ask's VENUE-level
 constraint words ("romantic", "cheap", "outdoor seating", a cuisine like
 "mexican") are that pick's own claim, walking D.1/D.2 like any stated
 word: the answerer chose this place BECAUSE it fits what was asked, and
-that choice vouches for the fit. A re-scoping annotation blocks the word
+that choice vouches for the fit. **A value-seeking ask is the same law
+in the value domain**: a deal offered as the writer's own answer to a
+deals/budget ask asserts `affordable` on the place (A.2's value arm —
+a place mention with `affordable`, no dish, no praise flag). A
+re-scoping annotation blocks the word
 it re-scopes ("great but pricey" blocks "cheap"), an off-axis answer that
 pushes back on the ask's frame asserts nothing from it, and the ask
 itself still emits nothing. Fit-asserted words land on the PLACE side —
@@ -1229,7 +1359,9 @@ above. A carrier also holds endorsement whose target failed the dish
 gates: praise of a deal or wrapper (C.1's value-testimony arm) and an
 adopted verdict whose referent dish failed Step C both emit as the PLACE
 carrier at `true`. Availability, popularity, and price are never
-endorsement (Step A.2).
+endorsement (Step A.2) — and a deal offered as the answer to a value ask
+is A.2's value arm: a place mention with `affordable` and
+`general_praise: false`, never a praise carrier.
 
 ### F.2 Fields
 
