@@ -145,6 +145,17 @@ const HEARING_METERS: ReadonlyMap<string, HearingMeter> = new Map([
     'restaurant_name',
     { callers: ['aliases.place_name_judge'], lanes: ['restaurant_name'] },
   ],
+  // The satisfies lane is heard by TWO courts that share one claim
+  // definition: the item court (concepts.satisfies) and the widening court
+  // for attributes/ingredients (concepts.widening_satisfies) — one meter,
+  // like the co-batched vocabulary facets.
+  [
+    'concept_satisfies',
+    {
+      callers: ['concepts.satisfies', 'concepts.widening_satisfies'],
+      lanes: ['concept_satisfies'],
+    },
+  ],
 ]);
 
 /** The lane this service was born for, and the meter every legacy call site

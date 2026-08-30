@@ -6,6 +6,27 @@ import { LoggerService } from '../../shared';
 import { normalizeDetectedLocaleTag } from '../../shared/locale';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { OnDemandRequestService } from './on-demand-request.service';
+import {
+  QUERY_ENTITY_GROUP_KEYS,
+  QueryEntityGroupKey,
+} from './dto/search-query.dto';
+
+/**
+ * Group → entity type, pinned exhaustive against THE search-group vocabulary
+ * (F3800/D79 idiom). The drain used to hand-copy four arms and drop the
+ * prompt's fifth output array (`ingredients`) on the floor — the exact
+ * forgot-a-group defect one system downstream of here (entity-type coverage
+ * audit F-3: zero ingredient on-demand rows ever recorded). Deriving the
+ * arms from QUERY_ENTITY_GROUP_KEYS makes a sixth group a tsc error here,
+ * not a silently-discarded LLM answer.
+ */
+const RESIDUE_GROUP_ENTITY_TYPE = {
+  places: EntityType.place,
+  items: EntityType.item,
+  itemAttributes: EntityType.item_attribute,
+  placeAttributes: EntityType.place_attribute,
+  ingredients: EntityType.ingredient,
+} as const satisfies Record<QueryEntityGroupKey, EntityType>;
 
 /**
  * ZERO-PER-SEARCH-LLM STAGING ZONE (search-from-scratch spec §1.1).
@@ -133,24 +154,13 @@ export class UnsegmentedResidueService {
     const ids = rows.map((r) => r.residueId);
     try {
       const analysis = await this.llmService.interpretResidue(residueText);
-      const typed: Array<{ term: string; entityType: EntityType }> = [
-        ...analysis.places.map((term) => ({
-          term,
-          entityType: 'place' as EntityType,
-        })),
-        ...analysis.items.map((term) => ({
-          term,
-          entityType: 'item' as EntityType,
-        })),
-        ...analysis.itemAttributes.map((term) => ({
-          term,
-          entityType: 'item_attribute' as EntityType,
-        })),
-        ...analysis.placeAttributes.map((term) => ({
-          term,
-          entityType: 'place_attribute' as EntityType,
-        })),
-      ].filter((entry) => entry.term.trim().length > 0);
+      const typed: Array<{ term: string; entityType: EntityType }> =
+        QUERY_ENTITY_GROUP_KEYS.flatMap((group) =>
+          (analysis[group] ?? []).map((term) => ({
+            term,
+            entityType: RESIDUE_GROUP_ENTITY_TYPE[group],
+          })),
+        ).filter((entry) => entry.term.trim().length > 0);
 
       if (typed.length) {
         // One recordRequests per staged ROW: each searcher's ask keeps its

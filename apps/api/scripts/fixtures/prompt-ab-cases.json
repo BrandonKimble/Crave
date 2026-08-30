@@ -384,7 +384,7 @@
   },
   {
     "id": "D13-occasion-ask-reuse",
-    "why": "Junk-entity rederivation 2026-08-09: food entities `dinner` (46 ev) and `lunch` (30 ev) minted through ask-reuse — the reply inherits the ask's target without the PREDICTION TEST, so a when-only ask manufactures a when-only food. Real source shape.",
+    "why": "Junk-entity rederivation 2026-08-09, re-ruled under D4 (2026-08-30, categories are knowledge-side): food entities `dinner` (46 ev) and `lunch` (30 ev) minted through ask-reuse — a when-only ask names a clock, not an order (Gate 2), so a when-only ask manufactures no food. Real source shape.",
     "posts": [
       {
         "id": "SRC050",
@@ -733,7 +733,7 @@
   },
   {
     "id": "V8n-CONTROL-salmon-omakase",
-    "why": "Boundary control: omakase is a prediction-PASSING head — 'salmon omakase' composes normally; redirect must NOT over-generalize.",
+    "why": "Boundary control, re-ruled under D4 (2026-08-30): 'salmon omakase' NAMES the offering (Gate 1's dish arm) and composes normally — the redirect must NOT over-generalize; whether the words predict the plate matters to no field (categories are knowledge-side now).",
     "posts": [
       {
         "id": "SRC090",
@@ -915,7 +915,7 @@
   },
   {
     "id": "G2-la-nueva-reaction-chain",
-    "why": "v8 audit class 2 SYSTEMATIC (La Nueva, doc t1_nl2atf9, 0/6 repro): replies framed as reaction-to-the-post's-list silenced the whole chain. SRC085's own 'I love La Gran Uruguaya' and SRC087's first-person picks (incl. writer-moved-away past tense) must all emit.",
+    "why": "v8 audit class 2 SYSTEMATIC (La Nueva, doc t1_nl2atf9, 0/6 repro): replies framed as reaction-to-the-post's-list silenced the whole chain. SRC085's own 'I love La Gran Uruguaya' and SRC087's first-person picks (incl. writer-moved-away past tense) must all emit. (Re-ruled 2026-08-30: the post body's Pic-18 span is 'La Gran Uruguaya bakery' — a second lawful observed span of the same venue; the expectation accepts either written form, since the observed-span contract lets a mention cite whichever source contains the span.)",
     "posts": [
       {
         "id": "SRC001",
@@ -942,7 +942,11 @@
       }
     ],
     "expect": {
-      "places": ["la gran uruguaya", "la nueva bakery", "chivito d'oro"]
+      "places": [
+        "la gran uruguaya|la gran uruguaya bakery",
+        "la nueva bakery",
+        "chivito d'oro"
+      ]
     }
   },
   {
@@ -1414,7 +1418,7 @@
   },
   {
     "id": "G63-cuisine-not-category",
-    "why": "Real doc 8b3a5a32: categories say WHAT ARRIVES. Under the no-inference cuisine law (2026-08-26) 'chinese' appears NOWHERE — not a category, not an attribute: the source never states it and dish identity licenses nothing.",
+    "why": "Real doc 8b3a5a32, re-ruled under D4 (2026-08-30): 'chinese' appears NOWHERE — the source never states it, dish identity licenses nothing (D.4), and there is no category field left to leak it into; category membership is derived once per dish concept by the dish-knowledge pass.",
     "posts": [
       {
         "id": "SRC001",
@@ -2007,7 +2011,7 @@
   },
   {
     "id": "V14m-title-only-caption",
-    "why": "v13 MAJOR 13c92a27: 'Woodneck Kitchen - The Poor Joe', a verdict-free photo caption, emitted a mention with an invented 'sandwich' category.",
+    "why": "v13 MAJOR 13c92a27, re-ruled under D4 (2026-08-30): 'Woodneck Kitchen - The Poor Joe', a verdict-free photo caption, emitted a fabricated dish mention (it invented a 'sandwich' classification). No clause passed Step A, so nothing emits — with categories knowledge-side the fabrication surface is the mention itself.",
     "posts": [
       {
         "id": "SRC001",
@@ -4486,6 +4490,52 @@
       "places": ["sundance"],
       "attributes": ["great atmosphere"],
       "notAttributes": ["great ambiance", "great ambience"]
+    }
+  },
+  {
+    "id": "N69-severed-shorthand-farm",
+    "why": "Sameness-court finding (owner-blessed 2026-08-30, 3 real bare-'farm' attribute mints traced to sourcing sentences): a span a writer used descriptively MID-SENTENCE is not a filter word — 'their beef is from their family farm' states sourcing chatter, and a severed 'farm' fails the STANDALONE TEST (D.2) and the over-specific rule (D.3). Nothing from the sourcing clause enters an attribute array.",
+    "posts": [
+      {
+        "id": "SRC110",
+        "title": "Best burger in town?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC111",
+            "body": "Jackson's Corner, easy. The burgers are fantastic and their beef is from their family farm."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "places": ["jackson's corner"],
+      "items": ["burger"],
+      "notAttributes": ["farm", "family farm", "farm to table"]
+    }
+  },
+  {
+    "id": "N70-venue-name-in-dish",
+    "why": "Sameness-court regression pin (owner-blessed 2026-08-30; real cases 'soto omakase', 'bird bird bacon'): a venue's name is never part of an order-name (C.1/C.2) — 'Soto's omakase' orders omakase AT Soto, never a dish called 'soto omakase'. Pinned so the rule never re-mints venue-prefixed dish entities.",
+    "posts": [
+      {
+        "id": "SRC112",
+        "title": "Splurge dinner recs?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC113",
+            "body": "The Soto omakase is worth every penny, best sushi experience I've had in Austin."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "places": ["soto"],
+      "items": ["omakase"],
+      "notFoods": ["soto omakase"]
     }
   }
 ]

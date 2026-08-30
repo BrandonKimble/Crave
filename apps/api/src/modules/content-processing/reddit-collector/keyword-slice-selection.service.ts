@@ -125,12 +125,18 @@ const EXPLORE_DISTINCT_ACTOR_FLOOR = 2;
 
 const ENTITY_SIGNAL_CANDIDATE_LIMIT = MAX_TERMS_PER_CYCLE * 50;
 
-const COLLECTIBLE_ENTITY_TYPES = [
-  'restaurant',
-  'food',
-  'item_attribute',
-  'place_attribute',
-];
+/**
+ * Every entity type is collection demand (entity-type coverage audit F-1).
+ * This constant carried the pre-R14 literals 'restaurant'/'food', and the
+ * SQL comparison (`e.type::text = ANY(...)` in territoryEntityDemand) fails
+ * SILENT over text[], so place and item demand — 74% of on-demand rows —
+ * never selected. Derived from the live enum so a rename can never strand
+ * this list again; ingredient demand is included deliberately: an
+ * asked-for ingredient ("burrata") is a collection seed exactly like a
+ * dish word — the on-demand rail already accepts it and the residue
+ * segmenter now records it.
+ */
+export const COLLECTIBLE_ENTITY_TYPES: string[] = Object.values(EntityType);
 
 function clamp01(value: number): number {
   if (!Number.isFinite(value) || value <= 0) {

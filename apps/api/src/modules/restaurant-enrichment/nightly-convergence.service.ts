@@ -8,6 +8,7 @@ import { LoggerService } from '../../shared';
 import { PlaceEntityMergeService } from './restaurant-entity-merge.service';
 import { PlaceTypeCensusService } from './place-type-census.service';
 import { MarketMembershipService } from './market-membership.service';
+import { VenueCuisineEvidenceService } from './venue-cuisine-evidence.service';
 
 /**
  * THE NIGHTLY CONVERGENCE ORDER (round-12 architecture audit): the
@@ -33,6 +34,7 @@ export class NightlyConvergenceService {
     private readonly placeTypeCensus: PlaceTypeCensusService,
     private readonly marketMembership: MarketMembershipService,
     private readonly dishKnowledge: DishKnowledgeSynthesisService,
+    private readonly venueCuisineEvidence: VenueCuisineEvidenceService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('NightlyConvergenceService');
@@ -78,6 +80,13 @@ export class NightlyConvergenceService {
         'knowledge-cuisine-projection',
         () => this.dishKnowledge.projectKnowledgeCuisines(),
       ],
+      // D5 (2026-08-30): the two deterministic venue-cuisine evidence lanes
+      // — dish-set implications (reads the knowledge cuisines the phase
+      // above just converged) and the venue-name signal — recomputed from
+      // state, diffed against their own source classes, re-projected.
+      // Deterministic and free, so like the grain bridge it runs regardless
+      // of any LLM lane's flag.
+      ['venue-cuisine-evidence', () => this.venueCuisineEvidence.reconcile()],
       // R11 census: a Google place type stored on a grounded restaurant that
       // google-place-type-attributes.ts classifies as neither kind nor noise
       // raises a deduped ops alert (Google shipped a taxonomy change).

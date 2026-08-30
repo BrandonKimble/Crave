@@ -11,12 +11,53 @@ import { LLMService } from '../external-integrations/llm/llm.service';
 import { EmbeddingService } from '../external-integrations/llm/embedding.service';
 import { LLMAttributePlacementResult } from '../external-integrations/llm/llm.types';
 import {
-  ATTRIBUTE_ID_ARRAY_COLUMNS,
-  ATTRIBUTE_ID_SCALAR_SITES,
+  repointAttributeIdRefs,
+  stripAttributeIdRefs,
 } from './attribute-reference-registry';
 
 /** Attribute entity types this service canonicalizes. */
 export type AttributeEntityType = 'item_attribute' | 'place_attribute';
+
+/**
+ * D2 context standard: real carriers of each live tag — the evidence that
+ * killed piano bar→live music in the ledger audit. One grouped query per
+ * caller; capped at 3 names per tag on the wire. Shared by the placement
+ * bench (this service) and the pair bench (attribute-dedupe-merge), so the
+ * two courts read the same evidence.
+ */
+export async function fetchAttributeCarriers(
+  prisma: PrismaService,
+  type: AttributeEntityType,
+  attributeIds: string[],
+): Promise<Map<string, string[]>> {
+  if (!attributeIds.length) return new Map();
+  const rows =
+    type === 'place_attribute'
+      ? await prisma.$queryRaw<
+          Array<{ attribute_id: string; carriers: string[] }>
+        >(Prisma.sql`
+          SELECT x.attribute_id::text, (array_agg(x.name))[1:3] AS carriers
+            FROM (
+              SELECT unnest(e.restaurant_attributes) AS attribute_id, e.name
+                FROM core_entities e
+               WHERE e.type = 'place' AND e.status = 'active'
+            ) x
+           WHERE x.attribute_id = ANY(${attributeIds}::uuid[])
+           GROUP BY x.attribute_id`)
+      : await prisma.$queryRaw<
+          Array<{ attribute_id: string; carriers: string[] }>
+        >(Prisma.sql`
+          SELECT x.attribute_id::text, (array_agg(DISTINCT x.name))[1:3]
+                   AS carriers
+            FROM (
+              SELECT unnest(c.food_attributes) AS attribute_id, f.name
+                FROM core_restaurant_items c
+                JOIN core_entities f ON f.entity_id = c.food_id
+            ) x
+           WHERE x.attribute_id = ANY(${attributeIds}::uuid[])
+           GROUP BY x.attribute_id`);
+  return new Map(rows.map((r) => [r.attribute_id, r.carriers ?? []]));
+}
 
 export type CanonicalizationScope =
   | 'pending' // steady state: place new pending terms against the active ontology
@@ -97,6 +138,10 @@ interface Canonical {
   vector: number[];
   /** A pre-existing active canonical (stable); false for ones created this run. */
   isSeed: boolean;
+  /** D2 context standard: a few real carriers (places/dishes) of this tag,
+   *  shown to the placement judge as `used_by`. Seeds only — a canonical
+   *  minted this run has no carriers yet. */
+  usedBy?: string[];
 }
 
 const DEFAULT_SHORTLIST_K = 10;
@@ -142,7 +187,7 @@ function requirePositiveInt(
  * the honest floor is the lowest one whose admissions are all real, which is
  * where 0.4 sits. Re-measure it against the vocabulary, never tune it.
  */
-const TRIGRAM_NEAR_DUPLICATE_FLOOR = 0.4;
+export const TRIGRAM_NEAR_DUPLICATE_FLOOR = 0.4;
 
 /**
  * SIGNIFICANT-TOKEN LENGTH — MEASURED on the same corpus. Shared-token recall
@@ -155,7 +200,7 @@ const TRIGRAM_NEAR_DUPLICATE_FLOOR = 0.4;
  * 'on', 'up', 's', 'fu', 'na') — which is the derivation: 3 is the shortest
  * length at which no function word survives.
  */
-const SIGNIFICANT_TOKEN_MIN_LENGTH = 3;
+export const SIGNIFICANT_TOKEN_MIN_LENGTH = 3;
 
 const SHORTLIST_STOPWORDS = new Set([
   'the',
@@ -175,6 +220,43 @@ const SHORTLIST_STOPWORDS = new Set([
   'no',
   'not',
 ]);
+
+/** Tokenize an attribute name for lexical recall — lowercased, non-alnum
+ *  split, stopwords dropped. Module-level and pure so the active-vocabulary
+ *  dedupe lane's candidate generator shares THE one implementation. */
+export function attributeTokens(name: string): string[] {
+  return name
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t && !SHORTLIST_STOPWORDS.has(t));
+}
+
+/** True if the two names share a significant non-stopword token. */
+export function sharesSignificantToken(a: string, b: string): boolean {
+  const tokens = new Set(attributeTokens(a));
+  return attributeTokens(b).some(
+    (t) => t.length >= SIGNIFICANT_TOKEN_MIN_LENGTH && tokens.has(t),
+  );
+}
+
+/** Jaccard similarity over character trigrams (lexical near-dup signal). */
+export function trigramJaccard(a: string, b: string): number {
+  const grams = (s: string): Set<string> => {
+    const x = `  ${s
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim()}  `;
+    const set = new Set<string>();
+    for (let i = 0; i < x.length - 2; i++) set.add(x.slice(i, i + 3));
+    return set;
+  };
+  const A = grams(a);
+  const B = grams(b);
+  if (A.size === 0 || B.size === 0) return 0;
+  let inter = 0;
+  for (const t of A) if (B.has(t)) inter++;
+  return inter / (A.size + B.size - inter);
+}
 
 /** Thrown to abort the apply transaction in verify (dry) mode. */
 class PlanRollback extends Error {}
@@ -318,11 +400,16 @@ export class AttributeOntologyService {
 
     // The growing set of canonical anchors. In 'all' scope it starts empty and
     // canonicals emerge; in 'pending' scope it starts as the live ontology.
+    const carriersById = await this.fetchCarriers(
+      type,
+      seedRows.map((r) => r.entityId),
+    );
     const canonicals: Canonical[] = seedRows.map((r) => ({
       entityId: r.entityId,
       name: r.name,
       vector: vectorFor(r.name),
       isSeed: true,
+      usedBy: carriersById.get(r.entityId),
     }));
 
     // PASS 1 — place each candidate against its nearest canonicals.
@@ -456,9 +543,20 @@ export class AttributeOntologyService {
     const result = await this.llmService.placeAttribute({
       term: row.name,
       kind: type,
-      candidates: shortlist.map((c, i) => ({ id: i, name: c.name })),
+      candidates: shortlist.map((c, i) => ({
+        id: i,
+        name: c.name,
+        usedBy: c.usedBy,
+      })),
     });
     return { row, result, shortlist };
+  }
+
+  private fetchCarriers(
+    type: AttributeEntityType,
+    attributeIds: string[],
+  ): Promise<Map<string, string[]>> {
+    return fetchAttributeCarriers(this.prisma, type, attributeIds);
   }
 
   /**
@@ -492,7 +590,11 @@ export class AttributeOntologyService {
       const result = await this.llmService.placeAttribute({
         term: canonical.name,
         kind: type,
-        candidates: shortlist.map((c, i) => ({ id: i, name: c.name })),
+        candidates: shortlist.map((c, i) => ({
+          id: i,
+          name: c.name,
+          usedBy: c.usedBy,
+        })),
       });
 
       if (
@@ -580,36 +682,11 @@ export class AttributeOntologyService {
    * meaning at least SIGNIFICANT_TOKEN_MIN_LENGTH characters.
    */
   private sharesToken(a: string, b: string): boolean {
-    const tokens = new Set(this.tokenize(a));
-    return this.tokenize(b).some(
-      (t) => t.length >= SIGNIFICANT_TOKEN_MIN_LENGTH && tokens.has(t),
-    );
+    return sharesSignificantToken(a, b);
   }
 
-  private tokenize(name: string): string[] {
-    return name
-      .toLowerCase()
-      .split(/[^a-z0-9]+/)
-      .filter((t) => t && !SHORTLIST_STOPWORDS.has(t));
-  }
-
-  /** Jaccard similarity over character trigrams (lexical near-duplicate signal). */
   private trigramSim(a: string, b: string): number {
-    const grams = (s: string): Set<string> => {
-      const x = `  ${s
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, ' ')
-        .trim()}  `;
-      const set = new Set<string>();
-      for (let i = 0; i < x.length - 2; i++) set.add(x.slice(i, i + 3));
-      return set;
-    };
-    const A = grams(a);
-    const B = grams(b);
-    if (A.size === 0 || B.size === 0) return 0;
-    let inter = 0;
-    for (const t of A) if (B.has(t)) inter++;
-    return inter / (A.size + B.size - inter);
+    return trigramJaccard(a, b);
   }
 
   /** Run an async mapper over items with bounded concurrency, preserving order. */
@@ -866,95 +943,26 @@ export class AttributeOntologyService {
     }
   }
 
-  /** Re-point a merged attribute id to its canonical at EVERY registered
-   *  reference site for the type (attribute-reference-registry.ts): each
-   *  uuid[] column via array_replace + DISTINCT collapse, and — for
-   *  place attributes — the evidence ledger's scalar rows, collapsed onto
-   *  any existing canonical row (observations summed; composite PK). */
+  /** Re-point a merged attribute id at EVERY registered reference site —
+   *  delegated to THE one implementation (attribute-reference-registry.ts),
+   *  shared with the active-vocabulary dedupe lane. */
   private async repointMergeRefs(
     tx: Prisma.TransactionClient,
     type: AttributeEntityType,
     mergedId: string,
     canonicalId: string,
   ): Promise<number> {
-    let count = 0;
-    for (const site of ATTRIBUTE_ID_ARRAY_COLUMNS[type]) {
-      count += await tx.$executeRawUnsafe(
-        `UPDATE ${site.table}
-         SET ${site.column} = (
-           SELECT array_agg(DISTINCT e)
-           FROM unnest(array_replace(${site.column}, $1::uuid, $2::uuid)) e
-         )
-         WHERE $1::uuid = ANY(${site.column})`,
-        mergedId,
-        canonicalId,
-      );
-    }
-    if (ATTRIBUTE_ID_SCALAR_SITES[type].length > 0) {
-      // core_restaurant_attribute_evidence: (restaurant, attribute,
-      // source_class) is the PK, so first FOLD observations onto rows that
-      // already exist under the canonical id, then repoint the rest, then
-      // drop the folded leftovers. The ledger ends TRUE — no archived id
-      // survives to be resurrected by a projection.
-      count += await tx.$executeRawUnsafe(
-        `UPDATE core_restaurant_attribute_evidence c
-         SET observations = c.observations + m.observations
-         FROM core_restaurant_attribute_evidence m
-         WHERE m.attribute_id = $1::uuid
-           AND c.attribute_id = $2::uuid
-           AND c.restaurant_id = m.restaurant_id
-           AND c.source_class = m.source_class`,
-        mergedId,
-        canonicalId,
-      );
-      count += await tx.$executeRawUnsafe(
-        `UPDATE core_restaurant_attribute_evidence m
-         SET attribute_id = $2::uuid
-         WHERE m.attribute_id = $1::uuid
-           AND NOT EXISTS (
-             SELECT 1 FROM core_restaurant_attribute_evidence c
-             WHERE c.restaurant_id = m.restaurant_id
-               AND c.source_class = m.source_class
-               AND c.attribute_id = $2::uuid
-           )`,
-        mergedId,
-        canonicalId,
-      );
-      await tx.$executeRawUnsafe(
-        `DELETE FROM core_restaurant_attribute_evidence
-         WHERE attribute_id = $1::uuid`,
-        mergedId,
-      );
-    }
-    return count;
+    return repointAttributeIdRefs(tx, type, mergedId, canonicalId);
   }
 
-  /** Strip a rejected attribute id from EVERY registered reference site for
-   *  the type — uuid[] columns via array_remove, and (place attributes) the
-   *  evidence ledger rows deleted outright, so a rejection is true in the
-   *  ledger instead of resting on the projection's active-only filter. */
+  /** Strip a rejected attribute id at EVERY registered reference site —
+   *  delegated to THE one implementation (attribute-reference-registry.ts). */
   private async removeRejectRefs(
     tx: Prisma.TransactionClient,
     type: AttributeEntityType,
     id: string,
   ): Promise<number> {
-    let count = 0;
-    for (const site of ATTRIBUTE_ID_ARRAY_COLUMNS[type]) {
-      count += await tx.$executeRawUnsafe(
-        `UPDATE ${site.table}
-         SET ${site.column} = array_remove(${site.column}, $1::uuid)
-         WHERE $1::uuid = ANY(${site.column})`,
-        id,
-      );
-    }
-    if (ATTRIBUTE_ID_SCALAR_SITES[type].length > 0) {
-      count += await tx.$executeRawUnsafe(
-        `DELETE FROM core_restaurant_attribute_evidence
-         WHERE attribute_id = $1::uuid`,
-        id,
-      );
-    }
-    return count;
+    return stripAttributeIdRefs(tx, type, id);
   }
 
   private chunk<T>(items: T[], size: number): T[][] {

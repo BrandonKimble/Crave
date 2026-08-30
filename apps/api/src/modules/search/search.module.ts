@@ -12,6 +12,7 @@ import { SignalsModule } from '../signals/signals.module';
 import { PlacesModule } from '../places/places.module';
 import { SearchController } from './search.controller';
 import { DemandVocabularyService } from './demand-vocabulary.service';
+import { DemandVocabularyRailService } from './demand-vocabulary-rail.service';
 import { SearchService } from './search.service';
 import { SearchCoverageService } from './search-coverage.service';
 import { SearchQueryExecutor } from './search-query.executor';
@@ -52,6 +53,7 @@ import { ItemCategoryEdgeBuilderService } from './food-category-edge-builder.ser
   controllers: [SearchController],
   providers: [
     DemandVocabularyService,
+    DemandVocabularyRailService,
     SearchService,
     SearchCoverageService,
     SearchQueryExecutor,

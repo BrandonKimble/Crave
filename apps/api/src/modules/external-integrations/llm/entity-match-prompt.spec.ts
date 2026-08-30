@@ -101,7 +101,7 @@ describe('entity match prompt', () => {
       // now reads "a wrong new merely mints a spurious twin that later
       // evidence can merge" under "The error economics — why doubt says new".
       expect(renderEntityMatchSystemInstruction(canonical(), mode)).toMatch(
-        /spurious twin that later evidence can\s+merge/,
+        /spurious twin that later\s+evidence\s+can\s+merge/,
       );
     }
   });

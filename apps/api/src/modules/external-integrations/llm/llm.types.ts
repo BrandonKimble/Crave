@@ -150,6 +150,10 @@ export interface LLMPlaceMention extends LLMWireMentionCommon {
  */
 export interface LLMDishMention extends LLMWireMentionCommon {
   item: string;
+  /** LEGACY (D4 category move, 2026-08-30): the schema no longer offers this
+   *  field, so new extractions never carry it — category membership is
+   *  derived once per dish concept by the dish-knowledge pass. The type
+   *  stays so stored-payload replays (pre-v18 batches) keep decoding. */
   item_categories?: string[] | null;
   ingredients?: string[] | null; // Source-named ingredient nouns for this dish — evidence tier; canonical dish ingredients are synthesized offline
   is_menu_item?: boolean | null;
@@ -313,6 +317,11 @@ export interface LLMModerationResult {
 export interface LLMAttributePlacementCandidate {
   id: number;
   name: string;
+  /** A few real places/dishes currently carrying this tag — grounds what
+   *  the tag's filter actually returns (judge-ledger audit D2: bare 1–2
+   *  word names invite plausible-sounding folds like piano bar→live
+   *  music). Wire field: `used_by`. */
+  usedBy?: string[];
 }
 
 export interface LLMAttributePlacementInput {
@@ -325,6 +334,22 @@ export interface LLMAttributePlacementResult {
   decision: 'match' | 'new' | 'reject';
   candidateId: number | null;
   /** Audit-only; absent in prod (llm-audit-policy). */
+  reason?: string;
+}
+
+export interface LLMAttributeMergeBatchInput {
+  kind: 'item_attribute' | 'place_attribute';
+  /** Independent pairs of LIVE attribute names; index-addressed replies.
+   *  aUsedBy/bUsedBy (wire: `a_used_by`/`b_used_by`) carry a few real
+   *  carriers of each tag — the D2 context-curation standard. */
+  pairs: { a: string; b: string; aUsedBy?: string[]; bUsedBy?: string[] }[];
+}
+
+export interface LLMAttributeMergeVerdict {
+  decision: 'merge' | 'keep';
+  /** The judge's stated ground. The hearing ledger requires it — a
+   *  reasonless verdict is not recorded — and the fail-closed path
+   *  deliberately carries none, so an outage can never mint a ruling. */
   reason?: string;
 }
 
@@ -346,6 +371,14 @@ export interface LLMEntityMatchCandidate {
    * candidate's name.
    */
   aliases?: string[];
+  /** Restaurant(s) this candidate is served at (items/ingredients) — the
+   *  HOME-RESTAURANT evidence of the D2 context standard. Wire field:
+   *  `home_places`. */
+  homePlaces?: string[];
+  /** True when the candidate lives at the same restaurant the term was
+   *  mentioned/served at (the OTOKO rule made mechanical). Wire field:
+   *  `same_place`. */
+  samePlace?: boolean;
 }
 
 export interface LLMEntityMatchInput {
@@ -355,10 +388,20 @@ export interface LLMEntityMatchInput {
   kind: 'place' | 'item' | 'ingredient';
   /** Existing entities recalled as the closest matches to `term`. */
   candidates: LLMEntityMatchCandidate[];
+  /** The verbatim sentence the term was extracted from (D2 context
+   *  standard — resolves reference questions the bare string cannot).
+   *  Wire field: `mention`. */
+  mention?: string | null;
+  /** The restaurant the mention's thread was crediting. Wire field:
+   *  `thread_place`. */
+  threadPlace?: string | null;
+  /** Sweep hearings: restaurant(s) the term's own entity is connected to.
+   *  Wire field: `term_home_places`. */
+  termHomePlaces?: string[];
 }
 
 export interface LLMEntityMatchResult {
-  decision: 'match' | 'new';
+  decision: 'match' | 'new' | 'reject';
   candidateId: number | null;
   /** Audit-only; absent in prod (llm-audit-policy). */
   reason?: string;

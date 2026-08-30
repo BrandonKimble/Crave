@@ -50,7 +50,9 @@ async function main(): Promise<void> {
     const summary = await service.run({ limit, dryRun: !apply });
     out(
       `done: dishes=${summary.dishesProcessed} ingredientsLinked=${summary.ingredientsLinked} ` +
-        `ingredientEntitiesCreated=${summary.ingredientEntitiesCreated} aliasesAdded=${summary.aliasesAdded}`,
+        `ingredientEntitiesCreated=${summary.ingredientEntitiesCreated} aliasesAdded=${summary.aliasesAdded} ` +
+        `cuisinesLinked=${summary.cuisinesLinked} categoriesLinked=${summary.categoriesLinked} ` +
+        `categoryEntitiesCreated=${summary.categoryEntitiesCreated}`,
     );
     if (!apply) {
       out(

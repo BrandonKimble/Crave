@@ -53,7 +53,14 @@ import {
  * pg advisory-lock key for the demand-vocabulary sweep — SINGLE SWEEPER
  * ACROSS PROCESSES. Same convention as PROMOTION_DRAIN_ADVISORY_LOCK_KEY
  * (0x706f6c79 'poly') and RESCORE_ADVISORY_LOCK_KEY (0x63726176 'crav');
- * this one spells 'vocb'.
+ * this one spells 'demv'.
+ *
+ * WHY NOT 'vocb' (rail wiring, 2026-08-30): this key WAS 0x766f6362 'vocb' —
+ * the exact key VOCABULARY_MAINTENANCE_LOCK_KEY also spells in
+ * vocabulary-maintenance.service.ts. Two different jobs sharing one advisory
+ * key means whichever runs second silently skips its pass while the other is
+ * mid-flight — and both are scheduled in the same nightly window. The key
+ * collision warning in the paragraph below was describing itself.
  *
  * WHY IT IS NEEDED (red team F8). This sweep reads the unmet-ask ledger,
  * computes a known-set in APPLICATION MEMORY (the fold law: 'do we already
@@ -70,7 +77,7 @@ import {
  * Not a product number — what changes it: a key collision with another
  * advisory-locked job, never tuning.
  */
-export const DEMAND_VOCABULARY_ADVISORY_LOCK_KEY = 0x766f6362; // 'vocb'
+export const DEMAND_VOCABULARY_ADVISORY_LOCK_KEY = 0x64656d76; // 'demv'
 
 /** Terms asked at least this many times before we spend a judge call. */
 const MIN_ASKS = 1;

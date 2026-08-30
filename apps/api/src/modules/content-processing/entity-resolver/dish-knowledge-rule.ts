@@ -32,6 +32,11 @@ const DISH_KNOWLEDGE_RULE_RELEASES: readonly RuleRelease[] = [
     fingerprint: 'acbabaf05126',
     note: 'Owner-ruled hybrid-tradition law (2026-08-26): a hybrid tradition also carries the tradition it hybridizes ("fajita" → tex-mex AND mexican) — diners tapping either pool expect it; nested regionals stay at their committed level. Re-opens v2 stamps only where a hybrid could apply; since no v2 backfill has run yet, the practical population is unchanged.',
   },
+  {
+    version: 4,
+    fingerprint: 'e4dec514f61b',
+    note: 'D4 category move (2026-08-30): the response gains a `categories` facet per dish — the broader orderable dish classes the NAME rolls up into (THE PREDICTION TEST, relocated from the collection prompt C.3), stored as canonical item-entity ids in knowledge_categories; derived_food_category_edges is projected from this facet instead of reconciling per-connection arrays (60.3% cross-mention disagreement). Re-opens every prior stamp (the whole dish population owes a category hearing — rides the pending cuisine backfill).',
+  },
 ];
 
 export const DISH_KNOWLEDGE_RULE: ResolvedPromptRule = resolvePromptRule(

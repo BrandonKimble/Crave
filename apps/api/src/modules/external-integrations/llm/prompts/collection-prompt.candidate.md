@@ -22,9 +22,8 @@ looks like a dish, and a comparison looks like a property.
    no dish.
 2. **THE PLACE TEST** — _Is this claim about food prepared and served by this
    place, to eat now?_ Not goods sold packaged to take home and prepare later.
-3. **THE ORDER TEST** — _Could you say this to a server as the thing you want?_
-   and its stricter sibling **THE PREDICTION TEST** — _If a diner names only
-   this word, do you know anything about the food that arrives?_
+3. **THE ORDER TEST** — _Could you say this to a server as the thing you
+   want?_
 4. **THE STANDALONE TEST** — _Severed from the noun it modified, does this word
    still mean one definite thing?_
 
@@ -807,12 +806,10 @@ as the clause USES it, and route to exactly one arm:
   behind). **The words need not predict the plate**: two diners ordering
   "the chef's tasting" are handed the same offering — the menu supplies
   what the words don't, exactly as it does for the Elvis Presley combo.
-  Whether a format also predicts the food matters only to C.3's
-  categories, never to whether the dish exists. Emit the phrase a diner
-  would say to the server — "steak combo", never a stripped "steak" —
-  with categories from the parts that pass prediction (C.3: `steak
-  combo` → `steak`; a format that predicts nothing contributes no
-  category).
+  Whether the words predict the plate matters to no field at all: the
+  dish exists, and what broader classes it rolls up into is derived
+  downstream from its name (C.3). Emit the phrase a diner would say to
+  the server — "steak combo", never a stripped "steak".
   **A bare format word is often a PRO-FORM.** When "the combo", "the
   special", "that plate" points at a MORE SPECIFIC offering already
   named for the SAME restaurant in scope ("I had the Khao Man Gai combo…
@@ -870,7 +867,7 @@ as the clause USES it, and route to exactly one arm:
   meat", "you pick two sides", the unlimited salad bar included with the
   executive lunch are SLOTS of the offering the diner ordered — the
   offering is the dish; its included parts are never their own claims
-  (never an `item`, never a category) unless the writer ate one and
+  (never an `item`) unless the writer ate one and
   judged it in its own clause (the consumed-contents law above).
 - **STAPLES separately-named foods → each food is its own claim.**
   "Combo" (or "pairing", "duo") here isn't a menu phrase at all — it is the writer's own COMMENTARY on
@@ -904,7 +901,7 @@ live dish being eaten, not a dead one. Failing by definition:
   sauce italian food" name no order (irreducible "comfort food" is the
   exception: carry it whole to Step D, where it is a style attribute);
 - a when-word praised holistically — "Dinner is super solid there" names
-  no dish (C.3);
+  a clock, not an order;
 - the kind of place it is — a cocktail bar does not thereby serve a dish
   called "cocktail".
 
@@ -942,7 +939,7 @@ a dish wrapped in a venue type is still a DISH ask ("best burger joint?",
 "quán phở nào ngon nhất?" — the dish inside the wrapper, `burger`/`phở`,
 passes the gates and inherits; the reply's restaurant name containing the
 same word changes nothing); a cuisine or style ask ("best Indian
-around?") PASSES prediction but FAILS the ORDER TEST — no dish inherits,
+around?") FAILS the ORDER TEST — no dish inherits,
 the food slots stay empty, and the cuisine reaches the pick only as Step
 D's place-side fit assertion. (`is_menu_item` stays false for anything
 inherited — Step E.)
@@ -962,7 +959,7 @@ inherited — Step E.)
    - "carnitas taco", "tonkotsu ramen", "duck carnitas taco" — the specifier
      changes what arrives; keep it.
    - "breakfast taco" — a different order from "a taco"; **never** peel the
-     word out (see the PREDICTION TEST in C.3). "thin crust pizza" is the
+     word out. "thin crust pizza" is the
      same shape: ordering "the thin crust pizza" and "the pizza" are
      different orders, so the style words STAY in the dish name — a style
      word inside an order-name is never peeled off into an attribute (and
@@ -979,13 +976,13 @@ inherited — Step E.)
      word is the writer's verdict, never a dish token and never a property.
 
 3. **Drop additive components.** For "with/and" clauses, keep the core dish as
-   `item`; the listed items are components of this dish, not dishes or
-   categories of their own. They may be recorded in `ingredients` (C.5).
+   `item`; the listed items are components of this dish, not dishes of
+   their own. They may be recorded in `ingredients` (C.5).
 
 4. **Sanity-check.** Would this exact wording appear on a menu? If not, peel
    one modifier until it would, keeping the head noun. If you end with a lone
-   ingredient, keep the broader dish instead — a lone ingredient is neither a
-   dish nor a category. When the source names NO broader dish ("Love their
+   ingredient, keep the broader dish instead — a lone ingredient is not a
+   dish. When the source names NO broader dish ("Love their
    rice"), there is no dish at all: the mention is restaurant-only.
    - **Appearing on a menu is NOT sufficient.** Re-run Gate 1's OFFERING
      TEST on the phrase you just composed: an offering you could order
@@ -1020,83 +1017,21 @@ food language).
 ("jap" for jalapeño), write the full word or drop it. A truncated token can
 land on an unintended and offensive word.
 
-### C.3 Build the categories (THE PREDICTION TEST)
+### C.3 The order-name is the whole deliverable
 
-`item_categories` are the broader **orderable dish classes** the `item` rolls
-up into. Every entry must pass a STRICTER bar than the ORDER TEST:
+The name you composed in C.2 is the finished dish claim. **What broader
+classes a dish rolls up into — that a "carnitas taco" is a taco, a
+"croissant" a pastry — is a fact about the dish CONCEPT, not about this
+mention**: it is stamped downstream, once per dish, by another system
+working from the exact name you emitted (the same delegation as a dish's
+cuisine, D.4). Nothing here asks you for it, so there is nothing to
+peel, roll up, or classify — re-deriving it per mention is how the same
+dish came to disagree with itself across sources.
 
-**THE PREDICTION TEST — if a diner names only this word, do you already know
-something about the food that arrives?**
-
-- **YES → category.** "dessert" (something sweet), "appetizer", "side",
-  "snack" (a small dish of known shape), "coffee", "beer", "pastry", "taco",
-  "soup" — all categories, even though several also name a course or a time.
-  **"breakfast" and "brunch" pass**: breakfast food is a recognizable kind
-  (eggs, pancakes, breakfast tacos).
-- **NO → not a category.** "dinner" is any food at all; "lunch", "happy hour"
-  constrain when, never what. **A format fails when what arrives is
-  UNCONSTRAINED**: "tasting menu", "prix fixe", "buffet", "combo",
-  "special" tell you how the food is delivered, when, and how much of
-  it, but the food itself could be anything — such a format can be a
-  perfectly good DISH (Gate 1's dish arm), and still contributes no
-  CATEGORY: a dish named `chef's tasting` or `elvis presley combo`
-  carries an empty or short category list, and that is correct. **A
-  modifier never changes this** — test the head noun, not the string.
-- **A format that DOES constrain the food passes, like any other category.**
-  "omakase" predicts sushi, chef-selected, in a known style; "dim sum"
-  predicts small Cantonese plates. Diners search for these by name and order
-  them by name. Judge a format by the same question as everything else — does
-  naming it tell you what arrives? — not by the fact that it is a format.
-
-A word may reference a time AND still name a food class. **Judge by the food
-the word predicts, not by whether a clock is involved.**
-
-Never categories: ingredients ("gruyere", "pecan", "pepperoni"), flavors
-("sweet and spicy", "balsamic"), cuisines, styles, meal periods, service modes.
-The tell: "I'll have the gruyere" is not a complete order; "I'll have the
-popover" is.
-
-Build the list:
-
-1. **Seed** with the most specific attribute-free dish noun.
-2. **Peel progressively**, asking the PREDICTION TEST of each remainder.
-   "tuna roll" → "roll" passes. "masa crouton" → neither "crouton" nor "masa"
-   passes. Preserve head-first constructions: "pho tai" → `["pho tai", "pho"]`,
-   never `["tai"]`. Stop before a lone ingredient. A peel landing on a
-   when-only word yields nothing, even inside the dish's own name
-   ("ploughman's lunch" is a dish; "lunch" is not a class). A peel
-   landing on a bare structure word ("special", "combo", "menu") yields
-   no category either — the composed dish keeps its full name and simply
-   gains nothing from that part. When in doubt: no entry that fails the
-   PREDICTION TEST enters the list, and an empty list is fine.
-3. **Add 1–3 parent classes** the dish clearly belongs to, even when unstated —
-   **dish shapes that each pass the ORDER TEST** (dessert, pastry, coffee, tea,
-   sandwich, soup, salad, pizza, taco, burger, noodle, dumpling). A category
-   says WHAT ARRIVES, never where it is from: **a cuisine is NEVER a parent
-   class.** The pull is strongest exactly where the dish is most
-   tradition-bound — the salient parent of "mapo tofu" in your head is
-   "chinese food", and it is wrong here. Say "I'll have the \_\_\_" of every
-   entry before it lands: "taco", "soup", "dessert" order something;
-   "chinese", "italian", "japanese" name a tradition, and a tradition is
-   never yours to add — "mapo tofu" → `["mapo tofu", "tofu"]`, with NO
-   `chinese` anywhere (a cuisine enters only when stated or fit-asserted —
-   D.4). A printed menu section is a category only
-   when the heading predicts the food: "Desserts", "Sides", "Tacos" do;
-   "Happy Hour", "Chef's Tasting" do not.
-   - **Run the ORDER TEST on the PARTS of the dish name, not just the whole.**
-     Any part that would itself be a complete order somewhere is a parent.
-     "carnitas taco" → `["taco", "carnitas"]`; "carbonara udon" → `["udon",
-"noodle", "pasta", "carbonara"]`; "breakfast taco" → `["breakfast taco",
-"taco", "breakfast"]`; but "grilled burger" → `["burger"]` only.
-     Whether the part is traditionally its own dish family is irrelevant —
-     categories follow how people order today. Dropping such a part is the most
-     common miss: someone craving carbonara wants the udon version too.
-4. **Deduplicate**, most specific first, singular where natural.
-
-Common parents: cake/brownie/pie/tart/gelato/ice cream → "dessert";
-croissant/scone/muffin/macaron/cookie → "pastry" (and "dessert" when sweet);
-latte/cappuccino/cold brew → "coffee"; chai/matcha → "tea"; banh mi/torta/
-hoagie/panini → "sandwich"; pho/ramen/udon/pozole → "soup".
+Your name IS that system's entire input. That is why C.2's laws carry
+the weight they do: every word kept as spoken ("breakfast taco", never a
+peeled "taco"), nothing corrected, nothing reordered — the downstream
+derivation can only be as faithful as the name it reads.
 
 ### C.4 One dish per connection
 
@@ -1261,8 +1196,8 @@ Two consequences follow directly:
   - An ORDERED offering is food — dish types and formats alike
     ("omakase", "tasting menu", "chef's tasting", "pizza", "ramen", "hot
     pot") name a THING, not a property. A place doesn't HAVE pizza as a
-    quality, it SERVES pizza, and the claim belongs in
-    `item`/`item_categories` where it ranks and searches as food. A
+    quality, it SERVES pizza, and the claim belongs in `item` where it
+    ranks and searches as food. A
     pizza place's venue-side identity is its cuisine ("italian"), never
     the dish word. ("Austin has a banging pizza scene" → the pizzas are
     food claims at the named places; NO restaurant gets a `pizza`
@@ -1299,7 +1234,7 @@ Scope follows **what the property describes**, not where the word sits.
   venue a `bakery`).
 - **A CUISINE IS A PLACE PROPERTY, ONLY — and it is NEVER INFERRED.** A
   cuisine describes the tradition a VENUE cooks in; it lands in
-  `place_attributes` and never in `item_attributes` or `item_categories`.
+  `place_attributes` and never in `item_attributes` or any food slot.
   It enters a mention exactly two ways, both observational: this source's
   own DESCRIBING words state it ("best Italian spot in town", "legit
   Sichuan"), or an unqualified pick fit-asserts the ask's cuisine word
@@ -1459,8 +1394,8 @@ A mention then takes exactly ONE of two shapes:
   fields — the restaurant-only carrier of Step F.1, or an attribute-only
   statement about the venue.
 - **A DISH mention** adds `item` (REQUIRED, the order-name from Step C),
-  `item_categories`, `ingredients`, `is_menu_item`, and `item_attributes` —
-  and has NO `general_praise` field.
+  `ingredients`, `is_menu_item`, and `item_attributes` — and has NO
+  `general_praise` field.
 
 Rules:
 
@@ -1488,7 +1423,6 @@ version is smoky, and Nixta's patio is gorgeous. This place is a gem."
       "place_source_id": "SRC004",
       "place_attributes": null,
       "item": "duck carnitas taco",
-      "item_categories": ["taco", "carnitas"],
       "ingredients": [],
       "is_menu_item": true,
       "item_attributes": ["crispy"],
@@ -1500,7 +1434,6 @@ version is smoky, and Nixta's patio is gorgeous. This place is a gem."
       "place_source_id": "SRC004",
       "place_attributes": null,
       "item": "duck carnitas taco",
-      "item_categories": ["taco", "carnitas"],
       "ingredients": [],
       "is_menu_item": true,
       "item_attributes": ["smoky"],
@@ -1518,8 +1451,9 @@ version is smoky, and Nixta's patio is gorgeous. This place is a gem."
 }
 ```
 
-Note what this example demonstrates: singular `item` and singular categories;
-`crispy` and `smoky` pass the STANDALONE TEST while a word like "rich" would
+Note what this example demonstrates: the singular `item` carrying the whole
+order-name as spoken (its taco-ness is derived downstream from that name —
+C.3); `crispy` and `smoky` pass the STANDALONE TEST while a word like "rich" would
 not; NO cuisine anywhere — the source stated none, and "duck carnitas
 taco" licenses none (D.4: a cuisine is never inferred); `place_observed`
 as the written form with the `'s` of "Nixta's duck carnitas tacos"

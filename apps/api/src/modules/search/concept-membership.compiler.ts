@@ -128,6 +128,45 @@ export function plainAttributeSoftConcept(
   return { id, hardness: 'soft', dishArms: [arm], restaurantArms: [arm] };
 }
 
+/**
+ * WIDENING ARMS (owner ruling 2026-08-30): a judged satisfies edge makes the
+ * widened attribute an EXTRA OR-ARM of the SAME concept — "pub" the concept
+ * becomes (pub-id OR bar-id) on both axes, preserving AND-across-concepts,
+ * the pooled gate, and per-concept starvation (the report key stays the
+ * anchor's id, so a page filled through a widened arm is correctly not
+ * starved: the searcher was shown the union they tolerate). Admission only —
+ * ordering stays pure Crave Score. Arms are deduped by (column, id); the
+ * concept's own arms always come first (proven SQL byte-shapes stay stable
+ * when nothing was widened).
+ */
+export function widenConceptArms(
+  concept: ConceptConstraint,
+  widenedArms: readonly ConceptArm[],
+): ConceptConstraint {
+  if (!widenedArms.length) return concept;
+  const appendTo = (arms: readonly ConceptArm[]): ConceptArm[] => {
+    const seen = new Set(arms.map((arm) => `${arm.column}|${arm.id}`));
+    const out = arms.slice();
+    for (const arm of widenedArms) {
+      const key = `${arm.column}|${arm.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(arm);
+    }
+    return out;
+  };
+  return {
+    ...concept,
+    // Empty-axis asymmetry is deliberate doctrine (a dietary wall with no
+    // dish-side entity constrains no dishes) — widening must not fill an
+    // axis the concept deliberately left empty.
+    dishArms: concept.dishArms.length ? appendTo(concept.dishArms) : [],
+    restaurantArms: concept.restaurantArms.length
+      ? appendTo(concept.restaurantArms)
+      : [],
+  };
+}
+
 /** A dietary wall (owner semantics 2026-08-04), as the one primitive:
  *  per-axis ASYMMETRIC — the dish axis carries only the dish-side arm
  *  (a wall with no dish-side entity does not constrain dishes); the

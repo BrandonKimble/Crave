@@ -45,8 +45,41 @@ sibling-expansion reader, one memoized resolution per request):
 - dense siblings (precomputed embedding mutual-rank edges) — only with
   the Include-similar chip ON; otherwise they ride as the tier-2 ring,
   counted and auto-filled only when the page can't fill.
-  ATTRIBUTES GET NONE OF THIS — no satisfies, no siblings, no category
-  analog. Their only widening is Stage-4 lexical variants.
+
+ATTRIBUTES AND INGREDIENTS now have their own satisfies widening (built
+2026-08-30 per the owner's sameness-and-widening ruling; EDGES PENDING
+OWNER REVIEW — the docket ran dry-run only, so until edges are applied
+this machinery reads an empty set and every search behaves exactly as
+before):
+
+- At plan time (executePooledStage) every grounded plain attribute id is
+  resolved through `getSatisfiesAttributeArms` (one hop over
+  entity_satisfies, relation='satisfies' only, DIRECTED from the asked
+  word, redirect-following, fail-open, H6-memoized). Each widened id
+  becomes an EXTRA OR-ARM of the SAME concept ("bar" = bar-id OR pub-id
+  — the judged direction; the judge REJECTED pub→bar,
+  `widenConceptArms`): soft concepts keep AND-across-concepts and their
+  starvation key (the anchor id); attribute-only HARD walls get the
+  same-column widened ids appended into the overlap (`&&`) id lists
+  (cross-column targets are soft-arms-only — appending across the AND'd
+  column lists would get STRICTER, the F5 failure). Dietary walls are
+  never widened; cuisine keeps its own dual-home law (out of scope v1).
+- Grounded ingredient ids resolve through `getSatisfiesIngredientIds`
+  (same laws, asked-side only) and OR into the ingredient clause's
+  existing union (evidence ∪ canon ∪ named-dish) — "bacon" also admits
+  the pancetta carbonara.
+- Admission only, always: ordering stays pure Crave Score.
+- Edges are minted by the WIDENING COURT (WideningSatisfiesService +
+  widening-satisfies-rule.ts, rule versions 2/3 in the satisfies version
+  space; concept_satisfies ledger lane): attribute doctrine = the
+  searcher-tolerance test (moved out of the merge doctrine), ingredient
+  doctrine = culinary substitutability from the asker's side; per-
+  direction verdicts, D2 carrier context, schema-forced evidence
+  reasons. Governed runner: scripts/widening-docket.ts — the dry-run
+  judges and writes a verdict-table JSON for owner review; `--apply
+<verdicts.json>` settles EXACTLY that reviewed table (no re-judging;
+  the file's sha256 is stamped on every ledger row); --gold certifies
+  the rules.
 
 ## Stage 3 — ONE POOLED EXECUTION per projection (builder + executor)
 
@@ -92,8 +125,7 @@ name-praise signal; claim-identity dedup for vote rollups.
    searches in data-rich viewports (tier-0 fills the page).
 2. A storage merge makes both words return the union, score-ordered,
    forever (intent is not recoverable by ranking — by owner design).
-3. The dish axis has a rich graded widening stack; attributes have none.
-   The clean extension point exists: a widened attribute id becomes an
-   EXTRA ARM of the same soft concept ("pub" concept = pub-id OR bar-id),
-   preserving AND-across-concepts, the gate, and per-concept starvation.
-   That is the attribute-satisfies design, ~mechanically ready.
+3. The dish axis has a rich graded widening stack; attributes and
+   ingredients NOW HAVE THEIRS (built 2026-08-30, see Stage 2 — edges
+   pending owner review of the docket dry-run verdicts in
+   plans/widening-system-report.md).

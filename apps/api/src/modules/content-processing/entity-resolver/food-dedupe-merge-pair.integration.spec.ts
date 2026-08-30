@@ -219,7 +219,7 @@ describe('FoodDedupeMergeService.mergeFoodPair — connection fold, mention-coll
       noopLogger(),
     );
 
-    await (service as any).mergeItemPair(winnerItem, loserItem);
+    await (service as any).mergeItemPair('item', winnerItem, loserItem);
 
     // --- Winner survives, loser archived ---
     const [winnerEntity, loserEntity] = await Promise.all([

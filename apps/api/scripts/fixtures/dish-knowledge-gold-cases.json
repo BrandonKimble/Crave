@@ -3,85 +3,114 @@
     "id": "identity-modifier-vegan",
     "why": "THE IDENTITY-MODIFIER TEST: the modifier wins over the standard preparation — a wrong ingredient sends a hard-constraint diner to food they cannot eat.",
     "dish": "vegan al pastor taco",
-    "expect": { "notIngredients": ["pork", "pork shoulder", "al pastor pork"] }
+    "expect": {
+      "notIngredients": ["pork", "pork shoulder", "al pastor pork"]
+    }
   },
   {
     "id": "identity-modifier-white-pizza",
     "why": "THE IDENTITY-MODIFIER TEST: 'white pizza' has no tomato sauce.",
     "dish": "white pizza",
-    "expect": { "notIngredients": ["tomato sauce", "tomato", "marinara"] }
+    "expect": {
+      "notIngredients": ["tomato sauce", "tomato", "marinara"]
+    }
   },
   {
     "id": "alias-exclusivity-marg",
     "why": "THE EXCLUSIVITY TEST: 'marg' is claimed by both the cocktail and the pizza — an alias that fails exclusivity fuses two dishes in search.",
     "dish": "margherita pizza",
-    "expect": { "notAliases": ["marg"] }
+    "expect": {
+      "notAliases": ["marg"]
+    }
   },
   {
     "id": "alias-established-army-stew",
     "why": "Keep-side of the exclusivity line: 'army stew' is an established co-name pointing at nothing but budae jjigae.",
     "dish": "budae jjigae",
-    "expect": { "aliases": ["army stew"] }
+    "expect": {
+      "aliases": ["army stew"]
+    }
   },
   {
     "id": "invention-worse-than-silence-combo",
     "why": "Invention-worse-than-silence economics: an ambiguous name has no canonical contents — empty, never a plausible fabrication.",
     "dish": "combo plate",
-    "expect": { "emptyIngredients": true }
+    "expect": {
+      "emptyIngredients": true
+    }
   },
   {
     "id": "invention-worse-than-silence-seasonal",
     "why": "Same economics, second instance: 'seasonal salad' is whatever the kitchen has — an invented list is indistinguishable from a real one forever.",
     "dish": "seasonal salad",
-    "expect": { "emptyIngredients": true }
+    "expect": {
+      "emptyIngredients": true
+    }
   },
   {
     "id": "no-invented-aliases-shortening",
     "why": "Never invent or shorten a name yourself: 'chicken tikka masala' has no established shorthand to emit — 'ctm' style abbreviations must not be minted.",
     "dish": "carbonara udon",
-    "expect": { "emptyAliases": true }
+    "expect": {
+      "emptyAliases": true
+    }
   },
   {
     "id": "cuisine-birria-mexican",
     "why": "S4 TRADITION TEST keep-side: 'birria' belongs to Mexican cooking unmistakably, everywhere it is served.",
     "dish": "birria",
-    "expect": { "cuisines": ["mexican"] }
+    "expect": {
+      "cuisines": ["mexican"]
+    }
   },
   {
     "id": "cuisine-shared-name-empty",
     "why": "S4 reject-side: 'fried chicken' is shared across traditions — names NO tradition; empty is the cheap error.",
     "dish": "fried chicken",
-    "expect": { "emptyCuisines": true }
+    "expect": {
+      "emptyCuisines": true
+    }
   },
   {
     "id": "cuisine-identity-modifier-kfc",
     "why": "S4: identity modifiers govern — 'korean fried chicken' commits to korean even though the bare name is shared.",
     "dish": "korean fried chicken",
-    "expect": { "cuisines": ["korean"] }
+    "expect": {
+      "cuisines": ["korean"]
+    }
   },
   {
     "id": "cuisine-granularity-mapo-tofu",
     "why": "S4 granularity: the prompt's own example — 'mapo tofu' names the Sichuan repertoire; 'sichuan' must be emitted (a broader 'chinese' beside it is permitted only as a defensible second level, so it is not pinned either way).",
     "dish": "mapo tofu",
-    "expect": { "cuisines": ["sichuan"] }
+    "expect": {
+      "cuisines": ["sichuan"]
+    }
   },
   {
     "id": "cuisine-budae-jjigae-korean",
     "why": "S4: the prompt's own keep-side example — 'budae jjigae' -> korean; the tradition travels with the name.",
     "dish": "budae jjigae",
-    "expect": { "cuisines": ["korean"] }
+    "expect": {
+      "cuisines": ["korean"]
+    }
   },
   {
     "id": "cuisine-diet-never-tradition",
     "why": "S4: a diet word is never a tradition — 'vegan al pastor taco' is Mexican food; 'vegan' must not appear in cuisines.",
     "dish": "vegan al pastor taco",
-    "expect": { "cuisines": ["mexican"], "notCuisines": ["vegan"] }
+    "expect": {
+      "cuisines": ["mexican"],
+      "notCuisines": ["vegan"]
+    }
   },
   {
     "id": "cuisine-ambiguous-name-empty",
     "why": "S4: an ambiguous menu label entails no tradition — same silence economics as ingredients.",
     "dish": "combo plate",
-    "expect": { "emptyCuisines": true }
+    "expect": {
+      "emptyCuisines": true
+    }
   },
   {
     "id": "standard-prep-bec",
@@ -90,6 +119,82 @@
     "expect": {
       "ingredients": ["bacon", "egg", "cheese"],
       "aliases": ["bec"]
+    }
+  },
+  {
+    "id": "category-head-noun-cheese-fries",
+    "why": "D4: the head noun is the strongest parent — 'cheese fries' ARE fries. The study measured 529 name-evident parents missing, patched by a read-time search workaround this facet retires.",
+    "dish": "cheese fries",
+    "expect": {
+      "categories": ["fries"],
+      "notCategories": ["cheese"]
+    }
+  },
+  {
+    "id": "category-ingredient-eggplant-parm",
+    "why": "D4: an ingredient is never a category ('I'll have the eggplant' is not a complete order) — a live defect the old per-mention reconciliation passed through (eggplant parm -> eggplant).",
+    "dish": "eggplant parm",
+    "expect": {
+      "notCategories": ["eggplant"]
+    }
+  },
+  {
+    "id": "category-composition-soup-dumplings",
+    "why": "D4: composition overrides the inner word — soup dumplings are dumplings, never `soup` (the word says what is IN the food); a 2/8-support bad mention survived the old threshold.",
+    "dish": "soup dumplings",
+    "expect": {
+      "categories": ["dumpling"],
+      "notCategories": ["soup"]
+    }
+  },
+  {
+    "id": "category-composition-ice-cream-sandwich",
+    "why": "D4: the head-noun law's own exception — an 'ice cream sandwich' is no sandwich; what arrives is dessert.",
+    "dish": "ice cream sandwich",
+    "expect": {
+      "categories": ["dessert"],
+      "notCategories": ["sandwich"]
+    }
+  },
+  {
+    "id": "category-never-tradition-omakase",
+    "why": "D4: a cooking tradition is never a category — the cuisine-as-category leak's worst edge (omakase -> japanese, 12/22 support). The tradition answer belongs to the cuisines facet.",
+    "dish": "omakase",
+    "expect": {
+      "notCategories": ["japanese"]
+    }
+  },
+  {
+    "id": "category-never-tradition-mapo-tofu",
+    "why": "D4: the pull is strongest where the dish is most tradition-bound — mapo tofu rolls up to `tofu`, with no `chinese` anywhere (chinese lives in cuisines).",
+    "dish": "mapo tofu",
+    "expect": {
+      "categories": ["tofu"],
+      "notCategories": ["chinese"]
+    }
+  },
+  {
+    "id": "category-wrapper-empty-7-course",
+    "why": "D4: a wrapper that predicts no food ('7 course menu') contributes no category — an empty list is correct, and `tasting menu` is never a category (study defect).",
+    "dish": "7 course menu",
+    "expect": {
+      "emptyCategories": true
+    }
+  },
+  {
+    "id": "category-parents-carbonara-udon",
+    "why": "D4: peel + parent classes from the name — a carbonara udon is an udon and a noodle dish; someone craving either should find it.",
+    "dish": "carbonara udon",
+    "expect": {
+      "categories": ["udon", "noodle"]
+    }
+  },
+  {
+    "id": "category-spring-roll-not-pastry",
+    "why": "D4: a spring roll is not a pastry — the old reconciliation minted this from 2/9 support; the class a diner would answer with is `appetizer`/`roll`, never bakery vocabulary.",
+    "dish": "spring roll",
+    "expect": {
+      "notCategories": ["pastry"]
     }
   }
 ]

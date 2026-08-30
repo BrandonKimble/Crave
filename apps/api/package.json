@@ -24,6 +24,7 @@
     "start:prod:worker": "PROCESS_ROLE=worker node dist/main",
     "lint": "eslint \"{src,apps,libs,test,scripts}/**/*.ts\" --fix",
     "test": "jest --runInBand",
+    "boot:smoke": "ts-node scripts/boot-smoke.ts",
     "test:db": "jest --runInBand --testPathIgnorePatterns='/dist/' --testRegex \".*\\\\.integration\\\\.spec\\\\.ts$\"",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",

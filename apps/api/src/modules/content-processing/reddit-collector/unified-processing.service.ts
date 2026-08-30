@@ -81,6 +81,7 @@ import {
   writePlaceEntityEvents,
 } from './extraction-scope.service';
 import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
+import { mentionSentenceOf } from './mention-sentence';
 
 // Generous ceiling so a worst-case 300-mention batch never aborts mid-write;
 // normal batches finish in seconds — only a hung DB hits it. Insensitive.
@@ -1007,9 +1008,11 @@ export class UnifiedProcessingService implements OnModuleInit {
     const documentLocaleById = await this.loadDocumentLocales(
       llmOutput.mentions,
     );
+    const documentTextById = await this.loadDocumentTexts(llmOutput.mentions);
     const entityResolutionInput = this.extractEntitiesFromLLMOutput(llmOutput, {
       engineId,
       documentLocaleById,
+      documentTextById,
     });
     return this.entityResolutionService.resolveBatch(entityResolutionInput, {
       batchSize: this.entityResolutionBatchSize,
@@ -1063,6 +1066,46 @@ export class UnifiedProcessingService implements OnModuleInit {
     return locales;
   }
 
+  /**
+   * The TEXT of the documents a mention batch was read out of — the raw
+   * material for the D2 context standard's `mention` sentence. One bulk
+   * read per batch, same shape as loadDocumentLocales.
+   */
+  private async loadDocumentTexts(
+    mentions: ProcessableMention[],
+  ): Promise<Map<string, string>> {
+    const documentIds = Array.from(
+      new Set(
+        mentions
+          .map((mention) => this.getMentionProvenance(mention).sourceDocumentId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+    if (documentIds.length === 0) {
+      return new Map();
+    }
+    const rows = await this.prismaService.sourceDocument.findMany({
+      where: { documentId: { in: documentIds } },
+      select: { documentId: true, title: true, body: true },
+    });
+    const texts = new Map<string, string>();
+    for (const row of rows) {
+      const text = [row.title ?? '', row.body ?? '']
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .join('\n');
+      if (text) texts.set(row.documentId, text);
+    }
+    return texts;
+  }
+
+  private mentionSentence(
+    text: string | undefined,
+    surface: string,
+  ): string | null {
+    return mentionSentenceOf(text, surface);
+  }
+
   /** The language of the document a mention was read out of, or null. */
   private mentionDocumentLocale(
     mention: ProcessableMention,
@@ -1080,12 +1123,24 @@ export class UnifiedProcessingService implements OnModuleInit {
     options: {
       engineId?: string | null;
       documentLocaleById?: Map<string, string>;
+      documentTextById?: Map<string, string>;
     } = {},
   ): EntityResolutionInput[] {
     const entities: EntityResolutionInput[] = [];
     const engineId = options.engineId ?? null;
     const documentLocaleById =
       options.documentLocaleById ?? new Map<string, string>();
+    const documentTextById =
+      options.documentTextById ?? new Map<string, string>();
+    /** D2 context: the verbatim sentence this surface was read out of. */
+    const quoteFor = (
+      mention: ProcessableMention,
+      surface: string,
+    ): string | null => {
+      const documentId = this.getMentionProvenance(mention).sourceDocumentId;
+      if (!documentId) return null;
+      return this.mentionSentence(documentTextById.get(documentId), surface);
+    };
 
     const getSurfaceString = (surface: unknown, fallback: unknown): string => {
       if (typeof surface === 'string' && surface.length > 0) {
@@ -1156,6 +1211,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             entityType: 'place' as const,
             tempId: placeTempId,
             engineId,
+            mentionQuote: quoteFor(mention, placeSurface || mention.place),
             aliases:
               placeSurface && placeSurface !== mention.place
                 ? [placeSurface]
@@ -1183,6 +1239,8 @@ export class UnifiedProcessingService implements OnModuleInit {
             originalText: itemSurface,
             entityType: 'item' as const,
             tempId: itemEntityTempId,
+            mentionQuote: quoteFor(mention, itemSurface || mention.item),
+            mentionPlace: mention.place ?? null,
             aliases:
               itemSurface && itemSurface !== mention.item ? [itemSurface] : [],
           });
@@ -1218,6 +1276,8 @@ export class UnifiedProcessingService implements OnModuleInit {
               originalText: categorySurface || category,
               entityType: 'item' as const,
               tempId: categoryTempId,
+              mentionQuote: quoteFor(mention, categorySurface || category),
+              mentionPlace: mention.place ?? null,
               aliases:
                 categorySurface && categorySurface !== category
                   ? [categorySurface]
@@ -1287,6 +1347,8 @@ export class UnifiedProcessingService implements OnModuleInit {
                 originalText: ingredientName,
                 entityType: 'ingredient' as const,
                 tempId: ingredientTempId,
+                mentionQuote: quoteFor(mention, ingredientName),
+                mentionPlace: mention.place ?? null,
                 aliases: [],
               });
             }

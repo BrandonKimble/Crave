@@ -4,7 +4,12 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 
 export interface DecisionRecord {
-  kind: 'moderation' | 'entity_match' | 'attribute_placement' | 'place_choice';
+  kind:
+    | 'moderation'
+    | 'entity_match'
+    | 'attribute_placement'
+    | 'attribute_merge'
+    | 'place_choice';
   input: unknown;
   decision: unknown;
   model: string;

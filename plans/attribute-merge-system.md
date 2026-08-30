@@ -82,9 +82,11 @@ architecture applied to attributes:
 4. **Survivor selection.** Owner-canon spellings (`affordable`, `great
    atmosphere` — the names the collection prompt anchors evidence to) win
    their pair unconditionally; otherwise more references (counted over the
-   SAME registry the repoint iterates); ties to the shorter name. The
-   pinned set is a fact list of owner rulings, extended only when the
-   ideal spec pins a new spelling.
+   SAME registry the repoint iterates); ties to the shorter name.
+   **SUPERSEDED 2026-08-30 (sameness court, owner-overruled): NO canonical
+   dictionary — the pinned set is deleted. Survivor = more references,
+   tie → shorter/plainer, always; aliases preserve every spelling. See
+   plans/sameness-court-report.md.**
 5. **Cuisine facet out of scope**; `amenity` and `venue_kind` facets are IN
    (only cuisine was excluded by the directive) — see open question 2.
 6. **Dry-run previews are not hearings.** `--sample` judges without

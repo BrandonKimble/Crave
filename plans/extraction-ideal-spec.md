@@ -97,6 +97,21 @@ choosing neither.
   computed restaurant profile deterministically (never per-mention model
   inference).
 
+## Sameness and widening (ruled 2026-08-30)
+
+- MERGING is identity bookkeeping: two names merge only when they make
+  the SAME CLAIM — no discernible factual difference ("could the
+  difference ever change what arrives or what the place is like?" —
+  no → merge: ambience/ambiance, killer/great atmosphere; yes → keep:
+  cold/iced, pub/bar, piano bar/live music).
+- WIDENING owns generosity: search-time satisfies edges (judged once,
+  ledgered, reversible, one-hop) connect kept-separate concepts so a
+  broad searcher sees the union — built for dishes; to be built for
+  attributes (soft-concept OR-arms) and ingredients; restaurants
+  excluded (places are identities, ranking owns adjacency).
+- Ordering is always pure Crave Score; widening and tiers decide
+  admission only, never order.
+
 ## Names and dishes
 
 - Names are IDENTITIES: transcribed exactly as written, never corrected,

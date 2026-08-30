@@ -135,20 +135,27 @@ const captureWire = async (mode: 'single' | 'batch'): Promise<Wire> => {
   };
   internals.extractTextContent = (response: string) => response;
 
+  // THE FIXTURE MUST EXERCISE EVERY FIELD ITS TRANSPORT CAN SEND (the
+  // `aliases` lesson of 559f11922, extended to the D2 context fields
+  // 2026-08-30): an under-fed fixture makes this spec accuse the very
+  // parity it should be confirming.
+  const candidates = [
+    {
+      id: 1,
+      name: 'taco',
+      aliases: ['tacos'],
+      homePlaces: ['Amaya’s Taco Village'],
+      samePlace: true,
+    },
+  ];
   if (mode === 'single') {
     await service.matchEntity({
-      // THE FIXTURE MUST EXERCISE EVERY FIELD ITS TRANSPORT CAN SEND, and
-      // `aliases` is one of them since 559f11922 gave the single path the same
-      // candidate wire as the batch path (entityMatchCandidateWire). Without an
-      // alias here the captured single payload had no `aliases` key while the
-      // batch payload did, so `aliases` sat in the field universe but not in
-      // single's field set — and the single envelope, which correctly explains
-      // aliases, was reported as naming a FOREIGN field. That is a defect in
-      // the fixture, not in the prompt: an under-fed fixture makes this spec
-      // accuse the very parity it should be confirming.
       term: 'al pastor taco',
       kind: 'item',
-      candidates: [{ id: 1, name: 'taco', aliases: ['tacos'] }],
+      mention: 'Get the al pastor taco at Amaya’s.',
+      threadPlace: 'Amaya’s Taco Village',
+      termHomePlaces: ['Amaya’s Taco Village'],
+      candidates,
     } as never);
   } else {
     await service.matchEntitiesBatch({
@@ -156,7 +163,10 @@ const captureWire = async (mode: 'single' | 'batch'): Promise<Wire> => {
       items: [
         {
           term: 'al pastor taco',
-          candidates: [{ id: 1, name: 'taco', aliases: ['tacos'] }],
+          mention: 'Get the al pastor taco at Amaya’s.',
+          threadPlace: 'Amaya’s Taco Village',
+          termHomePlaces: ['Amaya’s Taco Village'],
+          candidates,
         },
       ],
     } as never);
@@ -227,24 +237,19 @@ describe('entity-match prompt ↔ wire conformance', () => {
   );
 
   /**
-   * KNOWN GAP — OWNED BY THE PROMPT SESSION, NOT THIS ONE.
-   *
-   * The reverse direction is not clean today: every candidate on the wire
-   * carries a `name`, and the canonical .md never names that field ("existing
-   * entities ... each with an `id`"). The whole judgment is about names, so
-   * the model infers it correctly and nothing is visibly broken — which is
-   * precisely why it survived. Fixing it means editing the .md, which this
-   * session does not own, so the residue is PINNED rather than tolerated:
-   * this assertion fails the moment either side changes, including the moment
-   * someone fixes it.
+   * The reverse direction: every field on the wire must be named by the
+   * instruction. The long-pinned `name` residue was fixed by the
+   * sameness-court rederivation (2026-08-30): the .md now names `name`
+   * alongside the D2 evidence fields, so the residue is empty — and stays
+   * pinned empty.
    */
   it.each(modes)(
-    '$mode: fields on the wire the prompt never names — pinned residue, expected RED once the .md is fixed',
+    '$mode: every field on the wire is named by the prompt',
     async ({ mode, schema }) => {
       const { wire, fields } = await wireFields(mode, schema);
       const named = namedTokens(wire.systemInstruction);
       const unannounced = [...fields].filter((field) => !named.has(field));
-      expect(unannounced).toEqual(['name']);
+      expect(unannounced).toEqual([]);
     },
   );
 });

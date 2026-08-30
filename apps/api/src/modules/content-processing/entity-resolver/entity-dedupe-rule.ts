@@ -69,6 +69,16 @@ const RULE_RELEASES: readonly RuleRelease[] = [
     fingerprint: 'd8f7b025db6b',
     note: 'R14 taxonomy rename (2026-08-16): schema/kind vocabulary restaurant->place, food->item swept through the prompt text; the rule semantics are unchanged, but the vocabulary the judge answers in is the renamed one',
   },
+  {
+    version: 3,
+    fingerprint: 'b34bcd81214f',
+    note: 'Sameness-court rederivation (2026-08-30, plans/sameness-court-report.md): REJECT outcome added (junk terms tombstone instead of minting); D2 context evidence (mention sentence, thread/home restaurants, same_place) with the HOME-RESTAURANT rule + modifier doctrine (venue-name/narration/channel decoration folds at one restaurant; genuine variants and cross-restaurant specifics never fold); subtype-never-folds and dietary-words-are-specifications pinned; evidence-style reasons required',
+  },
+  {
+    version: 4,
+    fingerprint: 'c103e4b0772e',
+    note: 'Acceptance pins 2026-08-30: two instances of existing doctrine the judge was missing — a subtype dressed as a spelling variant is still a subtype (scotch whiskey ≠ whisky: bourbon is whisky, not scotch), and a PRODUCT never folds into the tradition/flavor category whose name it carries (barbecue sauce ≠ bbq — the judge itself ruled bbq sauce vs bbq new, so the fold was transitivity-inconsistent). Gold pins scotch-whiskey-not-whisky + barbecue-sauce-not-bbq added; re-certified 27/27 x3',
+  },
 ];
 
 function resolveRuleVersion(): number {

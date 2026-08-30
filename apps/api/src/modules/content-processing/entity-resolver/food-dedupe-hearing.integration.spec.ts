@@ -107,6 +107,7 @@ class CrashingDedupe extends ItemDedupeMergeService {
 
 type Driveable = {
   adjudicateDedupeCandidates: (
+    sweepType: 'item' | 'ingredient',
     candidates: Array<{
       a_id: string;
       a_name: string;
@@ -125,6 +126,7 @@ const drive = (
   summary: DedupeMergeSummary,
 ): Promise<void> =>
   (service as unknown as Driveable).adjudicateDedupeCandidates(
+    'item',
     pairs,
     'similarity+judge',
     summary,

@@ -48,6 +48,7 @@ import {
   cuisineConceptConstraint,
   dietaryWallConcept,
   plainAttributeSoftConcept,
+  widenConceptArms,
 } from './concept-membership.compiler';
 import { FacetRegistry } from './facet.registry';
 import {
@@ -1636,6 +1637,35 @@ export class SearchService {
     // the bound belongs to the QUERY, not the bucket (the old per-bucket
     // slice let three buckets stack to 24 while this comment said 8).
     const SOFT_CONCEPT_CAP = 8;
+    // ATTRIBUTE WIDENING (owner ruling 2026-08-30: merging is same-claim
+    // identity only; WIDENING owns generosity). One-hop judged satisfies
+    // targets of every grounded plain attribute — each becomes an EXTRA
+    // OR-ARM of its anchor's concept ("pub" = pub-id OR bar-id): soft
+    // concepts through `widenConceptArms`, attribute-only hard walls through
+    // the same-column id-list append below. Admission only — order stays
+    // pure Crave Score; starvation stays keyed per anchor concept. Dietary
+    // ids are NEVER widened (a wall whose softening is a wrong answer must
+    // not admit neighbors either); cuisine concepts keep their own
+    // dual-home law and are out of widening scope for now. Reads go through
+    // the H6 memoized reader and fail open to no widening.
+    const wideningAnchorAttributeIds = [
+      ...constraints.ids.itemAttributeIds,
+      ...constraints.ids.placeAttributeIds,
+    ].filter((id) => !dietary.has(id) && !cuisineSet.has(id));
+    const satisfiesAttributeArms =
+      await params.widening.getSatisfiesAttributeArms(
+        wideningAnchorAttributeIds,
+      );
+    // INGREDIENT WIDENING (same ruling, asked-side directed): judged
+    // satisfies targets of the grounded ingredients OR into the ingredient
+    // clause's existing union — "bacon" also admits the pancetta carbonara.
+    const widenedIngredientIds = constraints.ids.ingredientIds.length
+      ? (
+          await params.widening.getSatisfiesIngredientIds(
+            constraints.ids.ingredientIds,
+          )
+        ).filter((id) => !constraints.ids.ingredientIds.includes(id))
+      : [];
     // ONE soft entry per CONCEPT (F3/F5): a plain attribute's arm is
     // derived from its type (its single column home); a cuisine concept
     // carries BOTH homes and is satisfied by either (OR within a concept,
@@ -1645,11 +1675,19 @@ export class SearchService {
       ? [
           ...constraints.ids.itemAttributeIds
             .filter((id) => !dietary.has(id) && !cuisineSet.has(id))
-            .map((id) => plainAttributeSoftConcept(id, 'food_attributes')),
+            .map((id) =>
+              widenConceptArms(
+                plainAttributeSoftConcept(id, 'food_attributes'),
+                satisfiesAttributeArms.get(id) ?? [],
+              ),
+            ),
           ...constraints.ids.placeAttributeIds
             .filter((id) => !dietary.has(id) && !cuisineSet.has(id))
             .map((id) =>
-              plainAttributeSoftConcept(id, 'restaurant_attributes'),
+              widenConceptArms(
+                plainAttributeSoftConcept(id, 'restaurant_attributes'),
+                satisfiesAttributeArms.get(id) ?? [],
+              ),
             ),
           ...cuisineConceptIds.map((id) =>
             cuisineConceptConstraint(id, 'soft'),
@@ -1682,18 +1720,63 @@ export class SearchService {
     // whose renderer is the two-home OR — never the single-column filter
     // the plain id lists compile to.
     const softSet = new Set(softConcepts.map((concept) => concept.id));
+    // HARD-WALL WIDENING: when the attribute IS the ask (no primary subject)
+    // its ids stay plain membership filters, which compile to array OVERLAP
+    // (`&&` — already OR-within-the-list). A widened id of the SAME column
+    // appends into that union; a cross-column target is skipped here — the
+    // two column lists AND against each other, so appending across columns
+    // would make the query STRICTER (the F5 failure), the opposite of
+    // widening. Cross-column widening is the soft-concept arms' job.
+    const widenHardIds = (
+      anchors: string[],
+      column: 'food_attributes' | 'restaurant_attributes',
+    ): string[] => {
+      const out = new Set(anchors);
+      for (const anchor of anchors) {
+        for (const arm of satisfiesAttributeArms.get(anchor) ?? []) {
+          if (arm.column === column) out.add(arm.id);
+        }
+      }
+      return Array.from(out);
+    };
     const pooledConstraints: SearchConstraints = {
       ...constraints,
       ids: {
         ...constraints.ids,
-        itemAttributeIds: constraints.ids.itemAttributeIds.filter(
-          (id) => !softSet.has(id) && !dietary.has(id) && !cuisineSet.has(id),
+        itemAttributeIds: widenHardIds(
+          constraints.ids.itemAttributeIds.filter(
+            (id) => !softSet.has(id) && !dietary.has(id) && !cuisineSet.has(id),
+          ),
+          'food_attributes',
         ),
-        placeAttributeIds: constraints.ids.placeAttributeIds.filter(
-          (id) => !softSet.has(id) && !dietary.has(id) && !cuisineSet.has(id),
+        placeAttributeIds: widenHardIds(
+          constraints.ids.placeAttributeIds.filter(
+            (id) => !softSet.has(id) && !dietary.has(id) && !cuisineSet.has(id),
+          ),
+          'restaurant_attributes',
         ),
+        // Ingredient widening: a pure OR into the containment union the
+        // ingredient clause already renders (evidence ∪ canon ∪ named-dish).
+        ingredientIds: widenedIngredientIds.length
+          ? [...constraints.ids.ingredientIds, ...widenedIngredientIds]
+          : constraints.ids.ingredientIds,
       },
     };
+    if (
+      this.debugMode !== 'off' &&
+      (satisfiesAttributeArms.size || widenedIngredientIds.length)
+    ) {
+      // Widening provenance, cheap: which anchors widened into which arms.
+      this.logger.info('Search debug: satisfies widening applied', {
+        attributeArms: Array.from(satisfiesAttributeArms.entries()).map(
+          ([anchor, arms]) => ({
+            anchor,
+            arms: arms.map((arm) => `${arm.column}:${arm.id}`),
+          }),
+        ),
+        widenedIngredientIds,
+      });
+    }
     const stagePlan = compileQueryPlanFromConstraints(pooledConstraints);
     const planMs = performance.now() - planStart;
 

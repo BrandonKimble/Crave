@@ -3,6 +3,7 @@ import type { LabelSweepService, SweepResult } from './label-sweep.service';
 import type { VocabularyGenerator } from './vocabulary-generator';
 import type { ConceptSatisfiesService } from '../content-processing/entity-resolver/concept-satisfies.service';
 import type { AdvisoryLockService } from '../../shared/advisory-lock/advisory-lock.service';
+import type { RestaurantNameCensusService } from '../content-processing/entity-resolver/restaurant-name-census.service';
 
 /**
  * THE RAIL'S WAITING CONTRACT (red team 2026-08-12): locale sweeps are
@@ -42,8 +43,18 @@ describe('knowledge maintenance rail — concurrent, isolated, deadlined', () =>
     locales: string[];
     sweep: jest.Mock;
     satisfies?: jest.Mock;
+    census?: jest.Mock;
   }) {
     const satisfies = overrides.satisfies ?? jest.fn().mockResolvedValue({});
+    const census =
+      overrides.census ??
+      jest.fn().mockResolvedValue({
+        scanned: 0,
+        alreadyDecided: 0,
+        docket: 0,
+        refusedByBudget: false,
+        hearing: null,
+      });
     const service = new KnowledgeMaintenanceService(
       {
         sweepLocales: () => overrides.locales,
@@ -52,8 +63,9 @@ describe('knowledge maintenance rail — concurrent, isolated, deadlined', () =>
       {} as VocabularyGenerator,
       { run: satisfies } as unknown as ConceptSatisfiesService,
       advisoryLock,
+      { run: census } as unknown as RestaurantNameCensusService,
     );
-    return { service, satisfies };
+    return { service, satisfies, census };
   }
 
   it('locale sweeps run CONCURRENTLY — the second starts before the first resolves', async () => {
@@ -105,5 +117,55 @@ describe('knowledge maintenance rail — concurrent, isolated, deadlined', () =>
     await service.runOnce('manual');
     expect(sweep).toHaveBeenCalledTimes(2);
     expect(satisfies).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * STEP 3 — the restaurant-name census (flywheel arming 2026-08-30): its
+   * OWN default-off flag under the rail, gated both ways, failures isolated.
+   * Mutation proofs: flip the flag's fallback to true and the default-off
+   * test fails; move the census call above the try/catch and the isolation
+   * test fails.
+   */
+  describe('restaurant-name census step', () => {
+    const FLAG = 'RESTAURANT_NAME_CENSUS_ENABLED';
+    let saved: string | undefined;
+    beforeEach(() => {
+      saved = process.env[FLAG];
+      delete process.env[FLAG];
+    });
+    afterEach(() => {
+      if (saved === undefined) delete process.env[FLAG];
+      else process.env[FLAG] = saved;
+    });
+
+    it('DEFAULT OFF: with no flag set, the census never runs even when the rail does', async () => {
+      const sweep = jest.fn((locale: string) =>
+        Promise.resolve(sweepResult(locale)),
+      );
+      const { service, census } = build({ locales: ['en'], sweep });
+      await service.runOnce('manual');
+      expect(census).not.toHaveBeenCalled();
+    });
+
+    it('armed: RESTAURANT_NAME_CENSUS_ENABLED=true runs the census, applying (dryRun:false)', async () => {
+      process.env[FLAG] = 'true';
+      const sweep = jest.fn((locale: string) =>
+        Promise.resolve(sweepResult(locale)),
+      );
+      const { service, census } = build({ locales: ['en'], sweep });
+      await service.runOnce('manual');
+      expect(census).toHaveBeenCalledWith({ dryRun: false });
+    });
+
+    it('a census failure is ISOLATED — the rail still completes', async () => {
+      process.env[FLAG] = 'true';
+      const sweep = jest.fn((locale: string) =>
+        Promise.resolve(sweepResult(locale)),
+      );
+      const census = jest.fn().mockRejectedValue(new Error('court down'));
+      const { service } = build({ locales: ['en'], sweep, census });
+      await expect(service.runOnce('manual')).resolves.toBeUndefined();
+      expect(census).toHaveBeenCalledTimes(1);
+    });
   });
 });

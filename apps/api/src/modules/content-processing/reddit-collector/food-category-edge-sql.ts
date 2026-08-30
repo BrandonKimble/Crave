@@ -1,11 +1,27 @@
 /**
- * ONE DEFINITION OF A FOOD-CATEGORY EDGE (2026-08-13).
+ * ONE DEFINITION OF A FOOD-CATEGORY EDGE (2026-08-13; source re-derived
+ * 2026-08-30, the D4 category move).
  *
  * `derived_food_category_edges` answers "is this food a member of that
  * category" for SEARCH's category expansion, the teaser's category lists, and
  * the satisfies judge's rung-2 arm. All three READ it and FAIL OPEN — a
  * missing edge is not an error anywhere, it is a category that quietly returns
  * fewer dishes than it should.
+ *
+ * THE SOURCE (D4, plans/category-and-knowledge-split-study.md): the dish
+ * entity's `knowledge_categories` facet — category membership derived ONCE
+ * per dish concept by the dish-knowledge pass, versioned by its release
+ * ledger. The previous source, a union-and-threshold reconciliation of the
+ * per-connection `categories` arrays, is retired: it existed only to launder
+ * per-mention disagreement (60.3% of multi-connection foods) back into one
+ * answer, and still passed real errors through. Edges exist only for foods
+ * with a LIVE connection (an edge for a food nobody serves is dead weight in
+ * four fail-open readers), only to ACTIVE item entities (the K2-analog
+ * guard: a merge-archived category can never be resurrected here), and the
+ * mint-time containment-inversion filter stays (a child is never its own
+ * parent's parent). `conn_support`/`food_conns` both record the food's live
+ * connection count — knowledge is one opinion, so there is no support
+ * arithmetic left, and no reader consumes the counts.
  *
  * WHY THE SQL LIVES HERE AND NOT AT ITS CALLERS. There are two writers, and
  * there always will be:
@@ -14,17 +30,12 @@
  *     recomputes the edges of every food the just-rebuilt restaurants touch;
  *   - the FULL-REPLACE one, the nightly DerivedIndexJob, which is the only
  *     thing that can heal an edge whose inputs changed outside a restaurant
- *     rebuild (an entity archived, a merge, a category renamed) and the only
- *     thing that can repopulate the table after a wipe.
+ *     rebuild (an entity archived, a merge, a knowledge re-synthesis) and the
+ *     only thing that can repopulate the table after a wipe.
  *
- * Those two must agree EXACTLY, because they write the same rows. If the
- * nightly job derived membership even slightly differently from the
- * incremental path, every night would silently rewrite the day's edges to a
- * second opinion, and every rebuild would rewrite them back — a table that
- * flip-flops on a 24-hour cycle, with searches answering differently
- * depending on when you asked. Copy-and-paste guarantees that divergence
- * eventually; the two paths differ ONLY in scope, so scope is the only thing
- * this module takes as an argument.
+ * Those two must agree EXACTLY, because they write the same rows; the two
+ * paths differ ONLY in scope, so scope is the only thing this module takes
+ * as an argument.
  */
 
 /**
@@ -38,14 +49,10 @@
  */
 export type ItemEdgeScope = { readonly placeIdsParam: string } | null;
 
-function itemScopeClause(scope: ItemEdgeScope): string {
+function knowledgeScopeClause(scope: ItemEdgeScope): string {
   if (scope === null) return '';
-  // The leading newline and this indentation are not cosmetic: they make the
-  // scoped statement BYTE-IDENTICAL to the text that lived at the incremental
-  // caller before the extraction, which is how that refactor was proven to
-  // change nothing about what the incremental writer executes.
   return `
-         AND c.food_id IN (
+         AND e.entity_id IN (
            SELECT DISTINCT food_id FROM core_restaurant_items
            WHERE restaurant_id = ANY(${scope.placeIdsParam}::uuid[])
          )`;
@@ -71,35 +78,38 @@ export function itemCategoryEdgeDeleteSql(scope: ItemEdgeScope): string {
        )`;
 }
 
-/** Re-derive them from the connection arrays that are the source of truth. */
+/** Re-derive them from the dish entities' knowledge_categories facet. */
 export function itemCategoryEdgeInsertSql(scope: ItemEdgeScope): string {
   return `INSERT INTO derived_food_category_edges (food_id, category_id, conn_support, food_conns)
-       SELECT c.food_id, cat_id, count(*),
-              -- STARVED anchors are excluded from BOTH sides of the edge
-              -- arithmetic (final-final red team #6): a zeroed connection
-              -- has empty categories (never a numerator) but used to count
-              -- in the denominator, so one starved anchor could break the
-              -- unanimity arm and delete a category edge every OTHER
-              -- restaurant's membership depends on. Starved = neither
-              -- supports nor penalizes.
-              (SELECT count(*) FROM core_restaurant_items c2
-               WHERE c2.food_id = c.food_id AND c2.mention_count > 0)
-       FROM core_restaurant_items c, unnest(c.categories) AS cat_id
-       WHERE cat_id <> c.food_id
-         AND c.mention_count > 0${itemScopeClause(scope)}
-       GROUP BY c.food_id, cat_id
-       HAVING (count(*) >= 2
-           OR count(*) = (SELECT count(*) FROM core_restaurant_items c3
-                          WHERE c3.food_id = c.food_id
-                            AND c3.mention_count > 0))
-          -- mint-time twins of the edge_hygiene cleanup (round-6 red team:
-          -- cleanup was transient because rebuilds re-minted what it
-          -- deleted): no containment inversions, and of a symmetric pair
-          -- only the better-supported direction mints
-          AND NOT EXISTS (
-            SELECT 1 FROM core_entities f, core_entities cat
-            WHERE f.entity_id = c.food_id AND cat.entity_id = cat_id
-              AND position(lower(f.name) IN lower(cat.name)) > 0
-              AND lower(f.name) <> lower(cat.name)
-          )`;
+       SELECT DISTINCT e.entity_id, cat_id, live.n, live.n
+       FROM core_entities e
+       CROSS JOIN LATERAL unnest(e.knowledge_categories) AS cat_id
+       JOIN LATERAL (
+         -- STARVED (zeroed) connections never count; a food whose every
+         -- connection is starved gets no edges at all.
+         SELECT count(*)::int AS n FROM core_restaurant_items c
+          WHERE c.food_id = e.entity_id AND c.mention_count > 0
+       ) live ON live.n > 0
+       WHERE e.type = 'item'::entity_type
+         AND e.status = 'active'::entity_status
+         AND cat_id <> e.entity_id${knowledgeScopeClause(scope)}
+         -- ACTIVE item targets only (K2-analog): a merged/archived category
+         -- id lingering in knowledge_categories mints nothing until the
+         -- dish's next knowledge hearing repoints it.
+         AND EXISTS (
+           SELECT 1 FROM core_entities cat
+           WHERE cat.entity_id = cat_id
+             AND cat.type = 'item'::entity_type
+             AND cat.status = 'active'::entity_status
+         )
+         -- mint-time twin of the edge_hygiene cleanup (round-6 red team:
+         -- cleanup was transient because rebuilds re-minted what it
+         -- deleted): no containment inversions — a category whose NAME
+         -- contains the food's whole name is the food's child, not parent.
+         AND NOT EXISTS (
+           SELECT 1 FROM core_entities cat
+           WHERE cat.entity_id = cat_id
+             AND position(lower(e.name) IN lower(cat.name)) > 0
+             AND lower(e.name) <> lower(cat.name)
+         )`;
 }

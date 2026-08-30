@@ -31,15 +31,62 @@ export type EntityMatchPromptMode = 'single' | 'batch';
  * flooding the shortlist (the batch path's long-standing bound).
  */
 export const ENTITY_MATCH_ALIAS_CAP = 6;
+/** Home-restaurant evidence cap — enough to show where a dish lives without
+ *  flooding the shortlist (D2 context standard). */
+export const ENTITY_MATCH_HOME_PLACE_CAP = 3;
 export const entityMatchCandidateWire = (candidate: {
   id: number;
   name: string;
   aliases?: string[];
-}): { id: number; name: string; aliases?: string[] } => ({
+  homePlaces?: string[];
+  samePlace?: boolean;
+}): {
+  id: number;
+  name: string;
+  aliases?: string[];
+  home_places?: string[];
+  same_place?: boolean;
+} => ({
   id: candidate.id,
   name: candidate.name,
   ...(candidate.aliases?.length
     ? { aliases: candidate.aliases.slice(0, ENTITY_MATCH_ALIAS_CAP) }
+    : {}),
+  ...(candidate.homePlaces?.length
+    ? {
+        home_places: candidate.homePlaces.slice(0, ENTITY_MATCH_HOME_PLACE_CAP),
+      }
+    : {}),
+  ...(candidate.samePlace !== undefined
+    ? { same_place: candidate.samePlace }
+    : {}),
+});
+
+/**
+ * ONE wire shape for the judgment-level context fields on EVERY transport
+ * (D2). Both payload assemblers spread THIS so the single and batch lanes
+ * cannot drift on the evidence they carry.
+ */
+export const entityMatchContextWire = (input: {
+  mention?: string | null;
+  threadPlace?: string | null;
+  termHomePlaces?: string[];
+}): {
+  mention?: string;
+  thread_place?: string;
+  term_home_places?: string[];
+} => ({
+  ...(input.mention?.trim() ? { mention: input.mention.trim() } : {}),
+  ...(input.threadPlace?.trim()
+    ? { thread_place: input.threadPlace.trim() }
+    : {}),
+  ...(input.termHomePlaces?.length
+    ? {
+        term_home_places: input.termHomePlaces.slice(
+          0,
+          ENTITY_MATCH_HOME_PLACE_CAP,
+        ),
+      }
     : {}),
 });
 
@@ -60,33 +107,34 @@ export const entityMatchCandidateWire = (candidate: {
  */
 export const ENTITY_MATCH_SINGLE_ENVELOPE = `## Request protocol
 
-This request carries ONE judgment: \`{"term", "kind", "candidates"}\`.
+This request carries ONE judgment: \`{"term", "kind", "candidates"}\`, and may
+also carry the evidence fields \`mention\`, \`thread_place\`, and
+\`term_home_places\` described above.
 
-A candidate may also carry \`aliases\`: other names that same candidate is
-known by. They count as that candidate's names — a term that matches an alias
-the way it would match the name is the same entity.
+Each candidate carries a \`name\` and may also carry \`aliases\`,
+\`home_places\`, and \`same_place\` — evidence fields described above.
 
-Return \`{"decision", "candidate_id"}\`, where \`decision\` is \`match\` or \`new\`,
-and \`candidate_id\` is the matched candidate's id for \`match\` and null
-otherwise.`;
+Return \`{"decision", "candidate_id"}\`, where \`decision\` is \`match\`, \`new\`,
+or \`reject\`, and \`candidate_id\` is the matched candidate's id for \`match\`
+and null otherwise.`;
 
 export const ENTITY_MATCH_BATCH_ENVELOPE = `## Request protocol — batch
 
 This request carries SEVERAL independent judgments at once:
 \`{"kind": ..., "items": [{"index", "term", "candidates"}]}\`. Every item shares
-the top-level \`kind\`.
+the top-level \`kind\`, and an item may also carry the evidence fields
+\`mention\`, \`thread_place\`, and \`term_home_places\` described above.
 
 Apply everything above to EACH item on its own terms. Item i's \`term\` is judged
 ONLY against item i's own \`candidates\` — never against another item's, and one
 item's verdict never influences another's.
 
-A candidate here may also carry \`aliases\`: other names that same candidate is
-known by. They count as that candidate's names — a term that matches an alias
-the way it would match the name is the same entity.
+Each candidate carries a \`name\` and may also carry \`aliases\`,
+\`home_places\`, and \`same_place\` — evidence fields described above.
 
 Return \`{"items": [{"index", "decision", "candidateId"}]}\` covering every input
-index exactly once, where \`decision\` is \`match\` or \`new\`, and \`candidateId\` is
-the matched candidate's id for \`match\` and null otherwise.`;
+index exactly once, where \`decision\` is \`match\`, \`new\`, or \`reject\`, and
+\`candidateId\` is the matched candidate's id for \`match\` and null otherwise.`;
 
 /**
  * Render the system instruction for a transport. `canonical` is the verbatim

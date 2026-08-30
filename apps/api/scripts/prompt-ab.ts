@@ -175,8 +175,16 @@ function mechName(value: string): string {
 /** Exact mechanical equality for place names. No token subsets, no plural
  *  fold: `franklin bbq` does not satisfy `franklin`, and vice versa. */
 function hasName(haystack: string[], needle: string): boolean {
-  const n = mechName(needle);
-  return haystack.some((value) => mechName(value) === n);
+  // An expected name may list explicit alternatives with '|' — for the one
+  // case where a venue has TWO lawful observed spans in the same document
+  // (a reply's bare "La Gran Uruguaya" vs the post body's "La Gran
+  // Uruguaya bakery"): both are real written forms the ONE-THING judge
+  // folds to one venue, and the model may lawfully cite either source.
+  // This is per-entry and explicit, never a fuzzy match.
+  return needle.split('|').some((alternative) => {
+    const n = mechName(alternative);
+    return haystack.some((value) => mechName(value) === n);
+  });
 }
 
 function norm(value: string): string {

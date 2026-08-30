@@ -120,6 +120,10 @@ type GoldCase = {
     cuisines?: string[];
     notCuisines?: string[];
     emptyCuisines?: boolean;
+    /** dish-knowledge category facet (D4) */
+    categories?: string[];
+    notCategories?: string[];
+    emptyCategories?: boolean;
     /** cuisine lane S4: venue attributes (THE FILTER TEST). */
     attributes?: string[];
     notAttributes?: string[];
@@ -293,7 +297,12 @@ function grade(
     const first = (
       Array.isArray(raw.dishes) ? (raw.dishes as unknown[])[0] : undefined
     ) as
-      | { ingredients?: unknown; aliases?: unknown; cuisines?: unknown }
+      | {
+          ingredients?: unknown;
+          aliases?: unknown;
+          cuisines?: unknown;
+          categories?: unknown;
+        }
       | undefined;
     const list = (value: unknown): string[] =>
       Array.isArray(value)
@@ -333,6 +342,20 @@ function grade(
         failures.push(`FORBIDDEN cuisine "${banned}"`);
     if (expect.emptyCuisines && dishCuisines.length)
       failures.push(`expected EMPTY cuisines, got: ${dishCuisines.join(', ')}`);
+    // D4 category facet: broader orderable dish classes from the NAME.
+    const dishCategories = list(first?.categories);
+    for (const want of expect.categories ?? [])
+      if (!dishCategories.includes(norm(want)))
+        failures.push(
+          `missing category "${want}" (got: ${dishCategories.join(', ') || 'nothing'})`,
+        );
+    for (const banned of expect.notCategories ?? [])
+      if (dishCategories.includes(norm(banned)))
+        failures.push(`FORBIDDEN category "${banned}"`);
+    if (expect.emptyCategories && dishCategories.length)
+      failures.push(
+        `expected EMPTY categories, got: ${dishCategories.join(', ')}`,
+      );
   } else if (kind === 'cuisine') {
     const cuisines = (
       Array.isArray(raw.cuisines) ? (raw.cuisines as unknown[]) : []

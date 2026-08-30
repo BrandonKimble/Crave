@@ -12,9 +12,9 @@ import { resolvePromptRule } from './prompt-rule-release';
  */
 describe('dish-knowledge rule is versioned through the ledger', () => {
   it('resolves the current asset to the ledgered version', () => {
-    // v3: the owner-ruled hybrid-tradition law (2026-08-26).
-    expect(DISH_KNOWLEDGE_RULE.version).toBe(3);
-    expect(DISH_KNOWLEDGE_RULE.fingerprint).toBe('acbabaf05126');
+    // v4: the D4 category facet (2026-08-30).
+    expect(DISH_KNOWLEDGE_RULE.version).toBe(4);
+    expect(DISH_KNOWLEDGE_RULE.fingerprint).toBe('e4dec514f61b');
   });
 
   it('an unledgered asset edit fails loudly with the next version', () => {

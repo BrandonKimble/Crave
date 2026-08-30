@@ -31,6 +31,17 @@ export interface EntityResolutionInput {
    * tiers hard-coded before, so nothing about those callers changes.
    */
   documentLocale?: string | null;
+  /**
+   * D2 context-curation standard (plans/ideal-architecture.md): the verbatim
+   * sentence this mention was read out of. Evidence for the identity judge —
+   * it resolves reference questions the bare term cannot ("no. 16 noodles",
+   * "soto omakase", "the mushroom based one"). Optional: legacy lanes and
+   * query-time callers carry none and behave exactly as before.
+   */
+  mentionQuote?: string | null;
+  /** The restaurant the mention's thread was crediting (mention.place as
+   *  extraction canonicalized it) — the thread_place half of the OTOKO rule. */
+  mentionPlace?: string | null;
 }
 
 /**

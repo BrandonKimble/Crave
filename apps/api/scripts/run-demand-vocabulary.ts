@@ -10,8 +10,11 @@
  * stops being demand.
  * On anything else it stays demand, which is where collection reads it.
  *
- * NO CRON, deliberately: crons are off here and a pass that spends money
- * should not start itself.
+ * SINCE 2026-08-30 the sweep also has a standing rail
+ * (search/demand-vocabulary-rail.service.ts, 4:30AM, gated
+ * DEMAND_VOCABULARY_SWEEP_ENABLED default OFF — a launch flip-list item).
+ * This script remains the manual entry point; the sweep's advisory lock
+ * makes the two safe together.
  *
  * Run:
  *   npx ts-node -T scripts/run-demand-vocabulary.ts --limit 50            # dry run

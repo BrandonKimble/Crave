@@ -14,6 +14,7 @@ import { NightlyConvergenceService } from './nightly-convergence.service';
 import { PlaceTypeCensusService } from './place-type-census.service';
 import { MarketMembershipService } from './market-membership.service';
 import { PlaceCuisineExtractionService } from './restaurant-cuisine-extraction.service';
+import { VenueCuisineEvidenceService } from './venue-cuisine-evidence.service';
 import { PlaceCuisineExtractionQueueService } from './restaurant-cuisine-extraction-queue.service';
 import { PlaceCuisineExtractionWorker } from './restaurant-cuisine-extraction.worker';
 import { PlaceSecondaryLocationExpansionQueueService } from './restaurant-secondary-location-expansion-queue.service';
@@ -58,6 +59,7 @@ const placeEnrichmentWorkerProviders = isWorkerRuntime()
     PlaceTypeCensusService,
     MarketMembershipService,
     PlaceCuisineExtractionService,
+    VenueCuisineEvidenceService,
     PlaceCuisineExtractionQueueService,
     PlaceSecondaryLocationExpansionQueueService,
     ...placeEnrichmentWorkerProviders,

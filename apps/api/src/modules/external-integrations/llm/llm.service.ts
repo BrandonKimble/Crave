@@ -2,6 +2,7 @@ import { applyAuditReasonPolicy } from './llm-audit-policy';
 import {
   EntityMatchPromptMode,
   entityMatchCandidateWire,
+  entityMatchContextWire,
   renderEntityMatchSystemInstruction,
 } from './entity-match-prompt';
 import {
@@ -62,6 +63,8 @@ import {
   LLMCuisineExtractionResult,
   LLMModerationResult,
   LLMAttributePlacementInput,
+  LLMAttributeMergeBatchInput,
+  LLMAttributeMergeVerdict,
   LLMAttributePlacementResult,
   LLMEntityMatchInput,
   LLMEntityMatchResult,
@@ -91,6 +94,7 @@ import {
   CUISINE_HUB_CLASSIFY_RESPONSE_JSON_SCHEMA,
   ENTITY_MATCH_BATCH_RESPONSE_JSON_SCHEMA,
   ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA,
+  ATTRIBUTE_MERGE_BATCH_RESPONSE_JSON_SCHEMA,
   ENTITY_MATCH_RESPONSE_JSON_SCHEMA,
   POLL_SUBJECT_RESPONSE_JSON_SCHEMA,
   collectionResponseJsonSchemaForSourceRefs,
@@ -240,6 +244,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   private cuisinePrompt!: string;
   private moderationPrompt!: string;
   private attributePlacementPrompt!: string;
+  private attributeMergePrompt!: string;
   private entityMatchPrompt!: string;
   private pollSubjectPrompt!: string;
   private dishKnowledgePrompt!: string;
@@ -443,6 +448,10 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     this.cuisinePrompt = this.loadCuisinePrompt();
     this.moderationPrompt = this.loadModerationPrompt();
     this.attributePlacementPrompt = this.loadAttributePlacementPrompt();
+    this.attributeMergePrompt = this.loadRequiredPromptFile(
+      'attribute-merge-prompt.md',
+      'load_attribute_merge_prompt',
+    );
     this.entityMatchPrompt = this.loadEntityMatchPrompt();
     this.pollSubjectPrompt = this.loadPollSubjectPrompt();
     this.dishKnowledgePrompt = this.loadRequiredPromptFile(
@@ -1562,7 +1571,13 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     const payload = JSON.stringify({
       term,
       kind: input.kind,
-      candidates: input.candidates.map((c) => ({ id: c.id, name: c.name })),
+      candidates: input.candidates.map((c) => ({
+        id: c.id,
+        name: c.name,
+        // D2 context standard: a few real carriers ground what the tag's
+        // filter actually returns (piano bar→live music died on this).
+        ...(c.usedBy?.length ? { used_by: c.usedBy.slice(0, 3) } : {}),
+      })),
     });
     const response = await this.callLLMApi(payload, {
       usageCaller: 'attribute.place',
@@ -1600,10 +1615,18 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         parsed.decision === 'match' || parsed.decision === 'reject'
           ? parsed.decision
           : 'new';
-      const reason =
+      // A reason equal to the decision token is not evidence (58% of the
+      // audited match rows carried the literal string "match" — judge-ledger
+      // audit). Mark it unstated so the audit trail can count the failure
+      // instead of laundering it as a ground.
+      const statedReason =
         typeof parsed.reason === 'string' && parsed.reason.trim()
           ? parsed.reason.trim()
-          : decision;
+          : '';
+      const reason =
+        statedReason && statedReason.toLowerCase() !== decision
+          ? statedReason
+          : '(unstated)';
 
       // Only honour a match that names a real candidate id from the shortlist.
       const candidateId =
@@ -1661,11 +1684,21 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     kind: 'place' | 'item' | 'ingredient';
     items: {
       term: string;
-      candidates: { id: number; name: string; aliases?: string[] }[];
+      candidates: {
+        id: number;
+        name: string;
+        aliases?: string[];
+        homePlaces?: string[];
+        samePlace?: boolean;
+      }[];
+      /** D2 context standard — see LLMEntityMatchInput for field docs. */
+      mention?: string | null;
+      threadPlace?: string | null;
+      termHomePlaces?: string[];
     }[];
   }): Promise<
     {
-      decision: 'match' | 'new';
+      decision: 'match' | 'new' | 'reject';
       candidateId: number | null;
       /** The judge's stated ground, when the model returned one. The dedupe
        *  hearing ledger requires it — a reasonless verdict is not recorded
@@ -1705,6 +1738,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       const payload = input.items.map((item, index) => ({
         index,
         term: item.term,
+        ...entityMatchContextWire(item),
         candidates: item.candidates.map(entityMatchCandidateWire),
       }));
       // `kind` rides the PAYLOAD now. It used to be interpolated into the
@@ -1736,7 +1770,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       const results = failClosed.map(
         (r) =>
           ({ ...r }) as {
-            decision: 'match' | 'new';
+            decision: 'match' | 'new' | 'reject';
             candidateId: number | null;
             reason?: string;
           },
@@ -1756,7 +1790,14 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
             : undefined;
         results[idx] = valid
           ? { decision: 'match', candidateId: cid, ...(reason && { reason }) }
-          : { decision: 'new', candidateId: null, ...(reason && { reason }) };
+          : {
+              // Reject is honoured ONLY with a stated ground — a reasonless
+              // reject degrades to the recoverable 'new' (the tombstone sink
+              // is permanent, so it is never minted on silence).
+              decision: item.decision === 'reject' && reason ? 'reject' : 'new',
+              candidateId: null,
+              ...(reason && { reason }),
+            };
       }
       for (let i = 0; i < input.items.length; i += 1) {
         this.decisionLedger.record({
@@ -1790,21 +1831,137 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * BATCHED attribute-merge judge: N pairs of LIVE attribute tags per
+   * request, each judged by the ONE-INTENTION test
+   * (prompts/attribute-merge-prompt.md — the canonical rule text; its
+   * version ledger is attribute-merge-rule.ts). Items are index-delimited
+   * and each pair fails closed to 'keep' WITH NO REASON independently —
+   * the hearing ledger refuses reasonless verdicts, so an outage or a
+   * malformed reply can never mint a recorded ruling.
+   *
+   * `reason` stays REQUIRED on this schema even when audit reasons are off
+   * (no applyAuditReasonPolicy): the verdict ledger's law is that a ruling
+   * without stated ground is not a ruling, so stripping reasons would make
+   * every hearing this judge holds unrecordable.
+   */
+  async judgeAttributeMergesBatch(
+    input: LLMAttributeMergeBatchInput,
+  ): Promise<LLMAttributeMergeVerdict[]> {
+    const failClosed: LLMAttributeMergeVerdict[] = input.pairs.map(() => ({
+      decision: 'keep' as const,
+    }));
+    if (!input.pairs.length) return [];
+
+    // Model comes from THE caller profile (gemini-caller-profiles.ts).
+    const model = callerProfile('attribute.merge_batch')!.model!;
+    const generationConfig: GeminiGenerationConfig = {
+      temperature: 0,
+      topP: this.llmConfig.topP,
+      topK: this.llmConfig.topK,
+      candidateCount: 1,
+      responseMimeType: 'application/json',
+      responseJsonSchema: ATTRIBUTE_MERGE_BATCH_RESPONSE_JSON_SCHEMA,
+    };
+
+    try {
+      const payload = {
+        kind: input.kind,
+        items: input.pairs.map((pair, index) => ({
+          index,
+          a: pair.a,
+          b: pair.b,
+          // D2 context standard: real carriers of each tag.
+          ...(pair.aUsedBy?.length
+            ? { a_used_by: pair.aUsedBy.slice(0, 3) }
+            : {}),
+          ...(pair.bUsedBy?.length
+            ? { b_used_by: pair.bUsedBy.slice(0, 3) }
+            : {}),
+        })),
+      };
+      const response = await this.callLLMApi(JSON.stringify(payload), {
+        usageCaller: 'attribute.merge_batch',
+        generationConfig,
+        systemInstruction: this.attributeMergePrompt,
+        model,
+        maxRetries: 1,
+        thinkingContext: 'query',
+      });
+      const content = this.extractTextContent(
+        response,
+        'judge_attribute_merges_batch',
+      );
+      const start = content.indexOf('{');
+      const parsed = JSON.parse(
+        start >= 0 ? content.slice(start) : content,
+      ) as {
+        items?: { index?: unknown; decision?: unknown; reason?: unknown }[];
+      };
+      const results = failClosed.map((r) => ({ ...r }));
+      for (const item of parsed.items ?? []) {
+        const idx = typeof item.index === 'number' ? item.index : -1;
+        if (idx < 0 || idx >= results.length) continue;
+        const reason =
+          typeof item.reason === 'string' && item.reason.trim()
+            ? item.reason.trim()
+            : undefined;
+        const decision = item.decision === 'merge' ? 'merge' : 'keep';
+        results[idx] = { decision, ...(reason && { reason }) };
+      }
+      for (let i = 0; i < input.pairs.length; i += 1) {
+        this.decisionLedger.record({
+          kind: 'attribute_merge',
+          input: { kind: input.kind, ...input.pairs[i] },
+          decision: results[i],
+          model,
+          metadata: { batched: true },
+        });
+      }
+      return results;
+    } catch (error) {
+      this.logger.warn(
+        'judgeAttributeMergesBatch failed; failing closed to keep',
+        {
+          pairs: input.pairs.length,
+          error:
+            error instanceof Error
+              ? { message: error.message }
+              : { message: String(error) },
+        },
+      );
+      for (let i = 0; i < input.pairs.length; i += 1) {
+        this.decisionLedger.record({
+          kind: 'attribute_merge',
+          input: { kind: input.kind, ...input.pairs[i] },
+          decision: failClosed[i],
+          model,
+          metadata: { batched: true, failClosed: true },
+        });
+      }
+      return failClosed;
+    }
+  }
+
+  /**
    * KNOWLEDGE-TIER synthesis (world knowledge deliberately encouraged — this
    * is dish knowledge, not testimony; the collection prompt stays
    * source-faithful). For each dish NAME: canonical ingredients + established
    * aliases. Identity modifiers in the name govern ("vegan al pastor taco"
    * must not return pork).
    */
-  async synthesizeDishKnowledgeBatch(
-    dishes: { name: string }[],
-  ): Promise<
-    { ingredients: string[]; aliases: string[]; cuisines: string[] }[]
+  async synthesizeDishKnowledgeBatch(dishes: { name: string }[]): Promise<
+    {
+      ingredients: string[];
+      aliases: string[];
+      cuisines: string[];
+      categories: string[];
+    }[]
   > {
     const empty = dishes.map(() => ({
       ingredients: [] as string[],
       aliases: [] as string[],
       cuisines: [] as string[],
+      categories: [] as string[],
     }));
     if (!dishes.length) return [];
 
@@ -1867,11 +2024,17 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   parseDishKnowledgeResponse(
     content: string,
     count: number,
-  ): { ingredients: string[]; aliases: string[]; cuisines: string[] }[] {
+  ): {
+    ingredients: string[];
+    aliases: string[];
+    cuisines: string[];
+    categories: string[];
+  }[] {
     const results = Array.from({ length: count }, () => ({
       ingredients: [] as string[],
       aliases: [] as string[],
       cuisines: [] as string[],
+      categories: [] as string[],
     }));
     const start = content.indexOf('{');
     const parsed = JSON.parse(start >= 0 ? content.slice(start) : content) as {
@@ -1880,6 +2043,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         ingredients?: unknown;
         aliases?: unknown;
         cuisines?: unknown;
+        categories?: unknown;
       }[];
     };
     for (const item of parsed.dishes ?? []) {
@@ -1902,6 +2066,9 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         // Cuisine facet (S4): a name commits to at most a couple of
         // traditions; anything past 3 is the model stretching.
         cuisines: clean(item.cuisines).slice(0, 3),
+        // Category facet (D4): peels + parents of one name top out around
+        // five; anything past that is the model stretching.
+        categories: clean(item.categories).slice(0, 5),
       };
     }
     return results;
@@ -1939,8 +2106,10 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     const payload = JSON.stringify({
       term,
       kind: input.kind,
-      // Alias evidence rides the single transport exactly as it rides the
-      // batch one — same wire shape, same cap (entityMatchCandidateWire).
+      // Context + alias evidence ride the single transport exactly as they
+      // ride the batch one — same wire shapes, same caps
+      // (entityMatchContextWire / entityMatchCandidateWire).
+      ...entityMatchContextWire(input),
       candidates: input.candidates.map(entityMatchCandidateWire),
     });
     const response = await this.callLLMApi(payload, {
@@ -1977,11 +2146,24 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         reason?: unknown;
       };
 
-      const decision = parsed.decision === 'match' ? 'match' : 'new';
-      const reason =
+      const stated =
         typeof parsed.reason === 'string' && parsed.reason.trim()
           ? parsed.reason.trim()
-          : decision;
+          : '';
+      // Reject only with a stated ground (the tombstone sink is permanent;
+      // silence degrades to the recoverable 'new').
+      const decision =
+        parsed.decision === 'match'
+          ? 'match'
+          : parsed.decision === 'reject' && stated
+            ? 'reject'
+            : 'new';
+      // Schema-forced-evidence-reasons (red-team G1): a reason equal to the
+      // decision token is not evidence. On silence the reason stays ABSENT —
+      // never synthesized from the decision word — same refusal as the batch
+      // lane (undefined) and the placement lane ('(unstated)'), so
+      // reasonless-verdict consumers (the hearing ledger) are not defeated.
+      const reason = stated || undefined;
 
       // Only honour a match that names a real candidate id from the shortlist.
       const candidateId =

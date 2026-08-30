@@ -1,0 +1,373 @@
+{
+  "comment": "Sameness-court gold pins (2026-08-30). Every WRONG verdict from plans/judge-ledger-audit.md is pinned on its correct side, plus both-sides pins for each doctrine boundary (home-restaurant rule, modifier classes, reject vs new, diacritics, subtype-never-folds). Context fields mirror the D2 wire: mention/threadPlace/termHomePlaces on the case, homePlaces/samePlace on candidates. Real corpus quotes throughout.",
+  "cases": [
+    {
+      "id": "shanghai-lumpia-keeps",
+      "why": "audit WRONG match: subtype folded into category; a Shanghai lumpia is a distinct order",
+      "kind": "item",
+      "term": "shanghai lumpia",
+      "mention": "I had the Shanghai lumpia, sisig, and kare kare and left satisfied.",
+      "candidates": [
+        {
+          "name": "lumpia"
+        }
+      ],
+      "expected": "new"
+    },
+    {
+      "id": "regional-bbq-keeps",
+      "why": "audit WRONG match: regional style folded into generic bbq",
+      "kind": "item",
+      "term": "central texas slow-smoked bbq",
+      "candidates": [
+        {
+          "name": "bbq"
+        }
+      ],
+      "expected": "new"
+    },
+    {
+      "id": "vegan-vs-veggie-keeps",
+      "why": "audit WRONG match: dietary words are specifications a diner relies on",
+      "kind": "item",
+      "term": "vegan reuben",
+      "candidates": [
+        {
+          "name": "veggie reuben"
+        }
+      ],
+      "expected": "new"
+    },
+    {
+      "id": "aioli-not-mayo",
+      "why": "audit UNDECIDABLE ruled to keep: aioli≠mayo without source evidence equating them",
+      "kind": "ingredient",
+      "term": "wasabi aoli",
+      "candidates": [
+        {
+          "name": "wasabi mayo"
+        }
+      ],
+      "expected": "new"
+    },
+    {
+      "id": "texmex-taco-keeps",
+      "why": "audit wrong-split-lean gone the KEEP way: regional style is its own order",
+      "kind": "item",
+      "term": "texmex taco",
+      "candidates": [
+        {
+          "name": "taco"
+        },
+        {
+          "name": "tex-mex"
+        }
+      ],
+      "expected": "new"
+    },
+    {
+      "id": "five-piece-rejects",
+      "why": "junk-minting class: bare quantity, no food noun (judge's own reason called it garbage)",
+      "kind": "item",
+      "term": "5 piece",
+      "mention": "5 piece with some tater tots. And sauces. Lots of sauces.",
+      "candidates": [
+        {
+          "name": "5 piece chicken"
+        },
+        {
+          "name": "omakase"
+        },
+        {
+          "name": "lunch combo"
+        }
+      ],
+      "expected": "reject"
+    },
+    {
+      "id": "branch-phrase-rejects",
+      "why": "junk-minting class: thread-local branch reference, not a business name",
+      "kind": "place",
+      "term": "south lamar location",
+      "mention": "The parking lot at the south lamar location is pretty insane at lunchtime, be warned.",
+      "candidates": [
+        {
+          "name": "Loro South Lamar"
+        }
+      ],
+      "expected": "reject"
+    },
+    {
+      "id": "clay-rejects",
+      "why": "junk-minting class: material/vessel is not an orderable thing",
+      "kind": "item",
+      "term": "clay",
+      "candidates": [
+        {
+          "name": "clay pot rice"
+        },
+        {
+          "name": "clay pot"
+        }
+      ],
+      "expected": "reject"
+    },
+    {
+      "id": "crispy-rejects",
+      "why": "junk-minting class: generic adjective minted as an item",
+      "kind": "item",
+      "term": "crispy",
+      "candidates": [
+        {
+          "name": "crispy beef"
+        },
+        {
+          "name": "crispy rice"
+        },
+        {
+          "name": "crispy pata"
+        }
+      ],
+      "expected": "reject"
+    },
+    {
+      "id": "anaphora-rejects",
+      "why": "junk-minting class: a pro-form that only worked inside its thread",
+      "kind": "item",
+      "term": "mushroom based one",
+      "mention": "In addition to all of the above - Jacobys makes a nice mushroom based one.",
+      "candidates": [
+        {
+          "name": "mushroom burger"
+        }
+      ],
+      "expected": "reject"
+    },
+    {
+      "id": "obscure-real-dish-not-rejected",
+      "why": "reject boundary other side: an unfamiliar but real orderable dish is new, never reject",
+      "kind": "item",
+      "term": "cemita poblana",
+      "candidates": [
+        {
+          "name": "torta"
+        }
+      ],
+      "expected": "new"
+    },
+    {
+      "id": "soto-omakase-folds",
+      "why": "venue-name decoration at the same restaurant is the venue, not the dish (OTOKO rule)",
+      "kind": "item",
+      "term": "soto omakase",
+      "mention": "We got the Soto Omakase for my birthday and it was quite good, but the price they charged was not worth what we got.",
+      "threadPlace": "Soto",
+      "candidates": [
+        {
+          "name": "omakase",
+          "homePlaces": ["Soto", "OTOKO", "Uchi Austin"],
+          "samePlace": true
+        }
+      ],
+      "expected": "match"
+    },
+    {
+      "id": "course-count-narration-folds",
+      "why": "narration decoration (course count + 'experience') at the same restaurant is one offering",
+      "kind": "item",
+      "term": "20 course omakase experience",
+      "mention": "Come check out Sushi Endo, it's a wonderful 20 course omakase experience located in West campus.",
+      "threadPlace": "Sushi Endo",
+      "candidates": [
+        {
+          "name": "omakase",
+          "homePlaces": ["Sushi Endo", "Tsuke Edomae"],
+          "samePlace": true
+        }
+      ],
+      "expected": "match"
+    },
+    {
+      "id": "channel-wording-folds",
+      "why": "channel modifier (take home) names how the same kitchen's offering reaches you",
+      "kind": "item",
+      "term": "take home omakase",
+      "threadPlace": "Lucky Robot Restaurant",
+      "candidates": [
+        {
+          "name": "omakase",
+          "homePlaces": ["Lucky Robot Restaurant", "Soto"],
+          "samePlace": true
+        }
+      ],
+      "expected": "match"
+    },
+    {
+      "id": "dietary-variant-never-folds",
+      "why": "genuine variant even at one restaurant: the venue itself distinguishes them (Uchi has both)",
+      "kind": "item",
+      "term": "vegetarian omakase",
+      "threadPlace": "Uchi Austin",
+      "candidates": [
+        {
+          "name": "omakase",
+          "homePlaces": ["Uchi Austin", "Soto"],
+          "samePlace": true
+        }
+      ],
+      "expected": "new"
+    },
+    {
+      "id": "source-contrast-never-merges",
+      "why": "the mention itself contrasts two offerings at one venue — never merge what the source distinguishes",
+      "kind": "item",
+      "term": "sushi omakase",
+      "mention": "Otoko does a true Tokyo style sushi omakase on Wednesday nights. The other nights are a Kyoto style kaiseki omakase which is also great.",
+      "threadPlace": "OTOKO",
+      "candidates": [
+        {
+          "name": "kaiseki",
+          "homePlaces": ["OTOKO"],
+          "samePlace": true
+        }
+      ],
+      "expected": "new"
+    },
+    {
+      "id": "cross-restaurant-decoration-holds",
+      "why": "without same-place evidence the decorated variant stays separate (doubt says new)",
+      "kind": "item",
+      "term": "20 course omakase experience",
+      "candidates": [
+        {
+          "name": "omakase"
+        }
+      ],
+      "expected": "new"
+    },
+    {
+      "id": "menu-number-alias-via-mention",
+      "why": "audit UNDECIDABLE decided by the mention: the sentence IS the menu mapping",
+      "kind": "item",
+      "term": "no. 16 noodles",
+      "mention": "No. 16 Noodles with meat and bean sauce is the bees knees for $11.",
+      "candidates": [
+        {
+          "name": "noodle with meat and bean sauce"
+        }
+      ],
+      "expected": "match"
+    },
+    {
+      "id": "dediacritized-spelling-matches",
+      "why": "regression pin: accentless spelling of an accented name (lane's measured strength)",
+      "kind": "item",
+      "term": "bun bo hue",
+      "candidates": [
+        {
+          "name": "bún bò huế"
+        }
+      ],
+      "expected": "match"
+    },
+    {
+      "id": "accent-disagreement-splits",
+      "why": "regression pin: both accented, marks disagree = two words",
+      "kind": "item",
+      "term": "cơm chay",
+      "candidates": [
+        {
+          "name": "cơm cháy"
+        }
+      ],
+      "expected": "new"
+    },
+    {
+      "id": "brand-abbreviation-matches",
+      "why": "regression pin: same brand tokens, abbreviated",
+      "kind": "place",
+      "term": "McD's",
+      "candidates": [
+        {
+          "name": "McDonalds"
+        }
+      ],
+      "expected": "match"
+    },
+    {
+      "id": "different-brand-splits",
+      "why": "regression pin: different brand tokens, same category",
+      "kind": "place",
+      "term": "Joe's Pizza",
+      "candidates": [
+        {
+          "name": "Tony's Pizza"
+        }
+      ],
+      "expected": "new"
+    },
+    {
+      "id": "cross-language-alias-matches",
+      "why": "regression pin: established cross-language name",
+      "kind": "item",
+      "term": "xiao long bao",
+      "candidates": [
+        {
+          "name": "soup dumplings"
+        }
+      ],
+      "expected": "match"
+    },
+    {
+      "id": "component-never-the-dish",
+      "why": "regression pin: component vs whole",
+      "kind": "item",
+      "term": "pizza dough",
+      "candidates": [
+        {
+          "name": "pizza"
+        }
+      ],
+      "expected": "new"
+    },
+    {
+      "id": "distinct-preparation-splits",
+      "why": "regression pin: preparations a diner orders on purpose, even same restaurant",
+      "kind": "item",
+      "term": "pepperoni pizza",
+      "threadPlace": "Alamo Drafthouse Cinema South Lamar",
+      "candidates": [
+        {
+          "name": "pizza",
+          "homePlaces": ["Alamo Drafthouse Cinema South Lamar"],
+          "samePlace": true
+        }
+      ],
+      "expected": "new"
+    },
+    {
+      "id": "scotch-whiskey-not-whisky",
+      "why": "acceptance pin 2026-08-30: the dedupe judge merged these as a 'spelling variant' — wrong: bourbon is whisky and is not scotch; scotch is a regional subtype, whisky the category. Subtype vs category = two claims.",
+      "kind": "ingredient",
+      "term": "scotch whiskey",
+      "candidates": [
+        {
+          "name": "whisky"
+        }
+      ],
+      "expected": "new"
+    },
+    {
+      "id": "barbecue-sauce-not-bbq",
+      "why": "acceptance pin 2026-08-30: the judge merged 'barbecue sauce' into 'bbq' while itself ruling 'bbq sauce' vs 'bbq' = new — transitivity-inconsistent. A sauce is not the flavor/tradition category.",
+      "kind": "ingredient",
+      "term": "barbecue sauce",
+      "candidates": [
+        {
+          "name": "bbq"
+        }
+      ],
+      "expected": "new"
+    }
+  ]
+}

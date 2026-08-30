@@ -168,9 +168,10 @@ export class ProjectionRebuildService implements OnModuleInit {
 
     // Keep the canonical per-food category edges (derived_food_category_edges —
     // what SEARCH reads for category membership) consistent with the just-
-    // rebuilt connection arrays: recompute edges for every food these
-    // restaurants touch, across ALL of that food's connections (per-food
-    // reconciliation, self-edges excluded). Incremental + tx-consistent.
+    // rebuilt connections: re-project each touched food's
+    // knowledge_categories facet against its LIVE connection count (D4 —
+    // membership is knowledge on the dish entity; the rebuild only changes
+    // which foods are live here). Incremental + tx-consistent.
     await this.refreshItemCategoryEdgesForPlaces(tx, placeIds);
 
     this.logger.debug('Rebuilt restaurant projections from active evidence', {

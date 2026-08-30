@@ -210,6 +210,7 @@ export class WordVocabularyJudgeService {
     if (!rows.length) {
       return { lane, sampled: 0, flips: 0, flipRate: 0, flipExamples: [] };
     }
+    const replayed = await this.replayClaims(lane, rows);
     const flipExamples: Array<{
       claimKey: string;
       storedOutcome: string;
@@ -218,28 +219,18 @@ export class WordVocabularyJudgeService {
     }> = [];
     let flips = 0;
     let heard = 0;
-    for (
-      let offset = 0;
-      offset < rows.length;
-      offset += VOCABULARY_CLAIMS_PER_CALL
-    ) {
-      const batch = rows.slice(offset, offset + VOCABULARY_CLAIMS_PER_CALL);
-      const claims = batch.map((row) => row.subject as WordVocabularyClaim);
-      const answers = await this.hearFacets([wiring], claims);
-      for (let index = 0; index < batch.length; index++) {
-        const answer = answers.get(index + 1)?.get(lane);
-        if (!answer) continue; // unanswered ≠ flipped; it stays uncounted
-        heard += 1;
-        if (answer.outcome !== batch[index].outcome) {
-          flips += 1;
-          if (flipExamples.length < 20) {
-            flipExamples.push({
-              claimKey: batch[index].claimKey,
-              storedOutcome: batch[index].outcome,
-              probedOutcome: answer.outcome,
-              probedReason: answer.reason,
-            });
-          }
+    for (const row of replayed) {
+      if (!row.newOutcome) continue; // unanswered ≠ flipped; stays uncounted
+      heard += 1;
+      if (row.newOutcome !== row.storedOutcome) {
+        flips += 1;
+        if (flipExamples.length < 20) {
+          flipExamples.push({
+            claimKey: row.claimKey,
+            storedOutcome: row.storedOutcome,
+            probedOutcome: row.newOutcome,
+            probedReason: row.newReason,
+          });
         }
       }
     }
@@ -250,6 +241,58 @@ export class WordVocabularyJudgeService {
       flipRate: heard ? flips / heard : 0,
       flipExamples,
     };
+  }
+
+  /**
+   * RE-ASK STORED CLAIMS UNDER THE CURRENT RULE, WRITING NOTHING — the one
+   * re-judge method both compare-only seams share: the bench prober above
+   * (outdated-only carry-forward proofs) and the verdict-replay harness
+   * (verdict-replay/, whole-population drift detection). A row whose
+   * hearing returned no usable answer comes back with `newOutcome`
+   * undefined — unanswered, never counted as a flip.
+   */
+  async replayClaims(
+    lane: string,
+    rows: ReadonlyArray<{
+      claimKey: string;
+      outcome: string;
+      subject: unknown;
+    }>,
+  ): Promise<
+    Array<{
+      claimKey: string;
+      storedOutcome: string;
+      newOutcome?: string;
+      newReason?: string;
+    }>
+  > {
+    const wiring = laneWiring(lane);
+    const results: Array<{
+      claimKey: string;
+      storedOutcome: string;
+      newOutcome?: string;
+      newReason?: string;
+    }> = [];
+    for (
+      let offset = 0;
+      offset < rows.length;
+      offset += VOCABULARY_CLAIMS_PER_CALL
+    ) {
+      const batch = rows.slice(offset, offset + VOCABULARY_CLAIMS_PER_CALL);
+      const claims = batch.map((row) => row.subject as WordVocabularyClaim);
+      const answers = await this.hearFacets([wiring], claims);
+      for (let index = 0; index < batch.length; index++) {
+        const answer = answers.get(index + 1)?.get(lane);
+        results.push({
+          claimKey: batch[index].claimKey,
+          storedOutcome: batch[index].outcome,
+          ...(answer
+            ? { newOutcome: answer.outcome, newReason: answer.reason }
+            : {}),
+        });
+      }
+    }
+    return results;
   }
 
   /** Register a listener — the read cache's invalidation hook. */

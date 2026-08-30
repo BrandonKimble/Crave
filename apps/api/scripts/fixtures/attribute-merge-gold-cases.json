@@ -1,0 +1,253 @@
+{
+  "description": "Gold cases for attribute-merge-prompt.md (THE INTERCHANGEABILITY TEST, searcher-tolerance basis per owner rulings 2026-08-30). Every contested boundary is pinned by a REAL case on BOTH sides (prompt philosophy canon). Rulings documented in plans/attribute-merge-system.md and plans/sameness-court-report.md.",
+  "cases": [
+    {
+      "id": "spelling-ambience-ambiance",
+      "why": "The owner's founding example: pure spelling variants of one word must fold.",
+      "kind": "place_attribute",
+      "a": "great ambience",
+      "b": "great ambiance",
+      "expected": "merge"
+    },
+    {
+      "id": "praise-tier-killer",
+      "why": "Slang praise-strength tier of the same quality \u2014 the aspect-praise canon stores both as great atmosphere.",
+      "kind": "place_attribute",
+      "a": "killer atmosphere",
+      "b": "great atmosphere",
+      "expected": "merge"
+    },
+    {
+      "id": "praise-tier-dope",
+      "why": "Second slang tier \u2014 the fragmentation the owner measured (4 live twins of one claim).",
+      "kind": "place_attribute",
+      "a": "dope atmosphere",
+      "b": "great atmosphere",
+      "expected": "merge"
+    },
+    {
+      "id": "synonym-ambience-atmosphere",
+      "why": "Different words, one property: the cross-word half of the atmosphere family (no shared token \u2014 the case string similarity provably misses).",
+      "kind": "place_attribute",
+      "a": "great ambience",
+      "b": "great atmosphere",
+      "expected": "merge"
+    },
+    {
+      "id": "strength-good-vs-great",
+      "why": "THE STRENGTH-TIER RULING: good/great are one claim (good value = great value precedent); a diner never runs separate searches for them.",
+      "kind": "place_attribute",
+      "a": "good atmosphere",
+      "b": "great atmosphere",
+      "expected": "merge"
+    },
+    {
+      "id": "vibes-atmosphere",
+      "why": "Colloquial synonym across word families (vibe = atmosphere).",
+      "kind": "place_attribute",
+      "a": "great vibes",
+      "b": "great atmosphere",
+      "expected": "merge"
+    },
+    {
+      "id": "value-canon-cheap",
+      "why": "THE AFFORDABLE RULING (ideal-spec value canon): affordable IS the value token; cheap makes the same claim and folds in.",
+      "kind": "place_attribute",
+      "a": "cheap",
+      "b": "affordable",
+      "expected": "merge"
+    },
+    {
+      "id": "value-canon-good-value",
+      "why": "Ideal spec verbatim: 'good value' wording folds into the single affordable entity.",
+      "kind": "place_attribute",
+      "a": "good value",
+      "b": "affordable",
+      "expected": "merge"
+    },
+    {
+      "id": "item-hyphen-variant",
+      "why": "Item-side spelling variant (hyphenation) \u2014 the lane covers both vocabularies.",
+      "kind": "item_attribute",
+      "a": "gluten free",
+      "b": "gluten-free",
+      "expected": "merge"
+    },
+    {
+      "id": "item-portions-synonym",
+      "why": "Item-side different words, one claim: portion generosity.",
+      "kind": "item_attribute",
+      "a": "generous portions",
+      "b": "big portions",
+      "expected": "merge"
+    },
+    {
+      "id": "romantic-not-a-tier",
+      "why": "A specific quality is NOT a strength tier of a generic one \u2014 a romantic searcher is not satisfied by every great-atmosphere place.",
+      "kind": "place_attribute",
+      "a": "romantic",
+      "b": "great atmosphere",
+      "expected": "keep"
+    },
+    {
+      "id": "polarity-affordable-expensive",
+      "why": "Polarity is absolute (value canon): opposite value claims never merge.",
+      "kind": "place_attribute",
+      "a": "affordable",
+      "b": "expensive",
+      "expected": "keep"
+    },
+    {
+      "id": "measured-step-spicy",
+      "why": "A measured step a diner picks on purpose \u2014 unlike praise tiers, positions on a descriptive axis stay separate.",
+      "kind": "item_attribute",
+      "a": "spicy",
+      "b": "extra spicy",
+      "expected": "keep"
+    },
+    {
+      "id": "opposites-quiet-lively",
+      "why": "Opposite values of one axis \u2014 the classic embedding-close, meaning-opposite pair the judge exists to separate.",
+      "kind": "place_attribute",
+      "a": "quiet",
+      "b": "lively",
+      "expected": "keep"
+    },
+    {
+      "id": "narrower-want-rooftop",
+      "why": "A narrower filter people seek on purpose: every rooftop is outdoor, but a rooftop searcher is not satisfied by generic outdoor seating.",
+      "kind": "place_attribute",
+      "a": "rooftop",
+      "b": "outdoor seating",
+      "expected": "keep"
+    },
+    {
+      "id": "item-opposites-thick-thin",
+      "why": "Item-side opposite values sharing an axis (crust thickness).",
+      "kind": "item_attribute",
+      "a": "thick crust",
+      "b": "thin crust",
+      "expected": "keep"
+    },
+    {
+      "id": "shared-word-friendly",
+      "why": "A shared surface word spanning two different properties \u2014 judge the claim, not the word.",
+      "kind": "place_attribute",
+      "a": "dog friendly",
+      "b": "kid friendly",
+      "expected": "keep"
+    },
+    {
+      "id": "cozy-not-ambiance-tier",
+      "why": "Cozy is a particular kind of atmosphere, not an amount of it \u2014 same law as romantic.",
+      "kind": "place_attribute",
+      "a": "cozy",
+      "b": "great ambiance",
+      "expected": "keep"
+    },
+    {
+      "id": "narrower-want-piano-bar",
+      "why": "a piano bar asserts a fact live music does not; owner ruled 2026-08-30: widening owns generosity; storage merges only same-claim",
+      "kind": "place_attribute",
+      "a": "piano bar",
+      "b": "live music",
+      "expected": "keep"
+    },
+    {
+      "id": "narrower-want-pizza-truck",
+      "why": "pizza truck vs food truck could change what arrives; owner ruled 2026-08-30: widening owns generosity; storage merges only same-claim",
+      "kind": "place_attribute",
+      "a": "pizza truck",
+      "b": "food truck",
+      "expected": "keep"
+    },
+    {
+      "id": "neighbor-bar-pub",
+      "why": "owner ruled 2026-08-30: widening owns generosity; storage merges only same-claim",
+      "kind": "place_attribute",
+      "a": "bar",
+      "b": "pub",
+      "expected": "keep"
+    },
+    {
+      "id": "neighbor-modern-trendy",
+      "why": "owner ruled 2026-08-30: widening owns generosity; storage merges only same-claim",
+      "kind": "place_attribute",
+      "a": "modern",
+      "b": "trendy",
+      "expected": "keep"
+    },
+    {
+      "id": "neighbor-citrus-lemony",
+      "why": "lemony (one fruit) vs citrus (family) is a factual difference; owner ruled 2026-08-30: widening owns generosity; storage merges only same-claim",
+      "kind": "item_attribute",
+      "a": "citrus",
+      "b": "lemony",
+      "expected": "keep"
+    },
+    {
+      "id": "neighbor-fudgy-gooey",
+      "why": "dense-set vs molten-runny textures; owner ruled 2026-08-30: widening owns generosity; storage merges only same-claim",
+      "kind": "item_attribute",
+      "a": "fudgy",
+      "b": "gooey",
+      "expected": "keep"
+    },
+    {
+      "id": "neighbor-grass-fed-pasture-raised",
+      "why": "what the animal ate vs how it lived \u2014 different facts; owner ruled 2026-08-30: widening owns generosity; storage merges only same-claim",
+      "kind": "item_attribute",
+      "a": "grass fed",
+      "b": "pasture raised",
+      "expected": "keep"
+    },
+    {
+      "id": "neighbor-deli-sandwich-shop",
+      "why": "owner ruled 2026-08-30: widening owns generosity; storage merges only same-claim",
+      "kind": "place_attribute",
+      "a": "deli",
+      "b": "sandwich shop",
+      "expected": "keep"
+    },
+    {
+      "id": "neighbor-kebab-shawarma-venue",
+      "why": "venue-kind attribute usage only (food entities never enter attribute comparisons); owner ruled 2026-08-30: widening owns generosity; storage merges only same-claim",
+      "kind": "place_attribute",
+      "a": "kebab shop",
+      "b": "shawarma",
+      "expected": "keep"
+    },
+    {
+      "id": "hard-constraint-raw-vegan",
+      "why": "owner ruling 2026-08-30: precision reserved for hard constraints \u2014 raw vegan is a stricter dietary claim than vegan; a generous fold can harm a diner",
+      "kind": "item_attribute",
+      "a": "raw vegan",
+      "b": "vegan",
+      "expected": "keep"
+    },
+    {
+      "id": "different-fact-cold-iced",
+      "why": "replay flip re-examined under the same-claim test: chilled vs served over ice \u2014 the difference changes what arrives; owner ruled 2026-08-30: widening owns generosity; storage merges only same-claim",
+      "kind": "item_attribute",
+      "a": "cold",
+      "b": "iced",
+      "expected": "keep"
+    },
+    {
+      "id": "different-fact-soft-tender",
+      "why": "replay flip re-examined under the same-claim test: different qualities of different foods, not one claim; owner ruled 2026-08-30: widening owns generosity; storage merges only same-claim",
+      "kind": "item_attribute",
+      "a": "soft",
+      "b": "tender",
+      "expected": "keep"
+    },
+    {
+      "id": "different-fact-bakery-pastry-shop",
+      "why": "replay flip re-examined under the same-claim test: venue-kind pair with real product-range difference \u2014 widening will connect them; owner ruled 2026-08-30: widening owns generosity; storage merges only same-claim",
+      "kind": "place_attribute",
+      "a": "bakery",
+      "b": "pastry shop",
+      "expected": "keep"
+    }
+  ]
+}

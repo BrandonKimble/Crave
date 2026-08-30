@@ -4,10 +4,12 @@ import { ItemDedupeMergeService } from './food-dedupe-merge.service';
 import { MetroAdoptionService } from './metro-adoption.service';
 import { EntityAnchorRehomeService } from './entity-anchor-rehome.service';
 import { ConceptSatisfiesService } from './concept-satisfies.service';
+import { WideningSatisfiesService } from './widening-satisfies.service';
 import { DishKnowledgeSynthesisService } from './dish-knowledge-synthesis.service';
 import { AliasManagementService } from './alias-management.service';
 import { WordClaimAdjudicatorService } from './word-claim-adjudicator.service';
 import { PlaceNameHearingService } from './restaurant-name-hearing.service';
+import { RestaurantNameCensusService } from './restaurant-name-census.service';
 import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
 import { ClaimRehearingBudgetService } from './claim-rehearing-budget.service';
 import { WordVocabularyJudgeService } from './word-vocabulary-judge.service';
@@ -29,6 +31,7 @@ import { EntityTextSearchModule } from '../../entity-text-search/entity-text-sea
   imports: [PrismaModule, SharedModule, LLMModule, EntityTextSearchModule],
   providers: [
     ConceptSatisfiesService,
+    WideningSatisfiesService,
     EntityResolutionService,
     ItemDedupeMergeService,
     MetroAdoptionService,
@@ -36,6 +39,7 @@ import { EntityTextSearchModule } from '../../entity-text-search/entity-text-sea
     AliasManagementService,
     WordClaimAdjudicatorService,
     PlaceNameHearingService,
+    RestaurantNameCensusService,
     ClaimVerdictLedgerService,
     ClaimRehearingBudgetService,
     WordVocabularyJudgeService,
@@ -45,8 +49,10 @@ import { EntityTextSearchModule } from '../../entity-text-search/entity-text-sea
   ],
   exports: [
     ConceptSatisfiesService,
+    WideningSatisfiesService,
     WordClaimAdjudicatorService,
     PlaceNameHearingService,
+    RestaurantNameCensusService,
     ClaimVerdictLedgerService,
     ClaimRehearingBudgetService,
     WordVocabularyJudgeService,

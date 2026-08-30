@@ -109,14 +109,21 @@ export class ItemCategoryEdgeBuilderService extends DerivedIndexJob {
 
   protected async rebuild(): Promise<{ input: number; output: number }> {
     const { edges } = await this.rebuildAll();
-    // INPUT is the population the edges are derived FROM: connections that
-    // still carry a mention. Zero edges from zero live connections is an empty
-    // corpus, not a defect — the base class only screams when real input
-    // produced nothing.
-    const [connections] = await this.prisma.$queryRaw<{ n: number }[]>`
-      SELECT count(*)::int AS n FROM core_restaurant_items
-      WHERE mention_count > 0`;
-    return { input: connections?.n ?? 0, output: edges };
+    // INPUT is the population the edges are derived FROM (D4): active dishes
+    // whose knowledge_categories facet is non-empty AND that still have a
+    // live connection. Zero edges from zero such dishes is a corpus whose
+    // knowledge backfill has not run yet (or an empty corpus), not a defect
+    // — the base class only screams when real input produced nothing.
+    const [dishes] = await this.prisma.$queryRaw<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM core_entities e
+      WHERE e.type = 'item'::entity_type
+        AND e.status = 'active'::entity_status
+        AND cardinality(e.knowledge_categories) > 0
+        AND EXISTS (
+          SELECT 1 FROM core_restaurant_items c
+          WHERE c.food_id = e.entity_id AND c.mention_count > 0
+        )`;
+    return { input: dishes?.n ?? 0, output: edges };
   }
 
   // 4:30am — between the name-containment rebuild (4am) and the rest, so the

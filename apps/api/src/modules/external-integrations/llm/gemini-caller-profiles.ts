@@ -180,6 +180,14 @@ export const GEMINI_CALLER_PROFILES: Record<string, GeminiCallerProfile> = {
     context: 'query',
     maxOutputTokens: MODEL_MAX_OUTPUT,
   },
+  // Attribute-merge judge (batched pairs): a wrong verdict executes an
+  // IRREVERSIBLE vocabulary merge, same stakes as entity-resolution.match —
+  // so the same FLASH tier, never the mechanical lite tier.
+  'attribute.merge_batch': {
+    model: FLASH,
+    context: 'query',
+    maxOutputTokens: MODEL_MAX_OUTPUT,
+  },
   // JUDGMENT + generative world knowledge (tier strategy 2026-08-11): an
   // invented ingredient misleads a dietary-constrained diner and a bad
   // alias fuses two dishes in search. Was implicit session-default; now an
@@ -214,6 +222,19 @@ export const GEMINI_CALLER_PROFILES: Record<string, GeminiCallerProfile> = {
   // not decide, so the volume is a fraction of the corpus.
   'concepts.satisfies': {
     model: FLASH_LITE,
+    context: 'query',
+    maxOutputTokens: MODEL_MAX_OUTPUT,
+  },
+  // THE WIDENING COURT (owner ruling 2026-08-30): the same substitutability
+  // question asked of attribute and ingredient pairs — a docket-driven,
+  // owner-governed runner (scripts/widening-docket.ts), never a cron, so
+  // volume is a reviewed docket (tens of directed cases), not the corpus.
+  // FLASH, not LITE: unlike the item pass this one writes a per-pair
+  // evidence REASON into claim_verdicts (the sameness court's D2 standard),
+  // and the verdicts bind search admission durably; at docket volume the
+  // tier delta is pennies.
+  'concepts.widening_satisfies': {
+    model: FLASH,
     context: 'query',
     maxOutputTokens: MODEL_MAX_OUTPUT,
   },

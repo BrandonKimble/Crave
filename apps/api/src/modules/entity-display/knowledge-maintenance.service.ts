@@ -5,6 +5,7 @@ import { isEnvFlagEnabled } from '../../shared/config/env-flag';
 import { LabelSweepService } from './label-sweep.service';
 import { VocabularyGenerator } from './vocabulary-generator';
 import { ConceptSatisfiesService } from '../content-processing/entity-resolver/concept-satisfies.service';
+import { RestaurantNameCensusService } from '../content-processing/entity-resolver/restaurant-name-census.service';
 
 /**
  * THE KNOWLEDGE MAINTENANCE RAIL (concept-graph §9, owner-ruled 2026-08-08:
@@ -23,6 +24,17 @@ import { ConceptSatisfiesService } from '../content-processing/entity-resolver/c
  *      the current prompt version. Blocked surfaces auto-route to the
  *      word-claim adjudicator inside the sweep itself.
  *   2. SATISFIES — rung 4 over the residual candidate pairs.
+ *   3. RESTAURANT-NAME CENSUS (flywheel arming 2026-08-30) — the
+ *      generic-word census feeds the restaurant-name court its docket
+ *      (single-word recall surfaces on place entities, riskiest first). Last
+ *      because nothing on this rail depends on its output and its input —
+ *      place surfaces — is minted by extraction, not by steps 1–2. It has
+ *      its OWN flag under this rail's flag (RESTAURANT_NAME_CENSUS_ENABLED,
+ *      default OFF, on the launch flip-list): the census must not arm just
+ *      because label sweeps do, and note the coupling — flipping the census
+ *      on requires this rail's flag on too. The court's verdict ledger is
+ *      its watermark; the rehearing allowance is its governed spend, and a
+ *      budget refusal is reported, never fatal to the rail.
  *
  * (There is no reconciliation step. This header listed one until 2026-08-09;
  * it described `reconcileLabelSurfaces`, which the surface merge DELETED —
@@ -76,6 +88,7 @@ export class KnowledgeMaintenanceService {
     private readonly vocabulary: VocabularyGenerator,
     private readonly satisfies: ConceptSatisfiesService,
     private readonly advisoryLock: AdvisoryLockService,
+    private readonly nameCensus: RestaurantNameCensusService,
   ) {}
 
   onModuleInit(): void {
@@ -155,6 +168,25 @@ export class KnowledgeMaintenanceService {
           error instanceof Error ? error.message : String(error)
         }`,
       );
+    }
+    // STEP 3 — restaurant-name census, behind its OWN default-off flag (see
+    // header). Isolated like satisfies: its failure is its own news.
+    if (isEnvFlagEnabled(process.env.RESTAURANT_NAME_CENSUS_ENABLED, false)) {
+      try {
+        const census = await this.nameCensus.run({ dryRun: false });
+        this.logger.log(
+          `maintenance name-census scanned=${census.scanned} decided=${census.alreadyDecided} ` +
+            `docket=${census.docket} refusedByBudget=${census.refusedByBudget} ` +
+            `upheld=${census.hearing?.namesUpheld ?? 0} denied=${census.hearing?.namesDenied ?? 0} ` +
+            `unjudged=${census.hearing?.unjudged ?? 0}`,
+        );
+      } catch (error) {
+        this.logger.error(
+          `maintenance name-census failed trigger=${trigger}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
     }
     this.logger.log(
       `knowledge maintenance complete trigger=${trigger} ms=${Date.now() - startedAt}`,

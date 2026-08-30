@@ -68,6 +68,13 @@ model Entity {
   /// ledger as canonicalIngredients; the grain-bridge projection stamps
   /// these onto each (restaurant, dish) row's food_attributes (S4).
   knowledgeCuisines                   String[]                      @default([]) @map("knowledge_cuisines") @db.Uuid
+  /// KNOWLEDGE TIER (food entities only): canonical item-entity ids of the
+  /// broader orderable dish classes the dish NAME rolls up into ("carnitas
+  /// taco" -> taco). Written by the dish-knowledge pass under the same
+  /// version ledger; derived_food_category_edges is derived from THIS
+  /// column, once per dish concept (D4, 2026-08-30 — retires the noisy
+  /// per-connection reconciliation).
+  knowledgeCategories                 String[]                      @default([]) @map("knowledge_categories") @db.Uuid
   nameEmbedding                       Unsupported("vector(768)")?   @map("name_embedding")
   nameEmbeddingStale                  Boolean                       @default(false) @map("name_embedding_stale")
   placeAttributes                String[]                      @default([]) @map("restaurant_attributes") @db.Uuid
@@ -405,13 +412,16 @@ model EntitySiblingEdge {
   @@map("derived_entity_sibling_edges")
 }
 
-/// Canonical per-FOOD category membership (directed is-a: food -> category),
-/// derived by reconciling the per-connection `categories` arrays across ALL of a
-/// food's connections (union, self-edges excluded, support recorded). Fixes the
-/// per-mention noise where identical dishes disagreed on categories (50.5% of
-/// multi-connection foods) — search resolves members from HERE (deterministic per
-/// food), never from the per-connection arrays. Rebuilt full-replace after
-/// projection rebuilds; support counts allow a read-time threshold if ever needed.
+/// Canonical per-FOOD category membership (directed is-a: food -> category).
+/// Since the D4 category move (2026-08-30) this is a PROJECTION of the dish
+/// entity's `knowledge_categories` facet (derived once per dish concept by
+/// the dish-knowledge pass) onto foods with live connections — the earlier
+/// reconciliation of per-connection `categories` arrays is retired (it
+/// laundered 60.3% cross-mention disagreement; see
+/// plans/category-and-knowledge-split-study.md). Search resolves members from
+/// HERE (deterministic per food). Rebuilt full-replace after projection
+/// rebuilds; conn_support/food_conns now both record the food's live
+/// connection count (knowledge is one opinion — no support arithmetic).
 model ItemCategoryEdge {
   itemId      String   @map("food_id") @db.Uuid
   categoryId  String   @map("category_id") @db.Uuid

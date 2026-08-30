@@ -52,6 +52,7 @@ const PAIRS: Record<string, readonly string[] | null> = {
   ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA: ['attribute-placement-prompt.md'],
   ENTITY_MATCH_RESPONSE_JSON_SCHEMA: ['entity-match-prompt.md'],
   ENTITY_MATCH_BATCH_RESPONSE_JSON_SCHEMA: ['entity-match-prompt.md'],
+  ATTRIBUTE_MERGE_BATCH_RESPONSE_JSON_SCHEMA: ['attribute-merge-prompt.md'],
   POLL_SUBJECT_RESPONSE_JSON_SCHEMA: ['poll-subject-prompt.md'],
   COLLECTION_RESPONSE_JSON_SCHEMA: [
     'collection-prompt.md',

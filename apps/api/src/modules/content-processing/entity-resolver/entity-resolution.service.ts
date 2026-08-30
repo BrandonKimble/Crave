@@ -11,10 +11,13 @@ import {
   admitsAtExactTier,
   canonicalFold,
   diacriticFold,
+  entityLockKey,
+  identityInsertData,
   isAccented,
   spellingOf,
   type SurfaceSpelling,
 } from './entity-identity';
+import { identityMergeLockKey } from '../reddit-collector/extraction-scope.service';
 import { recallScope } from '../../../shared/locale';
 
 import { LoggerService, CorrelationUtils } from '../../../shared';
@@ -1543,10 +1546,88 @@ export class EntityResolutionService implements OnModuleInit {
       originalInput: entity,
     });
 
+    // TOMBSTONE PRE-SINK (the reject verdict's memory, 2026-08-30): a term
+    // the judge already REJECTED lives on as an archived row with NO merge
+    // redirect (a redirect means merge-loser, never junk). Repeat mentions
+    // resolve onto the tombstone BEFORE recall runs, so a judged reject is
+    // free forever — the same absorption the attribute vocabulary has had
+    // all along (markEntitiesForCreation's attribute sink). Rehearsal runs
+    // sink too: the tombstone is inert either way.
+    //
+    // ACTIVE-TWIN STANDDOWN (red-team F1, 2026-08-30): a pre-sink hit is
+    // lawful ONLY when no live entity shares the fold. If an active (or
+    // pending — matchable) row exists alongside the tombstone — a term
+    // rejected in one era, legitimately minted in another, or the same
+    // surface naming both junk and a real thing (junk "best" vs a real bar
+    // named "Best") — the mention MUST reach recall and the judge; the
+    // judge separates the readings, and only a fresh reject sinks it. A
+    // tombstone that absorbs mentions ahead of a live twin permanently
+    // silences the real entity — the exact failure the reject asymmetry
+    // exists to prevent. The NOT EXISTS below is index-backed
+    // (idx_entities_type_identity_key). Rehearsal-status rows do not stand
+    // the sink down: shadow mints must not change live behavior.
+    const tombstoneByFold = new Map<string, { entityId: string }>();
+    {
+      const folds = Array.from(
+        new Set(
+          entities
+            .map((e) => canonicalFold(e.normalizedName?.trim() ?? ''))
+            .filter((f) => f.length > 0),
+        ),
+      );
+      if (folds.length) {
+        const rows = await this.prisma.$queryRaw<
+          Array<{ entity_id: string; identity_key: string }>
+        >(Prisma.sql`
+          SELECT e.entity_id, e.identity_key
+            FROM core_entities e
+           WHERE e.type = ${entityType}::entity_type
+             AND e.status = 'archived'
+             AND e.identity_key = ANY(${folds}::text[])
+             AND NOT EXISTS (
+               SELECT 1 FROM entity_redirects r
+                WHERE r.from_entity_id = e.entity_id
+             )
+             AND NOT EXISTS (
+               SELECT 1 FROM core_entities live
+                WHERE live.type = e.type
+                  AND live.identity_key = e.identity_key
+                  AND live.status IN ('active', 'pending')
+             )`);
+        for (const row of rows) {
+          tombstoneByFold.set(row.identity_key, { entityId: row.entity_id });
+        }
+      }
+    }
+    const sunk = new Map<string, EntityResolutionResult>();
+    const stillLive: EntityResolutionInput[] = [];
+    for (const entity of entities) {
+      const fold = canonicalFold(entity.normalizedName?.trim() ?? '');
+      const tombstone = fold ? tombstoneByFold.get(fold) : undefined;
+      if (tombstone) {
+        sunk.set(entity.tempId, {
+          tempId: entity.tempId,
+          entityId: tombstone.entityId,
+          confidence: 1.0,
+          resolutionTier: 'exact',
+          matchedName: entity.normalizedName,
+          originalInput: entity,
+          isNewEntity: false,
+        });
+        this.logger.info('entity_match_reject_tombstone_sink', {
+          entityType,
+          term: entity.normalizedName,
+          tombstoneId: tombstone.entityId,
+        });
+      } else {
+        stillLive.push(entity);
+      }
+    }
+
     // Recall for every term first (shared lexical+dense core, type+market
     // scoped) — recall stays per-term concurrent; only the JUDGE is batched.
     const recalls = await this.mapLimit(
-      entities,
+      stillLive,
       EntityResolutionService.LLM_MATCHER_CONCURRENCY,
       async (entity) => {
         const term = entity.normalizedName?.trim() ?? '';
@@ -1590,6 +1671,51 @@ export class EntityResolutionService implements OnModuleInit {
     const aliasesById = new Map(
       aliasRows.map((r) => [r.entity_id, r.forms ?? []]),
     );
+
+    // Candidate HOME RESTAURANTS in one round-trip (D2 context standard —
+    // the OTOKO rule made mechanical). Items live in connections directly;
+    // ingredients appear inside connections' evidence arrays. Places need
+    // none: they ARE the home. Top homes by mention weight, capped at the
+    // wire's home-place bound.
+    const homesById = new Map<string, string[]>();
+    if (candidateIds.length && entityType !== 'place') {
+      const homeRows =
+        entityType === 'item'
+          ? await this.prisma.$queryRaw<
+              Array<{ entity_id: string; homes: string[] }>
+            >(Prisma.sql`
+              SELECT c.food_id AS entity_id,
+                     (array_agg(r.name ORDER BY c.mention_count DESC))[1:3]
+                       AS homes
+                FROM core_restaurant_items c
+                JOIN core_entities r ON r.entity_id = c.restaurant_id
+               WHERE c.food_id = ANY(${candidateIds}::uuid[])
+               GROUP BY c.food_id`)
+          : await this.prisma.$queryRaw<
+              Array<{ entity_id: string; homes: string[] }>
+            >(Prisma.sql`
+              SELECT i.ingredient_id AS entity_id,
+                     (array_agg(DISTINCT r.name))[1:3] AS homes
+                FROM (
+                  SELECT unnest(c.ingredients) AS ingredient_id,
+                         c.restaurant_id
+                    FROM core_restaurant_items c
+                ) i
+                JOIN core_entities r ON r.entity_id = i.restaurant_id
+               WHERE i.ingredient_id = ANY(${candidateIds}::uuid[])
+               GROUP BY i.ingredient_id`);
+      for (const row of homeRows) {
+        homesById.set(row.entity_id, row.homes ?? []);
+      }
+    }
+    const samePlaceFor = (
+      mentionPlace: string | null | undefined,
+      homes: string[],
+    ): boolean | undefined => {
+      const anchor = canonicalFold(mentionPlace?.trim() ?? '');
+      if (!anchor) return undefined;
+      return homes.some((home) => canonicalFold(home) === anchor);
+    };
 
     // THE HEARING LEDGER'S MEMORY, before any judge is paid (2026-08-13).
     // Every (term, candidate) pair the shortlist proposes is a claim the
@@ -1674,7 +1800,10 @@ export class EntityResolutionService implements OnModuleInit {
     }
     const verdictByTempId = new Map<
       string,
-      { decision: 'match' | 'new'; candidate: RecallCandidate | null }
+      {
+        decision: 'match' | 'new' | 'reject';
+        candidate: RecallCandidate | null;
+      }
     >();
     // 4 concurrent judge requests: uncalibrated rate-limit-friendly bound;
     // total judge latency = ceil(chunks/4) round-trips, any small value works.
@@ -1683,11 +1812,23 @@ export class EntityResolutionService implements OnModuleInit {
         kind,
         items: chunk.map((r) => ({
           term: r.term,
-          candidates: r.shown.map((c, i) => ({
-            id: i,
-            name: c.name,
-            aliases: aliasesById.get(c.entityId) ?? undefined,
-          })),
+          // D2 context standard: the verbatim mention + thread restaurant.
+          mention: r.entity.mentionQuote ?? null,
+          threadPlace: r.entity.mentionPlace ?? null,
+          candidates: r.shown.map((c, i) => {
+            const homes = homesById.get(c.entityId) ?? [];
+            return {
+              id: i,
+              name: c.name,
+              aliases: aliasesById.get(c.entityId) ?? undefined,
+              ...(homes.length ? { homePlaces: homes } : {}),
+              ...(homes.length
+                ? {
+                    samePlace: samePlaceFor(r.entity.mentionPlace, homes),
+                  }
+                : {}),
+            };
+          }),
         })),
       });
       for (let i = 0; i < chunk.length; i += 1) {
@@ -1699,43 +1840,193 @@ export class EntityResolutionService implements OnModuleInit {
           verdict.candidateId !== null
             ? (r.shown[verdict.candidateId] ?? null)
             : null;
+        const decision: 'match' | 'new' | 'reject' = matched
+          ? 'match'
+          : verdict?.decision === 'reject'
+            ? 'reject'
+            : 'new';
         verdictByTempId.set(r.entity.tempId, {
-          decision: matched ? 'match' : 'new',
+          decision,
           candidate: matched,
         });
-        await this.recordEntityMatchVerdicts(
-          r.term,
-          r.shown,
-          {
-            matched,
-            reason: verdict?.reason?.trim() ?? '',
-            kind,
-          },
-          rehearsalRunId,
-        );
+        // A reject is a TERM-level ruling, not a pair ruling — its durable
+        // memory is the tombstone row the sink below writes, so it is
+        // deliberately NOT recorded in the pair-keyed entity_match lane.
+        if (decision !== 'reject') {
+          await this.recordEntityMatchVerdicts(
+            r.term,
+            r.shown,
+            {
+              matched,
+              reason: verdict?.reason?.trim() ?? '',
+              kind,
+            },
+            rehearsalRunId,
+          );
+        }
       }
     });
 
-    return recalls.map(({ entity, candidates }) => {
-      const matched =
-        resolvedFromMemory.get(entity.tempId) ??
-        verdictByTempId.get(entity.tempId)?.candidate ??
-        null;
-      if (
-        !matched ||
-        !candidates.some((c) => c.entityId === matched.entityId)
-      ) {
-        return unmatchedFor(entity);
+    // REJECTED TERMS become archived TOMBSTONES: junk ("5 piece", "clay",
+    // "South Lamar Location") must stop minting entities — the judge's own
+    // reasons have called these garbage all along while `new` was the only
+    // non-match verdict (judge-ledger audit, top failure pattern #1). The
+    // mention resolves onto the tombstone (refs are inert: read surfaces and
+    // match tiers are active/pending-only) and the pre-sink above absorbs
+    // every future occurrence for free. Rehearsal runs do NOT mint live
+    // tombstones (shadow isolation) — their rejects fall through to the
+    // quarantined creation path exactly as before.
+    const rejectResults = new Map<string, EntityResolutionResult>();
+    for (const r of stillDue) {
+      if (verdictByTempId.get(r.entity.tempId)?.decision !== 'reject') {
+        continue;
       }
-      return {
-        tempId: entity.tempId,
-        entityId: matched.entityId,
+      if (rehearsalRunId) continue;
+      const tombstoneId = await this.ensureRejectTombstone(
+        r.entity.normalizedName,
+        entityType,
+      );
+      if (!tombstoneId) continue;
+      rejectResults.set(r.entity.tempId, {
+        tempId: r.entity.tempId,
+        entityId: tombstoneId,
         confidence: 1.0,
         resolutionTier: 'fuzzy',
-        matchedName: matched.name,
-        originalInput: entity,
-      };
-    });
+        matchedName: r.entity.normalizedName,
+        originalInput: r.entity,
+        isNewEntity: false,
+      });
+      this.logger.info('entity_match_rejected_term_tombstoned', {
+        entityType,
+        term: r.entity.normalizedName,
+        tombstoneId,
+      });
+    }
+
+    const judged = recalls.map(
+      ({ entity, candidates }): EntityResolutionResult => {
+        const rejected = rejectResults.get(entity.tempId);
+        if (rejected) return rejected;
+        const matched =
+          resolvedFromMemory.get(entity.tempId) ??
+          verdictByTempId.get(entity.tempId)?.candidate ??
+          null;
+        if (
+          !matched ||
+          !candidates.some((c) => c.entityId === matched.entityId)
+        ) {
+          return unmatchedFor(entity);
+        }
+        return {
+          tempId: entity.tempId,
+          entityId: matched.entityId,
+          confidence: 1.0,
+          resolutionTier: 'fuzzy',
+          matchedName: matched.name,
+          originalInput: entity,
+        };
+      },
+    );
+    return [...sunk.values(), ...judged];
+  }
+
+  /**
+   * Find-or-create the archived tombstone a rejected term sinks into.
+   *
+   * Takes the SAME advisory xact lock the entity creator takes
+   * (identityMergeLockKey over entityLockKey — the one 'entity:' lock
+   * namespace), so a concurrent batch rejecting the same junk cannot mint
+   * twin tombstones and a concurrent CREATE of the same identity is
+   * serialized against the mint. This matters because the schema's only
+   * identity-key unique (`uq_attribute_identity_key`) is an attributes-only
+   * partial — for items/ingredients nothing at the storage layer stops
+   * twins, so the lock is the whole race protection (red-team F1).
+   *
+   * Under the lock:
+   *   - an ACTIVE/PENDING same-fold row exists → stand down (return null).
+   *     The live entity wins; a tombstone minted beside a live twin is the
+   *     pre-sink silencing bug waiting to happen. The term falls through to
+   *     quarantined creation, exactly the pre-tombstone behavior.
+   *   - an archived non-redirected same-fold row exists → adopt it.
+   *   - otherwise → mint the tombstone.
+   *
+   * Only a genuine unique collision (P2002 — attribute partial unique) is
+   * absorbed (adopt-or-stand-down probe); every other storage error
+   * rethrows — a connection loss must not be silently converted into a
+   * verdict reroute (red-team G3).
+   */
+  private async ensureRejectTombstone(
+    name: string,
+    entityType: EntityType,
+  ): Promise<string | null> {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    const fold = canonicalFold(trimmed);
+    if (!fold) return null;
+    const adoptableTombstoneSql = Prisma.sql`
+      SELECT e.entity_id
+        FROM core_entities e
+       WHERE e.type = ${entityType}::entity_type
+         AND e.status = 'archived'
+         AND e.identity_key = ${fold}
+         AND NOT EXISTS (
+           SELECT 1 FROM entity_redirects r
+            WHERE r.from_entity_id = e.entity_id
+         )
+       LIMIT 1`;
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${identityMergeLockKey(entityType, entityLockKey(trimmed, entityType))}))`;
+        const liveTwin = await tx.$queryRaw<Array<{ entity_id: string }>>(
+          Prisma.sql`
+            SELECT e.entity_id
+              FROM core_entities e
+             WHERE e.type = ${entityType}::entity_type
+               AND e.status IN ('active', 'pending')
+               AND e.identity_key = ${fold}
+             LIMIT 1`,
+        );
+        if (liveTwin.length) {
+          this.logger.info('entity_match_reject_tombstone_standdown', {
+            entityType,
+            term: trimmed,
+            liveTwinId: liveTwin[0].entity_id,
+          });
+          return null;
+        }
+        const adoptable = await tx.$queryRaw<Array<{ entity_id: string }>>(
+          adoptableTombstoneSql,
+        );
+        if (adoptable.length) return adoptable[0].entity_id;
+        const identity = identityInsertData(trimmed, entityType);
+        const created = await tx.entity.create({
+          data: {
+            name: trimmed,
+            type: entityType,
+            status: EntityStatus.archived,
+            identityKey: identity.identityKey,
+            identityKeySorted: identity.identityKeySorted,
+            foldVersion: identity.foldVersion,
+          },
+          select: { entityId: true },
+        });
+        return created.entityId;
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        // Real unique collision (attribute partial unique): adopt an
+        // existing archived non-redirected twin if one exists; otherwise
+        // stand down.
+        const rows = await this.prisma.$queryRaw<Array<{ entity_id: string }>>(
+          adoptableTombstoneSql,
+        );
+        return rows[0]?.entity_id ?? null;
+      }
+      throw error;
+    }
   }
 
   /**
@@ -2257,6 +2548,9 @@ export class EntityResolutionService implements OnModuleInit {
           // one lite call per firing is the honest cost of the semantics.
           const verdict = await this.llmService.matchEntity({
             term: entity.normalizedName,
+            // D2 context standard — same evidence the batch judge carries.
+            mention: entity.mentionQuote ?? null,
+            threadPlace: entity.mentionPlace ?? null,
             kind:
               entityType === 'place'
                 ? 'place'

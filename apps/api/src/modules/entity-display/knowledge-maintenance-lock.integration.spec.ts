@@ -31,6 +31,8 @@ describe('knowledge maintenance advisory lock — proven against a live database
     // THE REAL LOCK SERVICE — the whole point of this spec is that the lock
     // is a real cross-process fact, so it must be the real mechanism.
     new AdvisoryLockService(),
+    // Census step is flag-gated (default off) and never reached here.
+    { run: jest.fn() } as never,
   );
 
   afterAll(async () => {

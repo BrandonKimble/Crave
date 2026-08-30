@@ -16,7 +16,18 @@ export type SiblingExpansionReader = Pick<
   | 'getSameNamedIngredientIds'
   | 'getSiblingItemIds'
   | 'getSatisfiesItemIds'
+  | 'getSatisfiesAttributeArms'
+  | 'getSatisfiesIngredientIds'
 >;
+
+/** A judged widening target of one attribute anchor: the widened attribute's
+ *  id plus the storage column its TYPE dictates (item_attribute →
+ *  food_attributes, place_attribute → restaurant_attributes) — so the
+ *  consumer can mint a concept ARM without re-deriving columns (F3). */
+export interface SatisfiesAttributeArm {
+  id: string;
+  column: 'food_attributes' | 'restaurant_attributes';
+}
 
 export interface SiblingCutOptions {
   /** Max forward rank (nearest-first position in the anchor's neighborhood). */
@@ -125,6 +136,22 @@ export class SearchSiblingExpansionService {
             satisfies: value.satisfies.slice(),
             cousin: value.cousin.slice(),
           }),
+        ),
+      getSatisfiesAttributeArms: (ids) =>
+        keyed(
+          `sat-attr|${idsKey(ids)}`,
+          () => this.getSatisfiesAttributeArms(ids),
+          (value) => {
+            const copy = new Map<string, SatisfiesAttributeArm[]>();
+            for (const [anchor, arms] of value) copy.set(anchor, arms.slice());
+            return copy;
+          },
+        ),
+      getSatisfiesIngredientIds: (ids) =>
+        keyed(
+          `sat-ing|${idsKey(ids)}`,
+          () => this.getSatisfiesIngredientIds(ids),
+          copyArray,
         ),
     };
   }
@@ -410,6 +437,114 @@ export class SearchSiblingExpansionService {
           error instanceof Error
             ? { message: error.message }
             : { message: String(error) },
+      });
+      return [];
+    }
+  }
+
+  /**
+   * ATTRIBUTE WIDENING READ (owner ruling 2026-08-30: merging is same-claim
+   * identity only; widening owns generosity). For each grounded attribute
+   * anchor, the judged `satisfies` targets — kept-separate concepts a
+   * searcher of the anchor word tolerates ("pub" → bar) — each carried with
+   * the column its TYPE dictates, so the consumer ORs it in as an EXTRA ARM
+   * of the SAME concept (admission only; starvation stays keyed per anchor).
+   *
+   * The item reader's laws, unchanged: DIRECTED (edges FROM the anchor only
+   * — asked pub / shown bar is not the reverse question), merged-away
+   * targets follow `entity_redirects` ONE hop, archived targets without a
+   * redirect are dropped, rejects never reach search, fails open. Only
+   * `satisfies` widens here — there is no cousin ring on the attribute axis
+   * to ride, so a cousin verdict is deliberately not read.
+   */
+  async getSatisfiesAttributeArms(
+    anchorAttributeIds: string[],
+  ): Promise<Map<string, SatisfiesAttributeArm[]>> {
+    const ids = Array.from(new Set(anchorAttributeIds.filter(Boolean)));
+    if (!ids.length) return new Map();
+    try {
+      const rows = await this.prisma.$queryRaw<
+        { anchorId: string; targetId: string; targetType: string }[]
+      >(
+        Prisma.sql`
+          SELECT s.from_entity_id::text AS "anchorId",
+                 ${resolvedSubjectSql('s', 'r', 'to_entity_id')} AS "targetId",
+                 t.type::text AS "targetType"
+          FROM entity_satisfies s
+          ${redirectJoinSql('s', 'r', 'to_entity_id')}
+          JOIN core_entities t
+            ON t.entity_id = ${resolvedSubjectSql('s', 'r', 'to_entity_id')}
+           AND t.status = 'active'::entity_status
+           AND t.type IN ('item_attribute'::entity_type,
+                          'place_attribute'::entity_type)
+          WHERE s.from_entity_id = ANY(${ids}::uuid[])
+            AND s.relation = 'satisfies'
+        `,
+      );
+      const anchorSet = new Set(ids);
+      const out = new Map<string, SatisfiesAttributeArm[]>();
+      for (const row of rows) {
+        if (anchorSet.has(row.targetId)) continue;
+        const arms = out.get(row.anchorId) ?? [];
+        if (arms.some((arm) => arm.id === row.targetId)) continue;
+        arms.push({
+          id: row.targetId,
+          column:
+            row.targetType === 'place_attribute'
+              ? 'restaurant_attributes'
+              : 'food_attributes',
+        });
+        out.set(row.anchorId, arms);
+      }
+      return out;
+    } catch (error) {
+      // FAILS OPEN: search runs unwidened, never down.
+      this.logger.warn('Attribute satisfies read failed (failing open)', {
+        anchorCount: ids.length,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+      return new Map();
+    }
+  }
+
+  /**
+   * INGREDIENT WIDENING READ (same ruling): judged `satisfies` targets of
+   * the grounded ingredient anchors — asked-side only, directed ("bacon" →
+   * pancetta widens a bacon search; a pancetta search is its own question).
+   * The returned ids OR into the ingredient clause's existing union
+   * (evidence ∪ canon ∪ named-dish), a pure recall widening. Same redirect/
+   * status/fail-open laws as every reader here; one hop, never expanded.
+   */
+  async getSatisfiesIngredientIds(
+    anchorIngredientIds: string[],
+  ): Promise<string[]> {
+    const ids = Array.from(new Set(anchorIngredientIds.filter(Boolean)));
+    if (!ids.length) return [];
+    try {
+      const rows = await this.prisma.$queryRaw<{ targetId: string }[]>(
+        Prisma.sql`
+          SELECT DISTINCT
+                 ${resolvedSubjectSql('s', 'r', 'to_entity_id')} AS "targetId"
+          FROM entity_satisfies s
+          ${redirectJoinSql('s', 'r', 'to_entity_id')}
+          JOIN core_entities t
+            ON t.entity_id = ${resolvedSubjectSql('s', 'r', 'to_entity_id')}
+           AND t.status = 'active'::entity_status
+           AND t.type = 'ingredient'::entity_type
+          WHERE s.from_entity_id = ANY(${ids}::uuid[])
+            AND s.relation = 'satisfies'
+        `,
+      );
+      const anchorSet = new Set(ids);
+      return rows.map((row) => row.targetId).filter((id) => !anchorSet.has(id));
+    } catch (error) {
+      this.logger.warn('Ingredient satisfies read failed (failing open)', {
+        anchorCount: ids.length,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
       });
       return [];
     }

@@ -21,6 +21,9 @@ export interface DishKnowledgeSummary {
   /** Cuisine facet (S4): canonical cuisine attribute ids linked to dishes. */
   cuisinesLinked: number;
   cuisineEntitiesCreated: number;
+  /** Category facet (D4): canonical item-entity category ids linked to dishes. */
+  categoriesLinked: number;
+  categoryEntitiesCreated: number;
   /** Grain bridge: (restaurant, dish) rows whose food_attributes were
    *  re-projected from the dish entity's knowledge cuisines. */
   connectionsProjected: number;
@@ -110,6 +113,8 @@ export class DishKnowledgeSynthesisService {
       aliasesAdded: 0,
       cuisinesLinked: 0,
       cuisineEntitiesCreated: 0,
+      categoriesLinked: 0,
+      categoryEntitiesCreated: 0,
       connectionsProjected: 0,
     };
 
@@ -211,6 +216,7 @@ export class DishKnowledgeSynthesisService {
         ingredients: string[];
         aliases: string[];
         cuisines: string[];
+        categories: string[];
       }[];
       try {
         knowledge = this.llmService.parseDishKnowledgeResponse(
@@ -238,6 +244,7 @@ export class DishKnowledgeSynthesisService {
           ingredients: [],
           aliases: [],
           cuisines: [],
+          categories: [],
         };
 
         if (dryRun) {
@@ -246,11 +253,13 @@ export class DishKnowledgeSynthesisService {
             ingredients: result.ingredients,
             aliases: result.aliases,
             cuisines: result.cuisines,
+            categories: result.categories,
           });
           summary.dishesProcessed += 1;
           summary.ingredientsLinked += result.ingredients.length;
           summary.aliasesAdded += result.aliases.length;
           summary.cuisinesLinked += result.cuisines.length;
+          summary.categoriesLinked += result.categories.length;
           continue;
         }
 
@@ -271,6 +280,21 @@ export class DishKnowledgeSynthesisService {
           if (!resolved) continue;
           cuisineIds.push(resolved.entityId);
           if (resolved.created) summary.cuisineEntitiesCreated += 1;
+        }
+
+        // Category facet (D4): resolve each broader dish class onto THE
+        // canonical active ITEM entity carrying that name — the same rows
+        // the per-mention category arrays used to point at, so search's
+        // category expansion keeps its vocabulary. Never the dish itself
+        // (a category is not its own parent), and never a cuisine row —
+        // the write-time twin of the prompt's never-a-tradition law.
+        const categoryIds: string[] = [];
+        for (const name of result.categories) {
+          const resolved = await this.ensureCategoryEntity(name, dish.name);
+          if (!resolved) continue;
+          if (resolved.entityId === dish.entityId) continue;
+          categoryIds.push(resolved.entityId);
+          if (resolved.created) summary.categoryEntitiesCreated += 1;
         }
 
         // Established shorthand, minus the dish's own name. NOTE there is no
@@ -313,6 +337,7 @@ export class DishKnowledgeSynthesisService {
           data: {
             canonicalIngredients: Array.from(new Set(ingredientIds)),
             knowledgeCuisines: Array.from(new Set(cuisineIds)),
+            knowledgeCategories: Array.from(new Set(categoryIds)),
             knowledgeSynthesizedAt: new Date(),
             knowledgePromptVersion: DISH_KNOWLEDGE_RULE.version,
             // K4: stamp the name ANSWERED FOR (query-time), so a rename
@@ -324,6 +349,7 @@ export class DishKnowledgeSynthesisService {
         summary.ingredientsLinked += ingredientIds.length;
         summary.aliasesAdded += newAliases.length;
         summary.cuisinesLinked += cuisineIds.length;
+        summary.categoriesLinked += categoryIds.length;
       }
     }
 
@@ -446,6 +472,83 @@ export class DishKnowledgeSynthesisService {
       forms: [normalized],
       source: 'cuisine',
     });
+  }
+
+  /**
+   * Category facet (D4): a category IS a food — the canonical active ITEM
+   * entity whose name/surfaces answer to the class word ("taco", "fries").
+   * Matched on name, identity key, or any banked recall surface (fold,
+   * both sides), like the ingredient path below. Two refusals:
+   *
+   *  - a name the cuisine vocabulary claims ("japanese", "indian") is a
+   *    TRADITION, never a category — the write-time twin of the prompt's
+   *    never-a-tradition law, so one bad emission cannot recreate the
+   *    cuisine-as-category leak the study measured (19 edges);
+   *  - the dish's own name (self-parenting is filtered at the call site).
+   *
+   * A class word no item row answers to mints an ACTIVE item entity —
+   * the same self-provisioning the per-mention category route performed,
+   * now once per concept. (No unique identity constraint exists for
+   * items; the fold lookup + the food-dedupe sweep own twin healing.)
+   */
+  private async ensureCategoryEntity(
+    name: string,
+    dishName: string,
+  ): Promise<{ entityId: string; created: boolean } | null> {
+    const normalized = name.trim().toLowerCase().replace(/\s+/g, ' ');
+    if (normalized.length < 2) return null;
+    if (normalized === dishName.trim().toLowerCase()) return null;
+    const folded = canonicalFold(normalized);
+    // Cuisine-vocabulary refusal: any active facet='cuisine' row answering
+    // to this fold makes the word a tradition, not a dish class.
+    const [cuisineRow] = await this.prisma.$queryRaw<
+      Array<{ entity_id: string }>
+    >`
+      SELECT e.entity_id
+        FROM core_entities e
+       WHERE e.type = 'place_attribute'::entity_type
+         AND e.facet = 'cuisine'
+         AND e.status = 'active'::entity_status
+         AND (e.name = ${normalized} OR e.identity_key = ${folded})
+       LIMIT 1`;
+    if (cuisineRow) {
+      this.logger.warn('Dish-knowledge category refused: cuisine word', {
+        category: normalized,
+        dish: dishName,
+      });
+      return null;
+    }
+    const [existing] = await this.prisma.$queryRaw<
+      Array<{ entity_id: string }>
+    >`
+      SELECT e.entity_id
+        FROM core_entities e
+       WHERE e.type = 'item'::entity_type
+         AND e.status = 'active'::entity_status
+         AND (
+           e.name = ${normalized}
+           OR e.identity_key = ${folded}
+           OR EXISTS (
+             SELECT 1 FROM entity_surface s
+              WHERE s.entity_id = e.entity_id
+                AND ${identityScope('s')}
+                AND s.form_folded = ${folded}
+           )
+         )
+       ORDER BY e.created_at
+       LIMIT 1`;
+    if (existing) {
+      return { entityId: existing.entity_id, created: false };
+    }
+    const created = await this.prisma.entity.create({
+      data: {
+        name: normalized,
+        type: EntityType.item,
+        ...identityInsertData(normalized, EntityType.item),
+      },
+      select: { entityId: true },
+    });
+    return { entityId: created.entityId, created: true };
   }
 
   /** Ingredient vocabulary self-provisions, same normalization as the

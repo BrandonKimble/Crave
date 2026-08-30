@@ -140,7 +140,8 @@ export const ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA = {
     },
     reason: {
       type: 'string',
-      description: 'Short justification for the decision',
+      description:
+        'Audit EVIDENCE, a few words — the gate test that rejected, the interchangeability fact that matched, or the distinct want that kept it new. Never merely the decision word itself',
     },
   },
   required: ['decision', 'candidate_id', 'reason'],
@@ -150,13 +151,13 @@ export const ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA = {
 export const ENTITY_MATCH_RESPONSE_JSON_SCHEMA = {
   type: 'object',
   description:
-    'Decision for matching one candidate entity (restaurant or dish) against a shortlist of existing entities',
+    'Decision for matching one candidate entity (place, item, or ingredient) against a shortlist of existing entities',
   properties: {
     decision: {
       type: 'string',
-      enum: ['match', 'new'],
+      enum: ['match', 'new', 'reject'],
       description:
-        'THE ONE-THING TEST: "Would a diner treat the two names as one and the same thing — or as two options to choose between?" match = one and the same (a name VARIANT); new = a different SPECIFICATION, or any doubt — doubt says new, because a wrong match FUSES two real entities',
+        'THE ONE-THING TEST: "Would a diner treat the two names as one and the same thing — or as two options to choose between?" match = one and the same (a name VARIANT, or venue-name/narration/channel decoration at the same restaurant); new = a different SPECIFICATION, or any doubt — doubt says new, because a wrong match FUSES two real entities; reject = the term plainly cannot name an entity of this kind at all (bare quantity, thread-local reference, generic adjective/material) — doubt between new and reject says new',
     },
     candidate_id: {
       anyOf: [{ type: 'integer' }, { type: 'null' }],
@@ -165,7 +166,8 @@ export const ENTITY_MATCH_RESPONSE_JSON_SCHEMA = {
     },
     reason: {
       type: 'string',
-      description: 'Short justification for the decision',
+      description:
+        'Audit EVIDENCE, a few words — the variant relation matched on, the specification that split them, or the junk class that rejected. Never narrative, and never merely the decision word itself',
     },
   },
   required: ['decision', 'candidate_id', 'reason'],
@@ -345,10 +347,10 @@ export const COLLECTION_RESPONSE_JSON_SCHEMA = {
                 { type: 'string' },
                 'The order-name (THE ORDER TEST: sayable to a server as the thing you want) — "anything orderable — drinks included"; complete compound term as spoken, singular, excluding attributes — a named offering you could order emits whole ("steak combo", "elvis presley combo", "chef\'s tasting", "omakase"); never a price/count frame ("$25 combo", "3-course menu"), an occasion attended ("brunch"), a slot inside an offering, a cuisine, or a food token from the venue name',
               ),
-              item_categories: withDescription(
-                { ...NULLABLE_STRING_ARRAY_SCHEMA },
-                'Broader orderable dish classes the food rolls up into (what arrives, most specific first); NEVER a cuisine (chinese, italian), meal period, or delivery wrapper — a cuisine belongs in place_attributes only',
-              ),
+              // item_categories RETIRED (D4 category move, 2026-08-30):
+              // category membership is a fact about the dish CONCEPT, derived
+              // once by the dish-knowledge pass from the dish name — the
+              // collection model no longer emits or owns it.
               ingredients: withDescription(
                 { ...NULLABLE_STRING_ARRAY_SCHEMA },
                 'Ingredient nouns THIS source names for this dish (with-clauses or dish-name components); singular lowercase; empty for most mentions; never from world knowledge',
@@ -376,7 +378,6 @@ export const COLLECTION_RESPONSE_JSON_SCHEMA = {
               'place_source_id',
               'place_attributes',
               'item',
-              'item_categories',
               'ingredients',
               'is_menu_item',
               'item_attributes',
@@ -464,15 +465,15 @@ export const ENTITY_MATCH_BATCH_RESPONSE_JSON_SCHEMA = {
           index: { type: 'integer' },
           decision: {
             type: 'string',
-            enum: ['match', 'new'],
+            enum: ['match', 'new', 'reject'],
             description:
-              'THE ONE-THING TEST: "Would a diner treat the two names as one and the same thing — or as two options to choose between?" match = a name VARIANT of one candidate; new = a different SPECIFICATION, or any doubt — doubt says new, because a wrong match FUSES two real entities',
+              'THE ONE-THING TEST: "Would a diner treat the two names as one and the same thing — or as two options to choose between?" match = a name VARIANT of one candidate (including venue-name/narration/channel decoration at the same restaurant); new = a different SPECIFICATION, or any doubt — doubt says new, because a wrong match FUSES two real entities; reject = the term plainly cannot name an entity of this kind at all (bare quantity, thread-local reference, generic adjective/material) — doubt between new and reject says new',
           },
           candidateId: { type: ['integer', 'null'] },
           reason: {
             type: 'string',
             description:
-              'Audit evidence, a few words: the variant relation matched on, or the specification that split them',
+              'Audit EVIDENCE, a few words: the variant relation matched on, the specification that split them, or the junk class that rejected. Never merely the decision word itself',
           },
         },
         required: ['index', 'decision', 'candidateId', 'reason'],
@@ -616,10 +617,46 @@ export const DISH_KNOWLEDGE_RESPONSE_JSON_SCHEMA = {
             description:
               'Cooking tradition(s) the dish name AS NAMED unmistakably belongs to, everywhere it is served (THE TRADITION TEST); canonical everyday spelling, at the level the name commits to; EMPTY when the name is shared across traditions — empty is the cheap error, a wrong tradition mis-files every restaurant serving the dish',
           },
+          categories: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Broader orderable dish classes the dish name rolls up into (THE PREDICTION TEST), most specific first, singular, lowercase; NEVER a cooking tradition (that answer belongs to `cuisines`), an ingredient, or a wrapper/diet/meal period that predicts no food — a wrong parent is the expensive error',
+          },
         },
-        required: ['index', 'ingredients', 'aliases', 'cuisines'],
+        required: ['index', 'ingredients', 'aliases', 'cuisines', 'categories'],
       },
     },
   },
   required: ['dishes'],
+} as const;
+
+export const ATTRIBUTE_MERGE_BATCH_RESPONSE_JSON_SCHEMA = {
+  type: 'object',
+  description:
+    'Verdicts for a batch of attribute-tag pairs, each judged by the ONE-INTENTION test',
+  properties: {
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          index: { type: 'integer' },
+          decision: {
+            type: 'string',
+            enum: ['merge', 'keep'],
+            description:
+              'THE INTERCHANGEABILITY TEST: do the two tag names make the same claim about a place/dish, so a diner filtering by either would want the other’s evidence in BOTH directions? merge = one claim wearing different words (spelling/wording variants, praise-strength tiers of one quality, the value canon); keep = interchangeability fails in either direction, or any doubt — doubt says keep, because a wrong merge FUSES two real filters',
+          },
+          reason: {
+            type: 'string',
+            description:
+              'Audit EVIDENCE, a few words: the relation that merged them or the distinction that kept them apart. Never merely the decision word itself',
+          },
+        },
+        required: ['index', 'decision', 'reason'],
+      },
+    },
+  },
+  required: ['items'],
 } as const;

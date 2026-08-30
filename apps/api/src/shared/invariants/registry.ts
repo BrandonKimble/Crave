@@ -1533,6 +1533,78 @@ export const INVARIANTS: readonly Invariant[] = [
       },
     ],
   },
+  {
+    // THE STALE-ENTITY-TYPE-LITERAL CLASS (entity-type coverage audit F-13),
+    // three confirmed incidents deep: F3800's forgotten `ingredients` search
+    // arms, demand-vocabulary's `'food'` inside an `as EntityType[]` cast
+    // (loud crash, found by hand 2026-08-19), and F-1's
+    // COLLECTIBLE_ENTITY_TYPES carrying 'restaurant'/'food' compared via
+    // `= ANY(text[])` — which fails SILENT, so place+item demand (74% of
+    // on-demand rows) never selected and the collector never chased the two
+    // types users ask for most. The R14 rename keeps regenerating the
+    // opportunity: every hand-listed type array is one rename behind.
+    id: 'vocabulary.entity-type-literals-are-enum-members',
+    statement:
+      'Every string literal used as an entity-type value — an ::entity_type cast, an ENTITY_TYPES-named array, an entityTypes: [...] argument, or an array cast/pinned to EntityType — is a member of the Prisma EntityType enum.',
+    incident:
+      "F-1 (2026-08-30): keyword-slice-selection's COLLECTIBLE_ENTITY_TYPES held the pre-R14 literals 'restaurant'/'food'; territoryEntityDemand compares e.type::text = ANY(text[]), so nothing errored and the demand slice silently returned attributes only. Same family as the 'food' enum-cast crash fixed 2026-08-19 one file over — the loud variant was found in a day, the silent one survived months.",
+    level: 'lint',
+    mechanism:
+      'scripts/check-entity-type-literals.ts — parses the EntityType enum out of schema.prisma, comment-strips every .ts under src/ + scripts/, and refuses any literal in the four incident shapes that is not an enum member (liveness floor: a scan that saw almost no files fails itself).',
+    check: {
+      command: 'npx ts-node -T scripts/check-entity-type-literals.ts',
+      reads:
+        'every entity-type-shaped literal in the tree against the live Prisma enum',
+    },
+    mutations: [
+      {
+        // The F-1 literal VERBATIM — the pre-fix line of
+        // keyword-slice-selection.service.ts (git show 7a4ca0977). The
+        // identifier is concatenated so the scan does not read this registry
+        // entry itself as the defect.
+        file: SCRATCH,
+        content:
+          'export const COLLECTIBLE' +
+          '_ENTITY_TYPES = ' +
+          "[\n  'restaurant',\n  'food',\n  'item_attribute',\n  'place_attribute',\n];\n",
+      },
+      {
+        // Incident 2's shape: a stale literal hidden behind an EntityType
+        // cast — the pin that should be doing the work, lying.
+        file: SCRATCH,
+        content:
+          "import type { EntityType } from '@prisma/client';\n" +
+          "export const t = ['food'] as " +
+          'EntityType[];\n',
+      },
+      {
+        // The SQL-cast shape (the loud variant, so the scan catches it
+        // before Postgres does).
+        file: SCRATCH,
+        content:
+          'export const q = `SELECT 1 WHERE t = ' +
+          "'food'::entity_" +
+          'type`;\n',
+      },
+    ],
+    legitimate: [
+      {
+        // A hand-list of REAL enum members is legal (derivation is better,
+        // but the law here is membership, not style).
+        file: SCRATCH,
+        content:
+          'export const SOME' +
+          "_ENTITY_TYPES = ['place', 'item', 'ingredient'];\n",
+      },
+      {
+        // Non-entity vocabularies with type-ish names in other shapes are
+        // not judged — the scan keys on the four incident shapes only.
+        file: SCRATCH,
+        content:
+          "export const SLICE_PRIORITY = ['unmet', 'explore', 'refresh'];\n",
+      },
+    ],
+  },
 ];
 
 export const SCRATCH_FILE = SCRATCH;

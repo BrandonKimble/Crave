@@ -54,6 +54,68 @@ export interface ItemMergePlan {
   winnerName: string;
   loserId: string;
   loserName: string;
+  /** Which vocabulary the pair lives in. Absent on plans stored before the
+   *  ingredient extension (entity-type coverage audit F-2) — those were all
+   *  item plans, so the executor defaults to 'item'. */
+  entityType?: DedupeSweepType;
+}
+
+/** The two vocabularies the sweep scans (coverage audit F-2): dishes and
+ *  ingredients. NEVER cross-type — 'beef' the ingredient and 'beef' the
+ *  dish-word are deliberately distinct entities; each type is its own
+ *  candidate universe, its own judge doctrine (matchEntitiesBatch kind),
+ *  and its own advisory-lock namespace. */
+export const DEDUPE_SWEEP_TYPES = [
+  EntityType.item,
+  EntityType.ingredient,
+] as const;
+export type DedupeSweepType = (typeof DEDUPE_SWEEP_TYPES)[number];
+
+/** Active-support predicate per vocabulary. Items are supported by carrying
+ *  a connection (the D5 predicate). An ingredient is never a connection's
+ *  food_id — its evidence is REFERENCE: a connection's source-faithful
+ *  `ingredients` array or an active dish's synthesized
+ *  `canonical_ingredients`. Same D5 intent (never merge shadow-minted
+ *  vocabulary): both tiers are written only by the active graph. */
+function sweepSupportSql(type: DedupeSweepType, entityRef: string): string {
+  if (type === EntityType.ingredient) {
+    return `(EXISTS (
+      SELECT 1 FROM core_restaurant_items c_scope
+      WHERE c_scope.ingredients @> ARRAY[${entityRef}]
+    ) OR EXISTS (
+      SELECT 1 FROM core_entities f_scope
+      WHERE f_scope.canonical_ingredients @> ARRAY[${entityRef}]
+        AND f_scope.status = 'active'
+    ))`;
+  }
+  return activeSupportExistsSql(entityRef);
+}
+
+/**
+ * Anti-join on the hearing ledger, IN THE CANDIDATE QUERY (red-team F2,
+ * plans/wave-redteam-report.md). The embedding lane's stated law — "the
+ * ledger's memory drains the docket across runs" — was aspirational while
+ * LIMIT ran before the memory: every run recalled the SAME closest 200
+ * pairs, and once all 200 were judged (holds persist at the current rule
+ * version) later runs recalled 200, skipped 200, heard 0 — pairs 201+ were
+ * unreachable. The attribute lane got the order right (candidates → ledger
+ * filter → cap); this puts the same order inside the SQL so LIMIT bounds
+ * the UNDRAINED docket. COLLATE "C" pins LEAST/GREATEST to codepoint order,
+ * the same order the adapter's JS `.sort()` uses to spell the claim key.
+ */
+function undecidedPairSql(aRef: string, bRef: string): Prisma.Sql {
+  const a = Prisma.raw(aRef);
+  const b = Prisma.raw(bRef);
+  return Prisma.sql`NOT EXISTS (
+    SELECT 1 FROM claim_verdicts v
+    WHERE v.lane = ${ENTITY_DEDUPE_LANE}
+      AND v.rule_version = ${ENTITY_DEDUPE_RULE_VERSION}
+      AND v.fold_version = ${entityDedupeLane.keyFoldVersion}
+      AND v.claim_key =
+        LEAST(${a}::text COLLATE "C", ${b}::text COLLATE "C")
+        || '|' ||
+        GREATEST(${a}::text COLLATE "C", ${b}::text COLLATE "C")
+  )`;
 }
 
 /** What a dedupe verdict orders done — the `claim_verdicts.subject` payload. */
@@ -62,7 +124,7 @@ export interface DedupeVerdictSubject {
   aName: string;
   bId: string;
   bName: string;
-  via: 'token-multiset+judge' | 'similarity+judge';
+  via: 'token-multiset+judge' | 'similarity+judge' | 'embedding+judge';
   /** Present on 'merge' verdicts only; a 'hold' orders nothing. */
   plan: ItemMergePlan | null;
 }
@@ -272,6 +334,27 @@ export class ItemDedupeMergeService {
       judgeUnjudged: 0,
     };
 
+    // Same lanes, once per vocabulary (coverage audit F-2): the sweep used
+    // to scan type='item' only, so ingredient twins ("beef ribeye"/"ribeye
+    // beef") accumulated with no merge path at all — the resolver's judge
+    // covers them at mint time and nothing healed the corpus after.
+    for (const sweepType of DEDUPE_SWEEP_TYPES) {
+      await this.runForType(sweepType, floor, dryRun, summary);
+    }
+
+    this.logger.info('Food dedupe-merge pass complete', {
+      dryRun,
+      ...(summary as unknown as Record<string, unknown>),
+    });
+    return summary;
+  }
+
+  private async runForType(
+    sweepType: DedupeSweepType,
+    floor: number,
+    dryRun: boolean,
+    summary: DedupeMergeSummary,
+  ): Promise<void> {
     // 0. NUMBER VARIANTS FIRST — and deliberately OUTSIDE the trigram scan.
     // This sweep has always excluded substring-related pairs (step 1's
     // `position(a.name IN b.name) = 0`) to protect legitimate specific-vs-
@@ -293,8 +376,8 @@ export class ItemDedupeMergeService {
     >(Prisma.sql`
       SELECT e.entity_id AS "entityId", e.name
       FROM core_entities e
-      WHERE e.type = 'item' AND e.status = 'active'
-        AND ${Prisma.raw(activeSupportExistsSql('e.entity_id'))}`);
+      WHERE e.type = ${sweepType}::entity_type AND e.status = 'active'
+        AND ${Prisma.raw(sweepSupportSql(sweepType, 'e.entity_id'))}`);
     const seenNumberPair = new Set<string>();
     const numberVariantPairs: {
       a_id: string;
@@ -328,7 +411,23 @@ export class ItemDedupeMergeService {
     // completed number merge skips subsequent pairs; the next sweep run
     // sees the healed state and finishes the chain.
     const consumedByNumberLane = new Set<string>();
+    // JUDGED VERDICTS OUTRANK MECHANICAL FOLDS (acceptance red team
+    // 2026-08-30, the bitter/bitters class): a deterministic lane is a
+    // shortcut for pairs nobody has ever had to think about — the moment a
+    // judge has HELD a pair apart ("bitter" the adjective vs "bitters" the
+    // cocktail ingredient), the mechanical number fold no longer speaks for
+    // it. Any-rule-version on purpose: a rule bump re-opens the pair for the
+    // JUDGE lane's re-hearing, not for a code lane that cannot weigh the
+    // question at all. This is the general rule, not a hardcoded pair list.
+    const heldPairs = await this.ledgeredHoldPairs(numberVariantPairs);
     for (const pair of numberVariantPairs) {
+      if (heldPairs.has([pair.a_id, pair.b_id].sort().join('|'))) {
+        this.logger.info(
+          'Number-variant fold skipped — a judge verdict holds the pair apart',
+          { a: pair.a_name, b: pair.b_name, type: sweepType },
+        );
+        continue;
+      }
       if (
         consumedByNumberLane.has(pair.a_id) ||
         consumedByNumberLane.has(pair.b_id)
@@ -339,10 +438,11 @@ export class ItemDedupeMergeService {
         this.logger.info('Would merge number-variant foods', {
           a: pair.a_name,
           b: pair.b_name,
+          type: sweepType,
           via: 'number',
         });
       } else {
-        await this.mergeItemPair(pair.a_id, pair.b_id);
+        await this.mergeItemPair(sweepType, pair.a_id, pair.b_id);
         consumedByNumberLane.add(pair.a_id);
         consumedByNumberLane.add(pair.b_id);
       }
@@ -367,11 +467,12 @@ export class ItemDedupeMergeService {
       SELECT a.entity_id a_id, a.name a_name, b.entity_id b_id, b.name b_name
       FROM core_entities a
       JOIN core_entities b ON a.entity_id < b.entity_id
-      WHERE a.type = 'item' AND b.type = 'item'
+      WHERE a.type = ${sweepType}::entity_type
+        AND b.type = ${sweepType}::entity_type
         AND a.status = 'active' AND b.status = 'active'
         AND (
-          ${Prisma.raw(activeSupportExistsSql('a.entity_id'))}
-          OR ${Prisma.raw(activeSupportExistsSql('b.entity_id'))}
+          ${Prisma.raw(sweepSupportSql(sweepType, 'a.entity_id'))}
+          OR ${Prisma.raw(sweepSupportSql(sweepType, 'b.entity_id'))}
         )
         AND a.identity_key_sorted IS NOT NULL
         AND a.identity_key_sorted = b.identity_key_sorted
@@ -389,6 +490,7 @@ export class ItemDedupeMergeService {
     );
     if (orderPairsToJudge.length && !dryRun) {
       await this.adjudicateDedupeCandidates(
+        sweepType,
         orderPairsToJudge,
         'token-multiset+judge',
         summary,
@@ -399,6 +501,7 @@ export class ItemDedupeMergeService {
         this.logger.info('Would judge word-order twin foods', {
           a: pair.a_name,
           b: pair.b_name,
+          type: sweepType,
         });
       }
     }
@@ -412,15 +515,19 @@ export class ItemDedupeMergeService {
       SELECT a.entity_id a_id, a.name a_name, b.entity_id b_id, b.name b_name
       FROM core_entities a
       JOIN core_entities b ON a.entity_id < b.entity_id
-      WHERE a.type = 'item' AND b.type = 'item'
+      WHERE a.type = ${sweepType}::entity_type
+        AND b.type = ${sweepType}::entity_type
         AND a.status = 'active' AND b.status = 'active'
         -- active-support only (D5): never merge shadow-minted vocabulary.
         -- The predicate is the scope service's ONE definition, imported.
-        AND ${Prisma.raw(activeSupportExistsSql('a.entity_id'))}
-        AND ${Prisma.raw(activeSupportExistsSql('b.entity_id'))}
+        AND ${Prisma.raw(sweepSupportSql(sweepType, 'a.entity_id'))}
+        AND ${Prisma.raw(sweepSupportSql(sweepType, 'b.entity_id'))}
         AND similarity(a.name, b.name) > ${floor}
         AND position(a.name IN b.name) = 0
         AND position(b.name IN a.name) = 0
+        -- Judged pairs never occupy the work bound (red-team F2): the LIMIT
+        -- below truncates the UNDRAINED docket, not a re-recalled one.
+        AND ${undecidedPairSql('a.entity_id', 'b.entity_id')}
       ORDER BY similarity(a.name, b.name) DESC
       -- Per-run work bound, similarity-ranked so truncation drops the WORST
       -- candidates. 200 > the measured full backlog at the 0.65 floor (140
@@ -431,10 +538,9 @@ export class ItemDedupeMergeService {
     const pairs = allPairs.filter(
       (p) => !mergedByNumber.has(p.a_id) && !mergedByNumber.has(p.b_id),
     );
+    // (No early return on an empty trigram docket: the embedding lane below
+    // has its own recall and must run regardless.)
     summary.candidatePairs = pairs.length;
-    if (!pairs.length) {
-      return summary;
-    }
 
     // 2. Deterministic rule: identical token multisets modulo connector
     // stopwords ("steak and frites" == "steak frites") auto-merge; the rest
@@ -459,15 +565,30 @@ export class ItemDedupeMergeService {
       }
     }
 
+    // Same judged-verdict supremacy as the number lane: the candidate query's
+    // ledger anti-join is scoped to the CURRENT rule version (that is its
+    // job — a bump re-opens hearings), so after a bump a previously-HELD pair
+    // re-enters here. It must go back to the JUDGE, never to the code fold.
+    const heldAutoPairs = await this.ledgeredHoldPairs(autoMerge);
+    for (let i = autoMerge.length - 1; i >= 0; i -= 1) {
+      const pair = autoMerge[i];
+      const key = [pair.a_id, pair.b_id].sort().join('|');
+      if (heldAutoPairs.has(key)) {
+        autoMerge.splice(i, 1);
+        needJudge.push(pair);
+      }
+    }
+
     for (const pair of autoMerge) {
       if (dryRun) {
         this.logger.info('Would merge duplicate foods', {
           a: pair.a_name,
           b: pair.b_name,
+          type: sweepType,
           via: 'auto',
         });
       } else {
-        await this.mergeItemPair(pair.a_id, pair.b_id);
+        await this.mergeItemPair(sweepType, pair.a_id, pair.b_id);
         // Same stale-snapshot guard as the number lane (R4): an id this
         // merge consumed must not reach the judge lane below.
         consumedByNumberLane.add(pair.a_id);
@@ -478,6 +599,7 @@ export class ItemDedupeMergeService {
 
     if (needJudge.length && !dryRun) {
       await this.adjudicateDedupeCandidates(
+        sweepType,
         needJudge,
         'similarity+judge',
         summary,
@@ -488,40 +610,145 @@ export class ItemDedupeMergeService {
         this.logger.info('Would judge duplicate foods', {
           a: pair.a_name,
           b: pair.b_name,
+          type: sweepType,
           via: 'similarity+judge',
         });
       }
     }
 
-    this.logger.info('Food dedupe-merge pass complete', {
-      dryRun,
-      ...(summary as unknown as Record<string, unknown>),
-    });
-    return summary;
+    // 3. EMBEDDING RECALL LANE (sameness court D2, 2026-08-30): the trigram
+    // scan is structurally blind to lexically-distant same-concepts — "soup
+    // dumplings"/"xiao long bao", "japanese fried chicken"/"chicken karaage"
+    // (a satisfies verdict on such a pair is a merge signal this pipeline
+    // could never see — systems-map overlap #12). name_embedding already
+    // exists on every reconciled entity, so recall is a pgvector top-K
+    // lateral (measured ~2s over the 3.7k-item staging corpus). This is the
+    // attribute ontology's meaning-first finder generalized to dishes.
+    // Distance-ranked with a per-run hearing cap (the trigram lane's LIMIT
+    // pattern): no similarity floor nobody has measured — the ledger's
+    // memory drains the docket across runs, closest pairs first, and every
+    // pair still faces the judge (substring pairs INCLUDED: the enriched
+    // judge now carries the home-restaurant doctrine that decides
+    // specific-vs-general, which the old blind judge could not).
+    const embeddingPairs = await this.embeddingCandidatePairs(sweepType);
+    const trigramSeen = new Set(
+      allPairs.map((p) => [p.a_id, p.b_id].sort().join(':')),
+    );
+    const embeddingToJudge = embeddingPairs.filter(
+      (p) =>
+        !consumedByNumberLane.has(p.a_id) &&
+        !consumedByNumberLane.has(p.b_id) &&
+        !mergedByNumber.has(p.a_id) &&
+        !mergedByNumber.has(p.b_id) &&
+        !trigramSeen.has([p.a_id, p.b_id].sort().join(':')),
+    );
+    summary.candidatePairs += embeddingToJudge.length;
+    if (embeddingToJudge.length && !dryRun) {
+      await this.adjudicateDedupeCandidates(
+        sweepType,
+        embeddingToJudge,
+        'embedding+judge',
+        summary,
+        consumedByNumberLane,
+      );
+    } else if (embeddingToJudge.length) {
+      for (const pair of embeddingToJudge) {
+        this.logger.info('Would judge duplicate foods', {
+          a: pair.a_name,
+          b: pair.b_name,
+          type: sweepType,
+          via: 'embedding+judge',
+        });
+      }
+    }
+  }
+
+  /**
+   * The embedding-recall candidate query, its own method so the two-run
+   * drain law is TESTABLE read-only (running the full sweep against a
+   * shared database is destructive — the pair spec's own warning). The
+   * ledger anti-join lives INSIDE both bounds (red-team F2): the lateral's
+   * K picks the closest UNJUDGED neighbors, and the outer LIMIT truncates
+   * the undrained docket — so repeat runs walk deeper into the distance
+   * ranking instead of re-recalling the same judged 200 forever.
+   */
+  protected async embeddingCandidatePairs(
+    sweepType: DedupeSweepType,
+  ): Promise<{ a_id: string; a_name: string; b_id: string; b_name: string }[]> {
+    return this.prisma.$queryRaw<
+      { a_id: string; a_name: string; b_id: string; b_name: string }[]
+    >`
+      SELECT a.entity_id a_id, a.name a_name, n.entity_id b_id, n.name b_name
+      FROM core_entities a
+      JOIN LATERAL (
+        SELECT b.entity_id, b.name,
+               (a.name_embedding <=> b.name_embedding) AS dist
+        FROM core_entities b
+        WHERE b.type = ${sweepType}::entity_type AND b.status = 'active'
+          AND b.name_embedding IS NOT NULL
+          AND b.entity_id <> a.entity_id
+          AND ${Prisma.raw(sweepSupportSql(sweepType, 'b.entity_id'))}
+          AND ${undecidedPairSql('a.entity_id', 'b.entity_id')}
+        ORDER BY a.name_embedding <=> b.name_embedding
+        LIMIT 4
+      ) n ON true
+      WHERE a.type = ${sweepType}::entity_type AND a.status = 'active'
+        AND a.name_embedding IS NOT NULL
+        AND ${Prisma.raw(sweepSupportSql(sweepType, 'a.entity_id'))}
+        AND a.entity_id < n.entity_id
+      ORDER BY n.dist ASC
+      LIMIT 200
+    `;
   }
 
   /** Full merge: pick winner by evidence, fold connections, bank the loser's
    *  name+surfaces on the winner, archive the loser. The deterministic lanes'
    *  entry point; the judge lane goes through settleDedupeVerdict so the plan
    *  is stored BEFORE the effect runs. */
-  private async mergeItemPair(idA: string, idB: string): Promise<void> {
+  private async mergeItemPair(
+    sweepType: DedupeSweepType,
+    idA: string,
+    idB: string,
+  ): Promise<void> {
     if (idA === idB) {
       return; // self-merge annihilates the ledger (round-11 D1)
     }
-    await this.executeItemMergePlan(await this.planItemMerge(idA, idB));
+    await this.executeItemMergePlan(
+      await this.planItemMerge(sweepType, idA, idB),
+    );
   }
 
-  /** Winner selection — more connections wins (more evidence behind its
-   *  name); ties break to the shorter name (more canonical). Pure planning,
+  /** Evidence behind a name, per vocabulary: an item's evidence is its
+   *  connections; an ingredient's is the rows that REFERENCE it (connection
+   *  `ingredients` arrays + dish `canonical_ingredients`). */
+  private async evidenceCount(
+    sweepType: DedupeSweepType,
+    entityId: string,
+  ): Promise<number> {
+    if (sweepType === EntityType.ingredient) {
+      const rows = await this.prisma.$queryRaw<Array<{ refs: bigint }>>`
+        SELECT (SELECT count(*) FROM core_restaurant_items
+                 WHERE ingredients @> ARRAY[${entityId}::uuid])
+             + (SELECT count(*) FROM core_entities
+                 WHERE canonical_ingredients @> ARRAY[${entityId}::uuid])
+               AS refs`;
+      return Number(rows[0]?.refs ?? 0);
+    }
+    return this.prisma.connection.count({ where: { itemId: entityId } });
+  }
+
+  /** Winner selection — more evidence wins (more rows behind its name);
+   *  ties break to the shorter name (more canonical). Pure planning,
    *  no mutation: the judge lane persists this as the verdict's subject
    *  before any effect runs. */
   private async planItemMerge(
+    sweepType: DedupeSweepType,
     idA: string,
     idB: string,
   ): Promise<ItemMergePlan> {
     const [connectionsA, connectionsB] = await Promise.all([
-      this.prisma.connection.count({ where: { itemId: idA } }),
-      this.prisma.connection.count({ where: { itemId: idB } }),
+      this.evidenceCount(sweepType, idA),
+      this.evidenceCount(sweepType, idB),
     ]);
     const [entityA, entityB] = await Promise.all([
       this.prisma.entity.findUniqueOrThrow({
@@ -544,6 +771,7 @@ export class ItemDedupeMergeService {
       winnerName: winner.name,
       loserId: loser.entityId,
       loserName: loser.name,
+      entityType: sweepType,
     };
   }
 
@@ -569,14 +797,19 @@ export class ItemDedupeMergeService {
     }
     const winner = { entityId: plan.winnerId, name: plan.winnerName };
     const loser = { entityId: plan.loserId, name: plan.loserName };
+    // Plans stored before the ingredient extension (F-2) carried no type —
+    // every one of them was an item plan.
+    const sweepType: DedupeSweepType = plan.entityType ?? EntityType.item;
 
     await this.prisma.$transaction(
       async (tx) => {
-        await acquireIdentityMergeLocks(tx, EntityType.item, [
-          entityLockKey(winner.name, EntityType.item),
-          entityLockKey(loser.name, EntityType.item),
+        await acquireIdentityMergeLocks(tx, sweepType, [
+          entityLockKey(winner.name, sweepType),
+          entityLockKey(loser.name, sweepType),
         ]);
         // Fold colliding connections (same restaurant has both variants).
+        // An ingredient is never a connection's food_id, so the loser set is
+        // empty for ingredient merges; its references are re-pointed below.
         const loserConnections = await tx.connection.findMany({
           where: { itemId: loser.entityId },
         });
@@ -701,6 +934,33 @@ export class ItemDedupeMergeService {
           });
         }
 
+        // INGREDIENT REFERENCE RE-POINTING (coverage audit F-2). The search
+        // seam reads `c.ingredients && ids` / `canonical_ingredients && ids`
+        // with the QUERY-time winner's id (the loser is archived, so the
+        // gazetteer can only ground the winner) — a loser id left inside
+        // those arrays is evidence a search can never reach again. Redirects
+        // do not save it: no array reader follows entity_redirects. Rewrite
+        // both columns in-transaction, deduping in case a row already
+        // carried the winner alongside the loser.
+        if (sweepType === EntityType.ingredient) {
+          await tx.$executeRaw`
+            UPDATE core_restaurant_items
+            SET ingredients = (
+              SELECT COALESCE(array_agg(DISTINCT CASE
+                WHEN x = ${loser.entityId}::uuid THEN ${winner.entityId}::uuid
+                ELSE x END), '{}')
+              FROM unnest(ingredients) AS x)
+            WHERE ingredients @> ARRAY[${loser.entityId}::uuid]`;
+          await tx.$executeRaw`
+            UPDATE core_entities
+            SET canonical_ingredients = (
+              SELECT COALESCE(array_agg(DISTINCT CASE
+                WHEN x = ${loser.entityId}::uuid THEN ${winner.entityId}::uuid
+                ELSE x END), '{}')
+              FROM unnest(canonical_ingredients) AS x)
+            WHERE canonical_ingredients @> ARRAY[${loser.entityId}::uuid]`;
+        }
+
         // Alias banking + archive + score prune + redirect flatten live in
         // finalizeMergeCompletion (called below) — ONE contract for every
         // merge. Only the embedding staleness mark is food-specific.
@@ -773,6 +1033,7 @@ export class ItemDedupeMergeService {
    *     CLOSED to a reasonless 'new', so a judge outage records nothing.
    */
   private async adjudicateDedupeCandidates(
+    sweepType: DedupeSweepType,
     candidates: Array<{
       a_id: string;
       a_name: string;
@@ -816,11 +1077,65 @@ export class ItemDedupeMergeService {
     });
     if (!due.length) return;
 
+    // D2 context standard: the sweep judge used to see two bare names —
+    // which is why it could never safely unify the omakase swarm. Every
+    // hearing now carries each side's home restaurants and a same-place
+    // flag (shared restaurant_id), the evidence the home-restaurant rule
+    // reads.
+    const dueIds = Array.from(
+      new Set(due.flatMap((pair) => [pair.a_id, pair.b_id])),
+    );
+    // An ingredient's homes are the restaurants whose dishes CARRY it (the
+    // `ingredients` array), the same evidence the item arm reads off food_id.
+    const homeRows =
+      sweepType === EntityType.ingredient
+        ? await this.prisma.$queryRaw<
+            Array<{ food_id: string; place_ids: string[]; homes: string[] }>
+          >(Prisma.sql`
+      SELECT x.ingredient_id AS food_id,
+             array_agg(c.restaurant_id::text ORDER BY c.mention_count DESC)
+               AS place_ids,
+             (array_agg(r.name ORDER BY c.mention_count DESC))[1:3] AS homes
+        FROM core_restaurant_items c
+        JOIN LATERAL unnest(c.ingredients) AS x(ingredient_id) ON true
+        JOIN core_entities r ON r.entity_id = c.restaurant_id
+       WHERE x.ingredient_id = ANY(${dueIds}::uuid[])
+       GROUP BY x.ingredient_id`)
+        : await this.prisma.$queryRaw<
+            Array<{ food_id: string; place_ids: string[]; homes: string[] }>
+          >(Prisma.sql`
+      SELECT c.food_id,
+             array_agg(c.restaurant_id::text ORDER BY c.mention_count DESC)
+               AS place_ids,
+             (array_agg(r.name ORDER BY c.mention_count DESC))[1:3] AS homes
+        FROM core_restaurant_items c
+        JOIN core_entities r ON r.entity_id = c.restaurant_id
+       WHERE c.food_id = ANY(${dueIds}::uuid[])
+       GROUP BY c.food_id`);
+    const homesById = new Map(homeRows.map((r) => [r.food_id, r]));
+    const sharesHome = (aId: string, bId: string): boolean | undefined => {
+      const a = homesById.get(aId)?.place_ids ?? [];
+      const b = new Set(homesById.get(bId)?.place_ids ?? []);
+      if (!a.length || !b.size) return undefined;
+      return a.some((placeId) => b.has(placeId));
+    };
+
+    // THE REAL KIND (coverage audit F-8): the judge prompt carries an
+    // ingredient doctrine section — sending an ingredient pair as 'item'
+    // makes it reason with dish doctrine about a component word.
     const verdicts = await this.llmService.matchEntitiesBatch({
-      kind: 'item',
+      kind: sweepType === EntityType.ingredient ? 'ingredient' : 'item',
       items: due.map((pair) => ({
         term: pair.a_name,
-        candidates: [{ id: 1, name: pair.b_name }],
+        termHomePlaces: homesById.get(pair.a_id)?.homes ?? undefined,
+        candidates: [
+          {
+            id: 1,
+            name: pair.b_name,
+            homePlaces: homesById.get(pair.b_id)?.homes ?? undefined,
+            samePlace: sharesHome(pair.a_id, pair.b_id),
+          },
+        ],
       })),
     });
     for (let i = 0; i < due.length; i += 1) {
@@ -843,14 +1158,39 @@ export class ItemDedupeMergeService {
       this.logger.warn('Merging duplicate foods (judge-approved)', {
         a: pair.a_name,
         b: pair.b_name,
+        type: sweepType,
         via,
       });
-      const plan = await this.planItemMerge(pair.a_id, pair.b_id);
+      const plan = await this.planItemMerge(sweepType, pair.a_id, pair.b_id);
       await this.settleDedupeVerdict(pair, via, 'merge', reason, plan);
       consumed.add(pair.a_id);
       consumed.add(pair.b_id);
       summary.judgeMerged += 1;
     }
+  }
+
+  /**
+   * The claim keys, among `pairs`, that a judge verdict HOLDS apart —
+   * any rule version (see the number-lane comment: re-hearing after a rule
+   * bump belongs to the judge lane, so an old hold still outranks a code
+   * fold today). Read-only; one query for the whole candidate list.
+   */
+  protected async ledgeredHoldPairs(
+    pairs: ReadonlyArray<{ a_id: string; b_id: string }>,
+  ): Promise<Set<string>> {
+    if (!pairs.length) return new Set();
+    const keys = pairs.map((pair) =>
+      entityDedupeLane.canonicalClaimKey({
+        entityId: pair.a_id,
+        otherEntityId: pair.b_id,
+      }),
+    );
+    const rows = await this.prisma.$queryRaw<Array<{ claim_key: string }>>`
+      SELECT DISTINCT claim_key FROM claim_verdicts
+      WHERE lane = ${ENTITY_DEDUPE_LANE}
+        AND outcome = 'hold'
+        AND claim_key IN (${Prisma.join(keys)})`;
+    return new Set(rows.map((row) => row.claim_key));
   }
 
   /** Commit the verdict, THEN obey it (amendment (c)). */
