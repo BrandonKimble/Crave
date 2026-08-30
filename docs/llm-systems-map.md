@@ -101,8 +101,8 @@ Cron gating is global: `CRONS_ENABLED` + `PROCESS_ROLE` (`isSchedulerRuntime()`)
 ## Flags: dead / gated / undocumented
 
 - **Manual-only vocabulary learner:** `demand-vocabulary.service.ts` has no cron — it silently stops learning if nobody runs `scripts/run-demand-vocabulary.ts`.
-- **Orphaned:** `signals/user-taste-profile.builder.ts` — no cron and no script caller found.
-- **Underused abstraction:** `estimators/estimator-registry.ts` — only registered consumer is polls supply (4 configs); the docblock promises many more.
+- ~~Orphaned~~ CORRECTED 2026-08-30 (dormant-systems audit): `user-taste-profile.builder.ts` IS live — called by the 15-min demand-aggregate cron, read by curated-list-builder.
+- ~~Underused abstraction~~ CORRECTED 2026-08-30: `estimator-registry.ts` has 2 consumer families (polls supply + collection exploreYield); its docblock over-promises and should shrink.
 - **Ungated cron:** entity-lexicon builder has an empty disable flag (only `CRONS_ENABLED` can stop it).
 - **Gated-off by default:** dish-knowledge synthesis, knowledge maintenance, dedupe judge lanes (`DEDUPE_JUDGE_LANES_ENABLED` off → pairs silently `judgeHeld`), attribute merge judge, restaurant janitor, sibling edges, embedding reconciler — a fresh env with none set runs NONE of the knowledge tier. Exception: `VOCABULARY_MAINTENANCE_ENABLED` **defaults true**.
 - **Built but unreachable in prod:** the whole `attribute_merge` lane (judge flag off AND no scheduler for `runSweep`); the restaurant-name court (`restaurant_name` lane, manual script only).
