@@ -6,6 +6,25 @@
 
 **claim_verdicts lanes (complete):** `entity_match` · `entity_dedupe` · `restaurant_name` · `word_claim` · `word-genericness` · `word-negation` · `word-role` · `concept_satisfies` · `attribute_merge` · `place_grounding` — plus one ORPHAN: `dish.knowledge_synthesize`, hardcoded as a bare string in `dish-knowledge-synthesis.service.ts` with no `*_LANE` constant or adapter (lane-enumeration tools miss it). Note naming drift: the three word-vocabulary lanes use hyphens, everything else underscores. The relevance gate does NOT use this ledger — it has its own verdict table, `collection_relevance_verdicts` (keyed by prompt hash).
 
+## Plain-name glossary (owner-ratified 2026-08-30 — use these names in docs and conversation)
+
+| Plain name                 | Jargon / code name                           | One-line job                                                                                  |
+| -------------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Reddit Post Filter         | relevance gate                               | drops non-food posts before extraction spends money                                           |
+| the Extractor              | collection prompt / extraction pipeline      | reads posts, writes down who praised what                                                     |
+| Extraction Name Matcher    | entity-match judge (birth)                   | "is this new name an existing thing?"                                                         |
+| Nightly Duplicate Merger   | dedupe-merge sweep                           | finds and merges same-thing twins later (identity only)                                       |
+| New-Tag Placement Judge    | attribute ontology / placement               | sorts brand-new tags into the vocabulary                                                      |
+| Search Similar-Words Judge | satisfies / widening court                   | "would a pub-seeker be happy with bars?" — search-time widening edges                         |
+| Dish Info Builder          | dish-knowledge synthesis                     | writes each dish's permanent facts once (ingredients, aliases, cuisine, categories)           |
+| Restaurant Info Builder    | venue-facts / cuisine extraction             | names each restaurant's cuisines + venue attributes from name, Google types, editorial        |
+| Google Listing Matcher     | place grounding chooser                      | matches our restaurant to the right Google listing                                            |
+| Junk-Name Cleaner          | restaurant-name court + census feeder        | demotes fake search nicknames ("best")                                                        |
+| Search Word Classifier     | word-role/genericness/negation hearings      | rules what kind of word something is, once per word                                           |
+| Unknown-Search Intake      | unified residue splitter + demand vocabulary | one door for unknown search text: split, alias-match what we know, collect only the truly new |
+| Judge Drift Checker        | verdict-replay harness                       | re-checks old rulings under current rules                                                     |
+| the Ledger                 | claim_verdicts                               | the book of every ruling ever made                                                            |
+
 ---
 
 ## Stage 1 — Extraction (source text → raw evidence)

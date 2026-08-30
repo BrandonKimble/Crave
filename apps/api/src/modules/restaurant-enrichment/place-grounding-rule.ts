@@ -61,6 +61,11 @@ const RULE_RELEASES: readonly RuleRelease[] = [
     fingerprint: '401cdeee6a1d',
     note: 'first ledgered grounding rule — the staged chooser (error economics, identity+geography gates, brand clusters, what-the-place-is) as it stood when the grounding lane adopted the hearing ledger',
   },
+  {
+    version: 2,
+    fingerprint: '87b7c24515d7',
+    note: 'snippets-are-samples geography doctrine (R1, the 08-20 716-decline sweep): the source market anchors, a single out-of-market snippet never vetoes a strong in-market identity match (Rudys: 1,315 Austin mentions vetoed by one NYC dive-bar snippet); named-branch-absent-but-brand-present now selects the in-market branch instead of rejecting (Easy Tiger); input grew multi-snippet source text + mention count. Re-opens every v1 remembered rejection deliberately.',
+  },
 ];
 
 function resolveRuleVersion(): number {

@@ -439,7 +439,7 @@ export class PlaceEntityMergeService {
    * lever: scripts/merge-duplicate-restaurants.ts (report / --apply).
    */
   async sweepSameNameDuplicates(
-    options: { apply: boolean } = { apply: true },
+    options: { apply: boolean; foldOnly?: boolean } = { apply: true },
   ): Promise<{
     merged: number;
     held: number;
@@ -468,8 +468,18 @@ export class PlaceEntityMergeService {
       -- Two zero-evidence shadow restaurants passed the community gate
       -- (both empty), tied on entity_id, and merged SILENTLY. Same
       -- predicate, same import, same law.
+      -- WIDENED (campaign red-team v3, R2): the item-row support gate that
+      -- used to sit HERE was the wrong evidence proxy for places — 26
+      -- exact-fold twins (Joes Bakery vs Joe's Bakery, Valentinas vs
+      -- Valentina's) sat un-grouped for weeks because one member had place
+      -- MENTIONS (entity events) or a grounded location but no item rows,
+      -- so the gate dropped it before grouping ever happened. Grouping now
+      -- admits every active fold twin; the D5 law is enforced in the
+      -- judgment loop below (a pair where NEITHER side carries item
+      -- support, active mentions, or a grounded location is held, never
+      -- merged) — so an evidence-free shell CAN merge into its evidenced
+      -- twin, but two shells can never merge into each other.
       WHERE type = 'place' AND status = 'active'
-        AND ${Prisma.raw(activeSupportExistsSql('e.entity_id'))}
         -- EMPTY FOLD IS NOT AN IDENTITY (round-10 aging sim, executed:
         -- every non-Latin name folds to '' and the sweep merged a Chinese
         -- noodle shop into a Russian dumpling house on the empty group).
@@ -552,12 +562,19 @@ export class PlaceEntityMergeService {
       canonicalId?: string;
       duplicateId?: string;
     }> = [];
-    for (const group of [...groups, ...domainPairs, ...prefixPairs]) {
+    // --fold-only (R2 apply lever): judge just the exact-fold twin groups —
+    // the operator-sanctioned scope for a one-off apply — leaving the
+    // domain/prefix lanes to the nightly cadence.
+    const docket = options.foldOnly
+      ? groups
+      : [...groups, ...domainPairs, ...prefixPairs];
+    for (const group of docket) {
       const details = await this.prisma.$queryRaw<
         Array<{
           entity_id: string;
           name: string;
           mention_count: number;
+          item_support: boolean;
           place_ids: string[];
           domain: string | null;
           communities: string[];
@@ -567,6 +584,7 @@ export class PlaceEntityMergeService {
         SELECT e.entity_id,
                e.name,
                ${Prisma.raw(activeEntityEventCountSql('e.entity_id'))} AS mention_count,
+               ${Prisma.raw(activeSupportExistsSql('e.entity_id'))} AS item_support,
                COALESCE((SELECT array_agg(DISTINCT l.google_place_id) FILTER (WHERE l.google_place_id IS NOT NULL) FROM core_restaurant_locations l WHERE l.restaurant_id = e.entity_id), '{}') AS place_ids,
                e.canonical_domain AS domain,
                ${Prisma.raw(activeCommunitiesArraySql('e.entity_id'))} AS communities,
@@ -583,6 +601,20 @@ export class PlaceEntityMergeService {
       // Pair-peel: judge the two OLDEST members this run; larger groups
       // converge across nightly runs as each merge removes a member.
       const [a, b] = details;
+      // D5 FOR PLACES, enforced here now that grouping admits every fold
+      // twin (R2 widening above): a pair where NEITHER side carries any
+      // evidence — no item rows, no active mentions, no grounded location —
+      // is two shadow shells, and merging shadows into each other on an
+      // arbitrary canonical is exactly the silent-merge D5 banned. Hold.
+      const evidenced = (side: (typeof details)[number]): boolean =>
+        side.place_ids.length > 0 ||
+        side.mention_count > 0 ||
+        side.item_support;
+      if (!evidenced(a) && !evidenced(b)) {
+        held += 1;
+        decisions.push({ name: group.name, verdict: 'hold' });
+        continue;
+      }
       // EVIDENCE HIERARCHY — ONE home (business-identity-rules.ts,
       // sameBusinessVerdict): shared ground or shared owned domain → merge;
       // two distinct owned domains → two businesses → hold; else DOMINANT-

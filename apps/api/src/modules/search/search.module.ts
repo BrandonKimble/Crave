@@ -29,7 +29,7 @@ import { SearchEntityExpansionService } from './search-entity-expansion.service'
 import { SearchSiblingExpansionService } from './search-sibling-expansion.service';
 import { DietaryConstraintRegistry } from './dietary-constraints';
 import { FacetRegistry } from './facet.registry';
-import { UnsegmentedResidueService } from './unsegmented-residue.service';
+import { UnknownSearchIntakeService } from './unknown-search-intake.service';
 import { ScoringTerritoryRefreshService } from './scoring-territory-refresh.service';
 import { OpenIntervalsBuilderService } from './open-intervals-builder.service';
 import { ItemCategoryEdgeBuilderService } from './food-category-edge-builder.service';
@@ -70,7 +70,7 @@ import { ItemCategoryEdgeBuilderService } from './food-category-edge-builder.ser
     SearchSiblingExpansionService,
     DietaryConstraintRegistry,
     FacetRegistry,
-    UnsegmentedResidueService,
+    UnknownSearchIntakeService,
     ScoringTerritoryRefreshService,
     OpenIntervalsBuilderService,
     ItemCategoryEdgeBuilderService,

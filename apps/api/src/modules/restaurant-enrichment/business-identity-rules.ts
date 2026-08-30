@@ -206,8 +206,14 @@ export interface BusinessEvidence {
  *  2. both sides carry their OWN distinct owned domains → two businesses →
  *     hold;
  *  3. otherwise (any ungrounded/domainless side): same DOMINANT community →
- *     pre-enrichment duplicate → merge; both evidence-free → merge; disjoint
- *     metros → hold for the enrichment-time resolver.
+ *     pre-enrichment duplicate → merge; a side with NO community evidence
+ *     at all cannot conflict with the other's metro, so it merges too
+ *     (campaign red-team v3 R2: fold-twin shells with zero active mentions
+ *     — Vincents beside grounded Vincent's — held forever under the old
+ *     both-empty-only arm; a caller that must not merge two evidence-FREE
+ *     shells into each other guards that BEFORE asking, as the same-name
+ *     sweep's D5 hold does); two sides each with a DIFFERENT dominant
+ *     metro → hold for the enrichment-time resolver.
  */
 export function sameBusinessVerdict(
   a: BusinessEvidence,
@@ -225,6 +231,6 @@ export function sameBusinessVerdict(
   const sharedDominantCommunity =
     a.dominantCommunity !== null && a.dominantCommunity === b.dominantCommunity;
   return (
-    sharedDominantCommunity || (!a.communities.length && !b.communities.length)
+    sharedDominantCommunity || !a.communities.length || !b.communities.length
   );
 }

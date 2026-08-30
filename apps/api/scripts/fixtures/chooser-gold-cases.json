@@ -5,7 +5,10 @@
     "chooserInput": {
       "query": "La Barbecue",
       "sourceText": "La Barbecue is my favorite brisket in town, worth every minute of the line.",
-      "sourceLocale": { "city": "Austin", "region": "TX" },
+      "sourceLocale": {
+        "city": "Austin",
+        "region": "TX"
+      },
       "candidates": [
         {
           "candidateId": "cand-dallas",
@@ -17,7 +20,9 @@
         }
       ]
     },
-    "expect": { "decision": "reject" }
+    "expect": {
+      "decision": "reject"
+    }
   },
   {
     "id": "popup-wording-out-of-market",
@@ -25,7 +30,10 @@
     "chooserInput": {
       "query": "Kaya's Kitchen",
       "sourceText": "Caught the Kaya's Kitchen popup last weekend, their mole was unreal.",
-      "sourceLocale": { "city": "Austin", "region": "TX" },
+      "sourceLocale": {
+        "city": "Austin",
+        "region": "TX"
+      },
       "candidates": [
         {
           "candidateId": "cand-houston",
@@ -37,7 +45,9 @@
         }
       ]
     },
-    "expect": { "decision": "reject" }
+    "expect": {
+      "decision": "reject"
+    }
   },
   {
     "id": "brand-cluster-general-stop",
@@ -45,7 +55,10 @@
     "chooserInput": {
       "query": "Joe's Pizza",
       "sourceText": "Joe's Pizza is the best slice in the city, hands down.",
-      "sourceLocale": { "city": "New York", "region": "NY" },
+      "sourceLocale": {
+        "city": "New York",
+        "region": "NY"
+      },
       "candidates": [
         {
           "candidateId": "cand-carmine",
@@ -66,7 +79,10 @@
         }
       ]
     },
-    "expect": { "decision": "select", "candidateId": "cand-carmine" }
+    "expect": {
+      "decision": "select",
+      "candidateId": "cand-carmine"
+    }
   },
   {
     "id": "named-branch-beats-rank",
@@ -74,7 +90,10 @@
     "chooserInput": {
       "query": "Taco Deli",
       "sourceText": "The Taco Deli on Spyglass is my go-to before the greenbelt trail, the queso taco slaps.",
-      "sourceLocale": { "city": "Austin", "region": "TX" },
+      "sourceLocale": {
+        "city": "Austin",
+        "region": "TX"
+      },
       "candidates": [
         {
           "candidateId": "cand-lamar",
@@ -95,7 +114,10 @@
         }
       ]
     },
-    "expect": { "decision": "select", "candidateId": "cand-spyglass" }
+    "expect": {
+      "decision": "select",
+      "candidateId": "cand-spyglass"
+    }
   },
   {
     "id": "store-typed-counter-is-valid",
@@ -103,7 +125,10 @@
     "chooserInput": {
       "query": "Rebel Cheese",
       "sourceText": "Rebel Cheese's deli sandwiches are incredible — I get the reuben at the counter every week.",
-      "sourceLocale": { "city": "Austin", "region": "TX" },
+      "sourceLocale": {
+        "city": "Austin",
+        "region": "TX"
+      },
       "candidates": [
         {
           "candidateId": "cand-shop",
@@ -124,7 +149,10 @@
         }
       ]
     },
-    "expect": { "decision": "select", "candidateId": "cand-shop" }
+    "expect": {
+      "decision": "select",
+      "candidateId": "cand-shop"
+    }
   },
   {
     "id": "identity-gate-different-brand",
@@ -132,7 +160,10 @@
     "chooserInput": {
       "query": "Bunbelly",
       "sourceText": "Had an incredible meal off the Bunbelly truck at the brewery.",
-      "sourceLocale": { "city": "Austin", "region": "TX" },
+      "sourceLocale": {
+        "city": "Austin",
+        "region": "TX"
+      },
       "candidates": [
         {
           "candidateId": "cand-bun",
@@ -144,6 +175,242 @@
         }
       ]
     },
-    "expect": { "decision": "reject" }
+    "expect": {
+      "decision": "reject"
+    }
+  },
+  {
+    "id": "rudys-r1-market-anchor-over-stray-trip-snippet",
+    "why": "R1 (08-20 sweep, rule v2): snippets are SAMPLES — Rudys has 1,315 Austin mentions and a full in-market brand cluster; one trip snippet about a Ft Worth visit must not veto the Austin brand. v1 rejected this exact shape ('source specifies out-of-market context').",
+    "chooserInput": {
+      "query": "Rudys",
+      "sourceText": "Man, I just ate at a Rudy's near in Burleson/Ft Worth after not having it for 8 years since leaving Austin. It was absolute trash. Nothing like 183. I loved that place.\n---\nRudy's brisket and egg is a real under the radar awesome taco, mix the red and green sauces and you have one hell of a taco for $3\n---\nOrder one from Greenberg. Or, most BBQ places will be selling whole smoked turkeys. My dad got one from Rudy's before and it was fine.",
+      "mentionCount": 1315,
+      "sourceLocale": {
+        "city": "Austin",
+        "region": "TX"
+      },
+      "candidates": [
+        {
+          "candidateId": "cand-lamar",
+          "name": "Rudy's \"Country Store\" and Bar-B-Q",
+          "address": "3914 N Lamar Blvd, Austin, TX 78756, USA",
+          "types": ["barbecue_restaurant", "restaurant"],
+          "sourceLabels": ["autocomplete", "search_text"],
+          "autocompleteRank": 2,
+          "searchTextRank": 1
+        },
+        {
+          "candidateId": "cand-capital",
+          "name": "Rudy's \"Country Store\" and Bar-B-Q",
+          "address": "2451 S Capital of Texas Hwy, Austin, TX 78746, USA",
+          "types": ["barbecue_restaurant", "restaurant"],
+          "sourceLabels": ["autocomplete", "search_text"],
+          "autocompleteRank": 4,
+          "searchTextRank": 2
+        },
+        {
+          "candidateId": "cand-research",
+          "name": "Rudy's \"Country Store\" and Bar-B-Q",
+          "address": "11570 Research Blvd, Austin, TX 78759, USA",
+          "types": ["barbecue_restaurant", "restaurant"],
+          "sourceLabels": ["search_text"],
+          "searchTextRank": 3
+        },
+        {
+          "candidateId": "cand-roundrock",
+          "name": "Rudy's \"Country Store\" and Bar-B-Q",
+          "address": "2400 N Interstate Hwy 35, Round Rock, TX 78681, USA",
+          "types": ["barbecue_restaurant", "restaurant"],
+          "sourceLabels": ["search_text"],
+          "searchTextRank": 4
+        },
+        {
+          "candidateId": "cand-selma",
+          "name": "Rudy's Country Store and BBQ",
+          "address": "15560 Interstate 35 North Selma, Schertz, TX 78154, USA",
+          "types": ["barbecue_restaurant", "convenience_store", "restaurant"],
+          "sourceLabels": ["autocomplete"],
+          "autocompleteRank": 1
+        },
+        {
+          "candidateId": "cand-ironworks",
+          "name": "Iron Works Barbecue",
+          "address": "100 Red River St, Austin, TX 78701, USA",
+          "types": ["barbecue_restaurant", "restaurant"],
+          "sourceLabels": ["autocomplete"],
+          "autocompleteRank": 3
+        }
+      ]
+    },
+    "expect": {
+      "decision": "select"
+    }
+  },
+  {
+    "id": "easy-tiger-r1-named-branch-absent-brand-present",
+    "why": "R1 (rule v2 brand clusters): the snippet names the closed E 6th branch; the Austin brand cluster (South Lamar, The Linc) is present. Grounding is business-level — select an in-market branch instead of rejecting for a branch Google no longer lists. v1 rejected: 'source specifies 6th Street, all Austin candidates are other branches'.",
+    "chooserInput": {
+      "query": "Easy Tiger",
+      "sourceText": "Easy Tiger used to have a great one but that was at their E 6th location and I'm not sure if they offer it anywhere else. It was damn good.\n---\nThe old Easy Tiger on 6th! We went just a few times bc we're way up north, but my god their homemade veg sausage and pretzel buns were amazing.",
+      "mentionCount": 431,
+      "sourceLocale": {
+        "city": "Austin",
+        "region": "TX"
+      },
+      "candidates": [
+        {
+          "candidateId": "cand-stpete",
+          "name": "Easy Tiger Hi-Fi Lounge",
+          "address": "1st Avenue North, St. Petersburg, FL, USA",
+          "types": ["bar"],
+          "sourceLabels": ["autocomplete"],
+          "autocompleteRank": 1
+        },
+        {
+          "candidateId": "cand-asheville",
+          "name": "Easy Tiger",
+          "address": "South Lexington Avenue, Asheville, NC, USA",
+          "types": ["hamburger_restaurant", "bar", "restaurant"],
+          "sourceLabels": ["autocomplete"],
+          "autocompleteRank": 2
+        },
+        {
+          "candidateId": "cand-southlamar",
+          "name": "Easy Tiger South Lamar",
+          "address": "3508 S Lamar Blvd #300, Austin, TX 78704, USA",
+          "types": ["bakery", "beer_garden", "restaurant", "bar", "food_store"],
+          "sourceLabels": ["autocomplete", "search_text"],
+          "autocompleteRank": 3,
+          "searchTextRank": 2
+        },
+        {
+          "candidateId": "cand-lovespark",
+          "name": "Easy Tiger",
+          "address": "East Riverside Boulevard, Loves Park, IL, USA",
+          "types": ["restaurant", "night_club"],
+          "sourceLabels": ["autocomplete"],
+          "autocompleteRank": 4
+        },
+        {
+          "candidateId": "cand-linc",
+          "name": "Easy Tiger - The Linc",
+          "address": "6406 N Interstate 35 Frontage Rd #1100, Austin, TX 78752, USA",
+          "types": [
+            "bakery",
+            "beer_garden",
+            "coffee_shop",
+            "restaurant",
+            "bar"
+          ],
+          "sourceLabels": ["autocomplete", "search_text"],
+          "autocompleteRank": 5,
+          "searchTextRank": 1
+        }
+      ]
+    },
+    "expect": {
+      "decision": "select"
+    }
+  },
+  {
+    "id": "chiefs-bbq-r1-identity-absent-in-market",
+    "why": "R1 counter-pin (must-DECLINE stays declined under v2): the community praises Chief's in the Austin market, but NO candidate is that business — the only name match is in Panama City, the Austin candidates are other restaurants entirely. Identity gate fails every candidate; market anchoring never licenses selecting a different business.",
+    "chooserInput": {
+      "query": "Chiefs Bbq",
+      "sourceText": "I don't think that word means what you think it means. Because I'm no snob. I'll eat rudy's, stiles switch, and chief's plenty. I'm just aware of their objective quality compared to top tier bbq.",
+      "mentionCount": 598,
+      "sourceLocale": {
+        "city": "Austin",
+        "region": "TX"
+      },
+      "candidates": [
+        {
+          "candidateId": "cand-panama",
+          "name": "THE CHIEF SMOKED BBQ (Delivery o Pick up only)",
+          "address": "Calle 55 Este, Panama City, Panama",
+          "types": ["restaurant"],
+          "sourceLabels": ["autocomplete"],
+          "autocompleteRank": 1
+        },
+        {
+          "candidateId": "cand-lamberts",
+          "name": "Lamberts",
+          "address": "401 W 2nd St, Austin, TX 78701, USA",
+          "types": ["barbecue_restaurant", "restaurant"],
+          "sourceLabels": ["autocomplete", "search_text"],
+          "autocompleteRank": 2,
+          "searchTextRank": 4
+        },
+        {
+          "candidateId": "cand-hoho",
+          "name": "Ho Ho Chinese B.B.Q.",
+          "address": "13000 N Interstate Hwy 35, Austin, TX 78753, USA",
+          "types": ["chinese_restaurant", "restaurant"],
+          "sourceLabels": ["autocomplete", "search_text"],
+          "autocompleteRank": 3,
+          "searchTextRank": 5
+        },
+        {
+          "candidateId": "cand-thunderchief",
+          "name": "Thunder Chief",
+          "address": "3121 S Lamar Blvd, Austin, TX 78704, USA",
+          "types": ["restaurant", "gastropub", "bar"],
+          "sourceLabels": ["autocomplete", "search_text"],
+          "autocompleteRank": 4,
+          "searchTextRank": 1
+        },
+        {
+          "candidateId": "cand-shiners",
+          "name": "Shiner's Saloon",
+          "address": "422 Congress Ave D, Austin, TX 78701, USA",
+          "types": ["bar", "american_restaurant", "restaurant"],
+          "sourceLabels": ["search_text"],
+          "searchTextRank": 2
+        }
+      ]
+    },
+    "expect": {
+      "decision": "reject"
+    }
+  },
+  {
+    "id": "generic-name-unknown-market-r1",
+    "why": "R1 counter-pin (must-DECLINE stays declined under v2): a generic query with no source text and no market gives the identity gate nothing to work with — mention-count weighting never licenses picking an arbitrary branch of an unanchored generic name (the 08-20 sweep's correct decline class: 'Library', 'Coffee Shop').",
+    "chooserInput": {
+      "query": "Coffee Shop",
+      "sourceText": null,
+      "mentionCount": 3,
+      "sourceLocale": {},
+      "candidates": [
+        {
+          "candidateId": "cand-la",
+          "name": "The Coffee Shop",
+          "address": "8511 Santa Monica Blvd, West Hollywood, CA, USA",
+          "types": ["coffee_shop", "cafe"],
+          "sourceLabels": ["autocomplete"],
+          "autocompleteRank": 1
+        },
+        {
+          "candidateId": "cand-nyc",
+          "name": "Coffee Shop",
+          "address": "154 Ludlow St, New York, NY, USA",
+          "types": ["coffee_shop", "cafe"],
+          "sourceLabels": ["autocomplete"],
+          "autocompleteRank": 2
+        },
+        {
+          "candidateId": "cand-atx",
+          "name": "Houndstooth Coffee",
+          "address": "401 Congress Ave, Austin, TX, USA",
+          "types": ["coffee_shop", "cafe"],
+          "sourceLabels": ["autocomplete"],
+          "autocompleteRank": 3
+        }
+      ]
+    },
+    "expect": {
+      "decision": "reject"
+    }
   }
 ]

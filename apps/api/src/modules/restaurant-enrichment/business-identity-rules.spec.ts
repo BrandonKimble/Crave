@@ -239,11 +239,22 @@ describe('evidence hierarchy (sameBusinessVerdict)', () => {
     expect(sameBusinessVerdict(side({}), side({}))).toBe(true);
   });
 
-  it('null dominant communities never satisfy the community rule', () => {
+  it('rule 3 (R2 widening): a side with NO community evidence cannot conflict — it merges into its evidenced fold twin', () => {
+    // campaign red-team v3 R2: Vincents (shell, zero active mentions) beside
+    // grounded Vincent's held forever under the old both-empty-only arm.
     expect(
       sameBusinessVerdict(
-        side({ communities: ['austinfood'] }),
+        side({ communities: ['austinfood'], dominantCommunity: 'austinfood' }),
         side({ communities: [] }),
+      ),
+    ).toBe(true);
+  });
+
+  it('two sides that BOTH carry community evidence still need the same dominant metro', () => {
+    expect(
+      sameBusinessVerdict(
+        side({ communities: ['austinfood'], dominantCommunity: 'austinfood' }),
+        side({ communities: ['foodnyc'], dominantCommunity: 'foodnyc' }),
       ),
     ).toBe(false);
   });

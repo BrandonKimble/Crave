@@ -1,5 +1,6 @@
 /**
- * @script-class: repair (one-shot, staging-sanctioned)
+ * @script-class: operational
+ * @run-by: the merge-batch repair (2026-08-30, spent one-shot — see plans/merge-batch-audit.md) (one-shot, staging-sanctioned)
  *
  * UN-MERGE of the 2026-08-30 entity_dedupe sweep's 47 wrong EXECUTED merges
  * (plans/merge-batch-audit.md, "The 48 WRONG merges"), plus the 1 wrong

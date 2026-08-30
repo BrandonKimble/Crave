@@ -15,8 +15,7 @@ import { AttributeOntologyQueueService } from '../attribute-ontology/attribute-o
 import { mintCuisineFacetRow } from '../content-processing/entity-resolver/cuisine-attribute';
 import { derivePlaceAttributes } from '../content-processing/reddit-collector/place-attribute-projection';
 import { createHash } from 'crypto';
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import { VENUE_CUISINE_RULE } from './venue-cuisine-rule';
 
 /**
  * INPUT-FINGERPRINT (S4): the hash that keys one completed venue-facts
@@ -27,15 +26,11 @@ import { join } from 'path';
  * once-ever `extractedAt` gate (F369): the machinery F369's comment said
  * nobody had committed to now has a reader — this comparison.
  */
-const CUISINE_PROMPT_FINGERPRINT = createHash('sha256')
-  .update(
-    readFileSync(
-      join(__dirname, '../external-integrations/llm/prompts/cuisine-prompt.md'),
-      'utf8',
-    ),
-  )
-  .digest('hex')
-  .slice(0, 12);
+// R3 (campaign red-team v3): the prompt text now lives behind the release
+// ledger — an unversioned edit fails loudly at load instead of silently
+// re-ruling every venue. The input fingerprint below keys on the SAME
+// resolved fingerprint, so recompute-on-prompt-change behavior is unchanged.
+const CUISINE_PROMPT_FINGERPRINT = VENUE_CUISINE_RULE.fingerprint;
 
 // Every value here means "we HAD evidence and extracted from it": place
 // types matched ('types'), the LLM was asked and returned cuisines ('llm'),
@@ -67,6 +62,8 @@ type CuisineExtractionMetadata = {
   matchedTypes?: string[];
   /** Hash of (name, summary, types, prompt) this computation answered. */
   inputFingerprint?: string;
+  /** Which ledgered rule version decided it (venue-cuisine-rule.ts, R3). */
+  ruleVersion?: number;
 };
 
 const CUISINE_STRIP_TOKENS = new Set([
@@ -254,6 +251,7 @@ export class PlaceCuisineExtractionService {
       editorialAttributeIds: editorial.ids,
       matchedTypes: typeMapping.matchedTypes,
       inputFingerprint,
+      ruleVersion: VENUE_CUISINE_RULE.version,
     };
 
     const updatedMetadata = this.applyCuisineMetadata(

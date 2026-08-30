@@ -84,7 +84,7 @@ export function buildResidueRuns(
 
 import { DietaryConstraintRegistry } from './dietary-constraints';
 import { FacetRegistry } from './facet.registry';
-import { UnsegmentedResidueService } from './unsegmented-residue.service';
+import { UnknownSearchIntakeService } from './unknown-search-intake.service';
 import type {
   EntitySpanGroup,
   SpanEntity,
@@ -188,7 +188,7 @@ export class SearchQueryInterpretationService {
     private readonly engineCoverage: EngineCoverageService,
     private readonly dietaryConstraints: DietaryConstraintRegistry,
     private readonly facets: FacetRegistry,
-    private readonly unsegmentedResidue: UnsegmentedResidueService,
+    private readonly unknownSearchIntake: UnknownSearchIntakeService,
     private readonly signals: SignalsService,
     private readonly surfaceLocaleIndex: SurfaceLocaleIndexService,
     private readonly judgedVocabulary: JudgedVocabularyService,
@@ -762,7 +762,6 @@ export class SearchQueryInterpretationService {
             await this.engineCoverage.resolveViewportCoverage(request.bounds)
           ).engines.map((engine) => engine.engineId)
         : [];
-      const now = new Date();
       for (const rawResidueText of cappedResidues) {
         // THE WRITE DOOR, AT LAST (A5, 2026-08-15). These two writes are the
         // LARGEST demand ingress in the app — every unknown span of every
@@ -782,30 +781,14 @@ export class SearchQueryInterpretationService {
         );
         if (!judged.recordable) continue;
         const residueText = judged.text;
-        const tokenCount = residueText.split(/\s+/).filter(Boolean).length;
-        if (tokenCount <= 2) {
-          // Direct untyped ask — geo is the signal's spine (R4-①).
-          this.signals.record({
-            kind: 'on_demand_ask',
-            userId: request.userId ?? null,
-            subject: { entityId: null, term: residueText },
-            geo: this.signals.bboxFromBounds(request.bounds ?? null),
-            occurredAt: now,
-            // THE FUSED LOCALE, not the request header. subject_text keys
-            // demand on RAW UNTAGGED text (A10), so this column is the only
-            // thing that will ever tell collection which language's word it
-            // is holding.
-            detectedLocale: analysis.detectedLocale?.tag ?? null,
-            meta: {
-              askSearchRequestId:
-                structuredRequest.searchRequestId ?? undefined,
-              reason: 'unresolved',
-              source: 'gazetteer_residue',
-            },
-          });
-          continue;
-        }
-        await this.unsegmentedResidue
+        // ONE INTAKE (owner-ordered merge, 2026-08-30): EVERY recordable
+        // residue — one word or many — stages for the async intake, which
+        // segments multi-word text, alias-matches each piece against the
+        // vocabulary we already hold, and only then records demand (typed
+        // for split pieces; the untyped on_demand_ask this branch used to
+        // write directly now comes from the intake, same signal shape, ≤10
+        // minutes later). The hot path stays LLM-free and pays one INSERT.
+        await this.unknownSearchIntake
           .recordResidue({
             residueText,
             searchRequestId: structuredRequest.searchRequestId,

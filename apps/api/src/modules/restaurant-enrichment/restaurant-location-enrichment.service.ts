@@ -1,5 +1,9 @@
 import { countEnrichmentFailure } from './enrichment-failure-counter';
 import {
+  GroundingSweepHaltError,
+  GroundingSweepTripwire,
+} from './grounding-sweep-tripwire';
+import {
   classifyEnrichmentError,
   classifyNoMatchReason,
   type EnrichmentFailureVerdict,
@@ -191,6 +195,9 @@ type PlaceEntityWithLocations = Prisma.EntityGetPayload<{
 interface EnrichmentSearchContext {
   query: string | null;
   sourceText?: string;
+  /** Active-mention volume for this place — chooser rule v2 context (how
+   *  much weight one snippet can carry). */
+  mentionCount?: number;
   city?: string;
   region?: string;
   countryCode?: string;
@@ -396,9 +403,28 @@ export class PlaceLocationEnrichmentService {
       results: [],
     };
 
+    // R1's alarm (campaign red-team v3): a batch whose decline rate crosses
+    // the bound after a meaningful window HALTS instead of spending
+    // definitive strikes on every remaining entity — the 08-20 sweep wrote
+    // 716 strikes at a 100% decline rate and nothing read the rate.
+    const tripwire = new GroundingSweepTripwire();
     for (const entity of places) {
       const result = await this.enrichPlace(entity, options);
       summary.results.push(result);
+      try {
+        tripwire.record(result.status);
+      } catch (error) {
+        if (error instanceof GroundingSweepHaltError) {
+          this.opsAlerts.emit({
+            severity: 'critical',
+            kind: 'grounding_sweep_halted',
+            title: 'Grounding sweep halted: decline rate over the bound',
+            body: error.message,
+            dedupeKey: 'grounding_sweep_halted',
+          });
+        }
+        throw error;
+      }
 
       if (result.status === 'updated') {
         summary.updated += 1;
@@ -914,14 +940,15 @@ export class PlaceLocationEnrichmentService {
     // lane feeds the judge, not just the recovery script that learned the
     // lesson (2026-08-08: the sweep passed snippets and live enqueues did
     // not, so day-to-day grounding still judged blind).
+    const derived = await this.deriveSourceSnippets(entity.entityId);
     const contextOptions = options.sourceText
       ? options
       : {
           ...options,
-          sourceText:
-            (await this.deriveSourceSnippet(entity.entityId)) ?? undefined,
+          sourceText: derived.sourceText ?? undefined,
         };
     const searchContext = this.buildSearchContext(entity, contextOptions);
+    searchContext.mentionCount = derived.mentionCount;
     if (!searchContext.query) {
       await this.recordEnrichmentFailure(
         entity,
@@ -2345,20 +2372,46 @@ export class PlaceLocationEnrichmentService {
     return identityDomain(this.normalizeWebsiteDomain(value));
   }
 
-  /** The highest-upvote mention body for this restaurant — the community's
-   *  own words, fed to the place chooser as source text when the caller has
-   *  none. Returns null for entities with no usable mention (new entities in
-   *  the live lane usually DO have one: their minting mention just wrote). */
-  private async deriveSourceSnippet(entityId: string): Promise<string | null> {
-    const rows = await this.prisma.$queryRaw<Array<{ snippet: string }>>`
-      SELECT left(regexp_replace(coalesce(d.body, ''), E'[\n\r]+', ' ', 'g'), 400) AS snippet
-        FROM core_restaurant_entity_events e
-        JOIN collection_source_documents d ON d.document_id = e.source_document_id
-       WHERE e.restaurant_id = ${entityId}::uuid
-         AND length(coalesce(d.body, '')) > 20
-       ORDER BY e.source_upvotes DESC, length(d.body) DESC
-       LIMIT 1`;
-    return rows[0]?.snippet ?? null;
+  /** The top-upvote mention bodies for this restaurant — the community's own
+   *  words, fed to the place chooser as source text when the caller has none.
+   *  RULE v2 (R1, the 08-20 716-decline sweep): ONE snippet is a sample, not
+   *  a census — a single stray thread (a trip story, a same-named venue in
+   *  another city) used to be the judge's entire textual world and vetoed
+   *  1,315-mention Austin places. So the chooser now sees up to three
+   *  DISTINCT top snippets plus the mention count, and its rule reads them
+   *  as samples. Returns null snippet for entities with no usable mention
+   *  (new entities in the live lane usually DO have one: their minting
+   *  mention just wrote). */
+  private async deriveSourceSnippets(
+    entityId: string,
+  ): Promise<{ sourceText: string | null; mentionCount: number }> {
+    const rows = await this.prisma.$queryRaw<
+      Array<{ snippet: string; mention_count: number }>
+    >`
+      WITH mentions AS (
+        SELECT d.body, max(e.source_upvotes) AS upvotes, count(*) OVER () AS total
+          FROM core_restaurant_entity_events e
+          JOIN collection_source_documents d ON d.document_id = e.source_document_id
+         WHERE e.restaurant_id = ${entityId}::uuid
+         GROUP BY d.body
+      )
+      SELECT left(regexp_replace(coalesce(body, ''), E'[\n\r]+', ' ', 'g'), 400) AS snippet,
+             (SELECT count(*)::int FROM core_restaurant_entity_events e2
+               WHERE e2.restaurant_id = ${entityId}::uuid) AS mention_count
+        FROM mentions
+       WHERE length(coalesce(body, '')) > 20
+       ORDER BY upvotes DESC, length(body) DESC
+       LIMIT 3`;
+    if (!rows.length) {
+      const counted = await this.prisma.$queryRaw<Array<{ n: number }>>`
+        SELECT count(*)::int AS n FROM core_restaurant_entity_events
+         WHERE restaurant_id = ${entityId}::uuid`;
+      return { sourceText: null, mentionCount: counted[0]?.n ?? 0 };
+    }
+    return {
+      sourceText: rows.map((row) => row.snippet).join('\n---\n'),
+      mentionCount: rows[0]?.mention_count ?? 0,
+    };
   }
 
   private buildSearchContext(
@@ -3042,6 +3095,7 @@ export class PlaceLocationEnrichmentService {
       const decision = await this.llmService.choosePlaceCandidate({
         query: params.entity.name,
         sourceText: params.context?.sourceText,
+        mentionCount: params.context?.mentionCount ?? null,
         sourceLocale: {
           city: params.context?.city,
           region: params.context?.region,

@@ -37,10 +37,6 @@ const ALLOWED: Record<string, { class: Classification; why: string }> = {
     class: 'declaration',
     why: 'One COMMENT (line ~139) noting the ledger lowercases subjectText at write — prose about a fact proven elsewhere, no query, no read. Pulled in because file DISCOVERY is a raw grep (by design: prose touchers must be classified, and this classification is that review).',
   },
-  'src/modules/search/search-query-interpretation.service.ts': {
-    class: 'declaration',
-    why: "One COMMENT (line ~619) explaining why the on_demand_ask signal carries the FUSED detected locale rather than the request header: subject_text keys demand on raw untagged text (A10), so detected_locale is the only record of which language's word is being held. The file EMITS a signal (it writes subject via signals.record) and never reads subject_text — the write path's own classification lives on signals.service.ts (internal-pipeline). Prose about that fact, no query, no read.",
-  },
   'scripts/scanner-source.spec.ts': {
     class: 'declaration',
     why: 'Names the column inside a fixture STRING that proves the comment-stripper keeps SQL in a template literal — precisely so this guard is not blinded by the strip. No query, no read.',

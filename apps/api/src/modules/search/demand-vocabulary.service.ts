@@ -85,6 +85,45 @@ const MIN_ASKS = 1;
 /** Candidates retrieved per unknown term. */
 const CANDIDATE_POOL = 8;
 
+/**
+ * One term's fate against the vocabulary we already hold (the ONE-INTAKE
+ * merge, owner-ordered 2026-08-30). This is the Learner's whole move —
+ * fold-known check, dense retrieval, the Same-Thing Judge with alias
+ * evidence, collision-guarded locale-tagged banking — extracted so the
+ * unknown-search intake can apply it PER PIECE at arrival time instead of
+ * every unknown word waiting for the nightly ledger sweep (and for the
+ * k-anonymity floor that sweep must respect). One implementation, one
+ * ledger discipline; the sweep now runs on the same matcher.
+ */
+export type VocabularyMatchOutcome =
+  /** Its fold already lives in the term's own locale chain — nothing to do. */
+  | 'known'
+  /** The judge matched and the alias was banked (or would be, on dryRun). */
+  | 'learned'
+  /** The judge matched but the collision guard refused the write. */
+  | 'refused'
+  /** No candidates, no match, or a failed judge — this is real demand. */
+  | 'left_as_demand';
+
+export interface VocabularyMatchResult {
+  outcome: VocabularyMatchOutcome;
+  /** Whether an identity-judge call was actually spent. */
+  judged: boolean;
+  /** The matched entity's canonical name, when there was one. */
+  entityName?: string;
+}
+
+export interface VocabularyMatcher {
+  /** The FREE half of the match: is this fold already vocabulary in the
+   *  term's own locale chain? No LLM, no retrieval — callers that cannot
+   *  spend a judge call (flag off, budget exhausted) still get this. */
+  isKnown(term: string, termLocale: string | null): Promise<boolean>;
+  match(
+    term: string,
+    termLocale: string | null,
+  ): Promise<VocabularyMatchResult>;
+}
+
 export interface DemandVocabularySummary {
   termsConsidered: number;
   judged: number;
@@ -199,6 +238,58 @@ export class DemandVocabularyService {
       limit,
     );
 
+    const matcher = await this.createMatcher({ dryRun });
+
+    for (const row of terms) {
+      const term = row.term.trim();
+      // The locale the ASKER's words were in — never a run-wide flag. A
+      // sweep cannot declare what language other people typed in.
+      const termLocale = row.detected_locale?.trim() || null;
+      const result = await matcher.match(term, termLocale);
+      if (result.outcome === 'known') {
+        continue;
+      }
+      summary.termsConsidered += 1;
+      if (result.judged) {
+        summary.judged += 1;
+      }
+      switch (result.outcome) {
+        case 'learned':
+          summary.learned += 1;
+          this.logger.info('Demand term learned as vocabulary', {
+            term,
+            locale: bankableLocale(termLocale) ?? 'und',
+            entity: result.entityName,
+            asks: Number(row.asks),
+            dryRun,
+          });
+          break;
+        case 'refused':
+          summary.refused += 1;
+          break;
+        default:
+          summary.leftAsDemand += 1;
+          break;
+      }
+    }
+
+    this.logger.info('Demand vocabulary sweep complete', {
+      ...summary,
+      dryRun,
+    });
+    return summary;
+  }
+
+  /**
+   * Build a matcher over TODAY's known vocabulary. The known-set is loaded
+   * once per matcher (it is the whole active recall surface, folded), so a
+   * caller processing many terms — the sweep, or one intake drain pass —
+   * pays the load exactly once.
+   */
+  async createMatcher(
+    options: { dryRun?: boolean } = {},
+  ): Promise<VocabularyMatcher> {
+    const dryRun = options.dryRun ?? false;
     // Known surfaces, folded by the SAME function that wrote form_folded,
     // and KEYED BY LOCALE.
     //
@@ -232,16 +323,15 @@ export class DemandVocabularyService {
         knownByLocale.get(tag)?.has(fold),
       );
 
-    for (const row of terms) {
-      const term = row.term.trim();
-      // The locale the ASKER's words were in — never a run-wide flag. A
-      // sweep cannot declare what language other people typed in.
-      const termLocale = row.detected_locale?.trim() || null;
+    const match = async (
+      rawTerm: string,
+      termLocale: string | null,
+    ): Promise<VocabularyMatchResult> => {
+      const term = rawTerm.trim();
       // THE FOLD LAW: compare folded-to-folded, never lower()-to-folded.
-      if (isKnownIn(termLocale, canonicalFold(term))) {
-        continue;
+      if (!term || isKnownIn(termLocale, canonicalFold(term))) {
+        return { outcome: 'known', judged: false };
       }
-      summary.termsConsidered += 1;
 
       const candidates = await this.entityTextSearch.retrieveCandidates(
         term,
@@ -268,11 +358,9 @@ export class DemandVocabularyService {
       );
       if (!candidates.length) {
         // Nothing to be the same AS. This is real demand — leave it.
-        summary.leftAsDemand += 1;
-        continue;
+        return { outcome: 'left_as_demand', judged: false };
       }
 
-      summary.judged += 1;
       // The SAME alias evidence the resolver's batch judge carries: each
       // candidate's recall surfaces in the ASK's locale chain (red team
       // 2026-08-12 — `aliases: []` here meant a Spanish term was judged
@@ -311,8 +399,7 @@ export class DemandVocabularyService {
             message: error instanceof Error ? error.message : String(error),
           },
         });
-        summary.leftAsDemand += 1;
-        continue;
+        return { outcome: 'left_as_demand', judged: true };
       }
 
       const matched =
@@ -320,8 +407,7 @@ export class DemandVocabularyService {
           ? candidates[verdict.candidateId]
           : null;
       if (!matched) {
-        summary.leftAsDemand += 1;
-        continue;
+        return { outcome: 'left_as_demand', judged: true };
       }
 
       if (!dryRun) {
@@ -360,25 +446,17 @@ export class DemandVocabularyService {
           ),
         );
         if (result.blocked.length) {
-          summary.refused += 1;
-          continue;
+          return { outcome: 'refused', judged: true, entityName: matched.name };
         }
       }
-      summary.learned += 1;
-      this.logger.info('Demand term learned as vocabulary', {
-        term,
-        locale: bankableLocale(termLocale) ?? 'und',
-        entity: matched.name,
-        asks: Number(row.asks),
-        dryRun,
-      });
-    }
+      return { outcome: 'learned', judged: true, entityName: matched.name };
+    };
 
-    this.logger.info('Demand vocabulary sweep complete', {
-      ...summary,
-      dryRun,
-    });
-    return summary;
+    return {
+      match,
+      isKnown: (term, termLocale) =>
+        Promise.resolve(isKnownIn(termLocale, canonicalFold(term.trim()))),
+    };
   }
 }
 

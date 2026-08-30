@@ -27,6 +27,7 @@ import { stopCronsForScript } from '../src/shared/utils/stop-crons';
  */
 async function main(): Promise<void> {
   const apply = process.argv.includes('--apply');
+  const foldOnly = process.argv.includes('--fold-only');
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
@@ -36,7 +37,7 @@ async function main(): Promise<void> {
   try {
     const result = await app
       .get(PlaceEntityMergeService)
-      .sweepSameNameDuplicates({ apply });
+      .sweepSameNameDuplicates({ apply, foldOnly });
     for (const d of result.decisions) {
       out(
         `${d.verdict.toUpperCase().padEnd(5)} ${d.name}` +

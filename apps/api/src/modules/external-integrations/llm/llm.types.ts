@@ -439,6 +439,10 @@ export interface LLMPlaceChooserCandidate {
 export interface LLMPlaceChooserInput {
   query: string;
   sourceText?: string | null;
+  /** How many community mentions this place has on record in the source
+   *  market — tells the judge how much weight one snippet can carry
+   *  (rule v2: snippets are samples, not a census). */
+  mentionCount?: number | null;
   sourceLocale?: {
     city?: string | null;
     region?: string | null;

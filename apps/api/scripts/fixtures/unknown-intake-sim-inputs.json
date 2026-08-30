@@ -1,0 +1,70 @@
+{
+  "_source": "Real recorded unknown-search inputs, SELECT-only, 2026-08-30: 'staging_demand' rows from staging collection_on_demand_requests (tokaido, the low_result ask ledger — what the old shape sent to collection); 'local_residue' rows from the local collection_on_demand_unsegmented_residue staging zone (real recorded residues, incl. junk the splitter discarded).",
+  "inputs": [
+    { "text": "camarones", "locale": "es", "origin": "staging_demand" },
+    { "text": "gambas", "locale": "es", "origin": "staging_demand" },
+    { "text": "phở bo", "locale": "vi", "origin": "staging_demand" },
+    { "text": "cơm tấm", "locale": "vi", "origin": "staging_demand" },
+    { "text": "bún bò huế", "locale": "vi", "origin": "staging_demand" },
+    { "text": "牛肉面", "locale": "zh", "origin": "staging_demand" },
+    { "text": "比萨", "locale": "zh", "origin": "staging_demand" },
+    { "text": "素食", "locale": "zh", "origin": "staging_demand" },
+    { "text": "辣", "locale": "zh", "origin": "staging_demand" },
+    { "text": "tortas ahogadas", "locale": null, "origin": "staging_demand" },
+    { "text": "tacos pastor", "locale": null, "origin": "staging_demand" },
+    { "text": "birria", "locale": null, "origin": "staging_demand" },
+    { "text": "burrata", "locale": null, "origin": "staging_demand" },
+    { "text": "omakase", "locale": null, "origin": "staging_demand" },
+    { "text": "matcha latte", "locale": null, "origin": "staging_demand" },
+    { "text": "chicken over rice", "locale": "vi", "origin": "staging_demand" },
+    {
+      "text": "spicy crispy chicken sandwich",
+      "locale": null,
+      "origin": "staging_demand"
+    },
+    { "text": "gluten free pizza", "locale": null, "origin": "staging_demand" },
+    { "text": "breakfast burrito", "locale": "en", "origin": "staging_demand" },
+    { "text": "vegan ramen", "locale": null, "origin": "staging_demand" },
+    { "text": "spicy ramen", "locale": null, "origin": "staging_demand" },
+    { "text": "open late", "locale": "en", "origin": "staging_demand" },
+    { "text": "cheap", "locale": "en", "origin": "staging_demand" },
+    { "text": "coffee shops", "locale": null, "origin": "staging_demand" },
+    { "text": "pastel", "locale": null, "origin": "staging_demand" },
+    { "text": "arroz", "locale": null, "origin": "staging_demand" },
+    { "text": "halal", "locale": null, "origin": "staging_demand" },
+    { "text": "wings", "locale": "en", "origin": "staging_demand" },
+    { "text": "pudding", "locale": null, "origin": "staging_demand" },
+    { "text": "shrimp", "locale": "en", "origin": "staging_demand" },
+    {
+      "text": "restaurante griego con",
+      "locale": "es-US",
+      "origin": "local_residue"
+    },
+    { "text": "a la diabla", "locale": "es-US", "origin": "local_residue" },
+    { "text": "ẩm thực Hy Lap", "locale": "vi-VN", "origin": "local_residue" },
+    {
+      "text": "chỉ nhận tiền mat",
+      "locale": "vi-VN",
+      "origin": "local_residue"
+    },
+    {
+      "text": "near me thats open now",
+      "locale": "en-US",
+      "origin": "local_residue"
+    },
+    {
+      "text": "for the game tonight",
+      "locale": "en-US",
+      "origin": "local_residue"
+    },
+    { "text": "me gusta el", "locale": "es-US", "origin": "local_residue" },
+    { "text": "de la ciudad", "locale": "es-US", "origin": "local_residue" },
+    { "text": "que no sea", "locale": "es-US", "origin": "local_residue" },
+    { "text": "tôi muốn thử", "locale": "vi-VN", "origin": "local_residue" },
+    {
+      "text": "quinlex flurbex zorbat",
+      "locale": "en-US",
+      "origin": "local_residue"
+    }
+  ]
+}
