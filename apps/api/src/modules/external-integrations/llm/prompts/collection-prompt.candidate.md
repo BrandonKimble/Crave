@@ -263,7 +263,7 @@ The writer vouches from experience, or reports a clear consensus:
   the nearest source that actually NAMES the subject, however many
   levels up — an intermediate reply that itself emitted nothing, like a
   hearsay comment, is not the referent and blocks nothing.) And when the referent's
-  food fails Step C (a wrapper like "lunch buffet", or no dish at all), the
+  food fails Step C (a deal frame, an occasion like "lunch buffet", or no dish at all), the
   adopted claim is a restaurant-only carrier (`general_praise: true`) — a
   failed dish never cancels the adopted endorsement into silence.
 
@@ -359,8 +359,7 @@ The writer vouches from experience, or reports a clear consensus:
   decides FOOD testimony only; a deal or price faces its value cousin —
   _would this be false if it were a BAD deal?_ Praising a deal ("$10 Steak Frites at Justine's — best deal in
   Austin!") is value testimony: it praises the DEAL, so the place earns
-  `affordable` (C.1's value arm may add the praise carrier and `good
-  value`) — and NO dish: the food inside a deal is priced, not vouched;
+  `affordable` (Gate 1's value arm may add the praise carrier) — and NO dish: the food inside a deal is priced, not vouched;
   a mediocre steak frites leaves "best deal in Austin" standing, so no
   `steak frites` claim exists, however warm the exclamation. And
   OFFERING a deal as one's answer to a deals/value-seeking ask is the
@@ -790,48 +789,91 @@ it through three gates, in order. The venue's name is never food language: prais
 "Birria-Landia" praises no dish called "birria"; "Ramen Del Barrio" names
 no ramen claim.
 
-**Gate 1 — FOOD OR TERMS.** Every word of a food phrase says one of two
-things: WHAT FOOD ARRIVES, or THE TERMS OF THE PURCHASE — when it is
-sold, what it costs, how many pieces or courses, in what format ("lunch",
-"happy hour", "$25", "3-course", "special", "deal", "combo", "menu",
-"buffet", "prix fixe"). This is how diners themselves hear a phrase.
-**One selecting question routes every case: how many ORDERABLE THINGS
-does the phrase tell you about — none, one, or several?**
+**Gate 1 — THE OFFERING TEST.** **A NAMED OFFERING YOU COULD ORDER is a
+dish. You ORDER an omakase; you ATTEND brunch.** The selecting question:
+**does this phrase NAME the thing the writer ordered — or does it price
+the offering, name the occasion around it, sit inside it as an included
+part, or staple separately-named foods together?** Ask it of the phrase
+as the clause USES it, and route to exactly one arm:
 
-- **ONE — the phrase describes one offering → it is a DISH, emitted AS
-  SPOKEN.** It can tell you what arrives through food words ("steak
-  combo", "seafood lunch special", "salmon omakase"), through a format
-  that itself predicts the food ("omakase", "dim sum" — usually a FAMILY,
-  `is_menu_item: false`, Step E), or through a PROPER NAME that fixes one
-  menu offering ("the Elvis Presley combo" emits `elvis presley combo`,
-  "the Hangover Special" → `hangover special` — two diners ordering it
-  are handed the same thing; the menu supplies what the words don't; the
-  article stays behind). Emit the phrase a diner would say to the server —
-  "steak combo", never a stripped "steak" — with categories from the
-  parts that predict food (C.3: `steak combo` → `steak`; the terms-word
-  itself is never a category and never an attribute).
-- **NONE — the phrase tells you ONLY terms → no dish exists** ("lunch special",
-  "$25 combo", "happy hour deal", "3/4 course menu", a bare "the tasting
-  menu", "game day deal" — nothing about the plate) — **but the mention
-  still EMITS**, restaurant-only with `general_praise: true`: praise of a
-  deal is VALUE testimony, however strong the verb — "their lunch
-  specials are big hits", "my go-to", "great weekday lunch special - 2
-  tacos, rice y beans, iced tea like $10" all emit — and `good value`
-  rides in `place_attributes` where the text supports it. Never mint an
-  item named "lunch special", "combo", or "daily special". Foods DESCRIBED
-  inside the deal are judged by the clause law like any other words: an
-  enumeration that only prices or lists ("2 tacos, rice y beans, iced tea
-  like $10") stays the deal's contents and claims nothing — but a writer
-  who ate SERVED contents and judges them ("got the 2 item combo with
-  brisket and sausage — the sausage was incredible") makes normal dish
-  claims with those foods. B.2's mode still governs: a grocery haul is
-  eaten too, but it was never SERVED — packaged goods stay out however
-  enthusiastically consumed. The venue may also earn the BARE terms-word as
-  a `place_attributes` entry per Step D ("tasting menu" as how the place
-  serves).
-- **SEVERAL — the phrase names separate things the writer combined or
-  consumed → each food is its own claim.** "Combo" (or "pairing", "duo")
-  here isn't a menu phrase at all — it is the writer's own COMMENTARY on
+- **NAMES the offering → a DISH, emitted AS SPOKEN.** Three name shapes,
+  one law. Food words ("steak combo", "seafood lunch special", "salmon
+  omakase", "sake pairing"); a FORMAT that is itself the offering a diner
+  orders by name — "omakase", "tasting menu", "chef's tasting", "prix
+  fixe", "thali", "kaiseki", "executive lunch", "dim sum" (usually a
+  FAMILY, `is_menu_item: false`, Step E); and a PROPER NAME that fixes
+  one menu offering ("the Elvis Presley combo" emits `elvis presley
+  combo`, "the Hangover Special" → `hangover special`; the article stays
+  behind). **The words need not predict the plate**: two diners ordering
+  "the chef's tasting" are handed the same offering — the menu supplies
+  what the words don't, exactly as it does for the Elvis Presley combo.
+  Whether a format also predicts the food matters only to C.3's
+  categories, never to whether the dish exists. Emit the phrase a diner
+  would say to the server — "steak combo", never a stripped "steak" —
+  with categories from the parts that pass prediction (C.3: `steak
+  combo` → `steak`; a format that predicts nothing contributes no
+  category).
+  **A bare format word is often a PRO-FORM.** When "the combo", "the
+  special", "that plate" points at a MORE SPECIFIC offering already
+  named for the SAME restaurant in scope ("I had the Khao Man Gai combo…
+  the combo is the best of both worlds"), it is a pro-form of that
+  offering — resolve it by the depth-aware order and emit the specific
+  name (`khao man gai combo`), one dish, exactly as C.2 resolves "the
+  mushroom based one". With no more specific antecedent, the bare word
+  stands as its own generic dish ("their omakase is incredible" →
+  `omakase`; "I got the combo" alone → `combo`).
+- **PRICES the offering → the VALUE arm, no dish.** When the clause
+  QUOTES THE TERMS of a deal — a price, a schedule, a
+  contents-inventory — the number is the point and the offering was
+  priced, not vouched ("$25 combo", "lunch specials — around $15 and
+  huge portions", "Executive lunches starting at $21", "great weekday
+  lunch special - 2 tacos, rice y beans, iced tea like $10"). The
+  mention still EMITS, restaurant-only with `general_praise: true` where
+  the praise is real, and `affordable` rides in `place_attributes` where
+  the text supports it (A.2's value law: praise wrapped around quoted
+  terms praises the DEAL — and a praised deal is VALUE TESTIMONY, never
+  a silent fact: "great weekday lunch special - 2 tacos, rice y beans,
+  iced tea like $10" emits the place carrier with `affordable`, no
+  dish, and so does HABITUAL choice of a deal — "I get the lunch
+  specials, around $15 and it's 2 meals for me" is the writer's own
+  repeated return (A.1's vouch), landing here only because the deal is
+  what's vouched; only a deal quoted with NO warmth and NO habit is
+  A.2's plain availability fact and stays silent). Foods DESCRIBED inside the deal are judged by
+  the clause law like any other words: an enumeration that only prices
+  or lists ("2 tacos, rice y beans, iced tea like $10") stays the deal's
+  contents and claims nothing — but a writer who ate SERVED contents and
+  judges them ("got the 2 item combo with brisket and sausage — the
+  sausage was incredible") makes normal dish claims with those foods.
+  A COUNT-frame is the same arm: "2 item combo", "3-course menu" name a
+  quantity structure, not an offering — never a dish. B.2's mode still
+  governs: a grocery haul is eaten too, but it was never SERVED —
+  packaged goods stay out however enthusiastically consumed. **The test
+  that separates this arm from the dish arm is A.2's own pair of
+  questions, asked of the verdict word: would it be false if the FOOD
+  were mediocre, or false if the DEAL were bad?** A taste verdict on the
+  offering makes it a dish even with a price sitting nearby ("the
+  tasting menu was extraordinary", "el menú del día sale 12 euros y
+  está buenísimo" — the food is judged; emit the offering); a verdict
+  that rides the deal — "best deal in Austin", "can't beat it for $15",
+  "huge portions for the price", warm words fronting a quoted
+  price-and-contents listing — is value: no dish exists, but the value
+  claim itself ALWAYS emits, as this arm's opening says — the place
+  mention with `affordable` and/or the praise carrier, never silence.
+  When the clause only quotes terms, the number is the point.
+- **NAMES the occasion AROUND the food → never a dish.** "brunch",
+  "happy hour", "lunch", "dinner" name a time you ATTEND, not a thing
+  you order — however warmly praised ("their brunch is the best in
+  town" praises the place at brunch). The occasion lands as a
+  `place_attributes` entry per Step D ("great happy hour", "brunch");
+  the mention is restaurant-only unless a real dish is also named.
+- **SITS INSIDE the offering → part, never a dish.** "Your choice of
+  meat", "you pick two sides", the unlimited salad bar included with the
+  executive lunch are SLOTS of the offering the diner ordered — the
+  offering is the dish; its included parts are never their own claims
+  (never an `item`, never a category) unless the writer ate one and
+  judged it in its own clause (the consumed-contents law above).
+- **STAPLES separately-named foods → each food is its own claim.**
+  "Combo" (or "pairing", "duo") here isn't a menu phrase at all — it is the writer's own COMMENTARY on
   things they combined: "buffalo cauliflower wings and a vanilla
   milkshake — my favorite combo at Alamo", "beer & shot combo", "half a
   Rueben and a cup of French onion soup lunch combo", even two venues
@@ -925,11 +967,13 @@ inherited — Step E.)
      different orders, so the style words STAY in the dish name — a style
      word inside an order-name is never peeled off into an attribute (and
      "thin" alone would fail the STANDALONE TEST anyway).
-   - **"lunch special", "3/4 course menu"** — two diners ordering "the lunch
-     special" here ARE handed the same thing, and the phrase still names no
-     food. The sameness question decides which WORDS of a dish name to keep;
-     it never turns a terms-only phrase into a dish. Gate 1's FOOD-OR-TERMS
-     question governs.
+   - **"chef's tasting", "executive lunch"** — two diners ordering these
+     are handed the same offering; the whole phrase names the order (Gate
+     1's dish arm). The sameness question decides which WORDS of a dish
+     name to keep; it never rescues a phrase Gate 1 routed to the value
+     or occasion arm — a price/count frame ("the $25 combo", "3-course
+     menu") or an occasion ("brunch") never became a dish, and no amount
+     of word-keeping makes one.
    - "grilled burger" — the same order as "burger"; "grilled" is a property and
      will be handled in Step D. "good taco" orders a taco — an evaluative
      word is the writer's verdict, never a dish token and never a property.
@@ -943,13 +987,13 @@ inherited — Step E.)
    ingredient, keep the broader dish instead — a lone ingredient is neither a
    dish nor a category. When the source names NO broader dish ("Love their
    rice"), there is no dish at all: the mention is restaurant-only.
-   - **Appearing on a menu is NOT sufficient.** "Lunch Special", "3-Course
-     Menu", "Happy Hour Deal", "Chef's Tasting" are all printed menu headings
-     and none of them is a dish. Re-run Gate 1's FOOD-OR-TERMS question on
-     the phrase you just composed: a phrase that tells you what arrives
-     stays as spoken ("chicken special", "nigiri special" — the food word
-     carries it); a phrase that is only terms emits no dish ("tuesday
-     special", "lunch deal", "happy hour tasting menu").
+   - **Appearing on a menu is NOT sufficient.** Re-run Gate 1's OFFERING
+     TEST on the phrase you just composed: an offering you could order
+     stays as spoken ("chicken special", "nigiri special", "chef's
+     tasting" — a thing the writer ordered by this name); a price/count
+     frame or an occasion heading emits no dish ("Happy Hour Deal",
+     "3-Course Menu", "game day deal" — the deal or the clock, not the
+     order).
 
 5. **Normalize**: lowercase; use the natural singular ("taco", not "tacos";
    but keep "noodles" where the singular is awkward); minimal punctuation.
@@ -964,10 +1008,10 @@ inherited — Step E.)
    the food). A pro-form is not a name: "the mushroom based one" resolves
    to the dish it points at or emits nothing.
 
-**Never PEEL a phrase down to its bare terms-word**: "get the sake
-pairing" is a dish AS SPOKEN (`sake pairing` — the food word tells you
-what arrives, Gate 1's ONE arm); peeled to bare `pairing` it is
-terms-only and never an order-name. **And a venue's name is never part
+**Never PEEL a phrase down to a bare structure word**: "get the sake
+pairing" is a dish AS SPOKEN (`sake pairing` — the offering the writer
+orders, Gate 1's dish arm); peeled to bare `pairing` it names no
+offering and is never an order-name. **And a venue's name is never part
 of an order-name**: "Don't miss the Suerte tacos" orders tacos AT
 Suerte — `taco`, never `suerte taco` (C.1: the venue's name is never
 food language).
@@ -991,10 +1035,13 @@ something about the food that arrives?**
   (eggs, pancakes, breakfast tacos).
 - **NO → not a category.** "dinner" is any food at all; "lunch", "happy hour"
   constrain when, never what. **A format fails when what arrives is
-  UNCONSTRAINED**: "tasting menu", "prix fixe", "buffet", "combo plate",
-  "lunch special", "3-course menu" tell you how the food is delivered, when,
-  and how much of it, but the food itself could be anything. **A modifier
-  never changes this** — test the head noun, not the string.
+  UNCONSTRAINED**: "tasting menu", "prix fixe", "buffet", "combo",
+  "special" tell you how the food is delivered, when, and how much of
+  it, but the food itself could be anything — such a format can be a
+  perfectly good DISH (Gate 1's dish arm), and still contributes no
+  CATEGORY: a dish named `chef's tasting` or `elvis presley combo`
+  carries an empty or short category list, and that is correct. **A
+  modifier never changes this** — test the head noun, not the string.
 - **A format that DOES constrain the food passes, like any other category.**
   "omakase" predicts sushi, chef-selected, in a known style; "dim sum"
   predicts small Cantonese plates. Diners search for these by name and order
@@ -1017,12 +1064,11 @@ Build the list:
    passes. Preserve head-first constructions: "pho tai" → `["pho tai", "pho"]`,
    never `["tai"]`. Stop before a lone ingredient. A peel landing on a
    when-only word yields nothing, even inside the dish's own name
-   ("ploughman's lunch" is a dish; "lunch" is not a class). Note the
-   direction: "ploughman's lunch" survives because its head is `lunch` used
-   as a named composed dish, and its modifier is not a wrapper. "lunch
-   special" does not survive, because its head is `special`. When in doubt:
-   if removing the time-word leaves only terms-words (Gate 1), there was
-   never a dish.
+   ("ploughman's lunch" is a dish; "lunch" is not a class). A peel
+   landing on a bare structure word ("special", "combo", "menu") yields
+   no category either — the composed dish keeps its full name and simply
+   gains nothing from that part. When in doubt: no entry that fails the
+   PREDICTION TEST enters the list, and an empty list is fine.
 3. **Add 1–3 parent classes** the dish clearly belongs to, even when unstated —
    **dish shapes that each pass the ORDER TEST** (dessert, pastry, coffee, tea,
    sandwich, soup, salad, pizza, taco, burger, noodle, dumpling). A category
@@ -1061,9 +1107,13 @@ restaurants.
 
 ### C.5 Ingredients
 
-`ingredients` records ingredient nouns **THIS SOURCE names for THIS dish** —
-the same kind of claim as everything else: something the writer said, not
-something you know. Two sources only:
+`ingredients` is a TRANSCRIPT, not a description: you are quoting the
+writer, never annotating the dish. **The field asks what the source
+WROTE, and you answer by READING — the moment you find yourself KNOWING
+an ingredient instead of reading it, the answer is `[]`.** What a rib is
+made of, what goes in a fritter, what a mole contains — real knowledge,
+and none of it is this writer's claim: "the ribs were incredible" names
+NO `pork`, ever. Two sources only:
 
 1. Additive clauses: "pasta **with burrata, chanterelles, and pesto**" →
    `["burrata", "chanterelle", "pesto"]` — singularized, never expanded
@@ -1128,16 +1178,32 @@ a fit-asserting pick's ask constraints (this step's opening rule).
 **A real attribute states a property the food or place objectively HAS. Praise
 states HOW GOOD it is.** Only descriptions are attributes — with ONE
 principled conversion: **praise OF A NAMED ASPECT becomes that aspect's
-strength**, exactly as praised price already becomes `good value` — "the
+strength**, exactly as praised price already becomes `affordable` — "the
 atmosphere is killer" → `great atmosphere`, "fabulous decor" → `great
 decor`, "service was flawless" → `great service`: a diner filtering for
-atmosphere wants exactly the places whose atmosphere people praise.
+atmosphere wants exactly the places whose atmosphere people praise. The
+emitted term is always `great` + the aspect's plainest common noun, ONE
+spelling per aspect — the writer's synonym or spelling folds into it
+("ambience", "ambiance", "the vibe" → `great atmosphere`; praised
+price → `affordable`), because each spelling would otherwise become its
+own unsearchable entity. The fold renames only the ASPECT noun inside
+this praise conversion — a DESCRIBING word stays itself: "romantic
+ambiance", stated or fit-asserted from an ask, asserts `romantic`,
+never `great atmosphere`.
 Whole-thing praise with no aspect ("amazing", "delicious", "iconic")
 still converts to nothing — it has no aspect to strengthen, and it is
 already the claim's endorsement.
 
 - `spicy`, `crispy`, `smoky`, `grilled`, `vegan`, `cozy`, `outdoor seating`,
-  `indian`, `comfort food` → describe → attributes.
+  `indian`, `comfort food` → describe → attributes. (`indian` here is a
+  word the source WROTE — a cuisine word reaches Step D only as this
+  source's own describing words. Recognizing the tradition yourself
+  puts NO word on the table: an In-N-Out burger carries no `american`,
+  a taco truck no `mexican` — the word was never written, so there is
+  nothing to route, to EITHER side; the dish's tradition is derived
+  downstream from the name you already emitted. Stamping the venue's
+  identity into `item_attributes` is the recurring failure this
+  parenthesis exists to kill.)
 - `delicious`, `flavorful`, `iconic`, `worth the trip` — and every word
   of their kind, however novel ("elite", "hidden gem", "seasoned
   perfectly") → judge → **NOT attributes. Drop them.** ("flavorful" is
@@ -1190,25 +1256,27 @@ Two consequences follow directly:
 - **Over-specific single-use phrases.** An attribute must be reusable across
   many dishes or places. Strip "63rd floor roof bar" to "rooftop", "basted in
   herby butter" to nothing.
-- **Anything the PREDICTION TEST calls food is never an attribute, on either
-  side.** One split, decided by the same test that governs Step C:
-  - A terms-only phrase (Gate 1: "tasting menu", "buffet", "prix fixe",
-    "lunch special", "3-course menu" — what arrives could be anything) is
-    not food, and it CAN be a restaurant attribute when it characterizes
-    how the venue serves. Normalize it to its BARE form for the attribute:
-    "lunch tasting menu" yields the venue attribute `tasting menu`, never
-    the modified string. (A phrase with a food word — "wagyu tasting
-    menu" — is a DISH per Gate 1 and never lands here.) A meal deal
-    yields `good value` at most, never a food.
-  - A format or dish type that PASSES prediction ("omakase", "dim sum",
-    "pizza", "ramen", "tacos", "hot pot") IS food — it names a THING, not a
-    property. A place doesn't HAVE pizza as a quality, it SERVES pizza, and
-    that claim belongs in `item`/`item_categories` where it ranks and
-    searches as food. A pizza place's venue-side identity is its cuisine
-    ("italian"), never the dish word. ("Austin has a banging pizza scene" →
-    the pizzas are food claims at the named places; NO restaurant gets a
-    `pizza` attribute, and an omakase house earns `japanese`, never
-    `omakase`-as-attribute.)
+- **Anything Gate 1 calls an offering is never an attribute, on either
+  side.** One split, decided by the same law that governs Step C:
+  - An ORDERED offering is food — dish types and formats alike
+    ("omakase", "tasting menu", "chef's tasting", "pizza", "ramen", "hot
+    pot") name a THING, not a property. A place doesn't HAVE pizza as a
+    quality, it SERVES pizza, and the claim belongs in
+    `item`/`item_categories` where it ranks and searches as food. A
+    pizza place's venue-side identity is its cuisine ("italian"), never
+    the dish word. ("Austin has a banging pizza scene" → the pizzas are
+    food claims at the named places; NO restaurant gets a `pizza`
+    attribute.) One narrow allowance: a DELIVERY FORMAT the text uses only
+    to CHARACTERIZE the venue — "they're a tasting menu spot", "it's an
+    omakase counter" — may land as a bare place attribute (`tasting
+    menu`) with no dish. Delivery formats ONLY, never a dish type: "a
+    pizza place", "banging pizza scene" still yield NO `pizza`
+    attribute. A format the writer ORDERED or ATE is Gate 1's dish,
+    never only an attribute.
+  - An occasion ATTENDED ("brunch", "happy hour", "late-night") and a
+    deal are place-side only: the occasion in its bare form ("great
+    happy hour" → `happy hour`), a deal as `affordable` at most, never a
+    food.
 
 ### D.4 Which side does it attach to?
 
@@ -1222,7 +1290,8 @@ Scope follows **what the property describes**, not where the word sits.
   menu changed — setting ("patio", "rooftop"), ambiance ("cozy", "lively"),
   service model ("counter service", "fine dining"), operational ("BYOB",
   "takeout", "reservations required"), group fit ("family-friendly"), price and
-  value ("cheap", "good value", "expensive"), accessibility. **Price talk about
+  value ("cheap", "affordable", "expensive" — "good value" wording folds
+  into the single canonical `affordable`), accessibility. **Price talk about
   a specific dish is still a place-level signal.** A venue TYPE ("bakery",
   "food truck", "sushi bar", "cocktail bar") is a place property ONLY when
   this source's own text calls the place that — never because the ask did,
@@ -1283,7 +1352,10 @@ Scope follows **what the property describes**, not where the word sits.
 - **Prefer the plainest common form** of a property — do not invent a novel
   phrasing when a standard one exists. A cuisine sheds its filler: "great
   German food" → `german`, "solid TX Mex" → `tex-mex` — the tradition
-  word alone, canonical spelling.
+  word alone, canonical spelling. Aspect strengths and value words are
+  ONE canonical entity each: `great atmosphere`, `great service`,
+  `great decor`, `affordable` — never a spelling variant ("great
+  ambience") or an intensity variant ("killer atmosphere").
 - Attach an attribute **only to the mention whose text supports it.** An
   attribute stated for one dish or one restaurant never attaches to another.
 - **Final gate**: before emitting ANY term, re-run D.1 and D.2, then point to
@@ -1347,7 +1419,11 @@ placement by what the praise NAMES:
   ANSWER-TEST pick ALWAYS produces this carrier** — including when the
   pick also inherits a dish from the ask ("best phở?" → "Phở Lệ ở quận 5"
   emits the inherited-phở dish mention AND the place carrier at `true`):
-  the pick endorsed the place; the dish mention alone does not record that.
+  the pick endorsed the place; the dish mention alone does not record
+  that. An affirmation ADOPTING a pick is under the same law: its
+  adopted dish mentions never replace its own carrier — a "+1"/"Facts"
+  under a pick emits the adopted dish(es) AND its own place carrier at
+  `true`, all from the affirming source's id.
 - **Both at once** — a source that praises the place holistically (or IS a
   pick) AND names dishes — emits both: the dish mentions PLUS the place
   carrier at `true`. The pick endorsed the place, not only the dishes it
@@ -1356,7 +1432,7 @@ placement by what the praise NAMES:
 The output shape already enforces the split — a dish mention cannot carry
 the flag. Your one decision is WHERE praise lands, per the three arms
 above. A carrier also holds endorsement whose target failed the dish
-gates: praise of a deal or wrapper (C.1's value-testimony arm) and an
+gates: praise of a deal or price-frame (Gate 1's value arm) and an
 adopted verdict whose referent dish failed Step C both emit as the PLACE
 carrier at `true`. Availability, popularity, and price are never
 endorsement (Step A.2) — and a deal offered as the answer to a value ask

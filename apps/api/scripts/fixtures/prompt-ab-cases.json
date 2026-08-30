@@ -121,7 +121,7 @@
   },
   {
     "id": "D4-menu-format",
-    "why": "A format is not a dish. Real endorsement, wrong slot.",
+    "why": "RE-RULED 2026-08-29 (owner: a NAMED OFFERING YOU COULD ORDER is a dish — you order an omakase, you attend brunch). This pin previously asserted the OLD boundary (tasting menu = terms-only, never a dish). 'It is our newest favorite tasting menu' vouches for the offering itself with no deal terms quoted → dish `tasting menu`, plus the ANSWER-TEST carrier.",
     "posts": [
       {
         "id": "SRC011",
@@ -138,7 +138,7 @@
     ],
     "expect": {
       "places": ["apt 115"],
-      "notFoods": ["tasting menu"],
+      "items": ["tasting menu"],
       "somePraise": true
     }
   },
@@ -698,7 +698,7 @@
   },
   {
     "id": "V8l-lunch-special-value",
-    "why": "Meal-deal testimony is VALUE testimony: 9/9 leaked in v7. Verb strength never mints a food named 'lunch special'.",
+    "why": "Re-ruled 2026-08-29 under the named-offering line: still NO dish, but for the PRICE-FRAME reason — 'Around $15 … 2 meals for me' quotes the deal's terms; set them aside and no verdict on the offering itself remains → Gate 1's value arm (place + praise, no item). (2026-08-29: expectation reshaped to the value arm's invariant — place + `affordable`, no dish; the praise FLAG legitimately varies between the praised-deal and deal-nomination shapes.)",
     "posts": [
       {
         "id": "SRC088",
@@ -711,12 +711,12 @@
     "expect": {
       "places": ["main noodle house"],
       "notFoods": ["lunch special", "lunch specials", "special"],
-      "somePraise": true
+      "attributes": ["affordable"]
     }
   },
   {
     "id": "V8m-itemized-deal",
-    "why": "Hardest deal case: itemized contents are the deal's inventory, not dish claims. Over-correction watch: no taco mention either.",
+    "why": "Re-ruled 2026-08-29: deal narration (price + hours + contents-inventory) is Gate 1's value arm — the number is the point. The itemized contents are the deal's inventory, not dish claims. Named-offering rule does NOT rescue it: the verdict is on the deal, not the offering.",
     "posts": [
       {
         "id": "SRC089",
@@ -796,7 +796,7 @@
   },
   {
     "id": "ML2-es-wrapper-menu-del-dia",
-    "why": "Multilingual ruling R6: the wrapper class in Spanish — 'menú del día' is a deal, not a dish; meal-deal praise is value testimony.",
+    "why": "RE-RULED 2026-08-29 under the named-offering line: 'menú del día' is Spain's daily set menu — a NAMED OFFERING YOU COULD ORDER, the prix-fixe class the owner moved to the dish side. 'está buenísimo' is a taste verdict on the offering itself (not on the deal), so despite the quoted price the dish arm wins → item `menú del día` as spoken. (Old pin asserted the retired wrapper ban; notFoods dropped because 'menú' is a token-subset of the expected item.)",
     "posts": [
       {
         "id": "SRC201",
@@ -808,8 +808,7 @@
     ],
     "expect": {
       "places": ["casa lola"],
-      "notFoods": ["menú del día", "menú", "menu del dia"],
-      "somePraise": true
+      "items": ["menú del día"]
     }
   },
   {
@@ -2751,7 +2750,7 @@
   },
   {
     "id": "N9-hedge-adjacency-fixe",
-    "why": "Hedge adjacency (t1_nt8fn1w): \"consistently pretty good\" for Fixe must emit even though the neighboring clauses hedge Boa (hearsay) and Nido (middling) — a hedge strips exactly its own clause. Re-derived 2026-08-26: 'I liked Fixe well enough' is itself a middling verdict (A.2 net direction) — t1_nt8ahyo emits nothing; the real praise carrier is t1_nt8fn1w ('consistently pretty good').",
+    "why": "Hedge adjacency (t1_nt8fn1w): \"consistently pretty good\" for Fixe must emit even though the neighboring clauses hedge Boa (hearsay) and Nido (middling) — a hedge strips exactly its own clause. Re-derived 2026-08-26: 'I liked Fixe well enough' is itself a middling verdict (A.2 net direction) — t1_nt8ahyo emits nothing; the real praise carrier is t1_nt8fn1w ('consistently pretty good'). Extended 2026-08-29: 'been at least once a year for brunch or HH' — brunch is an occasion ATTENDED, never a dish (named-offering ruling).",
     "contract": "v16",
     "posts": [
       {
@@ -2777,7 +2776,8 @@
           "source": "t1_nt8fn1w",
           "places": ["fixe"],
           "somePraise": true,
-          "notRestaurants": ["boa's", "boa", "nido"]
+          "notRestaurants": ["boa's", "boa", "nido"],
+          "notFoods": ["brunch"]
         }
       ]
     }
@@ -4269,6 +4269,223 @@
           "items": ["cookie"]
         }
       ]
+    }
+  },
+  {
+    "id": "N60-chefs-tasting-is-a-dish",
+    "contract": "v17",
+    "why": "Owner-ruled 2026-08-29: a NAMED OFFERING YOU COULD ORDER is a dish. Real staging doc — 'Do the chef's tasting at Vixen's Wedding' orders the offering by name (no deal terms quoted) → item `chef's tasting`; 'there's a vegetarian option' is a dietary claim (never dropped). Under the OLD boundary this emitted no dish — the double standard (omakase in, tasting menu out) is retired. (2026-08-29 cert note: the pin asserts the DISH only — 'there's a vegetarian option' sits on the availability/dietary boundary and the model legitimately splits on it; the load-bearing ruling is chef's tasting = dish.)",
+    "posts": [
+      {
+        "id": "t3_15lv2g5",
+        "subreddit": "austinfood",
+        "title": "Any good high-end restaurants for vegetarians?",
+        "body": "I just won a $150 date night dinner for 2 from my new job and want to take my girlfriend and myself somewhere nice. We are both vegetarian and open to both pure vegan/vegetarian restaurants or normal restaurants that happen to have bomb vegetarian options.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_jvcxiwh",
+            "body": "Do the chef’s tasting at Vixen’s Wedding. It’s Indian/Goan/Portuguese and there’s a vegetarian option 👍🏼"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_jvcxiwh",
+          "places": ["vixen's wedding"],
+          "items": ["chef's tasting"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N61-executive-lunch-dish-slot-never",
+    "contract": "v17",
+    "why": "Owner-ruled 2026-08-29: 'executive lunch' is the named offering and the dish; 'your choice of meat' and the salad bar are SLOTS inside it — included parts, never their own dishes. Habitual vouch ('my go-to') with no deal terms quoted → dish arm.",
+    "posts": [
+      {
+        "id": "t3_n61",
+        "subreddit": "austinfood",
+        "title": "Solid weekday lunch downtown?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_n61",
+            "body": "The executive lunch at Estancia is my go-to - your choice of meat plus the unlimited salad bar included. Genuinely great every time."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_n61",
+          "places": ["estancia"],
+          "items": ["executive lunch"],
+          "notFoods": ["meat", "salad bar"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N62-price-frame-refuses",
+    "contract": "v17",
+    "why": "Owner-ruled 2026-08-29: a price-frame where the number is the point is NOT a dish — real staging doc answering a deals-masterlist ask ('Executive lunches starting at $21', '$39 vs $63', 'a good deal to me') quotes the deal's terms; the offering was priced, not vouched → value arm: place + affordable, no dish.",
+    "posts": [
+      {
+        "id": "t3_15s6cl3",
+        "subreddit": "austinfood",
+        "title": "Gimme your best weekday deals. I'll start...",
+        "body": "What are some weekday deals on local restaurants? I'm looking to create a masterlist.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_jwgi6kc",
+            "body": "Estancia has Executive lunches starting at $21 - your choice of meat and unlimited salad bar.  The full churrasco Lunch experience is a good deal to me - it's $39 vs $63 at dinner and it is the exact same menu of meats/sides."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_jwgi6kc",
+          "places": ["estancia"],
+          "attributes": ["affordable"],
+          "notFoods": ["executive lunch", "meat", "churrasco"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N63-brunch-attended-not-ordered",
+    "contract": "v17",
+    "why": "Owner-ruled 2026-08-29: you ATTEND brunch — an occasion is never a dish, however warmly praised; it lands as a place attribute.",
+    "posts": [
+      {
+        "id": "t3_n63",
+        "subreddit": "austinfood",
+        "title": "",
+        "body": "Launderette's brunch is the best in town. We go back every month.",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "places": ["launderette"],
+      "notFoods": ["brunch"],
+      "attributes": ["brunch"],
+      "somePraise": true
+    }
+  },
+  {
+    "id": "N64-format-proform-resolves-specific",
+    "contract": "v17",
+    "why": "Fragmentation study 2026-08-29 (P Thai's shape): a bare format word with a MORE SPECIFIC same-restaurant antecedent is a PRO-FORM — 'the combo' resolves to `khao man gai combo`, one dish, no generic fragment. A passing parenthetical price is not a price-frame: the verdict is on the offering.",
+    "posts": [
+      {
+        "id": "t3_n64",
+        "subreddit": "austinfood",
+        "title": "Khao man gai in Austin?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_n64",
+            "body": "I had the Khao Man Gai combo ($18) at P Thai's last week. The combo is the best of both worlds honestly."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_n64",
+          "places": ["p thai's"],
+          "items": ["khao man gai combo"],
+          "notFoods": ["chicken combo"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "N65-bare-combo-stands",
+    "contract": "v17",
+    "why": "Fragmentation study 2026-08-29: a bare format word with NO more specific antecedent stands as its own generic dish — acceptable and rare in the corpus.",
+    "posts": [
+      {
+        "id": "t3_n65",
+        "subreddit": "austinfood",
+        "title": "",
+        "body": "The combo at Pollo Regio is amazing, get it with everything.",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "items": ["combo"],
+      "places": ["pollo regio"]
+    }
+  },
+  {
+    "id": "N66-dish-cuisine-never-stamped",
+    "contract": "v17",
+    "why": "Discipline 2026-08-29: recognizing the venue's tradition puts no word on the table — an In-N-Out burger carries no `american` in ANY array (5x identical 'american' stamped on In-N-Out mentions in the 39k-doc replay).",
+    "posts": [
+      {
+        "id": "t3_n66",
+        "subreddit": "austinfood",
+        "title": "",
+        "body": "The double double at In-N-Out is fantastic, don't @ me.",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "items": ["double double"],
+      "notAttributes": ["american"]
+    }
+  },
+  {
+    "id": "N67-encyclopedia-ingredients-refused",
+    "contract": "v17",
+    "why": "Discipline 2026-08-29: ingredients are a TRANSCRIPT — 'ribs' names no pork (423 banked refusals prove the volunteering habit). The dish-name component 'apple' in 'apple fritter' stays licensed (C.5 source 2).",
+    "posts": [
+      {
+        "id": "t3_n67",
+        "subreddit": "austinfood",
+        "title": "",
+        "body": "The ribs at Terry Black's are incredible. Also the apple fritter at Round Rock Donuts is a must.",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "items": ["rib", "apple fritter"],
+      "notIngredients": ["pork"]
+    }
+  },
+  {
+    "id": "N68-aspect-canonical-spelling",
+    "contract": "v17",
+    "why": "Aspect-strength anchoring 2026-08-29: the aspect's plainest common noun, one spelling — ambiance/ambience fold into `great atmosphere` (staging holds great ambiance + great ambience + dope/killer atmosphere as four unmerged entities).",
+    "posts": [
+      {
+        "id": "t3_n68",
+        "subreddit": "austinfood",
+        "title": "",
+        "body": "The ambiance at Sundance is unreal, and the food matches.",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "places": ["sundance"],
+      "attributes": ["great atmosphere"],
+      "notAttributes": ["great ambiance", "great ambience"]
     }
   }
 ]
