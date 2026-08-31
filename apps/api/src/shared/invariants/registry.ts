@@ -1605,6 +1605,59 @@ export const INVARIANTS: readonly Invariant[] = [
       },
     ],
   },
+
+  // ── LLM DECISION SITES ───────────────────────────────────────────────
+  {
+    // The JUDGE CONTRACT registry (plans/llm-lane-primitive.md): every LLM
+    // decision site declares one contract, every deviation is a declared
+    // field with a reason, and the sequencing DAG is the generated truth
+    // the reload runbook used to hand-maintain (R6: the edge builder
+    // full-replacing from an empty facet). This is a SEPARATE-ARTIFACT
+    // scanner — exactly the population whose silent death this registry
+    // exists to catch — and the attractor is real: every new prompt is a
+    // fresh chance to invent a fifth version mechanism (the fold v2 bump
+    // stranded 152k ledger verdicts; the 47 merges applied effects no
+    // ledger row recorded).
+    id: 'prompt.every-llm-decision-site-has-a-judge-contract',
+    statement:
+      'Every claim-lane adapter in src has a JudgeContract, every contract that claims the claim_verdicts ledger names a lane string that appears in src, and the dependsOn DAG is acyclic.',
+    incident:
+      "dish.knowledge_synthesize ran as a bare-string lane no enumeration tool could see; attribute placement applied merges with no ledger row (the 47-merge class); the category edge builder's ordering lived only in runbook prose (R6, 4,839 edges vs 0 populated facets on 2026-08-31).",
+    level: 'behaviour',
+    mechanism:
+      'scripts/judge-contracts-audit.ts over src/shared/judge-contracts/ — static both-directions completeness + declared-vs-code contradiction checks + topo sort',
+    check: {
+      command: 'npx ts-node -T scripts/judge-contracts-audit.ts',
+      reads:
+        'every declared contract against the tree (lane strings, rule files, prompt files, caller profiles), both directions',
+    },
+    mutations: [
+      {
+        // A contract whose lane names a lane the code does not have — the
+        // declared-but-violated mode the audit exists to refuse.
+        file: 'src/shared/judge-contracts/entity-match.contract.ts',
+        find: "lane: 'entity_match',",
+        replace: "lane: 'entity_match_probe_nonexistent',",
+      },
+      {
+        // A rule release file that stops existing out from under its
+        // declaration (a rename that forgets the contract).
+        file: 'src/shared/judge-contracts/place-grounding.contract.ts',
+        find: "releaseFile: 'modules/restaurant-enrichment/place-grounding-rule.ts',",
+        replace:
+          "releaseFile: 'modules/restaurant-enrichment/place-grounding-rule.renamed.ts',",
+      },
+      {
+        // A dependency CYCLE: the sweep depending on the lane that depends
+        // on the sweep must fail the topo sort — an ordering document that
+        // contradicts itself is worse than none.
+        file: 'src/shared/judge-contracts/index.ts',
+        find: '    dependsOn: [],',
+        replace:
+          "    dependsOn: [\n      {\n        on: 'place_grounding',\n        why: 'MUTATED: cycle probe',\n        emptinessProbeSql: 'SELECT 1',\n      },\n    ],",
+      },
+    ],
+  },
 ];
 
 export const SCRATCH_FILE = SCRATCH;

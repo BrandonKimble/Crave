@@ -3310,6 +3310,48 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     return this.extractTextContent(response, `caller:${params.caller}`);
   }
 
+  /** Callers already warned about — one line per caller per process, ever. */
+  private readonly uncontractedCallersWarned = new Set<string>();
+  /** Lazily-built registry caller-tag set (lazy import: the contract files
+   *  are pure data, but keeping the import out of module scope guarantees
+   *  no cycle can ever form through this gateway). */
+  private contractedCallerTags: ReadonlySet<string> | null = null;
+
+  /**
+   * JUDGE-CONTRACT WARN MODE — see plans/llm-lane-primitive.md. Dev/test
+   * only, log-once, NEVER throws in this pass: the registry is a census
+   * tonight and becomes a gate in the post-load migration (step 4). A
+   * warning nobody reads is not a guard (the 8,910-call umbrella lesson
+   * above) — which is exactly why this is declared warn-MODE with a flip
+   * date, not sold as enforcement.
+   */
+  private warnIfUncontractedCaller(caller: string): void {
+    if (process.env.NODE_ENV === 'production') return;
+    if (this.uncontractedCallersWarned.has(caller)) return;
+    try {
+      if (this.contractedCallerTags === null) {
+        /* eslint-disable @typescript-eslint/no-require-imports -- lazy on
+           purpose: the registry stays out of module scope so no import
+           cycle can ever form through the gateway. */
+        const contracts =
+          require('../../../shared/judge-contracts') as typeof import('../../../shared/judge-contracts');
+        const core =
+          require('../../../shared/judge-contract') as typeof import('../../../shared/judge-contract');
+        /* eslint-enable @typescript-eslint/no-require-imports */
+        this.contractedCallerTags = core.registeredCallerTags(
+          contracts.JUDGE_CONTRACT_REGISTRY,
+        );
+      }
+      if (this.contractedCallerTags.has(caller)) return;
+      this.uncontractedCallersWarned.add(caller);
+      this.logger.warn(
+        `LLM caller '${caller}' has no registered JudgeContract (src/shared/judge-contracts/) — declare one; the gateway flips warn→throw after the migration.`,
+      );
+    } catch {
+      // The census must never break a call — warn mode is zero-risk by law.
+    }
+  }
+
   /**
    * Make authenticated API call to Gemini service using @google/genai library
    */
@@ -3330,6 +3372,12 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
           'Gemini call must name its prompt class so spend is attributable.',
       );
     }
+    // JUDGE-CONTRACT WARN MODE (plans/llm-lane-primitive.md, enforcement
+    // tooth 1, deliberately toothless in this pass): a caller tag with no
+    // registered JudgeContract logs ONCE per caller, dev/test only, never
+    // throws. The migration's step 4 flips warn → throw; until then this is
+    // the census keeping itself current, not a gate.
+    this.warnIfUncontractedCaller(options.usageCaller);
     // §24.1 Tier 3 catastrophe backstop (demoted from work governor, §24.4
     // item 2): when the gemini.monthlySpend pool (metered from ACTUAL
     // dollars at the usage-ledger chokepoint) is spent or vendor-poisoned,

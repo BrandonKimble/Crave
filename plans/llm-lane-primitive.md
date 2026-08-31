@@ -62,6 +62,60 @@ interface JudgeContract {
 }
 ```
 
+Extended (owner additions 2026-08-31 — "they all also need a response schema,
+the reason stuff, and any other standardized setup"):
+
+```ts
+interface JudgeContract {
+  // …identity/versioning/ledger fields above, plus:
+  responseSchema: object;       // schema-FORCED structured output; part of the
+                                // rule release — a schema change IS a rule bump
+  reasonPolicy: {               // D2 standard: every verdict carries a reason
+    required: true;             // grounded in quoted evidence
+    tripwire?: string[];        // banned fold-class reason patterns (merge lesson)
+  };
+  context: string;              // one-line declaration of WHAT the judge sees
+                                // (mention sentence, candidate homes, carriers…)
+                                // — context starvation caused the 716-decline
+                                // sweep; making it declared makes it reviewable
+  batching: 'interactive' | 'batch_rail' | 'either'; // batch ⇒ durable resume
+  spend: { caller: string; workClass: string };      // typed tags, pool routing
+  failure: {                    // declared, not accidental
+    posture: 'fail_open' | 'fail_closed';
+    quarantine?: string;        // table that holds refusals/contract breaks
+    declineAlarm?: { threshold: number; minAttempts: number }; // >90% class
+  };
+  dependsOn?: string[];         // SEQUENCING — see below
+}
+```
+
+## Sequencing as a declared fact (owner order 2026-08-31)
+
+The R6 class (category edge builder full-replacing from a facet that
+synthesis hasn't populated yet) is an ORDERING bug, and today ordering lives
+in runbook prose and flip-list footnotes — re-derived by hand every load.
+First-class instead:
+
+- `dependsOn` names the lanes/facets whose output this consumer reads
+  (edge builder → dish-knowledge synthesis; cuisine widening → cuisine
+  facts; grounding retries → grounding sweep observed; janitor → name
+  census). The registry topologically sorts and EMITS the canonical
+  order — the reload runbook and the flip-arming order become generated
+  artifacts, not hand-maintained prose.
+- The runtime tooth: an armed consumer whose declared dependency store is
+  EMPTY refuses and screams instead of full-replacing from nothing — the
+  generalization of the edge-builder zero-input scream (which existed and
+  was silenced). Emptiness check is part of the dependency declaration.
+
+## Build status
+
+Building now (2026-08-31, during the v18 drain): registry + contracts for
+every existing site (gaps recorded as explicit declared debt, e.g.
+`promptKind: { unversioned: 'D6 residue' }`), gateway check in warn mode,
+`contracts-audit` script wired into `yarn invariants` (fail on
+declared-but-violated, warn on undeclared), sequencing DAG + emitted order.
+Unversioned-prompt migration into `llm_prompts` follows as its own pass.
+
 Enforcement (three teeth, all patterns already proven in-repo):
 1. **The gateway refuses undeclared callers.** One-gateway law already
    routes every call through LLMService; it gains a registry check — a call
