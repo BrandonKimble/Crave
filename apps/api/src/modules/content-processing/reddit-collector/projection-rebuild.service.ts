@@ -7,7 +7,9 @@ import {
   ITEM_CATEGORY_EDGE_LOCK,
   itemCategoryEdgeDeleteSql,
   itemCategoryEdgeInsertSql,
+  itemCategoryEdgeProspectiveCountSql,
 } from './food-category-edge-sql';
+import { COLLAPSE_DROP_FRACTION } from '../../external-integrations/shared/source-table-collapse-alarm.service';
 
 type PrismaTransaction = Prisma.TransactionClient;
 
@@ -195,6 +197,43 @@ export class ProjectionRebuildService implements OnModuleInit {
     // writers must derive membership from one text.
     const scope = { placeIdsParam: '$1' };
     await tx.$executeRawUnsafe(ITEM_CATEGORY_EDGE_LOCK);
+    // REFUSE A COLLAPSE, NOT MERELY A ZERO (2026-08-31, and the second draft
+    // of this guard — the first checked only for EMPTY input and would have
+    // sailed straight past the live danger: measured that day, a 50-place
+    // scope derived 2 rows against 152 standing, so "not empty" was true and
+    // the wipe would have proceeded. An emptiness test cannot see a collapse.
+    //
+    // Membership comes from the dish-knowledge knowledge_categories facet,
+    // which a separate pass backfills; activation rebuilds EVERY place, so a
+    // half-filled facet silently guts category search ("tacos" stops finding
+    // al pastor). We price the rebuild against what stands and refuse a
+    // catastrophic shrink, borrowing the drop fraction this repo already
+    // ruled on for source-table collapse rather than inventing a second
+    // number: nothing legitimate removes a fifth of a derived set in one
+    // step, while an unrun producer removes nearly all of it.
+    const [standing] = await tx.$queryRawUnsafe<Array<{ n: number }>>(
+      `SELECT count(*)::int AS n FROM derived_food_category_edges
+        WHERE food_id IN (
+          SELECT DISTINCT food_id FROM core_restaurant_items
+          WHERE restaurant_id = ANY($1::uuid[])
+        )`,
+      placeIds,
+    );
+    const standingEdges = standing?.n ?? 0;
+    if (standingEdges > 0) {
+      const [prospective] = await tx.$queryRawUnsafe<Array<{ n: number }>>(
+        itemCategoryEdgeProspectiveCountSql(scope),
+        placeIds,
+      );
+      const prospectiveEdges = prospective?.n ?? 0;
+      if (prospectiveEdges < standingEdges * (1 - COLLAPSE_DROP_FRACTION)) {
+        this.logger.error(
+          'Category-edge refresh REFUSED: rebuilding would collapse category membership — keeping what stands (run dish-knowledge synthesis, then rebuild)',
+          { places: placeIds.length, standingEdges, prospectiveEdges },
+        );
+        return;
+      }
+    }
     await tx.$executeRawUnsafe(itemCategoryEdgeDeleteSql(scope), placeIds);
     await tx.$executeRawUnsafe(itemCategoryEdgeInsertSql(scope), placeIds);
   }

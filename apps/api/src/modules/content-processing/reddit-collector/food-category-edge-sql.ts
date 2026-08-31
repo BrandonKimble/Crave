@@ -68,6 +68,40 @@ function knowledgeScopeClause(scope: ItemEdgeScope): string {
 export const ITEM_CATEGORY_EDGE_LOCK =
   "SELECT pg_advisory_xact_lock(hashtext('rebuild:food-category-edges'))";
 
+/**
+ * WOULD THIS REBUILD DERIVE ANYTHING? (2026-08-31, the R6 landmine found by
+ * the v18 activation triage.) Membership now comes from the dish-knowledge
+ * `knowledge_categories` facet, which a separate pass backfills — so "no
+ * input" almost always means THE BACKFILL HAS NOT RUN, not that the corpus
+ * has no categories. Measured that day: 4,839 standing edges against 11 of
+ * 3,910 dishes carrying the facet.
+ *
+ * A delete-then-insert against an unfilled facet is therefore a WIPE wearing
+ * a rebuild's clothes, and it silently ends category search — "tacos" stops
+ * finding al pastor and returns only dishes named taco. The nightly builder
+ * grew a guard first, but ACTIVATION does not go through it: it calls the
+ * incremental writer, which had none. One text for the writers means one
+ * text for their refusal too — this predicate lives beside the SQL both of
+ * them share so a third writer cannot be born without it.
+ *
+ * It answers only "does this scope derive anything at all", because a zero
+ * that should legitimately clear edges and a zero that means the producer
+ * has not run are INDISTINGUISHABLE from here — and between those two
+ * readings, keeping what stands is the recoverable one. Genuinely dead edges
+ * are cleaned by the nightly FULL replace, which sees the whole corpus.
+ */
+export function itemCategoryEdgeInputCountSql(scope: ItemEdgeScope): string {
+  return `SELECT count(*)::int AS n
+       FROM core_entities e
+       WHERE e.type = 'item'::entity_type
+         AND e.status = 'active'::entity_status
+         AND cardinality(e.knowledge_categories) > 0
+         AND EXISTS (
+           SELECT 1 FROM core_restaurant_items c
+            WHERE c.food_id = e.entity_id AND c.mention_count > 0
+         )${knowledgeScopeClause(scope)}`;
+}
+
 /** Clear the edges this rebuild is about to re-derive, and nothing else. */
 export function itemCategoryEdgeDeleteSql(scope: ItemEdgeScope): string {
   if (scope === null) return 'DELETE FROM derived_food_category_edges';
@@ -78,10 +112,36 @@ export function itemCategoryEdgeDeleteSql(scope: ItemEdgeScope): string {
        )`;
 }
 
+/**
+ * THE ROWS THIS REBUILD WOULD PRODUCE — the insert's own SELECT, exposed so
+ * a caller can PRICE the rebuild before committing to it. One text for the
+ * writers means one text for the prediction: a separately-written estimate
+ * would drift from the insert it claims to predict, and a guard that
+ * measures something other than what runs is worse than no guard.
+ */
+function itemCategoryEdgeProjectionSql(scope: ItemEdgeScope): string {
+  return `SELECT DISTINCT e.entity_id, cat_id, live.n, live.n`.concat(
+    itemCategoryEdgeProjectionBodySql(scope),
+  );
+}
+
+/**
+ * COUNT what the rebuild would produce, for the proportionality guard below.
+ */
+export function itemCategoryEdgeProspectiveCountSql(
+  scope: ItemEdgeScope,
+): string {
+  return `SELECT count(*)::int AS n FROM (${itemCategoryEdgeProjectionSql(scope)}) AS projected`;
+}
+
 /** Re-derive them from the dish entities' knowledge_categories facet. */
 export function itemCategoryEdgeInsertSql(scope: ItemEdgeScope): string {
   return `INSERT INTO derived_food_category_edges (food_id, category_id, conn_support, food_conns)
-       SELECT DISTINCT e.entity_id, cat_id, live.n, live.n
+       ${itemCategoryEdgeProjectionSql(scope)}`;
+}
+
+function itemCategoryEdgeProjectionBodySql(scope: ItemEdgeScope): string {
+  return `
        FROM core_entities e
        CROSS JOIN LATERAL unnest(e.knowledge_categories) AS cat_id
        JOIN LATERAL (
