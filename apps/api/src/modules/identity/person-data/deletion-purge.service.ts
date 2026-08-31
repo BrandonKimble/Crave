@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
+import { isSchedulerRuntime } from '../../../shared/utils/process-role';
 import { PersonDataEraserService } from './person-data-eraser.service';
 import { AccountDeletionService } from '../account-deletion.service';
 import { OpsAlertsService } from '../../external-integrations/shared/ops-alerts.service';
@@ -25,7 +26,7 @@ import { OpsAlertsService } from '../../external-integrations/shared/ops-alerts.
  * destroys an account that came back.
  */
 @Injectable()
-export class DeletionPurgeService {
+export class DeletionPurgeService implements OnModuleInit {
   /** How many accounts one pass will purge. Bounded so a backlog cannot turn
    *  into an unbounded transaction; the next run takes the rest. */
   private static readonly BATCH = 50;
@@ -40,6 +41,53 @@ export class DeletionPurgeService {
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('DeletionPurge');
+  }
+
+  /**
+   * THE KILL-SWITCH IS HONEST (2026-08-31 cron audit, same law as
+   * derived-index-job.ts:110-127).
+   *
+   * The purge STAYS gated: it destroys a Clerk identity and propagates to
+   * processors, so a runtime told not to act unattended must not act. But
+   * `purge_due_at` is a LEGAL CLOCK — a disclosed erasure deadline — and it
+   * keeps running whether or not anything is reading it. Under CRONS_ENABLED
+   * =false the deadline passes, nothing purges, and NOTHING SAYS SO: the
+   * per-account failure alert below only fires when a purge is attempted and
+   * throws, which never happens if the pass never runs. A published retention
+   * promise with no mechanism is worse than no promise; a mechanism that is
+   * silently switched off is the same thing wearing a mechanism's clothes.
+   *
+   * Repair is forbidden when the gate is off. Visibility is not.
+   */
+  async onModuleInit(): Promise<void> {
+    if (isSchedulerRuntime()) return;
+    try {
+      const overdue = await this.prisma.user.count({
+        where: { purgeDueAt: { not: null, lte: new Date() } },
+      });
+      if (overdue === 0) return;
+      this.logger.warn(
+        'Accounts are past their erasure deadline but crons are disabled — no purge',
+        { overdue },
+      );
+      this.opsAlerts.emit({
+        severity: 'critical',
+        kind: 'deletion_purge_disabled_backlog',
+        title: `A LEGAL OBLIGATION IS PAUSED: ${overdue} account(s) past their erasure deadline, crons OFF`,
+        body: [
+          `${overdue} account(s) have passed the deletion deadline we disclosed to those people, and this process has crons disabled (CRONS_ENABLED / PROCESS_ROLE), so the hard purge did NOT run and will not.`,
+          'This is a legal obligation (GDPR Art.17 erasure) that is currently NOT being met. Every day the switch stays off, the breach grows.',
+          'Enable crons on a runtime that may act, or run the purge deliberately.',
+        ].join('\n\n'),
+        dedupeKey: `deletion_purge_disabled_backlog:${new Date()
+          .toISOString()
+          .slice(0, 10)}`,
+      });
+    } catch (error) {
+      this.logger.error('Deletion purge backlog check failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_4AM)

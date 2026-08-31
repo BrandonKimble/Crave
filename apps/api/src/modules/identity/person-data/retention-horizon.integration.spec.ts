@@ -116,6 +116,7 @@ describe('retention horizon — the promise has a mechanism', () => {
   it('the sweep runs against the real schema and reports honestly', async () => {
     const service = new RetentionHorizonService(
       prisma as never,
+      { emit: () => {} } as never,
       {
         setContext: () => ({
           info() {},
@@ -151,6 +152,7 @@ describe('retention horizon — the promise has a mechanism', () => {
     //   the VALUE is gone, the RECORD is gone, and the SHELL is still there.
     const service = new RetentionHorizonService(
       prisma as never,
+      { emit: () => {} } as never,
       {
         setContext: () => ({
           info() {},

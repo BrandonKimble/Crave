@@ -39,6 +39,7 @@ describe('persistSourceDocuments — the document takes its language from its so
       prisma as never,
       {} as never,
       logger as never,
+      { emit: jest.fn() } as never,
     );
     service.onModuleInit();
     return { service, createMany, findUnique };

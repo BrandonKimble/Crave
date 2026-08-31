@@ -1,7 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
+import { isSchedulerRuntime } from '../../../shared/utils/process-role';
+import { OpsAlertsService } from '../../external-integrations/shared/ops-alerts.service';
 import { PERSON_DATA_RULES } from './person-data-class';
 import {
   assertNoOverbroadDeleteScope,
@@ -41,14 +43,88 @@ import {
  * keeps this from deleting an active customer's invoices.
  */
 @Injectable()
-export class RetentionHorizonService {
+export class RetentionHorizonService implements OnModuleInit {
   private readonly logger: LoggerService;
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly opsAlerts: OpsAlertsService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('RetentionHorizon');
+  }
+
+  /**
+   * THE KILL-SWITCH IS HONEST (2026-08-31 cron audit, same law as
+   * derived-index-job.ts:110-127).
+   *
+   * The sweep STAYS gated — it hands a person scope to a DELETE and must not
+   * act unattended. But GDPR Art.5(1)(e) storage limitation is a STANDING
+   * obligation, and the horizon expires on its own clock whether or not
+   * anything is enforcing it. With crons off, expired records simply keep
+   * existing while the published policy says they do not, and nothing in the
+   * codebase says a word. Enforcement is forbidden when the gate is off;
+   * visibility is not.
+   */
+  async onModuleInit(): Promise<void> {
+    if (isSchedulerRuntime()) return;
+    try {
+      const expired = await this.countExpired();
+      if (expired === 0) return;
+      this.logger.warn(
+        'Retention horizons have expired but crons are disabled — no sweep',
+        { expired },
+      );
+      this.opsAlerts.emit({
+        severity: 'critical',
+        kind: 'retention_horizon_disabled_backlog',
+        title: `A LEGAL OBLIGATION IS PAUSED: ${expired} row(s) past their retention horizon, crons OFF`,
+        body: [
+          `${expired} row(s) belonging to departed people have passed the retention horizon our own declaration states, and this process has crons disabled (CRONS_ENABLED / PROCESS_ROLE), so the sweep did NOT run and will not.`,
+          'This is a legal obligation (GDPR Art.5(1)(e) storage limitation) that is currently NOT being met — we are keeping data we published a promise to delete.',
+          'Enable crons on a runtime that may act, or run the sweep deliberately.',
+        ].join('\n\n'),
+        dedupeKey: `retention_horizon_disabled_backlog:${new Date()
+          .toISOString()
+          .slice(0, 10)}`,
+      });
+    } catch (error) {
+      this.logger.error('Retention horizon backlog check failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * How many rows the sweep WOULD act on right now — the same scope
+   * construction the sweep itself uses (`retentionWhere` + the expired-account
+   * predicate), counted instead of deleted, so the alarm and the enforcement
+   * can never disagree about what "expired" means.
+   */
+  private async countExpired(): Promise<number> {
+    let expired = 0;
+    for (const rule of this.horizonRules()) {
+      const scope = retentionWhere(rule, 't');
+      if (!scope) continue;
+      const action = retentionAction(rule);
+      if (!action) continue;
+      const expiredAccount = `EXISTS (
+            SELECT 1 FROM users u
+             WHERE (${scope.replace(/\$1/g, 'u.user_id::text')})
+               AND u.deleted_at IS NOT NULL
+               AND u.purge_due_at IS NULL
+               AND u.deleted_at < now() - ($1::int * INTERVAL '1 day')
+          )`;
+      const rows = await this.prisma.$queryRawUnsafe<{ n: bigint }[]>(
+        action === 'delete_row'
+          ? `SELECT count(*) AS n FROM "${rule.table}" t WHERE ${expiredAccount}`
+          : `SELECT count(*) AS n FROM "${rule.table}" t
+              WHERE t."${rule.column}" IS NOT NULL AND ${expiredAccount}`,
+        rule.horizon,
+      );
+      expired += Number(rows[0]?.n ?? 0);
+    }
+    return expired;
   }
 
   /** Rules that keep data under a stated, bounded promise. */

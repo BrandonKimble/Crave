@@ -207,6 +207,7 @@ describe('erasure must not destroy third parties (F7500/D146)', () => {
 
           await new RetentionHorizonService(
             client as never,
+            { emit: () => {} } as never,
             silentLogger,
           ).sweep();
 

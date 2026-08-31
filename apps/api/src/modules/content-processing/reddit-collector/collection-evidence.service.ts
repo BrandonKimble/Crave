@@ -1,8 +1,15 @@
-import { Cron, CronExpression } from '@nestjs/schedule';
-import { Injectable, Inject, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  OnModuleInit,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
+import { isEnvFlagExplicitlyDisabled } from '../../../shared/config/env-flag';
+import { isWorkerRuntime } from '../../../shared/utils/process-role';
+import { OpsAlertsService } from '../../external-integrations/shared/ops-alerts.service';
 import { GeminiBatchService } from '../../external-integrations/llm/gemini-batch.service';
 import { ChunkProcessingResult } from '../../external-integrations/llm/llm-concurrent-processing.service';
 import {
@@ -65,18 +72,108 @@ export function mapPipelineToLane(pipeline: string | null): string | null {
 
 const ANCIENT_UNKNOWN_DATE = new Date('1970-01-01T00:00:00.000Z');
 
+/** Reconciler cadence — unchanged from the retired @Cron(EVERY_HOUR). */
+const RECONCILE_INTERVAL_MS = 60 * 60 * 1000;
+
+/**
+ * What counts as "this was invisible for a long time" rather than "a worker
+ * crashed once". A healthy hourly pass reaps the claims of the handful of
+ * runs that died in the last hour; the 2026-08-31 discovery was 47,850
+ * claims accumulated over ten days because the pass had NEVER run. The
+ * threshold is deliberately far above one pass's honest reap and far below
+ * the failure it must catch, so crossing it means the reconciler was absent,
+ * not busy.
+ */
+const RECONCILE_BACKLOG_ALARM_CLAIMS = 500;
+
+/** Same idea for runs: a pass that has to fail this many stale runs at once
+ *  is draining a backlog, not doing maintenance. */
+const RECONCILE_BACKLOG_ALARM_RUNS = 25;
+
 @Injectable()
-export class CollectionEvidenceService implements OnModuleInit {
+export class CollectionEvidenceService
+  implements OnModuleInit, OnModuleDestroy
+{
   private logger!: LoggerService;
+
+  /**
+   * THE RECONCILER IS A SELF-OWNED setInterval, NOT AN @Cron (2026-08-31,
+   * the batch-poller incident's sibling).
+   *
+   * THE LAW: CRONS_ENABLED means "do not START new discretionary work
+   * unattended". This pass starts nothing and spends nothing — it is pure
+   * DB: it fails batch jobs wedged past the horizon, reaps orphaned coverage
+   * claims, compacts superseded runs, and fails runs stuck past 30h. Every
+   * one of those COMPLETES work already dispatched and paid for, so hiding
+   * it behind the spend switch silently abandons bought work. @Cron does
+   * exactly that: ScheduleModule is registered only under isSchedulerRuntime
+   * (app.module.ts), which is false whenever CRONS_ENABLED is off — so this
+   * reconciler had NEVER run on staging, and 47,850 orphaned coverage claims
+   * accumulated from 2026-08-21 with nothing anywhere saying so.
+   *
+   * WHY THAT BACKLOG IS NOT COSMETIC: a coverage claim is what the NORMAL
+   * collection pipeline reads to decide a document is already in flight
+   * (extraction-pipeline.service.ts, findExtractionCoveredSourceIds). A
+   * stale claim therefore makes a real document look covered and it gets
+   * SKIPPED — silently, forever, because nothing else revisits it. The next
+   * phase of the load is a ~400k-document archive ingest through exactly
+   * that path, where a stale-claim shadow would be indistinguishable from
+   * "those documents had nothing to say".
+   *
+   * So it arms itself on the WORKER runtime (isWorkerRuntime, deliberately
+   * not isSchedulerRuntime — the worker owns background work), honours only
+   * its own explicit off-switch (COLLECTION_RECONCILE_ENABLED=false),
+   * unref()s so a script booting the full graph still exits, and clears on
+   * shutdown. Same shape as gemini-batch.service.ts's poller.
+   */
+  private reconcileTimer: NodeJS.Timeout | null = null;
+  private reconcileInFlight = false;
 
   constructor(
     private readonly prismaService: PrismaService,
     private readonly geminiBatch: GeminiBatchService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
+    private readonly opsAlerts: OpsAlertsService,
   ) {}
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('CollectionEvidenceService');
+    if (isEnvFlagExplicitlyDisabled(process.env.COLLECTION_RECONCILE_ENABLED)) {
+      return;
+    }
+    if (!isWorkerRuntime()) return;
+    this.reconcileTimer = setInterval(
+      () => void this.runReconcilePass(),
+      RECONCILE_INTERVAL_MS,
+    );
+    this.reconcileTimer.unref();
+    // BOOT ARM, deliberately outside the interval: a worker restart is
+    // enough to surface (and drain) a backlog that accumulated while the
+    // loop was dead — a deploy, a crash, or the whole job being gated off,
+    // which is precisely how ten days of claims went unseen.
+    void this.runReconcilePass();
+  }
+
+  onModuleDestroy(): void {
+    if (this.reconcileTimer) {
+      clearInterval(this.reconcileTimer);
+      this.reconcileTimer = null;
+    }
+  }
+
+  /** Interval/boot entry point: never throws, never stacks. */
+  private async runReconcilePass(): Promise<void> {
+    if (this.reconcileInFlight) return;
+    this.reconcileInFlight = true;
+    try {
+      await this.reconcileStaleRuns();
+    } catch (error) {
+      this.logger.error('Collection reconciler pass failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      this.reconcileInFlight = false;
+    }
   }
 
   async persistSourceDocuments(params: {
@@ -544,8 +641,8 @@ export class CollectionEvidenceService implements OnModuleInit {
    *  claim→run-creation gap is seconds; 2h = two cycles of this hourly
    *  reconciler, guaranteeing a full cycle has elapsed since the claim
    *  regardless of phase alignment before we call the owner dead. */
-  private async reapOrphanedCoverageClaims(): Promise<void> {
-    await this.prismaService.$executeRaw`
+  private async reapOrphanedCoverageClaims(): Promise<number> {
+    return this.prismaService.$executeRaw`
       DELETE FROM collection_extraction_coverage_claims c
       WHERE (c.extraction_run_id IS NULL
              AND c.claimed_at < now() - interval '2 hours')
@@ -564,9 +661,9 @@ export class CollectionEvidenceService implements OnModuleInit {
    * then any run still 'running' past the horizon WITHOUT an open Gemini
    * batch job backing it (batch-deferred runs legitimately float for up to
    * ~24h) is failed loudly, and its collection run's status is recomputed.
-   * Idempotent.
+   * Idempotent. Armed by the self-owned interval above (NOT an @Cron — see
+   * the reconcileTimer law); also callable directly by scripts/specs.
    */
-  @Cron(CronExpression.EVERY_HOUR)
   async reconcileStaleRuns(): Promise<void> {
     // DERIVED 2026-08-03 (F470): the horizon must exceed the longest
     // LEGITIMATE run — a batch-deferred extraction floats until Gemini's
@@ -576,7 +673,7 @@ export class CollectionEvidenceService implements OnModuleInit {
     const horizonHours =
       Number.isFinite(parsedHorizon) && parsedHorizon > 0 ? parsedHorizon : 30;
     await this.reconcileStaleBatchJobs(horizonHours);
-    await this.reapOrphanedCoverageClaims();
+    const claimsReaped = await this.reapOrphanedCoverageClaims();
     await this.compactSupersededRuns();
     const stale = await this.prismaService.$queryRaw<
       { extraction_run_id: string; collection_run_id: string | null }[]
@@ -592,7 +689,6 @@ export class CollectionEvidenceService implements OnModuleInit {
         )
       LIMIT 200
     `);
-    if (!stale.length) return;
     for (const run of stale) {
       try {
         await this.markExtractionRunFailed(
@@ -606,9 +702,46 @@ export class CollectionEvidenceService implements OnModuleInit {
         });
       }
     }
-    this.logger.warn('Reconciled stale extraction runs to failed', {
-      count: stale.length,
-      horizonHours,
+    if (stale.length) {
+      this.logger.warn('Reconciled stale extraction runs to failed', {
+        count: stale.length,
+        horizonHours,
+      });
+    }
+    this.alarmOnBacklog(claimsReaped, stale.length);
+  }
+
+  /**
+   * SILENCE IS THE FAILURE MODE THIS EXISTS TO END. A single pass that has
+   * to clear a backlog this size is not maintenance — it is the first pass
+   * after a long absence, and the absence is what nobody saw. logger.error
+   * (so it reaches Sentry, not a warn nobody reads) plus a deduped ops
+   * alert, keyed per UTC day so a standing problem pages once a day rather
+   * than once an hour.
+   */
+  private alarmOnBacklog(claimsReaped: number, runsFailed: number): void {
+    if (
+      claimsReaped < RECONCILE_BACKLOG_ALARM_CLAIMS &&
+      runsFailed < RECONCILE_BACKLOG_ALARM_RUNS
+    ) {
+      return;
+    }
+    this.logger.error(
+      'Collection reconciler cleared a LARGE backlog — it was not running',
+      { claimsReaped, runsFailed },
+    );
+    const utcDay = new Date().toISOString().slice(0, 10);
+    this.opsAlerts.emit({
+      severity: 'critical',
+      kind: 'collection-reconcile-backlog',
+      title: `Collection reconciler cleared a large backlog (${claimsReaped} coverage claims, ${runsFailed} stale runs)`,
+      body: [
+        `One reconciler pass reaped ${claimsReaped} orphaned coverage claims and failed ${runsFailed} stale extraction runs.`,
+        'A healthy hourly pass clears a handful. A backlog this size means the reconciler was ABSENT (gated off, crashed, or not deployed) for a long time.',
+        'Orphaned coverage claims make real source documents look "in flight" to the collection pipeline (findExtractionCoveredSourceIds), so those documents are SKIPPED and never extracted.',
+        'Check that the worker is running with COLLECTION_RECONCILE_ENABLED unset/on, and re-check coverage for the affected window.',
+      ].join('\n\n'),
+      dedupeKey: `collection-reconcile-backlog:${utcDay}`,
     });
   }
 

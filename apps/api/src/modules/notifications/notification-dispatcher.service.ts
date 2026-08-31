@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Notification, NotificationDevice, $Enums } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
+import { isEnvFlagExplicitlyDisabled } from '../../shared/config/env-flag';
+import { isWorkerRuntime } from '../../shared/utils/process-role';
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 
@@ -50,14 +51,83 @@ interface PushPayload {
   data?: Record<string, unknown>;
 }
 
+/** Cadence — unchanged from the retired @Cron(EVERY_MINUTE). */
+const DISPATCH_INTERVAL_MS = 60 * 1000;
+
 @Injectable()
-export class NotificationDispatcherService {
+export class NotificationDispatcherService
+  implements OnModuleInit, OnModuleDestroy
+{
+  /**
+   * THE DISPATCHER IS A SELF-OWNED setInterval, NOT AN @Cron (2026-08-31).
+   *
+   * THE LAW: CRONS_ENABLED means "do not START new discretionary work
+   * unattended" — it exists so an environment holding dev vendor keys cannot
+   * SPEND. This loop spends nothing: Expo's push service is free (no key, no
+   * meter, no api_usage_ledger entry — see sendBatch below, an unauthenticated
+   * POST to exp.host), so there is no risk it was ever protecting against.
+   *
+   * What it IS, is the ONLY path in the codebase that moves a notification to
+   * `sent`, and the only owner of retry + `sending`-lease reclaim. Under
+   * @Cron, ScheduleModule is registered only when isSchedulerRuntime() —
+   * false whenever CRONS_ENABLED is off — so every notification a user had
+   * already earned sat pending forever with nothing saying so. Finishing
+   * work already queued is not discretionary.
+   *
+   * Worker runtime (isWorkerRuntime — the worker owns background work; the
+   * api process must not race it for the same leases), own explicit
+   * off-switch (NOTIFICATION_DISPATCH_ENABLED=false), unref()'d so scripts
+   * still exit, cleared on shutdown. Same shape as
+   * gemini-batch.service.ts's poller.
+   */
+  private dispatchTimer: NodeJS.Timeout | null = null;
+  private dispatchInFlight = false;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly logger: LoggerService,
   ) {}
 
-  @Cron(CronExpression.EVERY_MINUTE)
+  onModuleInit(): void {
+    if (
+      isEnvFlagExplicitlyDisabled(process.env.NOTIFICATION_DISPATCH_ENABLED)
+    ) {
+      return;
+    }
+    if (!isWorkerRuntime()) return;
+    this.dispatchTimer = setInterval(
+      () => void this.runDispatchPass(),
+      DISPATCH_INTERVAL_MS,
+    );
+    this.dispatchTimer.unref();
+    // BOOT ARM: a restart drains whatever queued while the loop was dead,
+    // instead of waiting a full cadence to notice.
+    void this.runDispatchPass();
+  }
+
+  onModuleDestroy(): void {
+    if (this.dispatchTimer) {
+      clearInterval(this.dispatchTimer);
+      this.dispatchTimer = null;
+    }
+  }
+
+  /** Interval/boot entry point: never throws, never stacks (a slow Expo
+   *  batch must not have a second pass claiming the same leases). */
+  private async runDispatchPass(): Promise<void> {
+    if (this.dispatchInFlight) return;
+    this.dispatchInFlight = true;
+    try {
+      await this.dispatchPending();
+    } catch (error) {
+      this.logger.error('Notification dispatch pass failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      this.dispatchInFlight = false;
+    }
+  }
+
   async dispatchPending(): Promise<void> {
     const now = new Date();
     const retryCutoff = new Date(now.getTime() - RETRY_BACKOFF_MS);

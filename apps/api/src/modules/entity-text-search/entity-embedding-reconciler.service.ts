@@ -5,6 +5,8 @@ import { EntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { recallScope } from '../../shared/locale/surface-scope';
 import { LoggerService } from '../../shared';
+import { isSchedulerRuntime } from '../../shared/utils/process-role';
+import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
 import { EmbeddingService } from '../external-integrations/llm/embedding.service';
 import { buildEntityDoc } from './entity-doc';
 
@@ -51,6 +53,7 @@ export class EntityEmbeddingReconcilerService
   constructor(
     private readonly prisma: PrismaService,
     private readonly embeddings: EmbeddingService,
+    private readonly opsAlerts: OpsAlertsService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('EntityEmbeddingReconcilerService');
@@ -77,6 +80,60 @@ export class EntityEmbeddingReconcilerService
           error instanceof Error
             ? { message: error.message, stack: error.stack }
             : { message: String(error) },
+      });
+    }
+    await this.alarmIfBacklogAndCronsOff();
+  }
+
+  /**
+   * THE KILL-SWITCH IS HONEST (2026-08-31 cron audit, same law as
+   * derived-index-job.ts:110-127).
+   *
+   * This sweep genuinely SPENDS — every repair is a paid embedding call — so
+   * it stays gated: with crons off it must not run, and that is correct.
+   * What is NOT correct is silence. derived-index-job.ts explicitly names
+   * this service as the acknowledged non-member of the derived-index law, so
+   * it is the one repair job that is both unalarmed and uncovered: entities
+   * born with a NULL vector or flagged stale by a rename simply drop out of
+   * the dense recall lane, and the reader fails open, so nobody hears about
+   * it. Repair is forbidden when the gate is off; VISIBILITY IS NOT.
+   */
+  private async alarmIfBacklogAndCronsOff(): Promise<void> {
+    if (
+      isEnvFlagExplicitlyDisabled(
+        process.env.ENTITY_EMBEDDING_RECONCILE_ENABLED,
+      )
+    ) {
+      return;
+    }
+    if (isSchedulerRuntime()) return;
+    try {
+      const [{ n }] = await this.prisma.$queryRawUnsafe<{ n: bigint }[]>(
+        `SELECT count(*) AS n FROM core_entities
+         WHERE type IN ('place','item','item_attribute','place_attribute','ingredient')
+           AND status = 'active'
+           AND (name_embedding IS NULL OR name_embedding_stale = true)`,
+      );
+      const pending = Number(n);
+      if (pending === 0) return;
+      this.logger.warn(
+        'Entity embeddings are stale/missing but crons are disabled — no repair',
+        { pending },
+      );
+      this.opsAlerts.emit({
+        severity: 'critical',
+        kind: 'entity-embedding-backlog-uncollected',
+        title: `${pending} entities have a missing or stale name_embedding and crons are OFF`,
+        body: [
+          `${pending} active searchable entities have no usable dense vector, and this process has crons disabled (CRONS_ENABLED / PROCESS_ROLE), so the reconciler did NOT run and will not.`,
+          'Those entities are absent from the dense recall lane. The reader fails open, so searches simply return less and nothing else will report this.',
+          'Run the reconcile deliberately (scripts/backfill-entity-embeddings.ts) or enable crons on a runtime that may spend on embeddings.',
+        ].join('\n\n'),
+        dedupeKey: 'entity-embedding-backlog-uncollected',
+      });
+    } catch (error) {
+      this.logger.error('Entity embedding backlog check failed', {
+        error: error instanceof Error ? error.message : String(error),
       });
     }
   }

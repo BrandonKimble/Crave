@@ -29,9 +29,16 @@
  * A pool denial (either grain) is a typed "not now" — the work item simply
  * STAYS DUE, never an error, never a cooldown (§12.3).
  */
-import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  OnModuleInit,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { LoggerService, CorrelationUtils } from '../../../shared';
+import { isEnvFlagExplicitlyDisabled } from '../../../shared/config/env-flag';
+import { isWorkerRuntime } from '../../../shared/utils/process-role';
 import { GovernanceService } from '../../external-integrations/governance/governance.service';
 import {
   CollectorSourceRegistryService,
@@ -80,11 +87,36 @@ const ARRIVAL_LOOKBACK_DAYS = 14;
  *  than this can silently drop posts from a quiet source. */
 export const MAX_CHRONOLOGICAL_INTERVAL_DAYS = ARRIVAL_LOOKBACK_DAYS;
 
+/** Reconciler cadence — unchanged from the retired @Cron(EVERY_HOUR). */
+const RECONCILER_INTERVAL_MS = 60 * 60 * 1000;
+
 @Injectable()
-export class CollectorPacerService implements OnModuleInit {
+export class CollectorPacerService implements OnModuleInit, OnModuleDestroy {
   private logger!: LoggerService;
   private enabled = false;
   private tickInFlight = false;
+
+  /**
+   * THE SPLIT (2026-08-31). This service used to carry TWO @Crons of
+   * opposite kinds under one gate:
+   *
+   *   - runPacerTick STARTS work — Reddit draws and the LLM extraction
+   *     behind them. Discretionary spend. It STAYS an @Cron, inert whenever
+   *     CRONS_ENABLED is off. That is exactly what the switch is for.
+   *   - runExpectedBatchesReconciler starts nothing. It is a pure-DB read
+   *     that compares each lane's registered expectedBatches against the
+   *     extraction runs that actually PROVE them, and folds the verdict onto
+   *     the lane row where collectorHeartbeats reads it. Its own docblock
+   *     says the divergence IS the collector's RED heartbeat.
+   *
+   * So under one gate, turning crons off turned off THE DETECTOR — the thing
+   * that would have said the collector was not producing. The reconciler now
+   * owns its own interval on the worker runtime, with its own explicit
+   * off-switch (COLLECTION_RECONCILER_ENABLED=false), unref()'d and cleared
+   * on shutdown. Same shape as gemini-batch.service.ts's poller.
+   */
+  private reconcilerTimer: NodeJS.Timeout | null = null;
+  private reconcilerInFlight = false;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -99,8 +131,32 @@ export class CollectorPacerService implements OnModuleInit {
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('CollectorPacer');
     this.enabled = isEnvFlagEnabled(process.env.COLLECTION_SCHEDULER_ENABLED);
+    if (
+      isEnvFlagExplicitlyDisabled(process.env.COLLECTION_RECONCILER_ENABLED)
+    ) {
+      return;
+    }
+    if (!isWorkerRuntime()) return;
+    this.reconcilerTimer = setInterval(
+      () => void this.runExpectedBatchesReconciler(),
+      RECONCILER_INTERVAL_MS,
+    );
+    this.reconcilerTimer.unref();
+    // BOOT ARM: a restart re-reads the lane verdicts immediately, so a
+    // shortfall that opened while the loop was dead is visible on the
+    // heartbeat within one boot rather than one cadence.
+    void this.runExpectedBatchesReconciler();
   }
 
+  onModuleDestroy(): void {
+    if (this.reconcilerTimer) {
+      clearInterval(this.reconcilerTimer);
+      this.reconcilerTimer = null;
+    }
+  }
+
+  /** STAYS AN @Cron ON PURPOSE: this tick STARTS work — Reddit draws and the
+   *  LLM extraction behind them. CRONS_ENABLED must keep it inert. */
   @Cron(CronExpression.EVERY_10_MINUTES)
   async runPacerTick(): Promise<void> {
     if (!this.enabled || this.tickInFlight) return;
@@ -363,9 +419,15 @@ export class CollectorPacerService implements OnModuleInit {
    * and independently via the stale pending-window read. Also the §15
    * migration drain instrument.
    */
-  @Cron(CronExpression.EVERY_HOUR)
   async runExpectedBatchesReconciler(): Promise<void> {
-    if (!this.enabled) return;
+    // DELIBERATELY NOT GATED ON `this.enabled` (2026-08-31). The old gate was
+    // COLLECTION_SCHEDULER_ENABLED — the switch that stops the pacer STARTING
+    // collection. Parents dispatched before the switch flipped (or by a
+    // script/backfill) still owe proof, and the whole point of this pass is
+    // to say when that proof never arrived. Gating the detector on the
+    // dispatcher's switch is the same mistake one level down.
+    if (this.reconcilerInFlight) return;
+    this.reconcilerInFlight = true;
     try {
       await this.reconcileExpectedBatches();
     } catch (error) {
@@ -375,10 +437,12 @@ export class CollectorPacerService implements OnModuleInit {
             ? { message: error.message, stack: error.stack }
             : { message: String(error) },
       });
+    } finally {
+      this.reconcilerInFlight = false;
     }
   }
 
-  /** Exposed for probes/specs; the hourly cron calls this. */
+  /** Exposed for probes/specs; the hourly reconciler interval calls this. */
   async reconcileExpectedBatches(now: Date = new Date()): Promise<void> {
     // §16: K3-shaped operational bounds. Grace = PENDING_WINDOW_GRACE_HOURS
     // (shared with the heartbeat's stale-window read — one number, one law);
