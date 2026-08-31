@@ -10,6 +10,7 @@ import {
   conceptSatisfiesLane,
 } from './concept-satisfies-lane';
 import type { SatisfiesVerdictSubject } from './concept-satisfies.service';
+import { facetInadmissibleIds } from './satisfies-facet-guard';
 import {
   ATTRIBUTE_SATISFIES_PROMPT_VERSION,
   ATTRIBUTE_SATISFIES_RULE_FINGERPRINT,
@@ -48,7 +49,10 @@ export interface WideningDirectedCase {
 }
 
 export interface WideningHearingRow {
-  kind: WideningKind;
+  /** 'unknown' appears ONLY on skipped rows whose sides carry no widening
+   *  type at all (missing entities) — a skipped row reports its TRUE kind,
+   *  never a hardcoded default (widening red team F7). */
+  kind: WideningKind | 'unknown';
   fromId: string;
   fromName: string;
   toId: string;
@@ -147,14 +151,19 @@ export class WideningSatisfiesService {
        WHERE entity_id = ANY(${ids}::uuid[])`);
     const byId = new Map(entities.map((row) => [row.entity_id, row]));
 
+    const kindOfType = (type: string | undefined): WideningKind | null =>
+      type === 'place_attribute' || type === 'item_attribute'
+        ? 'attribute'
+        : type === 'ingredient'
+          ? 'ingredient'
+          : null;
     const kindOf = (row: EntityRow | undefined): WideningKind | null => {
       if (!row || row.status !== 'active') return null;
-      if (row.type === 'place_attribute' || row.type === 'item_attribute') {
-        return 'attribute';
-      }
-      if (row.type === 'ingredient') return 'ingredient';
-      return null;
+      return kindOfType(row.type);
     };
+    // THE FACET GUARD (F5): a cuisine-faceted or dietary-constrained side is
+    // inadmissible — refused loudly at admission, never silently dropped.
+    const inadmissible = await facetInadmissibleIds(this.prisma, ids);
 
     const admissible: Array<{
       kind: WideningKind;
@@ -166,12 +175,37 @@ export class WideningSatisfiesService {
       const toRow = byId.get(c.toId);
       const fromKind = kindOf(fromRow);
       const toKind = kindOf(toRow);
+      // The row's TRUE kind (F7): read off the sides' actual types — a
+      // skipped row about two ingredients must say 'ingredient'.
+      const rowKind: WideningKind | 'unknown' =
+        kindOfType(fromRow?.type) ?? kindOfType(toRow?.type) ?? 'unknown';
+      const facetRefusal =
+        inadmissible.get(c.fromId) ?? inadmissible.get(c.toId);
+      if (facetRefusal) {
+        summary.skipped += 1;
+        const row: WideningHearingRow = {
+          kind: rowKind,
+          fromId: c.fromId,
+          fromName: fromRow?.name ?? '(missing)',
+          toId: c.toId,
+          toName: toRow?.name ?? '(missing)',
+          verdict: 'skipped',
+          reason: `facet-inadmissible: ${facetRefusal}`,
+        };
+        summary.rows.push(row);
+        this.logger.warn('Widening case refused — facet-inadmissible side', {
+          fromId: c.fromId,
+          toId: c.toId,
+          reason: facetRefusal,
+        });
+        continue;
+      }
       if (!fromRow || !toRow || !fromKind || fromKind !== toKind) {
         // A missing/archived/mismatched side is a fact about the docket, not
         // a hearing — report it and move on (the brief's "skip gracefully").
         summary.skipped += 1;
         summary.rows.push({
-          kind: fromKind ?? toKind ?? 'attribute',
+          kind: rowKind,
           fromId: c.fromId,
           fromName: fromRow?.name ?? '(missing)',
           toId: c.toId,
@@ -331,8 +365,18 @@ export class WideningSatisfiesService {
   async settleReviewedVerdicts(
     rows: ReadonlyArray<WideningHearingRow>,
     tableSha256: string,
-  ): Promise<{ settled: number; skippedDecided: number; skippedGone: number }> {
-    const result = { settled: 0, skippedDecided: 0, skippedGone: 0 };
+  ): Promise<{
+    settled: number;
+    skippedDecided: number;
+    skippedGone: number;
+    skippedFaceted: number;
+  }> {
+    const result = {
+      settled: 0,
+      skippedDecided: 0,
+      skippedGone: 0,
+      skippedFaceted: 0,
+    };
     const verdictRows = rows.filter(
       (row) => row.verdict === 'satisfies' || row.verdict === 'reject',
     );
@@ -347,6 +391,9 @@ export class WideningSatisfiesService {
                     AND status = 'active'`,
     );
     const liveIds = new Set(live.map((row) => row.entity_id));
+    // THE FACET GUARD (F5), on the apply path too: the reviewed table may
+    // predate a facet stamp, and an edge write is what the guard forbids.
+    const inadmissible = await facetInadmissibleIds(this.prisma, ids);
 
     for (const kind of ['attribute', 'ingredient'] as const) {
       const docket = verdictRows.filter((row) => row.kind === kind);
@@ -373,6 +420,16 @@ export class WideningSatisfiesService {
       for (const row of docket) {
         if (!liveIds.has(row.fromId) || !liveIds.has(row.toId)) {
           result.skippedGone += 1;
+          continue;
+        }
+        const facetRefusal =
+          inadmissible.get(row.fromId) ?? inadmissible.get(row.toId);
+        if (facetRefusal) {
+          result.skippedFaceted += 1;
+          this.logger.warn(
+            'Reviewed widening verdict refused — facet-inadmissible side',
+            { fromId: row.fromId, toId: row.toId, reason: facetRefusal },
+          );
           continue;
         }
         const key = conceptSatisfiesLane.canonicalClaimKey({

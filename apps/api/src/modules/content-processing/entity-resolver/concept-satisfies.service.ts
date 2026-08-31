@@ -9,6 +9,7 @@ import {
   CONCEPT_SATISFIES_LANE,
   conceptSatisfiesLane,
 } from './concept-satisfies-lane';
+import { facetInadmissibleIds } from './satisfies-facet-guard';
 import {
   buildSatisfiesPrompt,
   SATISFIES_PROMPT_VERSION,
@@ -159,6 +160,8 @@ export class ConceptSatisfiesService {
   async resumePendingSatisfiesEffects(limit = 500): Promise<number> {
     const pending = await this.ledger.pendingExecution<SatisfiesVerdictSubject>(
       CONCEPT_SATISFIES_LANE,
+      SATISFIES_PROMPT_VERSION,
+      conceptSatisfiesLane.keyFoldVersion,
       limit,
     );
     let resumed = 0;
@@ -287,8 +290,26 @@ export class ConceptSatisfiesService {
       limit,
     );
 
+    // THE FACET GUARD (F5): cuisine-faceted / dietary-constrained anchors
+    // are refused at hearing admission — no edge from them may be written.
+    // Refusals are logged and recorded on the run ledger (so the watermark
+    // never re-offers them), never silently dropped.
+    const inadmissibleAnchors = await facetInadmissibleIds(
+      this.prisma,
+      concepts.map((c) => c.entity_id),
+    );
+
     for (const concept of concepts) {
       summary.conceptsScanned += 1;
+      const anchorRefusal = inadmissibleAnchors.get(concept.entity_id);
+      if (anchorRefusal) {
+        this.logger.warn('Satisfies hearing refused — facet-inadmissible', {
+          concept: concept.name,
+          reason: anchorRefusal,
+        });
+        await this.recordRun(concept.entity_id, 'facet_inadmissible', dryRun);
+        continue;
+      }
       const residual = await this.residualFor(concept, type, summary);
       if (!residual.length) {
         // "Nothing to judge" IS an outcome — record it or starve (KL-A).
@@ -514,6 +535,25 @@ export class ConceptSatisfiesService {
       }
     }
     summary.decidedByLadder += skip.size;
+    // THE FACET GUARD (F5), to-side: a cuisine-faceted / dietary-constrained
+    // candidate may not receive an edge — refused loudly, never heard.
+    const inadmissible = await facetInadmissibleIds(
+      this.prisma,
+      candidates
+        .filter((candidate) => !skip.has(candidate.entityId))
+        .map((candidate) => candidate.entityId),
+    );
+    for (const candidate of candidates) {
+      const refusal = inadmissible.get(candidate.entityId);
+      if (refusal && !skip.has(candidate.entityId)) {
+        skip.add(candidate.entityId);
+        this.logger.warn('Satisfies candidate refused — facet-inadmissible', {
+          concept: concept.name,
+          candidate: candidate.name,
+          reason: refusal,
+        });
+      }
+    }
     return candidates.filter((candidate) => !skip.has(candidate.entityId));
   }
 

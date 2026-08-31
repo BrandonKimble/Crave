@@ -83,8 +83,13 @@ describe('settleReviewedVerdicts', () => {
   function build(options: { decided: boolean }) {
     const recorded: Array<Record<string, unknown>> = [];
     const prisma = {
-      // live-entity check
-      $queryRaw: jest.fn(async () => [{ entity_id: A }, { entity_id: B }]),
+      // live-entity check; the facet guard's query (recognizable by its
+      // 'facet' predicate) finds nothing inadmissible.
+      $queryRaw: jest.fn(async (query: unknown) =>
+        String((query as { sql?: string })?.sql ?? '').includes('facet')
+          ? []
+          : [{ entity_id: A }, { entity_id: B }],
+      ),
     };
     const ledger = {
       decidedKeys: jest.fn(

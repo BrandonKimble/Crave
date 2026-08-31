@@ -579,6 +579,94 @@ export async function rekeyEntityDimensionEventsToCanonical(
     WHERE entity_id = ${duplicateId}::uuid`;
 }
 
+/** SATISFIES-EDGE merge re-key (widening red team F1, 2026-08-31):
+ *  entity_satisfies is a substrate like the event ledgers — "every substrate
+ *  rekeyed" is the merge law, and this table was the one substrate the
+ *  completion contract missed, leaving directed widening edges pointing at
+ *  archived losers (readers papered over it with a one-hop redirect join;
+ *  the FROM side had no reader rescue at all, so those edges went dark).
+ *  Both sides rewrite to the winner.
+ *
+ *  CONFLICT RULE (deterministic, stated once here and mirrored by the
+ *  one-time heal script): when a rewritten loser edge collides with an
+ *  existing winner edge on the (from,to) PK, the row judged at the HIGHER
+ *  prompt_version wins; on a tie the existing winner-side row is kept.
+ *  A consequence, deliberate: a 'reject' only ever displaces a 'satisfies'
+ *  when the reject was ruled under a strictly newer rule version — never
+ *  on a tie. Self-pairs produced by the rewrite (an edge between the two
+ *  merging entities) are dropped: an entity trivially satisfies itself. */
+export async function rekeySatisfiesEdgesToCanonical(
+  tx: Prisma.TransactionClient,
+  canonicalId: string,
+  duplicateId: string,
+): Promise<void> {
+  // Self-merge annihilation guard — same law as every rekey here.
+  if (canonicalId === duplicateId) {
+    return;
+  }
+  // Edges BETWEEN the pair become self-pairs after the rewrite — drop first.
+  await tx.$executeRaw`
+    DELETE FROM entity_satisfies
+    WHERE (from_entity_id = ${duplicateId}::uuid
+           AND to_entity_id = ${canonicalId}::uuid)
+       OR (from_entity_id = ${canonicalId}::uuid
+           AND to_entity_id = ${duplicateId}::uuid)`;
+  // FROM side: resolve PK collisions per the conflict rule, then rewrite.
+  await tx.$executeRaw`
+    DELETE FROM entity_satisfies l
+    USING entity_satisfies w
+    WHERE l.from_entity_id = ${duplicateId}::uuid
+      AND w.from_entity_id = ${canonicalId}::uuid
+      AND l.to_entity_id = w.to_entity_id
+      AND l.prompt_version <= w.prompt_version`;
+  await tx.$executeRaw`
+    UPDATE entity_satisfies w
+    SET relation = l.relation,
+        prompt_version = l.prompt_version,
+        decided_at = l.decided_at
+    FROM entity_satisfies l
+    WHERE w.from_entity_id = ${canonicalId}::uuid
+      AND l.from_entity_id = ${duplicateId}::uuid
+      AND w.to_entity_id = l.to_entity_id`;
+  await tx.$executeRaw`
+    DELETE FROM entity_satisfies l
+    USING entity_satisfies w
+    WHERE l.from_entity_id = ${duplicateId}::uuid
+      AND w.from_entity_id = ${canonicalId}::uuid
+      AND l.to_entity_id = w.to_entity_id`;
+  await tx.$executeRaw`
+    UPDATE entity_satisfies
+    SET from_entity_id = ${canonicalId}::uuid
+    WHERE from_entity_id = ${duplicateId}::uuid`;
+  // TO side: mirror image of the FROM side.
+  await tx.$executeRaw`
+    DELETE FROM entity_satisfies l
+    USING entity_satisfies w
+    WHERE l.to_entity_id = ${duplicateId}::uuid
+      AND w.to_entity_id = ${canonicalId}::uuid
+      AND l.from_entity_id = w.from_entity_id
+      AND l.prompt_version <= w.prompt_version`;
+  await tx.$executeRaw`
+    UPDATE entity_satisfies w
+    SET relation = l.relation,
+        prompt_version = l.prompt_version,
+        decided_at = l.decided_at
+    FROM entity_satisfies l
+    WHERE w.to_entity_id = ${canonicalId}::uuid
+      AND l.to_entity_id = ${duplicateId}::uuid
+      AND w.from_entity_id = l.from_entity_id`;
+  await tx.$executeRaw`
+    DELETE FROM entity_satisfies l
+    USING entity_satisfies w
+    WHERE l.to_entity_id = ${duplicateId}::uuid
+      AND w.to_entity_id = ${canonicalId}::uuid
+      AND l.from_entity_id = w.from_entity_id`;
+  await tx.$executeRaw`
+    UPDATE entity_satisfies
+    SET to_entity_id = ${canonicalId}::uuid
+    WHERE to_entity_id = ${duplicateId}::uuid`;
+}
+
 /** THE MERGE COMPLETION CONTRACT — one implementation for every entity
  *  merge (round-12 audit: the restaurant and food merges each carried a
  *  copy-pasted tail that had DIVERGED; the divergence is where the live
@@ -599,6 +687,9 @@ export async function finalizeMergeCompletion(
   // surface writer — provenance ('merge_fold') and each carried row's
   // locale survive, where the old array_agg destroyed both.
   await foldSurfacesFromMerge(tx, canonicalId, duplicateId);
+  // Widening edges are a substrate too (F1): rekey both sides to the winner
+  // HERE, in the one completion contract, so every merge court inherits it.
+  await rekeySatisfiesEdgesToCanonical(tx, canonicalId, duplicateId);
   await tx.$executeRaw`
     UPDATE core_entities SET status = 'archived'
     WHERE entity_id = ${duplicateId}::uuid`;

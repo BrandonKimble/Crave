@@ -52,6 +52,7 @@ import {
   wideningTableSha256,
   type WideningVerdictTable,
 } from '../src/modules/content-processing/entity-resolver/widening-verdict-table';
+import { facetInadmissibleIds } from '../src/modules/content-processing/entity-resolver/satisfies-facet-guard';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 /** The owner's kept pairs (plans/sameness-court-report.md, owner docket
@@ -313,7 +314,8 @@ async function bootstrap(): Promise<void> {
       );
       console.log(
         `APPLY: settled=${result.settled} alreadyDecided=${result.skippedDecided} ` +
-          `sideGone=${result.skippedGone} (table sha256 ${tableSha256})`,
+          `sideGone=${result.skippedGone} faceted=${result.skippedFaceted} ` +
+          `(table sha256 ${tableSha256})`,
       );
       return;
     }
@@ -349,14 +351,16 @@ async function bootstrap(): Promise<void> {
     for (const [aName, bName] of OWNER_PAIRS) {
       const aRows = byName.get(aName) ?? [];
       const bRows = byName.get(bName) ?? [];
-      // Pick the kind class where BOTH sides exist (citrus is an attribute
-      // AND an ingredient; the pair decides which court hears it).
-      const pairClass = (['attribute', 'ingredient'] as const).find(
+      // Hear EVERY kind class where BOTH sides exist (widening red team F6):
+      // "citrus"/"lemony" live as attribute AND ingredient, and each court
+      // asks a different question — first-match-wins silently dropped the
+      // second hearing. Each shared class becomes its own directed pair.
+      const pairClasses = (['attribute', 'ingredient'] as const).filter(
         (cls) =>
           aRows.some((r) => kindClass(r.type) === cls) &&
           bRows.some((r) => kindClass(r.type) === cls),
       );
-      if (!pairClass) {
+      if (!pairClasses.length) {
         console.log(
           `SKIP  ${aName} / ${bName} — no shared live kind (` +
             `${aRows.map((r) => r.type).join('+') || 'missing'} vs ` +
@@ -364,11 +368,13 @@ async function bootstrap(): Promise<void> {
         );
         continue;
       }
-      const a = aRows.find((r) => kindClass(r.type) === pairClass)!;
-      const b = bRows.find((r) => kindClass(r.type) === pairClass)!;
-      addDirected(a.entity_id, b.entity_id);
-      addDirected(b.entity_id, a.entity_id);
-      anchors.push(a, b);
+      for (const pairClass of pairClasses) {
+        const a = aRows.find((r) => kindClass(r.type) === pairClass)!;
+        const b = bRows.find((r) => kindClass(r.type) === pairClass)!;
+        addDirected(a.entity_id, b.entity_id);
+        addDirected(b.entity_id, a.entity_id);
+        anchors.push(a, b);
+      }
     }
 
     // 2. Embedding nominations per anchor (the ontology's meaning-first
@@ -415,11 +421,28 @@ async function bootstrap(): Promise<void> {
       addDirected(hold.b, hold.a);
     }
 
+    // THE FACET GUARD (F5) at nomination: a cuisine-faceted or dietary-
+    // constrained side is inadmissible in the courts, so the owner never
+    // reviews a pair no apply could settle. Same one derivation the courts
+    // enforce at admission; refusals are printed, never silent.
+    const inadmissible = await facetInadmissibleIds(
+      prisma,
+      cases.flatMap((c) => [c.fromId, c.toId]),
+    );
+    const admissibleCases = cases.filter((c) => {
+      const refusal = inadmissible.get(c.fromId) ?? inadmissible.get(c.toId);
+      if (refusal) {
+        console.log(`FACET-SKIP ${c.fromId} -> ${c.toId} — ${refusal}`);
+        return false;
+      }
+      return true;
+    });
+
     console.log(
-      `Docket: ${cases.length} directed cases (DRY-RUN — DB untouched; ` +
+      `Docket: ${admissibleCases.length} directed cases (DRY-RUN — DB untouched; ` +
         `the verdict table JSON below is --apply's input)`,
     );
-    const summary = await court.hearDocket(cases, { dryRun: true });
+    const summary = await court.hearDocket(admissibleCases, { dryRun: true });
 
     console.log('\nkind       | asked -> shown | verdict | reason');
     console.log('-----------|----------------|---------|-------');
