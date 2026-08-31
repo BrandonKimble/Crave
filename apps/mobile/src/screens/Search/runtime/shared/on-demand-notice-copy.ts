@@ -1,7 +1,15 @@
+import type { SearchNotice } from '../../../../types';
+import { resolveSearchNoticeText } from '../../match-explain-strings';
+
 export type OnDemandNoticeMetadata = {
   onDemandQueued?: boolean;
   onDemandEtaMs?: number;
   engineCoverageShare?: number;
+  /** WHY THIS MATCHED (2026-08-30): set by the server only when specific
+   *  words STARVED here AND a hunt was queued — the precise, friendlier
+   *  story ("nothing here mentions 'patio' yet") that takes precedence
+   *  over the generic growing-coverage line. */
+  searchNotice?: SearchNotice;
 };
 
 // ENGINE-COVERAGE re-key (markets extermination leg 2), pure decision core:
@@ -27,6 +35,14 @@ export const resolveOnDemandNoticeText = ({
       ? metadata.engineCoverageShare
       : 0;
   const coveredByEngines = engineCoverageShare > 0;
+
+  // Starved words + queued hunt: the server named EXACTLY which of the
+  // user's words found nothing here — say that, in their own words, instead
+  // of the generic growing-coverage paragraph.
+  const starvedText = resolveSearchNoticeText(metadata.searchNotice);
+  if (starvedText) {
+    return starvedText;
+  }
 
   if (metadata.onDemandQueued) {
     const etaMs = metadata.onDemandEtaMs;

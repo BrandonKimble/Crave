@@ -552,6 +552,20 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     letterSpacing: 0.2,
   },
+  // WHY THIS MATCHED chip (owner design 2026-08-30): one quiet muted pill per
+  // non-exact card — same hush as similarMatchLabel, pill-shaped like the tag
+  // chips. Exact matches render nothing.
+  matchExplainChip: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#f3f4f6',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  matchExplainChipText: {
+    color: '#6b7280',
+    letterSpacing: 0.2,
+  },
   metricBlock: {
     marginTop: 0,
     marginBottom: 0,

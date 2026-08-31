@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { BadRequestException } from '@nestjs/common';
 import { PollsService } from './polls.service';
+import { judgedVocabularyDouble } from '../../shared/testing/judged-vocabulary-double';
 
 // Phase C re-key: user poll creation attaches to the PLACE CATALOG — placeId
 // = smallestContaining(creation-context bbox), marketKey never written on new
@@ -99,6 +100,7 @@ function createHarness(options: { priorPollCount?: number } = {}) {
       displayLabel: (entity: { name: string }) => entity.name,
       localizeRows: (rows: unknown[]) => Promise.resolve(rows),
     } as never,
+    judgedVocabularyDouble() as never,
   );
   return { service, prisma, placesCatalog };
 }

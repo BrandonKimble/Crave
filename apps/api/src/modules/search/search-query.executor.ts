@@ -17,6 +17,11 @@ import {
   type BuildPlaceQueryOptions,
 } from './search-query.builder';
 import type { SearchExecutionDirectives } from './search-execution-directives';
+import {
+  deriveDishMatchExplain,
+  deriveRestaurantMatchExplain,
+  type MatchExplainContext,
+} from './match-explain';
 import { renderInlinedSql } from './sql-preview';
 import {
   buildOperatingMetadataFromLocation as buildOperatingMetadataFromLocationUtil,
@@ -86,6 +91,9 @@ interface PlaceQueryRow {
   matched_tags?: Prisma.JsonValue | null;
   match_evidence_type?: string | null;
   has_menu_items?: boolean | null;
+  /** WHY-THIS-MATCHED provenance tokens ('<conceptId>' anchor / '<id>:w'
+   *  widened-only / null), one slot per soft concept — pooled mode only. */
+  matched_soft_concept_tokens?: Array<string | null> | null;
 }
 
 /**
@@ -97,6 +105,14 @@ interface DishQueryRow {
   restaurant_id: string;
   food_id: string;
   food_attributes: string[];
+  /** The restaurant's own attribute ids (selected as place_attributes_arr in
+   *  the dish CTE) — read by the WHY-THIS-MATCHED derivation for
+   *  restaurant-column concept arms. */
+  place_attributes_arr?: string[] | null;
+  /** WHY-THIS-MATCHED containment provenance: TRUE when the testimony arm
+   *  (c.ingredients — a human wrote it) matched; selected only when the
+   *  query grounded ingredients. */
+  ingredient_evidence_match?: boolean | null;
   is_category_item?: boolean;
   mention_count: number;
   total_upvotes: number;
@@ -153,6 +169,9 @@ interface ExecuteDualParams {
   excludePlaceIds?: string[];
   excludeConnectionIds?: string[];
   directives?: SearchExecutionDirectives;
+  /** WHY-THIS-MATCHED (display-only): when present, each mapped row gets a
+   *  derived `matchExplain` (similar > contains > partial; exact = absent). */
+  explainContext?: MatchExplainContext;
   /**
    * Restrict execution to a subset of axes. Defaults to running BOTH. When an
    * axis is omitted/false its SQL is skipped entirely (no DB round-trip) and it
@@ -590,6 +609,7 @@ LIMIT 3
       referenceDate,
       userLocation,
       effectivePlacePagination.skip + 1,
+      params.explainContext,
     );
     const mapPlaceMs = performance.now() - mapPlaceStart;
 
@@ -598,6 +618,7 @@ LIMIT 3
       filteredDishRows,
       allPlaceContexts,
       referenceDate,
+      params.explainContext,
     );
     const mapDishMs = performance.now() - mapDishStart;
 
@@ -1105,6 +1126,7 @@ LIMIT 3
     referenceDate: Date,
     userLocation: UserLocationInput | null,
     rankStart: number,
+    explainContext?: MatchExplainContext,
   ): PlaceResultDto[] {
     return rows.map((row, index) => {
       const context = contexts.get(row.restaurant_id);
@@ -1184,6 +1206,18 @@ LIMIT 3
           row.match_tier === null || row.match_tier === undefined
             ? undefined
             : row.match_tier === 0,
+        // WHY THIS MATCHED (display-only; exact rows stay silent).
+        matchExplain: explainContext
+          ? deriveRestaurantMatchExplain(
+              {
+                matchTier: row.match_tier,
+                conceptTokens: (row.matched_soft_concept_tokens ?? []).filter(
+                  (token): token is string => typeof token === 'string',
+                ),
+              },
+              explainContext,
+            )
+          : undefined,
         rank: rankStart + index,
         scoreSubjectType: 'restaurant',
         scoreSubjectId: row.restaurant_id,
@@ -1233,6 +1267,7 @@ LIMIT 3
     rows: DishQueryRow[],
     contexts: Map<string, PlaceContext>,
     referenceDate: Date,
+    explainContext?: MatchExplainContext,
   ): ItemResultDto[] {
     return rows.map((row) => {
       const context = contexts.get(row.restaurant_id);
@@ -1263,6 +1298,19 @@ LIMIT 3
           row.match_tier === null || row.match_tier === undefined
             ? undefined
             : row.match_tier === 0,
+        // WHY THIS MATCHED (display-only; exact rows stay silent).
+        matchExplain: explainContext
+          ? deriveDishMatchExplain(
+              {
+                matchTier: row.match_tier,
+                itemName: row.food_name,
+                foodAttributeIds: row.food_attributes ?? [],
+                placeAttributeIds: row.place_attributes_arr ?? [],
+                ingredientEvidenceMatch: row.ingredient_evidence_match,
+              },
+              explainContext,
+            )
+          : undefined,
         placeId: row.place_entity_id,
         placeName: row.place_name,
         placeLocationId: row.location_id,

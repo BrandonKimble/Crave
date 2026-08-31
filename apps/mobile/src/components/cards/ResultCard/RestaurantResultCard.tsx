@@ -32,6 +32,7 @@ import { formatDistanceMiles } from '../../../screens/Search/utils/format';
 import { formatRankLabel, getRankFontSize } from '../../../screens/Search/utils/rank-badge';
 import CraveScoreText from '../../../screens/Search/components/CraveScoreText';
 import { formatCraveScoreMovement } from '../../../screens/Search/utils/quality';
+import { resolveMatchExplainChipText } from '../../../screens/Search/match-explain-strings';
 import { InfoCircleIcon } from '../../../screens/Search/components/metric-icons';
 import { renderMetaDetailLine } from '../../../screens/Search/components/render-meta-detail-line';
 import {
@@ -154,6 +155,10 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   // F3719 — computed ONCE per render (was called twice inline: as the condition and as
   // the content).
   const scoreMovementLabel = formatCraveScoreMovement(restaurant.rising ?? null);
+
+  // WHY THIS MATCHED: quiet muted chip, only when the server explained a
+  // non-exact admission (exact matches carry no matchExplain and show nothing).
+  const matchExplainText = resolveMatchExplainChipText(restaurant.matchExplain);
 
   const candidateTopFoods = React.useMemo(
     () => preparedDescriptor?.candidateTopFoods ?? topFoodItems.slice(0, TOP_FOOD_RENDER_LIMIT),
@@ -393,7 +398,16 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                 resultCardSlotStyles.metaFlush,
               ]}
             >
-              {restaurant.exactMatch === false ? (
+              {/* WHY THIS MATCHED: one quiet chip on non-exact rows —
+                  server-prioritized (similar > contains > partial); bare
+                  "Similar match" stays the fallback for unexplained rows. */}
+              {matchExplainText ? (
+                <View style={styles.matchExplainChip}>
+                  <Text variant="caption" style={styles.matchExplainChipText}>
+                    {matchExplainText}
+                  </Text>
+                </View>
+              ) : restaurant.exactMatch === false ? (
                 <Text variant="caption" style={styles.similarMatchLabel}>
                   Similar match
                 </Text>

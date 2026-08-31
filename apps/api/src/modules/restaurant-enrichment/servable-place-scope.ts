@@ -32,9 +32,46 @@ export function marketIncludedSql(alias: string): string {
   return `${alias}.market_excluded_at IS NULL`;
 }
 
+/** THE A-1 VISIBILITY GATE (birth-and-linking red team, owner-blessed
+ *  amendment A-1, 2026-08-30): an UNGROUNDED place with fewer than 2
+ *  mention events is not servable — it is a zero-evidence shell (the
+ *  census counted 173 of them live in search) or a one-mention mint that
+ *  has not yet earned public existence. Grounded places (any location
+ *  with a google_place_id) are ALWAYS visible; the median-10-mention
+ *  ungrounded cohort (Rudys/Easy Tiger-class real places) stays visible.
+ *
+ *  Honesty note on "OR a grounding attempt in flight": A-1's spec offered
+ *  that disjunct, but the only in-flight signal is the BullMQ job in
+ *  Redis — not visible from SQL, and the durable breadcrumb
+ *  (`restaurant_metadata->'lastEnrichmentAttempt'`) records COMPLETED
+ *  attempts, i.e. exactly the failures. Granting visibility on a failed
+ *  attempt would invert the gate (the least-groundable shells become the
+ *  most visible), so the gate is mentions-only by deliberate choice. The
+ *  cost is a one-mention real place staying dark for its grounding window
+ *  (median 5h) — the window A-1 already accepted for <2-mention mints.
+ *
+ *  The `LIMIT 2` subquery is the cheap existence-of-two test on
+ *  idx_restaurant_events_restaurant_time; the grounded arm rides the
+ *  locations FK index. */
+function placeVisibilityFloorSql(alias: string): string {
+  return `(EXISTS (
+      SELECT 1 FROM core_restaurant_locations svgl
+      WHERE svgl.restaurant_id = ${alias}.entity_id
+        AND svgl.google_place_id IS NOT NULL
+    ) OR (
+      SELECT COUNT(*) FROM (
+        SELECT 1 FROM core_restaurant_events svge
+        WHERE svge.restaurant_id = ${alias}.entity_id
+        LIMIT 2
+      ) svgc
+    ) >= 2)`;
+}
+
 /** The full public serving floor: a place entity, never archived, in
- *  market. Readers needing a stricter status (e.g. `= 'active'`) compose
- *  `marketIncludedSql` with their own predicates instead. */
+ *  market, and past the A-1 visibility gate (grounded, or ≥2 mentions —
+ *  ungrounded zero/one-mention shells are not served). Readers needing a
+ *  stricter status (e.g. `= 'active'`) compose `marketIncludedSql` with
+ *  their own predicates instead. */
 export function servablePlaceConditionsSql(alias: string): string {
-  return `${alias}.type = 'place' AND ${alias}.status <> 'archived' AND ${marketIncludedSql(alias)}`;
+  return `${alias}.type = 'place' AND ${alias}.status <> 'archived' AND ${marketIncludedSql(alias)} AND ${placeVisibilityFloorSql(alias)}`;
 }

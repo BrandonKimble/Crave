@@ -147,7 +147,13 @@ const COMBINING_DIACRITICS =
  * and the two raw re-key paths (the ontology rename, the identity-key heal)
  * stamp it alongside the keys they rewrite.
  */
-export const FOLD_ALGORITHM_VERSION = 1;
+export const FOLD_ALGORITHM_VERSION = 2;
+/* v2 (2026-08-30, punctuation-matrix audit): ™/℠ fold as separators instead
+ * of NFKD-glued letters ("Wingstop™" keys `wingstop`, not `wingstoptm`).
+ * BACKFILL DECISION: reasoned deferral — the staging corpus holds ZERO active
+ * rows whose name contains ™ or ℠ (census 2026-08-30; the 4 ®-named rows fold
+ * byte-identically under v1 and v2), so no stored identity_key moves and
+ * check-fold-drift stays green with no heal. */
 
 /**
  * THE CHARACTERS THE FOLD DELETES OUTRIGHT — it neither keeps them nor turns
@@ -181,6 +187,19 @@ export const FOLD_ALGORITHM_VERSION = 1;
 const FOLD_DELETED_INVISIBLE_RE =
   // eslint-disable-next-line no-misleading-character-class -- deliberate
   /[\p{Cf}­︀-️\u{E0100}-\u{E01EF}]/gu;
+
+/** THE LETTER-GLUE SYMBOLS (fold v2, punctuation-matrix audit 2026-08-30).
+ *  ™ (U+2122) and ℠ (U+2120) COMPATIBILITY-DECOMPOSE to the letters "tm"/"sm"
+ *  under NFKD, so a fold that ran them through the pipeline minted glued keys:
+ *  "Wingstop™" keyed as `wingstoptm` — an unreachable twin of `wingstop` that
+ *  no query form could ever fold to. Every OTHER mark of this family (®, ©,
+ *  ℗) has no compat decomposition and already falls to the separator arm as a
+ *  space, which is the behavior a trademark sign should have: decoration, not
+ *  identity. So these two become a SPACE BEFORE NFKD — the only point where
+ *  they are still distinguishable from real letters — exactly the separator
+ *  treatment ® and © already get; the space then collapses in the separator
+ *  arm, so a trailing sign vanishes without minting a stray-token key. */
+const FOLD_SEPARATOR_TRADEMARK_RE = /[™℠]/g;
 
 /** THE APOSTROPHES. Applied AFTER NFKD, which is load-bearing: the fullwidth
  *  apostrophe U+FF07 only BECOMES U+0027 under compatibility decomposition,
@@ -230,6 +249,10 @@ export function diacriticFold(name: string): string {
 function foldWithAccentPolicy(name: string, stripAccents: boolean): string {
   return (
     name
+      // ™/℠ become separators BEFORE NFKD decomposes them into the letters
+      // "tm"/"sm" — after which they are indistinguishable from real letters
+      // and would glue onto the preceding token ("Wingstop™" → wingstoptm).
+      .replace(FOLD_SEPARATOR_TRADEMARK_RE, ' ')
       .normalize('NFKD')
       // Invisible modifiers that carry NO identity: format-controls (\p{Cf}:
       // ZWSP, ZWJ, ZWNJ, BOM …), the soft hyphen, and the VARIATION SELECTORS

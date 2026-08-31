@@ -17,7 +17,7 @@ import {
  * tables) reddens a vector; editing FOLD_ALGORITHM_VERSION alone reddens the
  * version assertion.
  */
-const V1_VECTORS: Array<[input: string, canonical: string, accent: string]> = [
+const V2_VECTORS: Array<[input: string, canonical: string, accent: string]> = [
   ["The Joe's Pizza!", 'the joes pizza', 'the joes pizza'],
   ['Phở Bò', 'pho bo', 'phở bò'],
   ['Cơm Cháy', 'com chay', 'cơm cháy'],
@@ -26,15 +26,20 @@ const V1_VECTORS: Array<[input: string, canonical: string, accent: string]> = [
   ['Café Æble', 'cafe aeble', 'café aeble'],
   ['三峡人家', '三峡人家', '三峡人家'],
   ['McDonald’s', 'mcdonalds', 'mcdonalds'],
+  // v2 (punctuation-matrix audit 2026-08-30): ™/℠ are separators, never the
+  // NFKD letters "tm"/"sm" glued onto the brand token.
+  ['Wingstop™', 'wingstop', 'wingstop'],
+  ['Brand℠ Café', 'brand cafe', 'brand café'],
+  ['Tiny Pies® - Burnet Rd.', 'tiny pies burnet rd', 'tiny pies burnet rd'],
 ];
 
 describe('fold algorithm version pin', () => {
-  it('is version 1 — bump it WITH regenerated vectors, never alone', () => {
-    expect(FOLD_ALGORITHM_VERSION).toBe(1);
+  it('is version 2 — bump it WITH regenerated vectors, never alone', () => {
+    expect(FOLD_ALGORITHM_VERSION).toBe(2);
   });
 
-  it.each(V1_VECTORS)(
-    'v1 vector: %s',
+  it.each(V2_VECTORS)(
+    'v2 vector: %s',
     (input, expectedCanonical, expectedAccent) => {
       expect(canonicalFold(input)).toBe(expectedCanonical);
       expect(diacriticFold(input)).toBe(expectedAccent);

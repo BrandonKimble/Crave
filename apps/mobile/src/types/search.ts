@@ -10,6 +10,8 @@ export type {
   ItemResult,
   ItemResult as FoodResult,
   MapBounds,
+  MatchExplain,
+  MatchExplainKind,
   NaturalSearchRequest,
   OperatingStatus,
   Pagination,
@@ -29,6 +31,7 @@ export type {
   PlaceStatusPreview,
   PlaceStatusPreview as RestaurantStatusPreview,
   ScoreInfoSummary,
+  SearchNotice,
   SearchResponse,
   SearchResponseMetadata,
 } from '@crave-search/shared';

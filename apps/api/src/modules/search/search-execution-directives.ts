@@ -56,6 +56,12 @@ export interface ConceptConstraint {
    *  EXISTS ("any of its dishes carries it"); a restaurant_attributes arm
    *  as venue containment. */
   restaurantArms: ConceptArm[];
+  /** WHY-THIS-MATCHED provenance (additive, display-only): the arms that
+   *  entered this concept through satisfies WIDENING (widenConceptArms),
+   *  as opposed to the anchor's own arms. Never read by membership SQL —
+   *  the explain derivation uses it to say "close match: bar" when a row
+   *  satisfies the concept ONLY through a widened arm. */
+  widenedArms?: ConceptArm[];
 }
 
 export interface SearchExecutionDirectives {

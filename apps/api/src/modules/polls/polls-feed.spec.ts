@@ -11,6 +11,7 @@
  */
 import 'reflect-metadata';
 import { PollsService } from './polls.service';
+import { judgedVocabularyDouble } from '../../shared/testing/judged-vocabulary-double';
 import { ViewportVerdictService } from '../places/viewport-verdict.service';
 
 const TOWN = '11111111-1111-1111-1111-111111111111';
@@ -235,6 +236,7 @@ function createHarness(options: {
       displayLabel: (entity: { name: string }) => entity.name,
       localizeRows: (rows: unknown[]) => Promise.resolve(rows),
     } as never,
+    judgedVocabularyDouble() as never,
   );
   return { service, prisma, placesCatalog };
 }

@@ -20,6 +20,7 @@ import { renderMetaDetailLine } from '../../../screens/Search/components/render-
 import { formatRankLabel, getRankFontSize } from '../../../screens/Search/utils/rank-badge';
 import CraveScoreText from '../../../screens/Search/components/CraveScoreText';
 import { formatCraveScoreMovement } from '../../../screens/Search/utils/quality';
+import { resolveMatchExplainChipText } from '../../../screens/Search/match-explain-strings';
 import { searchService } from '../../../services/search';
 import { useSearchHistoryStore } from '../../../store/searchHistoryStore';
 import CardActionPillRow from './CardActionPillRow';
@@ -122,6 +123,10 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
   // F3719 — computed ONCE per render (was called twice inline: as the condition and as
   // the content).
   const scoreMovementLabel = formatCraveScoreMovement(item.rising ?? null);
+
+  // WHY THIS MATCHED: quiet muted chip, only when the server explained a
+  // non-exact admission (exact matches carry no matchExplain and show nothing).
+  const matchExplainText = resolveMatchExplainChipText(item.matchExplain);
 
   // W3 universal share modal (dish share id = the food entityId).
   const handleShare = React.useCallback(() => {
@@ -244,7 +249,17 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
               </View>
               {dishMetaPrimaryLine ? <View>{dishMetaPrimaryLine}</View> : null}
               {dishStatusLine ? <View>{dishStatusLine}</View> : null}
-              {item.exactMatch === false ? (
+              {/* WHY THIS MATCHED: one quiet chip, only on non-exact rows —
+                  server-prioritized (similar > contains > partial). The bare
+                  "Similar match" caption stays as the fallback for widened
+                  rows the server didn't explain (union-prefetch siblings). */}
+              {matchExplainText ? (
+                <View style={styles.matchExplainChip}>
+                  <Text variant="caption" style={styles.matchExplainChipText}>
+                    {matchExplainText}
+                  </Text>
+                </View>
+              ) : item.exactMatch === false ? (
                 <Text variant="caption" style={styles.similarMatchLabel}>
                   Similar match
                 </Text>

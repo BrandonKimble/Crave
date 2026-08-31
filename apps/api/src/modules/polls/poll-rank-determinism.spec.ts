@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { PollLeaderboardSubjectType, PollTopicType } from '@prisma/client';
 import { PollsService } from './polls.service';
+import { judgedVocabularyDouble } from '../../shared/testing/judged-vocabulary-double';
 import { PollWeeklyRitualService } from './supply/poll-weekly-ritual.service';
 import { entityRedirectDouble } from '../../shared/testing/prisma-doubles';
 
@@ -126,6 +127,7 @@ async function rebuildWithCommentOrder(
       displayLabel: (entity: { name: string }) => entity.name,
       localizeRows: (rows: unknown[]) => Promise.resolve(rows),
     } as never,
+    judgedVocabularyDouble() as never,
   ) as unknown as { rebuildPollLeaderboard(pollId: string): Promise<void> };
 
   await service.rebuildPollLeaderboard(POLL);

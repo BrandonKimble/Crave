@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { BadRequestException } from '@nestjs/common';
 import { PollsService } from './polls.service';
+import { judgedVocabularyDouble } from '../../shared/testing/judged-vocabulary-double';
 
 // ORDERING IS THE INVARIANT, not "moderation exists".
 //
@@ -107,6 +108,7 @@ function createHarness() {
       displayLabel: (entity: { name: string }) => entity.name,
       localizeRows: (rows: unknown[]) => Promise.resolve(rows),
     } as never,
+    judgedVocabularyDouble() as never,
   );
   return { service, moderation, pollEntitySeedService, prisma, tx };
 }

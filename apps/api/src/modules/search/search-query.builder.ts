@@ -320,6 +320,40 @@ export class SearchQueryBuilder {
     // OWNER RULING 2026-08-08: tier NEVER orders. match_tier stays selected
     // as row metadata; admission is the gate WHERE's job.
     const restTierOrder = Prisma.sql``;
+    // WHY-THIS-MATCHED provenance column (additive, display-only): one token
+    // per soft concept — '<id>' when the row satisfies it through an ANCHOR
+    // arm, '<id>:w' when only through a judged WIDENING arm, NULL otherwise.
+    // Same per-concept expressions the tier CASE and the rswc_N starvation
+    // windows already evaluate; never read by admission or ordering.
+    const restConceptTokenSelect = (() => {
+      if (!pooledGate || !softConceptsList.length) return Prisma.sql``;
+      const elements = softConceptsList.map((concept) => {
+        const widenedKeys = new Set(
+          (concept.widenedArms ?? []).map((arm) => `${arm.column}|${arm.id}`),
+        );
+        const anchorArms = concept.restaurantArms.filter(
+          (arm) => !widenedKeys.has(`${arm.column}|${arm.id}`),
+        );
+        const widenedArms = concept.restaurantArms.filter((arm) =>
+          widenedKeys.has(`${arm.column}|${arm.id}`),
+        );
+        const whens: Prisma.Sql[] = [];
+        if (anchorArms.length) {
+          whens.push(
+            Prisma.sql`WHEN ${restConceptExpr({ ...concept, restaurantArms: anchorArms }, 'fr')} THEN ${concept.id}::text`,
+          );
+        }
+        if (widenedArms.length) {
+          whens.push(
+            Prisma.sql`WHEN ${restConceptExpr({ ...concept, restaurantArms: widenedArms }, 'fr')} THEN ${`${concept.id}:w`}::text`,
+          );
+        }
+        return whens.length
+          ? Prisma.sql`CASE ${Prisma.join(whens, ' ')} ELSE NULL END`
+          : Prisma.sql`NULL::text`;
+      });
+      return Prisma.sql`ARRAY[${Prisma.join(elements, ', ')}]::text[] AS matched_soft_concept_tokens,`;
+    })();
     const placeTopDishOrder = this.resolveTopDishOrderSql(
       plan.ranking.itemOrder,
     );
@@ -341,6 +375,7 @@ ranked_restaurants AS (
   SELECT
     fr.entity_id AS restaurant_id,
     ${restTierSelect}
+    ${restConceptTokenSelect}
     count(*) FILTER (WHERE ${restTierExpr!} = 0) OVER () AS pooled_full_count,
     fr.name AS place_name,
     fr.restaurant_metadata,
@@ -391,6 +426,7 @@ ranked_restaurants AS (
   SELECT
     fr.entity_id AS restaurant_id,
     ${restTierSelect}
+    ${restConceptTokenSelect}
     fr.name AS place_name,
     fr.restaurant_metadata,
     fr.price_level,
@@ -667,6 +703,23 @@ WITH
     }WHEN ${pooledFullExprSql} THEN 0 ELSE 1 END AS pooled_tier`
       : Prisma.sql``;
 
+    // WHY-THIS-MATCHED containment provenance (owner ruling 2026-08-30:
+    // never promise what we inferred). When the query grounded ingredients,
+    // every admitted dish row passed the ANDed containment clause — this
+    // column records whether the TESTIMONY arm (a human wrote the
+    // ingredient, c.ingredients) matched; false means the row rode a
+    // derived arm (synthesized canon / name-twin) and the chip must hedge.
+    // Display-only; never read by admission or ordering.
+    // Twin-ingredient asks ("bacon" the food ∪ dishes containing bacon) ride
+    // the same containment clause, so they get the same provenance column.
+    const evidenceIngredientIds = Array.from(
+      new Set([...filters.ingredientIds, ...filters.twinIngredientIds]),
+    );
+    const ingredientEvidenceSelectSql = evidenceIngredientIds.length
+      ? Prisma.sql`,
+    (${this.buildArrayOverlapClause('c.ingredients', evidenceIngredientIds)}) AS ingredient_evidence_match`
+      : Prisma.sql``;
+
     // Build connection conditions (food entity search)
     const { sql: connectionWhereSql, minimumVotesApplied } =
       this.buildConnectionConditions(filters);
@@ -772,7 +825,7 @@ filtered_connections AS (
     sl.city,
     sl.hours,
     sl.utc_offset_minutes,
-    sl.time_zone${pooledTierCteSelectSql}
+    sl.time_zone${pooledTierCteSelectSql}${ingredientEvidenceSelectSql}
   FROM core_restaurant_items c
   JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
   JOIN selected_locations sl ON sl.restaurant_id = fr.entity_id

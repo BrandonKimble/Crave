@@ -979,12 +979,14 @@ inherited — Step E.)
    `item`; the listed items are components of this dish, not dishes of
    their own. They may be recorded in `ingredients` (C.5).
 
-4. **Sanity-check.** Would this exact wording appear on a menu? If not, peel
-   one modifier until it would, keeping the head noun. If you end with a lone
-   ingredient, keep the broader dish instead — a lone ingredient is not a
-   dish. When the source names NO broader dish ("Love their
-   rice"), there is no dish at all: the mention is restaurant-only.
-   - **Appearing on a menu is NOT sufficient.** Re-run Gate 1's OFFERING
+4. **Sanity-check.** Is the phrase you composed the NAME of one offering,
+   or is a word of commentary — the writer's verdict, a comparison,
+   narration — still stuck to it? Peel such words one at a time, keeping
+   the head noun; judge the WORDS as spoken, never menus you remember. If
+   you end with a lone ingredient, keep the broader dish instead — a lone
+   ingredient is not a dish. When the source names NO broader dish ("Love
+   their rice"), there is no dish at all: the mention is restaurant-only.
+   - **A coherent name is NOT sufficient.** Re-run Gate 1's OFFERING
      TEST on the phrase you just composed: an offering you could order
      stays as spoken ("chicken special", "nigiri special", "chef's
      tasting" — a thing the writer ordered by this name); a price/count
@@ -1051,9 +1053,17 @@ and none of it is this writer's claim: "the ribs were incredible" names
 NO `pork`, ever. Two sources only:
 
 1. Additive clauses: "pasta **with burrata, chanterelles, and pesto**" →
-   `["burrata", "chanterelle", "pesto"]` — singularized, never expanded
-   (no synthesized "mushroom").
+   `["burrata", "chanterelle", "pesto"]`; "banh mi **with fermented crab
+   paste**" → `["crab paste"]` — singularized, never expanded (no
+   synthesized "mushroom").
 2. Ingredient nouns inside the dish name: "gruyere popover" → `["gruyere"]`.
+
+**An ingredient is the NAME of a substance, and the name is as long as
+the source made it.** "Crab paste", "fish sauce", "brown butter" each
+name ONE substance, kept whole — shortened, each word names a DIFFERENT
+substance ("crab" is an animal; the writer wrote about a paste). Only a
+preparation participle in front may fall away ("fermented crab paste" →
+`crab paste`); the substance's own name is never trimmed.
 
 **Never add ingredients from your own knowledge**: "al pastor taco" → `[]`
 unless the source names contents. **And the ingredient is the WORD THE

@@ -75,6 +75,45 @@ export interface StructuredWeeklyHours {
   hasSchedule: boolean;
 }
 
+/**
+ * WHY THIS MATCHED (owner design 2026-08-30): a compact, per-row explanation
+ * for any result that is NOT an exact match. Exact matches carry NO
+ * matchExplain at all — the principle is "explain by affinity, never by
+ * deficit". One explanation per row, already prioritized server-side
+ * (similar > contains > partial), so the client renders at most one quiet chip.
+ */
+export type MatchExplainKind = 'partial' | 'similar' | 'contains';
+
+export interface MatchExplain {
+  kind: MatchExplainKind;
+  /** The user's own display words this explanation speaks about:
+   *  partial → the words THIS row matched (positive framing);
+   *  similar → the asked word the row is close to;
+   *  contains → the asked ingredient word. */
+  terms: string[];
+  /** contains only: true when ingredient widening was active for this query,
+   *  so the row may hold a judged stand-in of the asked ingredient rather
+   *  than the ingredient itself — copy softens accordingly. */
+  widened?: boolean;
+  /** contains only (owner ruling 2026-08-30): never promise what we
+   *  inferred. 'evidence' = a human wrote the ingredient (the testimony
+   *  tier, c.ingredients) — copy may assert "has X in it"; 'derived' = our
+   *  own derivation (synthesized canon / name-twin logic) — copy must
+   *  hedge ("may have X in it"). */
+  basis?: 'evidence' | 'derived';
+}
+
+/**
+ * Page-level friendly notice: the query had words with zero coverage here
+ * AND an on-demand collection run was queued. Rendered once at the top of
+ * the results list.
+ */
+export interface SearchNotice {
+  kind: 'starved_on_demand';
+  /** The starved display words, in the user's own language. */
+  terms: string[];
+}
+
 export interface ItemResult {
   connectionId: string;
   itemId: string;
@@ -92,6 +131,8 @@ export interface ItemResult {
    *  score and evidence are real; only the presentation differs. */
   isCategoryItem?: boolean;
   exactMatch?: boolean;
+  /** WHY THIS MATCHED: present only on non-exact rows (see MatchExplain). */
+  matchExplain?: MatchExplain;
   // Graded relatedness to the query entity on one calibrated 0..1 scale
   // (1 = the thing you asked for or an instance of it; siblings carry
   // ceiling-normalized cosine). Present whenever the query resolved a food;
@@ -191,6 +232,8 @@ export interface PlaceResult {
   // Sectioned relevancy: true = exact-match tier (section 1), false = widened
   // (sibling/category/lexical) tier. Absent when sectioning didn't apply.
   exactMatch?: boolean;
+  /** WHY THIS MATCHED: present only on non-exact rows (see MatchExplain). */
+  matchExplain?: MatchExplain;
   // Graded relatedness to the query entity on one calibrated 0..1 scale
   // (1 = the thing you asked for or an instance of it; siblings carry
   // ceiling-normalized cosine). Present whenever the query resolved a food;
@@ -352,6 +395,9 @@ export interface SearchResponseMetadata {
   emptyQueryMessage?: string;
   onDemandQueued?: boolean;
   onDemandEtaMs?: number;
+  /** WHY THIS MATCHED page-level line: set only when starved words exist AND
+   *  an on-demand run was queued ("Nothing here mentions 'patio' yet…"). */
+  searchNotice?: SearchNotice;
 }
 
 export interface SearchResponse {

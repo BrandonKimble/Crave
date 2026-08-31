@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { PollsService } from './polls.service';
+import { judgedVocabularyDouble } from '../../shared/testing/judged-vocabulary-double';
 import { entityRedirectDouble } from '../../shared/testing/prisma-doubles';
 
 /**
@@ -53,6 +54,7 @@ function createService(prisma: Record<string, unknown>): ServicePrivate {
       displayLabel: (entity: { name: string }) => entity.name,
       localizeRows: (rows: unknown[]) => Promise.resolve(rows),
     } as never,
+    judgedVocabularyDouble() as never,
   ) as unknown as ServicePrivate;
 }
 

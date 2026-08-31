@@ -155,6 +155,19 @@ export function widenConceptArms(
     }
     return out;
   };
+  // WHY-THIS-MATCHED provenance: remember which arms are widened (not the
+  // anchor's own) so the explain derivation can tell "matched the asked
+  // word" from "matched its judged neighbor". Display-only — membership
+  // SQL never reads this field. Arms already native to the concept are not
+  // recorded as widened.
+  const nativeKeys = new Set(
+    [...concept.dishArms, ...concept.restaurantArms].map(
+      (arm) => `${arm.column}|${arm.id}`,
+    ),
+  );
+  const recordedWidened = widenedArms.filter(
+    (arm) => !nativeKeys.has(`${arm.column}|${arm.id}`),
+  );
   return {
     ...concept,
     // Empty-axis asymmetry is deliberate doctrine (a dietary wall with no
@@ -164,6 +177,7 @@ export function widenConceptArms(
     restaurantArms: concept.restaurantArms.length
       ? appendTo(concept.restaurantArms)
       : [],
+    ...(recordedWidened.length ? { widenedArms: recordedWidened } : {}),
   };
 }
 

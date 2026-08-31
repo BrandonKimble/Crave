@@ -56,6 +56,27 @@ import { ViewportVerdictService } from '../places/viewport-verdict.service';
 import { UserBlockService } from '../identity/user-block.service';
 import { DEFAULT_LOCALE } from '../../shared/locale';
 import { EntityDisplayService } from '../entity-display/entity-display.service';
+import { JudgedVocabularyService } from '../content-processing/entity-resolver/judged-vocabulary.service';
+import { ROLE_FRAME } from '../content-processing/entity-resolver/word-vocabulary-lanes';
+import { segmentStripUnits } from '../entity-text-search/query-analyzer';
+
+/**
+ * THE POLL GAZETTEER TYPE LIST — all 5 entity types (B-3, birth-and-linking
+ * red team 2026-08-30; poll-gazetteer-all-types-study §5). `ingredient`
+ * joined 2026-08-30: the measured CLEANEST type (1 effective wrong of 7
+ * hookups in the 50-comment dry-run — its scary class, vi diacritic
+ * shadows, is already dead in the shared scanner's foreign-strict arm).
+ * ORDER IS THE WINNER ORDER (scanForKnownEntities picks one entity per
+ * span by this order): place first — poll threads are place-anchored;
+ * ingredient AFTER item so "carne guisada" stays a dish.
+ */
+const POLL_SCAN_TYPES: EntityType[] = [
+  EntityType.place,
+  EntityType.item,
+  EntityType.ingredient,
+  EntityType.item_attribute,
+  EntityType.place_attribute,
+];
 import { renderPollTitle } from '../entity-display/poll-title-render';
 import {
   AUTHOR_SELECT,
@@ -141,6 +162,10 @@ export class PollsService {
     // N10/D1: the ONE display boundary — templated poll questions render
     // through it, user prose bypasses it entirely.
     private readonly entityDisplay: EntityDisplayService,
+    // Poll-scan frame gate (B-1, birth-and-linking red team 2026-08-30):
+    // the word-role verdicts are facts about words, not about searching —
+    // the poll gazetteer consults the same banked lane search does.
+    private readonly judgedVocabulary: JudgedVocabularyService,
   ) {
     this.logger = loggerService.setContext('PollsService');
   }
@@ -1333,15 +1358,54 @@ export class PollsService {
     const engineId = await this.engineIdForPlace(placeId);
     const spans = await this.entityTextSearch.scanForKnownEntities(
       body,
-      [
-        EntityType.place,
-        EntityType.item,
-        EntityType.item_attribute,
-        EntityType.place_attribute,
-      ],
+      POLL_SCAN_TYPES,
       { engineId },
     );
-    return spans as unknown as Prisma.InputJsonValue;
+    return this.dropFrameOnlySpans(
+      body,
+      spans,
+    ) as unknown as Prisma.InputJsonValue;
+  }
+
+  /**
+   * THE WORD-ROLE FRAME GATE, ported from search (B-1, birth-and-linking
+   * red team 2026-08-30; poll-gazetteer study item 2). A grounded span made
+   * ENTIRELY of frame-ruled units never links — "best tacos" must not
+   * highlight "best"→the Best ghost place, "think"→Think Coffee. Same
+   * composition rule as search-query-interpretation.service.ts: the scan
+   * ran over the full text, so a frame word INSIDE a multiword banked name
+   * ("Best Quality Daughter") still links — only all-frame spans drop.
+   *
+   * Locale: poll prose carries no detected locale, so verdicts are read
+   * under 'und' — the lane search's own undetectable asks use, certified
+   * for every corpus word alongside its native locale.
+   *
+   * No sync hearing (deliberate — the study's derivation): an UNHEARD word
+   * reads as non-frame and links today (the conservative direction, same
+   * as search), and `holdsUnjudged` queues it durably for the nightly
+   * word-hearing drain so the verdict is in force next scan.
+   */
+  private dropFrameOnlySpans(text: string, spans: EntitySpan[]): EntitySpan[] {
+    if (!spans.length) return spans;
+    const units = segmentStripUnits(text).map((unit) => ({
+      ...unit,
+      role: this.judgedVocabulary.roleOf(unit.word, null),
+    }));
+    const kept = spans.filter((span) => {
+      const covering = units.filter(
+        (u) => u.start < span.end && u.end > span.start,
+      );
+      if (covering.length && covering.every((u) => u.role === ROLE_FRAME)) {
+        return false;
+      }
+      // Queue any unheard span word for the nightly hearing (fire-and-
+      // forget bank write; holdsUnjudged is the one queuing door).
+      for (const u of covering) {
+        if (u.role === null) this.judgedVocabulary.holdsUnjudged(u.word, null);
+      }
+      return true;
+    });
+    return kept;
   }
 
   /**
@@ -1886,15 +1950,13 @@ export class PollsService {
     const createdByUserId = poll.createdByUserId;
     const descSpans: EntitySpan[] =
       description && createdByUserId
-        ? await this.entityTextSearch.scanForKnownEntities(
+        ? this.dropFrameOnlySpans(
             description,
-            [
-              EntityType.place,
-              EntityType.item,
-              EntityType.item_attribute,
-              EntityType.place_attribute,
-            ],
-            { engineId: await this.engineIdForPlace(poll.placeId) },
+            await this.entityTextSearch.scanForKnownEntities(
+              description,
+              POLL_SCAN_TYPES,
+              { engineId: await this.engineIdForPlace(poll.placeId) },
+            ),
           )
         : [];
 

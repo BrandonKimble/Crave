@@ -188,3 +188,46 @@ prefix lane's ambiguity guard covers the rest.
 - `yarn invariants` — 43 invariants, 88 proofs, all green.
 - `yarn boot:smoke` — BOOT OK.
 - Nothing committed (per brief).
+
+## Addendum — chooser-to-standard verification (2026-08-30, coherence audit)
+
+**Verdict: v2 IS the principled house shape — no v3 rederivation warranted.**
+
+- **Prompt vs philosophy canon**: read line-by-line against the 2026-08-11/16
+  canon. It states the error economics once at the top and derives everything
+  from it; the mental process is named ordered gates (identity, geography,
+  stop-or-continue, brand clusters, what-the-place-is, ties); "samples, not a
+  census" and mention-count weighting are principles, not incident patches;
+  the store-typed examples (bodega/cheese shop/supermarket) teach the class
+  "category is weak evidence, the text's eating-behavior decides", not an
+  enumerated allowlist. No non-exhaustive lists standing in for principles.
+  Contested boundaries are pinned by 10 real gold cases covering BOTH sides
+  of every line (must-select market-anchor + brand-cluster; must-decline
+  out-of-market, identity-absent, unanchored-generic), certified 10/10 ×3.
+- **Mechanical hygiene**: temperature 0, enforced `responseJsonSchema` with
+  the audit-reason policy, decision ledger row per hearing (query, snippets,
+  locale, full candidate set, model), caller-profile model/ceiling, the
+  78KB-system-prompt inheritance bug already closed, rule ledgered
+  (place-grounding-rule.ts v2 `87b7c24515d7`) so remembered rejections
+  re-open on any bump. D2-grade context confirmed: 3 snippets + mention
+  count + market + dual-source candidate metadata.
+- **Candidate fetch**: autocomplete (raw entity name + locationBias) with a
+  searchText fallback lane, merged/ranked/deduped by placeId, 5+5 candidate
+  caps, locale-retry query appends missing city/region. Not starving the
+  chooser: the 08-20 decline census showed the failure lived in CONTEXT and
+  rule v1, with full healthy candidate sets in the breadcrumbs; genuinely
+  bad sets (Chiefs Bbq, generics) were correct declines over what exists.
+- **Apostrophe trace** (no new spend — real breadcrumb, staging entity
+  c85605ae "Rudys"): query `"Rudys"` → Google returned "Rudy's Country
+  Store and BBQ" (Selma), "Rudy's \"Country Store\" and Bar-B-Q" (N Lamar,
+  Austin) among 20 candidates — the apostrophe-less form retrieves the
+  apostrophed listings. The comparison side is pinned by the
+  `rudys-r1-market-anchor-over-stray-trip-snippet` gold case (must-SELECT,
+  passed all three cert runs). Fold-law note: Places queries go out RAW
+  (never canonicalFold'd), which is correct — Google's matcher is
+  fold-tolerant and diacritics/apostrophes are signal to it.
+- One considered-and-rejected edit: an explicit "punctuation/possessive
+  drift is identity-neutral" line in the prompt. The model already rules
+  this correctly (gold-pinned); adding it would restate an instance the
+  principle covers and force a fingerprint bump that re-opens every v2
+  remembered rejection for zero behavioral gain.

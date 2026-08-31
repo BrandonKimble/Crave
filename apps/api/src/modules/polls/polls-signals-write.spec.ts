@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { PollLeaderboardSubjectType, Prisma } from '@prisma/client';
 import { PollsService } from './polls.service';
+import { judgedVocabularyDouble } from '../../shared/testing/judged-vocabulary-double';
 import { SignalsService } from '../signals/signals.service';
 
 // DUAL-WRITE milestone spec (master plan §22): a poll endorsement records a
@@ -109,6 +110,7 @@ function createHarness(
       displayLabel: (entity: { name: string }) => entity.name,
       localizeRows: (rows: unknown[]) => Promise.resolve(rows),
     } as never,
+    judgedVocabularyDouble() as never,
   );
   const internals = service as unknown as {
     rebuildPollLeaderboard: (pollId: string) => Promise<void>;

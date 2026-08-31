@@ -32,6 +32,7 @@ import {
   MapBoundsDto,
 } from './dto/search-query.dto';
 import { SearchQueryExecutor } from './search-query.executor';
+import { buildMatchExplainContext } from './match-explain';
 import { SearchQueryBuilder } from './search-query.builder';
 import { SearchEntityExpansionService } from './search-entity-expansion.service';
 import {
@@ -870,6 +871,14 @@ export class SearchService {
             : undefined,
         onDemandQueued: onDemandQueued || undefined,
         onDemandEtaMs,
+        // WHY THIS MATCHED page-level line: only when words STARVED here AND
+        // we actually queued a run — "Nothing here mentions 'patio' yet —
+        // we're on the lookout." Copy lives on the client; the wire carries
+        // the user's own words.
+        searchNotice:
+          onDemandQueued && starved?.terms.length
+            ? { kind: 'starved_on_demand', terms: starved.terms }
+            : undefined,
         emptyQueryMessage: outOfViewportMessage ?? undefined,
       };
 
@@ -1849,6 +1858,31 @@ export class SearchService {
     const relevanceByItemId = this.relevanceFromGrounding(
       constraints.grounding.item,
     );
+    // WHY THIS MATCHED (display-only): resolve the query's own words for the
+    // soft concepts / subject / ingredients so the executor can stamp each
+    // non-exact row with one compact explanation. Never touches admission.
+    // Twin-ingredient asks ("bacon" the food also admits dishes CONTAINING
+    // bacon) are ingredient asks for explain purposes — the containing
+    // dish's chip speaks the subject word.
+    const twinIngredientIds =
+      constraints.grounding.item.twinIngredientIds ?? [];
+    const explainContext = buildMatchExplainContext({
+      softConcepts,
+      attributeEntities: [
+        ...(params.request.entities.itemAttributes ?? []),
+        ...(params.request.entities.placeAttributes ?? []),
+      ],
+      subjectEntities: params.request.entities.items ?? [],
+      ingredientEntities: constraints.ids.ingredientIds.length
+        ? (params.request.entities.ingredients ?? [])
+        : twinIngredientIds.length
+          ? (params.request.entities.items ?? [])
+          : [],
+      ingredientWidened: widenedIngredientIds.length > 0,
+      hasIngredientAsk:
+        constraints.ids.ingredientIds.length > 0 ||
+        twinIngredientIds.length > 0,
+    });
     const exec = await this.queryExecutor.executeDual({
       plan: stagePlan,
       request: params.request,
@@ -1858,6 +1892,7 @@ export class SearchService {
       topDishesLimit: params.topDishesLimit,
       includeSqlPreview: params.includeSqlPreview,
       directives,
+      explainContext,
     });
     const executeMs = performance.now() - executeStart;
 
