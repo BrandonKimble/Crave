@@ -31,7 +31,16 @@ UNION SELECT unnest(canonical_ingredients) FROM core_entities WHERE canonical_in
 -- activation and its rollback decision.
 UNION SELECT restaurant_id FROM core_restaurant_entity_events
 UNION SELECT entity_id FROM core_restaurant_entity_events
-UNION SELECT restaurant_id FROM core_restaurant_events;
+UNION SELECT restaurant_id FROM core_restaurant_events
+-- INDEPENDENT EVIDENCE IS SUPPORT (LLM-decision audit 2026-08-31): a
+-- place_attribute whose only backing is places_api/cuisine_llm/poll_seed
+-- evidence has no reddit event and may not yet be projected into any
+-- restaurant_attributes array (below corroboration threshold) — but that
+-- evidence is PAID independent knowledge, and the FK cascades, so dooming
+-- the attribute silently deletes it. The reddit_evidence class is excluded
+-- because it is rebuilt from events and protects nothing by itself.
+UNION SELECT attribute_id FROM core_restaurant_attribute_evidence
+      WHERE source_class <> 'reddit_evidence';
 
 CREATE TEMP TABLE doomed AS
 SELECT e.entity_id FROM core_entities e
