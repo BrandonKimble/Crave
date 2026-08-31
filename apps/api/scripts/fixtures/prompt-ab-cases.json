@@ -4537,5 +4537,361 @@
       "items": ["omakase"],
       "notFoods": ["soto omakase"]
     }
+  },
+  {
+    "id": "FA1-dead-used-to-have",
+    "contract": "v17",
+    "why": "Final-accuracy 2026-08-30 (doc t1_k35xspt): DISH STATUS is TEMPORAL — 'used to have' places the dish in the venue's past; a loved-but-gone dish earns nothing, however vivid the praise.",
+    "posts": [
+      {
+        "id": "t3_16xj41n",
+        "subreddit": "austinfood",
+        "title": "Best aqua fresca in town?",
+        "body": "A couple of years ago while visiting Santa Fe I had the best strawberry aqua fresca of my life. I can’t afford to go back to Santa Fe, so where are some of the best aqua frescas in town??",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_k33eze6",
+            "body": "Santa Barbacha"
+          },
+          {
+            "id": "t1_k35xspt",
+            "parent_id": "t1_k33eze6",
+            "body": "La Santa Barbacha used to have a delicious strawberry horchata agua fresca."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "notFoods": ["strawberry horchata agua fresca"],
+      "perSource": [
+        {
+          "source": "t1_k35xspt",
+          "emitsNothing": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA2-dead-bring-back",
+    "contract": "v17",
+    "why": "Final-accuracy 2026-08-30 (doc t1_nrz9v63): a wish for restoration ('hopefully they'll bring back') places the dish in the past — you only bring back what is gone. Nothing emits.",
+    "posts": [
+      {
+        "id": "t3_1pcow3j",
+        "subreddit": "austinfood",
+        "title": "RIP Nutella Hopdoddy Shake",
+        "body": "For our family, the Nutella Shake was our absolute favorite shake in Austin. Here's to hoping Hopdoddy returns the Nutella shake at some point!",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_nrz9v63",
+            "body": "Hopefully they’ll bring back the Llano Poblano burger while they are at it!"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "FA3-dead-one-time-offering",
+    "contract": "v17",
+    "why": "Final-accuracy 2026-08-30 (doc t1_k3a5pof): a one-time offering from a past occasion ('did one over thanksgiving break one year') is a dish in the past; dreamed-about-still is eulogy vividness, not availability.",
+    "posts": [
+      {
+        "id": "t3_16ylr5p",
+        "subreddit": "austinfood",
+        "title": "Any Monte Cristos in Austin?",
+        "body": "I have been craving a good Monte Cristo for awhile, but it looks like the last place I can find in Austin that made one closed back in 2017. Are there any others?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_k3a5pof",
+            "body": "the cypress grill or whatever in the san jacinto dorm at UT did one over thanksgiving break one year that was so freaking amazing. i dream about it still"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "FA4-capacity-ask-pick",
+    "contract": "v17",
+    "why": "Final-accuracy 2026-08-30 (doc t1_k1gpnz4): a superlative is courtesy dressing — 'better places to order 50+ tacos by 7am' polls CAPABILITY; a pick plus hours/capacity facts asserts fit, never taste.",
+    "posts": [
+      {
+        "id": "t3_16npfee",
+        "subreddit": "austinfood",
+        "title": "Where are the better places around Austin to order 50+ breakfast tacos?",
+        "body": "Where are some of the better places to order ~50 - 100 breakfast tacos (with less than 24 hours notice) that are open at 7am?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_k1gpnz4",
+            "body": "Rosa’s on Slaughter. Opens at 6:30 and can def so that."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "FA5-rental-ask-pick",
+    "contract": "v17",
+    "why": "Final-accuracy 2026-08-30 (doc t1_nqtm5dg): renting a room is not eating — a bar-rental ask is a capability ask; a link-only pick asserts rental fit and emits nothing.",
+    "posts": [
+      {
+        "id": "t3_1p6vsn9",
+        "subreddit": "austinfood",
+        "title": "Affordable bars to rent for private / semi private bday party",
+        "body": "Looking to rent space at a bar for a birthday party in February near downtown. Will have around 50 or so guests and would like to spend no more than $2000 total. i welcome any and all suggestions!!!",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_nqtm5dg",
+            "body": "[ROAD TRIP, baby!](https://www.pioneertaphouse.com)"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "FA13-capacity-goto-scoped",
+    "contract": "v17",
+    "why": "Final-accuracy ruling 2026-08-30 (doc t1_k1g0d6e, coordinator boundary): habitual patronage scoped to the capability ('my go to for this problem') asserts fit, not taste — emits nothing; an unscoped or food-scoped go-to stays a vouch.",
+    "posts": [
+      {
+        "id": "t3_16npfee_b",
+        "subreddit": "austinfood",
+        "title": "Where are the better places around Austin to order 50+ breakfast tacos?",
+        "body": "Where are some of the better places to order ~50 - 100 breakfast tacos (with less than 24 hours notice) that are open at 7am?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_k1g0d6e",
+            "body": "Maudie's is my go to for this problem"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "FA6-category-verdict-narrated-name",
+    "contract": "v17",
+    "why": "Final-accuracy 2026-08-30 (doc t1_k2bik21): a verdict on a CATEGORY ('most cocktails were solid') never retro-specifies onto a name that appears only in operations narration ('drink mixers to speed up the Ramos gin fizz prep').",
+    "posts": [
+      {
+        "id": "t3_16s80vb",
+        "subreddit": "austinfood",
+        "title": "New East Austin Bar Daydreamer Opens on East Sixth With Cocktails",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_k2bik21",
+            "body": "Unless they seriously increase the number of bar staff, this place is going to be rough on any busy weekend night. I appreciate they are making complex cocktails, but they seemed to struggle to keep up on a medium-crowded Saturday afternoon even using drink mixers to speed up the Ramos gin fizz prep.\n\nMost cocktails were solid. One was a little unbalanced but maybe just sorting out recipes still."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "notFoods": ["ramos gin fizz"]
+    }
+  },
+  {
+    "id": "FA7-shelf-mode-inherited",
+    "contract": "v17",
+    "why": "Final-accuracy 2026-08-30 (doc t1_jx7i58i): MODE is a fact about the GOOD, inherited through the depth-aware order — the thread discusses a cook-at-home packaged product, so 'I do enjoy the beef fajitas though' praises the writer's grill, not HEB's kitchen.",
+    "posts": [
+      {
+        "id": "t3_15xl3zu",
+        "subreddit": "austinfood",
+        "title": "Has anyone tried HEB MI Tienda Al Pastor marinaded pork?",
+        "body": "The stuff that you cook at home. I recently tried the beef fajita, cooked on the grill, and thought it was pretty good.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_jx7i58i",
+            "body": "Not a fan. Doesn’t taste like any other Al pastor I have had. I do enjoy the beef fajitas though."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "FA8-strength-not-spicy",
+    "contract": "v17",
+    "why": "Final-accuracy 2026-08-30 (doc t1_jyyjqwk): the fold changes spelling, never substance — 'strongest' (alcohol) is not 'spicy', and 'strong' itself fails the STANDALONE TEST.",
+    "posts": [
+      {
+        "id": "t3_168bg3v",
+        "subreddit": "austinfood",
+        "title": "Lunch @ Loro",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_jyyczgm",
+            "body": "Kind of Unrelated but curious, who has the best frozen drinks (at least 2 or 3 flavors) other than Loro, bonus points if they also serve food."
+          },
+          {
+            "id": "t1_jyyjqwk",
+            "parent_id": "t1_jyyczgm",
+            "body": "De Nada definitely have the strongest. Their frozen Marg you literally only need 2 of and you'll be fully toasted 😅"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "notAttributes": ["spicy", "strong"]
+    }
+  },
+  {
+    "id": "FA9-place-for-food-formula",
+    "contract": "v17",
+    "why": "Final-accuracy 2026-08-30 (doc t1_jz3t9bw miss): the 'PLACE for FOOD' formula is the annotated answer at its most compressed — all three entries emit, foods as their own dish words.",
+    "posts": [
+      {
+        "id": "t3_168csmp",
+        "subreddit": "austinfood",
+        "title": "Best Fancy Cheeseburger (that serves martinis)",
+        "body": "I’ve decided I’d like to have a fancy cheeseburger today, would like to saddle up at a bar later today and have a martini somewhere with some cool / interesting vibes.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_jyuz9co",
+            "body": "Bartletts\n\nHopfields 👌🏼\n\nClark’s (go during HH)"
+          },
+          {
+            "id": "t1_jz3t9bw",
+            "parent_id": "t1_jyuz9co",
+            "body": "I've done the Clark's HH burger and martini a few times, and confirm it's good.\n\nHillside Farmacy for a burger with an old fashioned or martini, Junes All day for a spicy chicken sandwich and a martini, Pool burger for a burger and a tiki drink."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_jz3t9bw",
+          "places": ["hillside farmacy", "junes all day", "pool burger"],
+          "items": ["spicy chicken sandwich"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA10-love-both-then-choose",
+    "contract": "v17",
+    "why": "Final-accuracy 2026-08-30 (doc t1_k0c1qyy miss): settling decides preference only — 'I love both but if I had to choose, El Dorado' vouches for BOTH names; the runner-up keeps its stated love.",
+    "posts": [
+      {
+        "id": "t3_16h1m1x",
+        "subreddit": "austinfood",
+        "title": "El Dorado Cafe or Enchiladas y Más?",
+        "body": "Family members in town and want to decide between the two. What do y’all say?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_k0c1qyy",
+            "body": "I love both but if I had to choose between the two for out of town guests, El Dorado."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "places": [
+        "el dorado|el dorado cafe",
+        "enchiladas y más|enchiladas y mas"
+      ],
+      "somePraise": true
+    }
+  },
+  {
+    "id": "FA12-present-availability-verdict-alive",
+    "contract": "v17",
+    "why": "Final-accuracy protection 2026-08-30 (doc t1_k38jgo1): present-tense availability PLUS a verdict is a live dish — the temporal dish-status rule must not eat 'has cod … and it’s good'.",
+    "posts": [
+      {
+        "id": "t3_16y2rih",
+        "subreddit": "austinfood",
+        "title": "Best fish and chips in Central Austin?",
+        "body": "My mom wants fish and chips for her birthday lunch, and I have no idea where to go.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_k38jgo1",
+            "body": "Culver’s has cod for their fish n chips and it’s good. They also have great shakes and malts for a birthday treat."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "places": ["culver’s|culver's"],
+      "items": ["fish n chips"]
+    }
+  },
+  {
+    "id": "FA15-constrained-occasion-ask-still-judgment",
+    "contract": "v17",
+    "why": "Final-accuracy protection 2026-08-30 (doc t1_jsycakw): a date-night-on-a-budget ask still polls where to EAT WELL — the capability-ask fix must not swallow constrained occasion asks; the pick emits.",
+    "posts": [
+      {
+        "id": "t3_15647zl",
+        "subreddit": "austinfood",
+        "title": "Best date night restaurants that don’t break the bank?",
+        "body": "My bf and I are stuck always going to Maudie’s or pool burger. We live in South Austin so no suggestions too far North please :)",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_jsycakw",
+            "body": "ABGB on Oltorf..."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "places": ["abgb"],
+      "somePraise": true
+    }
+  },
+  {
+    "id": "FA16-past-meal-narration-alive",
+    "contract": "v17",
+    "why": "Final-accuracy protection 2026-08-30: the tense of the EATING is never the tense of the dish — normal past-tense meal narration with a verdict emits; the temporal rule kills availability-past only.",
+    "posts": [
+      {
+        "id": "t3_fa16",
+        "subreddit": "austinfood",
+        "title": "Weekend wins?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa16",
+            "body": "Went to Sour Duck last Saturday — the pork belly sandwich was incredible."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "places": ["sour duck"],
+      "items": ["pork belly sandwich"]
+    }
   }
 ]

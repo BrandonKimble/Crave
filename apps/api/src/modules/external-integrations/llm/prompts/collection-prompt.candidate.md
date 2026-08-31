@@ -145,7 +145,15 @@ The writer vouches from experience, or reports a clear consensus:
   a list ("Pho phong luu, Tan My, Fresh Bowl, Sip Pho if central"), of an
   annotated list ("Cabernet Grill for dinner / Sunset Grill for breakfast"),
   and of a reply that ADDS names to an ongoing answer thread ("Bar Snack &
-  Paradise Lost as well"). **Presentation never demotes a pick**: a writer
+  Paradise Lost as well"). **The "PLACE for FOOD" formula is this same
+  annotated list at its most compressed**: "Hillside Farmacy for a
+  burger with an old fashioned, Junes All Day for a spicy chicken
+  sandwich, Pool Burger for a burger and a tiki drink" is three picks,
+  each "for" phrase naming what to get there — those foods are the
+  entry's OWN dish words and walk Step C's gates ("spicy chicken
+  sandwich" at Junes All Day emits as a dish). A first-person verdict
+  sentence beside such a list never absorbs it: count the entries and
+  emit each (B.1's most-common-miss law). **Presentation never demotes a pick**: a writer
   answering a rec ask may organize their picks like a catalogue — headings,
   "Notable \_\_\_", "My classification", per-neighborhood groupings. The
   directory tell (A.2) is an EXTERNAL criterion choosing the names; when the
@@ -168,7 +176,31 @@ The writer vouches from experience, or reports a clear consensus:
      buns?", "where can I buy masa?", "who sells single slices?"), hours
      and openings ("who's open Christmas Day?"), deals and prices ("who
      does dollar oysters?"), identification — polls the crowd's KNOWLEDGE
-     of the world: a fact ask, however excited its phrasing. A FOOD-TASTE
+     of the world: a fact ask, however excited its phrasing. **A
+     superlative is courtesy dressing, never the criterion**: "best",
+     "better", "good", "affordable" front asks of BOTH kinds, so read
+     the criterion by what would make an answer WRONG. Wrong because the
+     food isn't good → a judgment ask. Wrong because the place CAN'T DO
+     THE THING — can't fill a 50-taco order by 7am, can't be rented for
+     a party of 50, isn't open, doesn't stock it — → the ask polls
+     CAPABILITY, and it is a fact ask with the rest: "Where are the
+     BETTER places to order 50+ breakfast tacos by 7am?" is answered
+     rightly by any place that can (a pick like "Rosa's — opens at 6:30
+     and can def do that" nominates capacity and emits nothing), and
+     "AFFORDABLE bars to rent for a private party?" is about renting a
+     room, not eating (a linked taphouse emits nothing). A craving or
+     occasion ask stays a judgment ask however constrained — "date
+     night that won't break the bank" still polls where to EAT WELL;
+     its budget and location words are Step D's fit assertion, not a
+     change of domain. The line between them: a capability ask's
+     constraints are the WHOLE question (satisfy them and any kitchen
+     will do); an occasion ask's constraints narrow a field the asker
+     still wants ranked by taste. And habitual patronage scoped to the
+     capability ("Maudie's is my go to for this problem") is habitual
+     USE of the capability, not repeated choice of the food — it
+     asserts fit and emits nothing (a habit scoped to a FOOD or
+     unscoped — "my go-to", "my go-to for breakfast tacos" — stays
+     A.1's vouch as ever). A FOOD-TASTE
      criterion ("who has GOOD variety?", "best milkshakes?", "where's the
      tastiest…?") makes every pick food testimony, however the ask is
      phrased; any non-taste characterization criterion ("most likely to
@@ -458,6 +490,7 @@ The writer vouches from experience, or reports a clear consensus:
   (A complaint in a SEPARATE clause about service or logistics
   is A.2 NEGATIVE CONTENT for that clause only, and leaves an unqualified
   verdict elsewhere standing.)
+
 - **NEGATIVE CONTENT.** Criticism, warnings, "I'd skip \_\_\_", "many of your
   items I would not suggest", or a reply to an explicitly negative ask
   ("worst/avoid/overrated"). Emit nothing **for the criticized items** — and
@@ -480,7 +513,12 @@ In a ranked, listed, or mixed source, **each restaurant and each dish carries
 its own verdict.** A positive verdict on one entry never transfers to another,
 and an attribute stated for one never attaches to another. When the writer
 weighs options, the endorsement lands on the one they settle on, never on the
-one they set aside.
+one they set aside — **but settling decides PREFERENCE only, and it never
+un-says a verdict already stated over both.** "I love both but if I had
+to choose between the two, El Dorado" vouches for BOTH places — "love
+both" is a shared verdict covering both names (B.1's shared-verb law) —
+and both emit; the choice adds nothing extra and subtracts nothing.
+Only an option weighed with NO verdict of its own is set aside empty.
 
 **A name in a verdict clause is either the SUBJECT or the YARDSTICK — the
 thing measured against — and yardsticks earn nothing, in either
@@ -659,6 +697,19 @@ counter yields real claims from the counter and
 none from the aisles. A restaurant that sells its sauce in bottles is the
 mirror image. **Read who made it for whom, never the kind of business.**
 
+**MODE is a fact about the GOOD, resolved through the depth-aware order
+like any referent — a reply inherits the mode of the thing the thread
+is discussing.** When the post's subject is a packaged at-home product
+("Has anyone tried HEB Mi Tienda Al Pastor marinaded pork? The stuff
+that you cook at home"), a reply praising that product or its shelf
+siblings ("Not a fan of the al pastor. I do enjoy the beef fajitas
+though") is praising something the WRITER'S grill finished — shelf, and
+nothing emits, however warm or however salvage-shaped ("not X, but I do
+enjoy Y") the praise reads: a conceded-upward verdict changes the
+verdict's direction, never the good's mode. A reply escapes the
+inherited mode only when its own words place its food in a served
+context (the taquería counter, "their cafe's tortas").
+
 **An ANSWER-TEST pick inherits the ask's MODE.** A bare name carries no food
 language of its own, so the claim it makes is the claim the ask requested —
 and when the ask requested a place to SHOP ("best middle eastern grocery
@@ -802,7 +853,7 @@ as the clause USES it, and route to exactly one arm:
   fixe", "thali", "kaiseki", "executive lunch", "dim sum" (usually a
   FAMILY, `is_menu_item: false`, Step E); and a PROPER NAME that fixes
   one menu offering ("the Elvis Presley combo" emits `elvis presley
-  combo`, "the Hangover Special" → `hangover special`; the article stays
+combo`, "the Hangover Special" → `hangover special`; the article stays
   behind). **The words need not predict the plate**: two diners ordering
   "the chef's tasting" are handed the same offering — the menu supplies
   what the words don't, exactly as it does for the Elvis Presley combo.
@@ -885,14 +936,31 @@ as the clause USES it, and route to exactly one arm:
 **Gate 2 — THE ORDER TEST.** _Could you say this to a server as the thing
 you want to order?_ Anything orderable is a dish, drinks included — an
 espresso or a cocktail exactly like a taco. **And it must still EXIST — DISH STATUS, resolved once
-per dish per post object, the exact mirror of B.1's PLACE STATUS**: any
-in-scope clause stating the dish no longer exists — removed, replaced,
-renamed away, "disappeared from the menu", or the writer's fondness
-explicitly withdrawn as past — marks that dish DEAD, and no clause about
-it emits, however warm the memory (the restaurant is untouched: a dead
-dish is not a closed place). Only VERBED removal kills: "off the menu"
-as an idiom of ordering ("I enjoy several things off the menu") is a
-live dish being eaten, not a dead one. Failing by definition:
+per dish per post object, the exact mirror of B.1's PLACE STATUS.** The
+test is TEMPORAL, asked of the text, not of the writer's warmth: **where
+does this text place the DISH — in the venue's PRESENT, or only in its
+PAST?** The tense of the EATING is never the tense of the dish: meals
+are always narrated in the past ("had the cod and it's good", "went
+last week — the ramen was perfect" report live dishes), so a past-tense
+verb about a meal says nothing. What places the DISH ITSELF in the past
+is availability language: "used to have/make/serve", "back when they
+had", verbed removal ("took it off the menu", "replaced it",
+"discontinued"), mourning ("RIP the shake"), a wish for restoration
+("hopefully they'll bring it back" — you only bring back what is gone),
+and a one-time offering from a past occasion ("did one over
+Thanksgiving break one year" — a dish that existed for one bygone
+window is in the past, however dreamed-about since). Any of these,
+anywhere in scope, marks that dish DEAD, and no clause about it emits.
+**A loved-but-gone dish earns NOTHING — not a live dish, not a place
+carrier: memory never outranks a stated ending**, and the vividness of
+the memory ("so freaking amazing. i dream about it still") is exactly
+what makes this trap — vivid praise is how eulogies read. (The
+restaurant is untouched: a dead dish is not a closed place, and the
+same source's claims about LIVE food emit normally.) A dish the text
+places in the present — "has", "serves", "still on the menu", an
+ordering-idiom "off the menu" ("I enjoy several things off the menu" is
+a live dish being eaten) — is ALIVE, and a stated return overrides an
+older ending. Failing by definition:
 
 - wanting-anything words — "food", "a meal", "the food here", "drinks"/"a
   drink" bare — name the desire to eat or drink, not a thing the server
@@ -915,7 +983,21 @@ C.2. Food language in a clause that earned nothing — a price complaint
 availability line ("half off oysters on Wednesdays", "Rocky's also has
 it"), narration or a receipt, a photo reaction ("this LOOKS great"), a
 reply-chain riff — names food and births NO dish: the clause's verdict
-is what a dish is made of, and that clause has none. Nothing
+is what a dish is made of, and that clause has none. **And a verdict
+binds to its own subject — resolved, not borrowed.** Resolution is
+untouched: a verdict clause's pronoun or elliptical subject resolves by
+the depth-aware order, including into a neighboring availability clause
+("has cod for their fish n chips and it's good" — "it" IS the fish n
+chips, and the verdict makes that dish; "their tacos have no business
+being as good as they are" is a `taco` claim as ever). What a verdict
+never does is MIGRATE to a subject it doesn't have: "Most cocktails
+were solid. One was a little unbalanced" judges cocktails at large —
+it never retro-specifies onto "Ramos gin fizz", a name appearing only
+inside operations narration ("…drink mixers to speed up the Ramos gin
+fizz prep", a complaint about pace). Marrying a category verdict to a
+narrated name invents a claim the writer never made: no `ramos gin
+fizz` dish exists there — that category verdict is holistic and mixed,
+and it lands (or fails) at the place level per A.2 and F.1. Nothing
 survived → the mention is restaurant-only (a PLACE mention, no dish
 fields — F.2) — with ONE inheritance, defined here and only here. **AN
 UNQUALIFIED PICK** — a source that passes the TESTIMONY TEST while
@@ -926,7 +1008,9 @@ language: the ask's dish PHRASE, as the asker
 composed it, walks these same gates, C.2, and Step D exactly as if this
 source had written it — "best burger in EV?" → `burger`; "crispy
 shoestring fries?" → `shoestring fry` with `crispy` peeling into
-`item_attributes` by D's normal tests. WHO inherits is the only gate:
+`item_attributes` by D's normal tests; and in the asker's own spelling
+("Best pho in Austin?" bequeaths `pho`, never a restored "phở" — C.2's
+as-written law reads the asker's letters here). WHO inherits is the only gate:
 only an unqualified pick — a reply that hedges or re-scopes the ask's
 terms ("ask them to fry it twice") inherits none of them, and a DEAL
 offered as the answer (A.2's value arm) is never an unqualified pick:
@@ -1134,7 +1218,14 @@ price → `affordable`), because each spelling would otherwise become its
 own unsearchable entity. The fold renames only the ASPECT noun inside
 this praise conversion — a DESCRIBING word stays itself: "romantic
 ambiance", stated or fit-asserted from an ask, asserts `romantic`,
-never `great atmosphere`.
+never `great atmosphere`. **And the fold changes SPELLING, never
+SUBSTANCE: a stated property is never mapped onto a DIFFERENT nearby
+property to reach a familiar term.** "The strongest frozen margs …
+you'll be fully toasted" states alcohol strength — it is not `spicy`,
+and no vocabulary of familiar attributes licenses the swap; if the
+property the writer stated fails D.2's STANDALONE TEST on its own
+word, it drops entirely rather than shape-shifting into one that
+passes.
 Whole-thing praise with no aspect ("amazing", "delicious", "iconic")
 still converts to nothing — it has no aspect to strengthen, and it is
 already the claim's endorsement.
@@ -1165,8 +1256,9 @@ thing a diner could filter by?**
 
 - **PASSES**: `gluten free`, `spicy`, `smoky`, `crispy`, `vegan`, `patio`,
   `counter service`, `byob`. Each means the same thing wherever it lands.
-- **FAILS**: `rich`, `light`, `authentic` — and their whole kind (`thin`,
-  `old school`, `filling`, …). A **light roast**, a **light marinara**, and a
+- **FAILS**: `rich`, `light`, `strong`, `authentic` — and their whole kind
+  (`thin`, `old school`, `filling`, …). A **strong drink**, a **strong
+  roast**, and a **strong flavor** diverge the same way light does. A **light roast**, a **light marinara**, and a
   **light meal** are three unrelated senses; separated from its noun the word
   asserts nothing and two readers will not agree what it claims. **Drop it.**
 
@@ -1214,7 +1306,7 @@ Two consequences follow directly:
     attribute.) One narrow allowance: a DELIVERY FORMAT the text uses only
     to CHARACTERIZE the venue — "they're a tasting menu spot", "it's an
     omakase counter" — may land as a bare place attribute (`tasting
-    menu`) with no dish. Delivery formats ONLY, never a dish type: "a
+menu`) with no dish. Delivery formats ONLY, never a dish type: "a
     pizza place", "banging pizza scene" still yield NO `pizza`
     attribute. A format the writer ORDERED or ATE is Gate 1's dish,
     never only an attribute.
