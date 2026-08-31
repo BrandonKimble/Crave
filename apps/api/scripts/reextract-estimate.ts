@@ -211,7 +211,13 @@ async function main(): Promise<void> {
     )) {
       console.log(`  ${caller.padEnd(34)} $${(micros / 1e6).toFixed(2)}`);
     }
-    if (windowDocCount === 0 || perCaller.size === 0) {
+    // The window is the FALLBACK rate authority; when a comparable completed
+    // replay priced every gemini line, an empty trailing window is expected
+    // (staging idles between replays) and is not "quoting from nothing".
+    if (
+      !replayPriorOverrides &&
+      (windowDocCount === 0 || perCaller.size === 0)
+    ) {
       throw new Error(
         'call plan has no measured window (no docs or no tagged caller rows) — refusing to quote from nothing',
       );
