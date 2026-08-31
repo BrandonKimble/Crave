@@ -10,6 +10,7 @@ its evidence. Prompt/judges/chunking are final at HEAD `50850a637`
 ## THE APPROVAL SHEET
 
 **Bottom-line cost (one-off):**
+
 - **3-year-window plan (recommended): ~$200–400 total.**
   LLM extraction ~$110–160 · Places grounding ~$70–225 (capped, see risk #1)
   · queued knowledge backfills ~$5–10 · relevance gate <$1.
@@ -22,6 +23,7 @@ in waves (the 39.8k v16 replay drained overnight; this is ~9x that volume →
 gates, and one full nightly cycle watched before arming the flip-list.
 
 **Decisions you must make (3):**
+
 1. **Archive window — 3 years or everything?** The 2026-07-06 ruling
    recommended 3y (closure decay makes years 4–5 the most-dead, most
    Places-wasteful data; backfilling later is one idempotent command,
@@ -49,10 +51,10 @@ a Places checkpoint), 3y window, Austin+NYC re-extract, staging target.
 
 **Staging today (queried 2026-08-30):**
 
-| community | posts | comments | date range | active-run coverage |
-|---|---|---|---|---|
-| austinfood | 1,358 | 38,444 | 2022-01 → 2026-07 | 39,793 / 39,802 |
-| foodnyc | 1,734 | 48,365 | 2020-10 → 2026-07 | 50,099 total |
+| community  | posts | comments | date range        | active-run coverage |
+| ---------- | ----- | -------- | ----------------- | ------------------- |
+| austinfood | 1,358 | 38,444   | 2022-01 → 2026-07 | 39,793 / 39,802     |
+| foodnyc    | 1,734 | 48,365   | 2020-10 → 2026-07 | 50,099 total        |
 
 Austin's 39.8k docs are **almost entirely a 2023 slice** (36.4k of them dated
 2023; 2024 has 755 docs, 2025 has 1,848). 38,962 docs carry the active
@@ -67,12 +69,12 @@ it.** The registry holds versions 1–16 only.
 **The archive (local disk, `austinfood_{comments,submissions}.zst`, spans
 2012 → 2025-12, counted by decompression):**
 
-| year | posts (with comments) | comments |
-|---|---|---|
-| 2023 | 4,525 | 127,192 |
-| 2024 | 5,543 | 178,988 |
-| 2025 | 5,556 | 172,576 |
-| full archive 2012–2025 | 27,120 raw posts | 635,360 |
+| year                   | posts (with comments) | comments |
+| ---------------------- | --------------------- | -------- |
+| 2023                   | 4,525                 | 127,192  |
+| 2024                   | 5,543                 | 178,988  |
+| 2025                   | 5,556                 | 172,576  |
+| full archive 2012–2025 | 27,120 raw posts      | 635,360  |
 
 So the honest picture is **worse than "half never processed"**: within the
 3-year window alone (~2023-08 → 2025-12) the archive holds ~400–430k comments
@@ -82,6 +84,7 @@ covered by past chronological collection (661 comments) — thin; the
 chronological catch-up closes it.
 
 **The three workstreams, sized:**
+
 - **(a) Re-extraction of the existing corpus under final v17:** 39,802 Austin
   docs (or 89,901 with NYC — decision #2). Pointer-flip replay; no
   collection needed.
@@ -102,17 +105,18 @@ spend_campaigns ledger: `reextract:austinfood:v16` 39,802 docs = **$12.19**;
 v15 = $11.52; v14 = $13.89; the 08-20 dual-city 89,901-doc run = $11.89.
 The bundle-size experiment banked $0.39/1k as the certified worst case.
 
-| item | volume | cost |
-|---|---|---|
-| (a) re-extract Austin under v17 | 39.8k docs | **$12–16** |
-| (a') + NYC | +50.1k docs | **+$15–20** |
-| (b) archive backlog, 3y | ~320–370k docs | **$100–145** |
-| (b) relevance gate on backlog | ~13k post titles | **<$1** (measured $0.15/6k) |
-| full-archive variant instead of 3y | ~560k docs total | $170–220 |
+| item                               | volume           | cost                        |
+| ---------------------------------- | ---------------- | --------------------------- |
+| (a) re-extract Austin under v17    | 39.8k docs       | **$12–16**                  |
+| (a') + NYC                         | +50.1k docs      | **+$15–20**                 |
+| (b) archive backlog, 3y            | ~320–370k docs   | **$100–145**                |
+| (b) relevance gate on backlog      | ~13k post titles | **<$1** (measured $0.15/6k) |
+| full-archive variant instead of 3y | ~560k docs total | $170–220                    |
 
 **Places grounding — $0.045 per NEWLY grounded location** (re-measured
 2026-08-02 against the BigQuery billing export: 7,115 locations / $323.10;
 the old $0.028 summed the wrong column). Yield evidence:
+
 - The existing ~40k-doc Austin corpus produced ~4,200 grounded Austin
   restaurants (July fresh-start actuals, the $118 lesson).
 - Discovery is deeply saturated: the July run measured discovery falling
@@ -129,6 +133,7 @@ the old $0.028 summed the wrong column). Yield evidence:
   (see risk #1). No fake midpoint offered.
 
 **Queued knowledge backfills (must run regardless — R6 sequencing):**
+
 - Category (v4) knowledge backfill: ~150 LLM calls — **~$1–2**.
 - Cuisine re-run over fresh entities — **~$3** (banked estimate).
 - Cuisine-widening v2 / venue-cuisine dish-set lane: 0-row dormant until the
@@ -160,8 +165,9 @@ cleans derived residue afterwards. A wipe would also re-open the $118 Places
 class for zero benefit.
 
 **Phase 0 — preconditions (no spend):**
+
 1. Commit state is clean at `50850a637`+; sweep the untracked fixture debris
-   (shard3*, d4 run results) per redteam R5.
+   (shard3\*, d4 run results) per redteam R5.
 2. Fix-first items from campaign-redteam-v3 confirmed landed: chooser v2 gold
    gate + >90%-decline tripwire (RED-proven), strike void applied, twin
    merges applied, reason tripwire live. Strike state fresh: verify
@@ -170,64 +176,62 @@ class for zero benefit.
    standing edges from an empty `knowledge_categories` — or hold
    `FOOD_CATEGORY_EDGE_BUILDER_ENABLED` off until the backfill (step 6).
 
-**Phase 1 — register + re-extract the existing corpus under v17:**
-4. `bench.sh` / `reextract.sh push collection-prompt.candidate.md` → version
-   17; campaign estimate for 39.8k (or 89.9k) docs; **owner approval #1**
-   (~$15–35). Shadow replay (`activate:false`), batch rail, poller drains
-   over hours. Verify shadow isolation (app unchanged while it runs).
-5. Diff → triage (AUTO / AGENT-REVIEW / OWNER-DECISION, incl. the v17
-   refusal section — banked refusals must surface) → **owner approval #2**
-   → activate (pointer flip) → activation GC → anchor-audit clean.
+**Phase 1 — register + re-extract the existing corpus under v17:** 4. `bench.sh` / `reextract.sh push collection-prompt.candidate.md` → version
+17; campaign estimate for 39.8k (or 89.9k) docs; **owner approval #1**
+(~$15–35). Shadow replay (`activate:false`), batch rail, poller drains
+over hours. Verify shadow isolation (app unchanged while it runs). 5. Diff → triage (AUTO / AGENT-REVIEW / OWNER-DECISION, incl. the v17
+refusal section — banked refusals must surface) → **owner approval #2**
+→ activate (pointer flip) → activation GC → anchor-audit clean.
 
-**Phase 2 — knowledge backfills (before any nightly can run):**
-6. Category v4 backfill (~150 calls) → cuisine re-run (~$3) → cuisine
-   widening v2 backfill → venue-cuisine dish-set re-confirm → embedding
-   backfill script. Order matters: category backfill BEFORE the edge
-   builder ever fires (R6).
+**Phase 2 — knowledge backfills (before any nightly can run):** 6. Category v4 backfill (~150 calls) → cuisine re-run (~$3) → cuisine
+widening v2 backfill → venue-cuisine dish-set re-confirm → embedding
+backfill script. Order matters: category backfill BEFORE the edge
+builder ever fires (R6).
 
-**Phase 3 — archive backlog, chronological order:**
-7. Campaign estimate for the 3y backlog (~$100–145); **owner approval #3**.
-   Run archive ingestion oldest-first in month/quarter waves (stage-0 gates
-   + relevance gate on; batch rail; `LLM_BATCH_POLL_ENABLED` on staging
-   only). New docs extract directly under active v17 — no shadow needed.
+**Phase 3 — archive backlog, chronological order:** 7. Campaign estimate for the 3y backlog (~$100–145); **owner approval #3**.
+Run archive ingestion oldest-first in month/quarter waves (stage-0 gates
+
+- relevance gate on; batch rail — its poller runs on the worker runtime
+  regardless of `CRONS_ENABLED`; `LLM_BATCH_POLL_ENABLED` is only an
+  explicit off-switch, never an arming flag). New docs extract directly under active v17 — no shadow needed.
+
 8. **Checkpoint per wave:** doc counts vs archive census, batch failure
    taxonomy clean (the lease/quarantine machinery from the 07-08 audit is
    built — watch it, don't babysit it), `cost-reconcile.sh` after each wave.
 9. **SEQUENCED GROUNDING (waves 3-4 red team W1 — chooser v2 has ZERO live
    verdicts; do not let the unmeasured judge run job-by-job first):**
    a. FIRST run the tripwired `enrichMissingPlaces` batch sweep over the
-      1,021-entity ungrounded backlog — the sweep's per-run tripwire halts
-      on a >90% decline rate before strikes pile up.
+   1,021-entity ungrounded backlog — the sweep's per-run tripwire halts
+   on a >90% decline rate before strikes pile up.
    b. OBSERVE v2's live acceptance rate land in `claim_verdicts` (lane
-      place_grounding at the v2 rule version). A healthy sweep = real
-      selected verdicts at a sane rate, not just gold-harness certs.
+   place_grounding at the v2 rule version). A healthy sweep = real
+   selected verdicts at a sane rate, not just gold-harness certs.
    c. ONLY THEN arm mention-driven retries (the worker lane). That lane now
-      carries its own durable-breadcrumb decline alarm
-      (`worker-lane-decline-alarm.ts`: trailing-2h window, >90% decline over
-      ≥20 attempts → fail-closed hold + critical ops alert, no strike
-      spend) — but the alarm is the backstop, not the plan; the sweep-first
-      ordering is what keeps a broken v2 from ever meeting the mention
-      firehose.
+   carries its own durable-breadcrumb decline alarm
+   (`worker-lane-decline-alarm.ts`: trailing-2h window, >90% decline over
+   ≥20 attempts → fail-closed hold + critical ops alert, no strike
+   spend) — but the alarm is the backstop, not the plan; the sweep-first
+   ordering is what keeps a broken v2 from ever meeting the mention
+   firehose.
    **Places checkpoint at $125 spent** (~2,800 new groundings): eyeball a
    sample, then release the rest of the cap or stop.
 
-**Phase 4 — chronological catch-up + turn everything on:**
-10. Chronological collection closes the 2026 gap (archive ends 2025-12;
-    staging has slivers of 2026 → collect 2026-01 → today, then steady
-    state).
-11. Arm the flip-list ON STAGING per `plans/launch-flip-list.md`, in its
-    own order: `CRONS_ENABLED` first; collection + batch rail; knowledge
-    rail + name census + janitor TOGETHER (court-without-janitor leaves
-    ghost entities); demand/intake flags last (no user demand yet — they
-    idle). Watch ONE FULL NIGHTLY CYCLE's logs + spend, `cost-reconcile.sh`,
-    then declare the load done.
-12. Verification gates before calling it launch-ready: anchor audit clean,
-    same-name dupe gate ≈0, ungrounded share re-census (expect the 12.2%
-    to drop hard), category search live post-backfill, the four stretchy
-    widening edges eyeballed on real search pages, k-anonymity/demand
-    surfaces left to settle — the demand read-models run on 15-min/1–4-day
-    cadences, so demand-fed surfaces (curated lists, taste profiles) read
-    empty-ish for days after arming. That is expected, not a defect.
+**Phase 4 — chronological catch-up + turn everything on:** 10. Chronological collection closes the 2026 gap (archive ends 2025-12;
+staging has slivers of 2026 → collect 2026-01 → today, then steady
+state). 11. Arm the flip-list ON STAGING per `plans/launch-flip-list.md`, in its
+own order: `CRONS_ENABLED` first; collection (the batch POLLER already
+runs on any worker, cron switch or not — only submission needs arming
+via collection); knowledge
+rail + name census + janitor TOGETHER (court-without-janitor leaves
+ghost entities); demand/intake flags last (no user demand yet — they
+idle). Watch ONE FULL NIGHTLY CYCLE's logs + spend, `cost-reconcile.sh`,
+then declare the load done. 12. Verification gates before calling it launch-ready: anchor audit clean,
+same-name dupe gate ≈0, ungrounded share re-census (expect the 12.2%
+to drop hard), category search live post-backfill, the four stretchy
+widening edges eyeballed on real search pages, k-anonymity/demand
+surfaces left to settle — the demand read-models run on 15-min/1–4-day
+cadences, so demand-fed surfaces (curated lists, taste profiles) read
+empty-ish for days after arming. That is expected, not a defect.
 
 ---
 
@@ -261,8 +265,8 @@ class for zero benefit.
 
 ---
 
-*Evidence trail: staging SELECT-only queries this session (doc census, prompt
+_Evidence trail: staging SELECT-only queries this session (doc census, prompt
 registry, spend_campaigns); local zst decompression counts; plans/
 campaign-redteam-v3.md, grounding-fix-report.md, archive-prefilter-pipeline.md,
 wave-acceptance-report.md, launch-flip-list.md, austin-reextract-handoff.md;
-commits `50850a637`, `337352b57`, `1e0c17907`.*
+commits `50850a637`, `337352b57`, `1e0c17907`._

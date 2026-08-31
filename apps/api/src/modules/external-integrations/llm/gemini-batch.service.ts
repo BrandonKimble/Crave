@@ -1,7 +1,8 @@
 import { isEnvFlagExplicitlyDisabled } from '../../../shared/config/env-flag';
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { isWorkerRuntime } from '../../../shared/utils/process-role';
+import { OpsAlertsService } from '../shared/ops-alerts.service';
 import { LLMService } from './llm.service';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -61,6 +62,29 @@ const LEASE_MS = 10 * 60 * 1000;
 const HEARTBEAT_MS = 60 * 1000;
 
 const leaseFromNow = (): Date => new Date(Date.now() + LEASE_MS);
+
+/** Poll cadence — unchanged from the retired @Cron(EVERY_5_MINUTES). */
+const POLL_INTERVAL_MS = 5 * 60 * 1000;
+
+/** Job statuses that still owe work — anything here for too long is stalled.
+ *  Terminal ('ingested'/'failed') rows are done and never alarm. */
+const NON_TERMINAL_STATUSES = [
+  'pending',
+  'persisting',
+  'submitting',
+  'submitted',
+  'succeeded',
+  'ingesting',
+] as const;
+
+/** STALL ALARM THRESHOLD. Evidence (no invented numbers): the 2026-08-31
+ *  incident's 45 jobs were submitted at 03:18 UTC and the vendor had them
+ *  all succeeded within ~1h; the healthy poller advances any non-terminal
+ *  state every 5 minutes (updatedAt moves on each transition). 2h = double
+ *  the observed worst vendor turnaround — a job whose updatedAt has not
+ *  moved in 2h is not "slow", it is abandoned (nobody polling) or wedged
+ *  at the provider. */
+const STALL_ALARM_AFTER_MS = 2 * 60 * 60 * 1000;
 
 /** Typed 'not now' errors — transient BY TYPE, not by message shape. A
  *  breached campaign (CampaignBreachedError) is a governance hold that
@@ -125,7 +149,8 @@ const TERMINAL: Partial<Record<string, 'succeeded' | 'failed'>> = {
  * Gemini Batch API orchestration: submit inlined-request jobs at ~50% of
  * interactive pricing (Google processes them on spare capacity, ≤24h SLA —
  * fine for ALL collection work, none of which blocks a user), poll for
- * completion on a cron, and hand completed items to the purpose-keyed ingestor
+ * completion on a self-owned worker interval (NOT a cron — see pollTimer),
+ * and hand completed items to the purpose-keyed ingestor
  * that resumes the owning pipeline. Job + item state is persisted
  * (llm_batch_jobs / llm_batch_job_items) so restarts lose nothing; ingestion
  * is idempotent (status guards).
@@ -146,13 +171,54 @@ function campaignIdFromResumeContext(ctx: unknown): string | undefined {
 }
 
 @Injectable()
-export class GeminiBatchService implements OnModuleDestroy {
+export class GeminiBatchService implements OnModuleInit, OnModuleDestroy {
   private readonly logger: LoggerService;
   private readonly ingestors = new Map<string, BatchIngestor>();
   private readonly failureHandlers = new Map<string, BatchFailureHandler>();
   private pollInFlight = false;
   private pollDone: Promise<void> | null = null;
   private shuttingDown = false;
+
+  /**
+   * THE POLLER IS A PLAIN setInterval, NOT AN @Cron — and the difference is
+   * a proven production incident (2026-08-31): 45 batch jobs submitted at
+   * 03:18 UTC sat at 'submitted' for 13.7 HOURS on the staging worker with
+   * nobody polling, even though the vendor had finished them within ~1h.
+   * The old @Cron(EVERY_5_MINUTES) only fires when ScheduleModule is
+   * registered, and app.module.ts registers it only under
+   * isSchedulerRuntime() — false whenever CRONS_ENABLED is off. The same
+   * silent hang had previously exceeded 24h.
+   *
+   * THE LAW: CRONS_ENABLED means "do not START new discretionary work
+   * unattended". Collecting the results of work ALREADY DISPATCHED AND
+   * PAID FOR is not discretionary — abandoning it wastes vendor spend
+   * already incurred and strands every extraction run queued behind it.
+   * So the batch rail's completion half must be alive whenever the
+   * background runtime is alive, independent of the cron switch: the poll
+   * starts itself in onModuleInit on the WORKER runtime (isWorkerRuntime,
+   * deliberately NOT isSchedulerRuntime — and NOT the api runtime: ingest
+   * is heavy and triggers downstream LLM work; the worker owns background
+   * work), honours only this rail's own explicit off-switch
+   * (LLM_BATCH_POLL_ENABLED=false), and unref()s so a script that boots
+   * the full graph still exits. Same idiom as
+   * vocabulary-maintenance.service.ts's refreshCache poll.
+   */
+  private pollTimer: NodeJS.Timeout | null = null;
+
+  onModuleInit(): void {
+    if (isEnvFlagExplicitlyDisabled(process.env.LLM_BATCH_POLL_ENABLED)) {
+      return;
+    }
+    if (!isWorkerRuntime()) return;
+    this.pollTimer = setInterval(() => void this.poll(), POLL_INTERVAL_MS);
+    this.pollTimer.unref();
+    // Boot-time stall sweep, deliberately OUTSIDE the poll loop: it can
+    // scream even when the poll loop itself is dead (crashed, wedged, or a
+    // deploy that broke it) — a worker restart is enough to surface a
+    // stranded backlog. What no in-process arm can catch: the whole worker
+    // being down; that residual belongs to external uptime monitoring.
+    void this.checkForStalledJobs();
+  }
 
   /** Ideal shutdown ordering by OWNERSHIP: this service owns its in-flight
    *  poll/ingest cycle, so shutdown (a) stops NEW cycles and (b) awaits the
@@ -161,6 +227,10 @@ export class GeminiBatchService implements OnModuleDestroy {
    *  parked-job retry design remains the backstop for hard kills (SIGKILL). */
   async onModuleDestroy(): Promise<void> {
     this.shuttingDown = true;
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
     if (this.pollDone) {
       await this.pollDone;
     }
@@ -172,6 +242,7 @@ export class GeminiBatchService implements OnModuleDestroy {
     private readonly usageLedger: UsageLedgerService,
     private readonly governance: GovernanceService,
     private readonly spendCampaigns: SpendCampaignService,
+    private readonly opsAlerts: OpsAlertsService,
     // The TRANSPORT no longer owns a vendor client: the gateway exposes the
     // three batch operations as typed ops, so the raw SDK has exactly one
     // owner and this service cannot drift into a second assembler.
@@ -472,11 +543,11 @@ export class GeminiBatchService implements OnModuleDestroy {
 
   /**
    * ONE step of the job's lifecycle, driven by an AWAITING caller instead of
-   * the 5-minute cron (prompt-fleet audit 2026-08-11, cost fix 1: pooled
-   * batch pricing for non-interactive sweeps). The cron only runs on worker
-   * runtimes with crons enabled — a sweep awaiting its own pooled job must
+   * the 5-minute poll loop (prompt-fleet audit 2026-08-11, cost fix 1:
+   * pooled batch pricing for non-interactive sweeps). The poll loop only
+   * runs on worker runtimes — a sweep awaiting its own pooled job must
    * be able to advance it from any process. Every transition this calls is
-   * the SAME lease-guarded machinery the cron uses, so a concurrent cron
+   * the SAME lease-guarded machinery the poll loop uses, so a concurrent
    * tick is harmless: whoever claims the lease wins, the other no-ops.
    * Returns the job's status after the step.
    */
@@ -664,7 +735,10 @@ export class GeminiBatchService implements OnModuleDestroy {
     }
   }
 
-  @Cron(CronExpression.EVERY_5_MINUTES)
+  /** One poll cycle. Driven by the onModuleInit interval (worker runtime,
+   *  see the pollTimer law above) — no @Cron: the schedule registry does
+   *  not exist when CRONS_ENABLED is off, and this rail must not die with
+   *  it (45 jobs, 13.7h, 2026-08-31). */
   async poll(): Promise<void> {
     if (isEnvFlagExplicitlyDisabled(process.env.LLM_BATCH_POLL_ENABLED)) return;
     if (this.shuttingDown) return;
@@ -676,6 +750,9 @@ export class GeminiBatchService implements OnModuleDestroy {
     });
     try {
       const now = new Date();
+      // Stall alarm each cycle too (this arm catches a WEDGED PROVIDER job
+      // while the poller is alive; the boot-time arm catches a dead loop).
+      await this.checkForStalledJobs();
       // Abandoned 'persisting' claims: the submitter died mid-item-write, so
       // the item set is incomplete and CANNOT be resumed — fail loudly; the
       // enqueue layer's retry re-creates the job whole (audit §3: every state
@@ -771,6 +848,65 @@ export class GeminiBatchService implements OnModuleDestroy {
     } finally {
       this.pollInFlight = false;
       markDone();
+    }
+  }
+
+  /**
+   * THE STALL ALARM — the silent half of the 2026-08-31 incident. The
+   * defect was never "the vendor is slow"; it was that 45 finished jobs
+   * sat uncollected for 13.7h and NOTHING SAID SO. Any non-terminal job
+   * whose updatedAt (moved by every real state transition) is older than
+   * STALL_ALARM_AFTER_MS gets a CRITICAL deduped ops alert naming the two
+   * real causes to check: (a) nothing is polling this runtime, (b) the
+   * provider job is wedged. Runs from two arms:
+   *   - each poll cycle: catches (b) — a wedged provider job under a live
+   *     poller. It cannot catch (a) from here (a dead loop never runs it).
+   *   - worker boot (onModuleInit): catches (a) after the fact — the next
+   *     restart of a worker whose loop was dead screams about the backlog.
+   * Honest residual: if the whole worker process is down, nothing
+   * in-process can scream; that is external uptime monitoring's job.
+   * Deduped per job per UTC day so a standing stall pages once a day, not
+   * every 5 minutes. Never throws — alarming must not break the poll.
+   */
+  async checkForStalledJobs(): Promise<void> {
+    try {
+      const cutoff = new Date(Date.now() - STALL_ALARM_AFTER_MS);
+      const stalled = await this.prisma.llmBatchJob.findMany({
+        where: {
+          status: { in: [...NON_TERMINAL_STATUSES] },
+          updatedAt: { lt: cutoff },
+        },
+        select: { jobId: true, status: true, updatedAt: true, purpose: true },
+        take: 200,
+      });
+      const utcDay = new Date().toISOString().slice(0, 10);
+      for (const job of stalled) {
+        const ageHours =
+          (Date.now() - job.updatedAt.getTime()) / (60 * 60 * 1000);
+        this.logger.error('Gemini batch job STALLED — paid work uncollected', {
+          jobId: job.jobId,
+          status: job.status,
+          purpose: job.purpose,
+          ageHours: Number(ageHours.toFixed(1)),
+        });
+        this.opsAlerts.emit({
+          severity: 'critical',
+          kind: 'llm-batch-stall',
+          title: `Gemini batch job stalled at '${job.status}' for ${ageHours.toFixed(1)}h`,
+          body:
+            `Job ${job.jobId} (purpose ${job.purpose}) has sat in ` +
+            `non-terminal status '${job.status}' since ${job.updatedAt.toISOString()} ` +
+            `(${ageHours.toFixed(1)}h; threshold ${STALL_ALARM_AFTER_MS / 3_600_000}h). ` +
+            `This is PAID vendor work not being collected. Check: ` +
+            `(a) nothing is polling this runtime (poller dead / wrong PROCESS_ROLE / ` +
+            `LLM_BATCH_POLL_ENABLED=false), or (b) the provider job is wedged at Gemini.`,
+          dedupeKey: `llm-batch-stall:${job.jobId}:${utcDay}`,
+        });
+      }
+    } catch (error) {
+      this.logger.warn('Batch stall check failed (non-fatal)', {
+        error: { message: buildCauseChain(error) },
+      });
     }
   }
 

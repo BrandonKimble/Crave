@@ -69,6 +69,7 @@ function buildService(isDispatchable: boolean) {
     usageLedger as never,
     governance as never,
     spendCampaigns as never,
+    { emit: jest.fn() } as never,
     llmService as never,
   );
   return { service, prisma, spendCampaigns };
@@ -188,6 +189,7 @@ describe('GeminiBatchService.cancel — terminal states are unclobberable', () =
       { record: jest.fn() } as never,
       { assertGeminiSpendOpen: jest.fn() } as never,
       { isDispatchable: jest.fn(), registerBreachReaper: jest.fn() } as never,
+      { emit: jest.fn() } as never,
       {
         warnIfUncontractedCaller: jest.fn(),
         batchTransportOps: () => ({ cancel: jest.fn() }),
