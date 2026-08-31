@@ -10,6 +10,7 @@ import {
   itemCategoryEdgeProspectiveCountSql,
 } from './food-category-edge-sql';
 import { COLLAPSE_DROP_FRACTION } from '../../external-integrations/shared/source-table-collapse-alarm.service';
+import { OpsAlertsService } from '../../external-integrations/shared/ops-alerts.service';
 
 type PrismaTransaction = Prisma.TransactionClient;
 
@@ -92,6 +93,10 @@ export class ProjectionRebuildService implements OnModuleInit {
   constructor(
     private readonly prismaService: PrismaService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
+    /** Optional so the direct-construction specs stay honest about what they
+     *  exercise; the DI container always provides it (@Global module). */
+    @Inject(OpsAlertsService)
+    private readonly opsAlerts?: OpsAlertsService,
   ) {}
 
   onModuleInit(): void {
@@ -231,6 +236,19 @@ export class ProjectionRebuildService implements OnModuleInit {
           'Category-edge refresh REFUSED: rebuilding would collapse category membership — keeping what stands (run dish-knowledge synthesis, then rebuild)',
           { places: placeIds.length, standingEdges, prospectiveEdges },
         );
+        // A refusal that only logs is the silence class all over again —
+        // the reader fails open, so nothing else will report this.
+        this.opsAlerts?.emit({
+          severity: 'critical',
+          kind: 'category_edge_refresh_refused',
+          title: 'Category-edge refresh refused: membership would collapse',
+          body:
+            `Rebuilding category edges for ${placeIds.length} place(s) would ` +
+            `produce ${prospectiveEdges} edges where ${standingEdges} stand — ` +
+            `the knowledge_categories facet is behind the corpus. Standing ` +
+            `edges were kept. Run dish-knowledge synthesis, then rebuild.`,
+          dedupeKey: `category_edge_refresh_refused:${new Date().toISOString().slice(0, 10)}`,
+        });
         return;
       }
     }

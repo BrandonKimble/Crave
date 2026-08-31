@@ -273,6 +273,16 @@ export class CityReextractRunner implements OnApplicationBootstrap {
         // whose SOURCE run has since been replayed to completion is history.
         // Measured against the replay lineage rather than job-row states,
         // because the rows are transport and the lineage is the work.
+        //
+        // …UNDER THE SAME PROMPT (third correction, 2026-08-31 trust audit).
+        // The second version matched ANY completed replay of the same source
+        // run — but successive prompt versions replay the SAME source
+        // generation, so v18's completed replay would have marked a failed
+        // v19 job "already redone" and closed v19's campaign over real debt.
+        // It read 0-owed in verification only because the retry had already
+        // landed — correct by coincidence. "Redone" means redone under the
+        // prompt THIS campaign is buying: same system_prompt_hash as the
+        // failed run itself.
         const open = await this.prisma.$queryRaw<
           Array<{ open: number; failed: number }>
         >`
@@ -288,6 +298,8 @@ export class CityReextractRunner implements OnApplicationBootstrap {
                   JOIN collection_extraction_runs redone
                     ON redone.metadata->>'replayOfExtractionRunId'
                        = failed_run.metadata->>'replayOfExtractionRunId'
+                   AND redone.system_prompt_hash
+                       = failed_run.system_prompt_hash
                    AND redone.status = 'completed'
                   WHERE failed_run.extraction_run_id
                         = (j.resume_context->>'extractionRunId')::uuid
