@@ -263,6 +263,19 @@ empty-ish for days after arming. That is expected, not a defect.
    years are the most likely to ground dead places — paid enrichment for
    venues the janitor then archives. The 3y window is the mitigation.
 
+9. **A terminally-failed batch job strands its documents, and nothing sweeps
+   for them** (observed 2026-08-31 on the v18 replay: job 1eb1bff9 died on a
+   NUL byte — see the storability fix — taking 1,146 documents out of the
+   replay; they kept their PRIOR extraction, so nothing was lost, but replay
+   coverage fell to ~97% and activation gates on coverage). Two facts make
+   this survivable today: the replay skip-check deliberately excludes
+   `status='failed'` runs (replay.service.ts:173), so simply re-running the
+   city runner retries a failed replay; and the stall alarm now surfaces
+   jobs that die quietly. The GAP that remains, for a future session: nothing
+   enumerates documents whose ONLY extraction run failed and re-enqueues
+   them — a coverage-debt sweep. Until it exists, check replay coverage
+   before every activation rather than assuming 100%.
+
 ---
 
 _Evidence trail: staging SELECT-only queries this session (doc census, prompt

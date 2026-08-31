@@ -2972,8 +2972,49 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     return fallbackContent;
   }
 
+  /**
+   * U+0000 IS NOT STORABLE TEXT (2026-08-31 incident, cost one batch job and
+   * its documents). Postgres text/jsonb can never hold a NUL byte — a write
+   * carrying one fails with 22P05 "unsupported Unicode escape sequence". A
+   * model output that carried one killed batch job 1eb1bff9 on the v18 replay:
+   * the error is DETERMINISTIC, so all three ingest attempts burned on it and
+   * the job died terminally, stranding its documents.
+   *
+   * The same reasoning as canonicalFold's invisible-modifier law applies: a
+   * character that carries no meaning in the text and cannot survive storage
+   * is removed at the boundary, not carried inward to fail at the write.
+   *
+   * IT HIDES IN TWO FORMS, and stripping one misses the other:
+   *  - the LITERAL control character, and
+   *  - the JSON ESCAPE `\\u0000`, which JSON.parse turns INTO a literal NUL
+   *    inside the parsed string value — invisible to any check on raw bytes.
+   * The escape strip only fires when the backslash is itself unescaped: a
+   * preceding EVEN number of backslashes means the `\\` is a literal
+   * backslash and `u0000` is ordinary text, which must survive untouched.
+   *
+   * SCOPED TO NUL DELIBERATELY: other C0 control characters store in Postgres
+   * fine, so removing them would be inventing policy past the constraint that
+   * actually exists.
+   *
+   * It logs, because the old behaviour was loud (a dead job) and silence would
+   * be a worse trade — we still want to know the model emitted one.
+   */
+  private stripUnstorableNulls(content: string): string {
+    const withoutEscapes = content.replace(/(?<!\\)((?:\\\\)*)\\u0000/g, '$1');
+    // eslint-disable-next-line no-control-regex
+    const stripped = withoutEscapes.replace(/\u0000/g, '');
+    if (stripped.length !== content.length) {
+      this.logger.warn('Removed unstorable NUL characters from LLM output', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'strip_unstorable_nulls',
+        charactersRemoved: content.length - stripped.length,
+      });
+    }
+    return stripped;
+  }
+
   private sanitizeJsonContent(content: string): string {
-    let cleanContent = content.trim();
+    let cleanContent = this.stripUnstorableNulls(content).trim();
 
     if (cleanContent.startsWith('```json')) {
       cleanContent = cleanContent
