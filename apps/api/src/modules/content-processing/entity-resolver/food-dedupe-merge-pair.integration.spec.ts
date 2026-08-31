@@ -219,7 +219,20 @@ describe('FoodDedupeMergeService.mergeFoodPair — connection fold, mention-coll
       noopLogger(),
     );
 
-    await (service as any).mergeItemPair('item', winnerItem, loserItem);
+    // The wave-2 signature: the sweep hands the pair through the verdict
+    // ledger (settleDedupeVerdict) before the effect — so this spec now
+    // also exercises verdict-then-effect, not just the fold.
+    await (service as any).mergeItemPair(
+      'item',
+      {
+        a_id: winnerItem,
+        a_name: 'winner-food-longer-name',
+        b_id: loserItem,
+        b_name: 'loser',
+      },
+      'token-multiset-auto',
+      'integration spec: direct merge-pair drive',
+    );
 
     // --- Winner survives, loser archived ---
     const [winnerEntity, loserEntity] = await Promise.all([

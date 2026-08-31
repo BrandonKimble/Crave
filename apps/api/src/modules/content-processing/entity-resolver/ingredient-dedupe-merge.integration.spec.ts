@@ -135,9 +135,26 @@ describe('ItemDedupeMergeService — ingredient merge re-points array references
     );
 
     const testable = service as unknown as {
-      mergeItemPair(sweepType: string, idA: string, idB: string): Promise<void>;
+      mergeItemPair(
+        sweepType: string,
+        pair: { a_id: string; a_name: string; b_id: string; b_name: string },
+        via: string,
+        reason: string,
+      ): Promise<void>;
     };
-    await testable.mergeItemPair('ingredient', winner, loser);
+    // Wave-2 signature: the pair settles through the verdict ledger before
+    // the effect, so this spec exercises verdict-then-effect too.
+    await testable.mergeItemPair(
+      'ingredient',
+      {
+        a_id: winner,
+        a_name: 'roasted-red-pepper-longer',
+        b_id: loser,
+        b_name: 'red-pepper',
+      },
+      'token-multiset-auto',
+      'integration spec: direct ingredient merge-pair drive',
+    );
 
     // Loser archived; redirect written toward the winner.
     const loserEntity = await prisma.entity.findUniqueOrThrow({

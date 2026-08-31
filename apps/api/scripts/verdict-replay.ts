@@ -16,9 +16,9 @@
  * MEASURED usage-ledger traffic. Exempt from the rehearing budget by
  * design: that budget bounds verdict-BUYING drains; this buys none.
  *
- *   yarn workspace api ts-node scripts/verdict-replay.ts --lane entity_match
- *   yarn workspace api ts-node scripts/verdict-replay.ts --all --sample 50 \
- *     --out /tmp/replay-summary.json
+ *   yarn workspace api ts-node scripts/verdict-replay.ts --lane=entity_match
+ *   yarn workspace api ts-node scripts/verdict-replay.ts --all --sample=50 \
+ *     --out=/tmp/replay-summary.json
  *
  * Point DATABASE_URL at staging for a staging replay; the harness only
  * reads claim_verdicts/core tables and only writes stdout + --out.

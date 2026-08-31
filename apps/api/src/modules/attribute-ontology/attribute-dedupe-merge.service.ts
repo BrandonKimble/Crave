@@ -678,6 +678,8 @@ export class AttributeDedupeMergeService {
     const pending =
       await this.ledger.pendingExecution<AttributeMergeVerdictSubject>(
         ATTRIBUTE_MERGE_LANE,
+        ATTRIBUTE_MERGE_RULE_VERSION,
+        attributeMergeLane.keyFoldVersion,
         limit,
       );
     let resumed = 0;

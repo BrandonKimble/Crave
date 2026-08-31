@@ -549,6 +549,8 @@ export class WordVocabularyJudgeService {
     const wiring = laneWiring(lane);
     const pending = await this.ledger.pendingExecution<WordVocabularyClaim>(
       wiring.lane,
+      wiring.ruleVersion,
+      wiring.adapter.keyFoldVersion,
       limit,
     );
     for (const verdict of pending) {

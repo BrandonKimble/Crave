@@ -1317,6 +1317,8 @@ export class ItemDedupeMergeService {
   async resumePendingDedupeEffects(limit = 500): Promise<number> {
     const pending = await this.ledger.pendingExecution<DedupeVerdictSubject>(
       ENTITY_DEDUPE_LANE,
+      ENTITY_DEDUPE_RULE_VERSION,
+      entityDedupeLane.keyFoldVersion,
       limit,
     );
     let resumed = 0;

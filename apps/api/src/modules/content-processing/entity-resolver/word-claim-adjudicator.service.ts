@@ -283,6 +283,8 @@ export class WordClaimAdjudicatorService {
   async resumePendingEffects(limit = 500): Promise<number> {
     const pending = await this.ledger.pendingExecution<WordClaimEffect>(
       WORD_CLAIM_LANE,
+      CLAIM_JUDGE_PROMPT_VERSION,
+      wordClaimLane.keyFoldVersion,
       limit,
     );
     let resumed = 0;

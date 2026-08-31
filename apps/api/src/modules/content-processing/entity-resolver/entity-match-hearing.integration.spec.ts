@@ -251,9 +251,14 @@ describe('the resolution-match lane on the hearing ledger — live database', ()
       expect(row!.executed_at).not.toBeNull();
     }
     // ...and the lane leaves NOTHING in the resume queue.
-    expect(await ledger.pendingExecution(ENTITY_MATCH_LANE, 10)).toHaveLength(
-      0,
-    );
+    expect(
+      await ledger.pendingExecution(
+        ENTITY_MATCH_LANE,
+        ENTITY_DEDUPE_RULE_VERSION,
+        entityMatchLane.keyFoldVersion,
+        10,
+      ),
+    ).toHaveLength(0);
 
     // SECOND ASK, same shortlist — a judge that throws proves no LLM call
     // happens: the whole docket is struck by remembered 'new's.

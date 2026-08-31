@@ -157,9 +157,23 @@ export class ClaimVerdictLedgerService {
    * DECIDED BUT NOT EXECUTED — the resume queue. Oldest first: a verdict that
    * has waited longest is the one whose corpus is most out of step with what
    * was actually ruled.
+   *
+   * ONLY THE RULE IN FORCE GETS ITS ORDERS DELIVERED (audit 2026-08-31).
+   * This used to return pending verdicts at ANY rule/fold version — so a
+   * doctrine bump left the superseded era's undelivered plans live, and the
+   * next nightly executed them under a rule that had already been judged
+   * wrong (two v4-era merges from the discredited 08-30 sweep were sitting
+   * armed exactly this way). The `=` law the due-predicate states applies
+   * here with the same force: a hearing is answered — and an effect owed —
+   * by THE RULE IN FORCE. A superseded pending verdict is not work to
+   * finish; it is an open question the current-rule drain re-hears. The
+   * versions are required (no defaults) so no lane can forget to say which
+   * rule it is executing for.
    */
   async pendingExecution<TSubject>(
     lane: string,
+    ruleVersion: number,
+    foldVersion: number,
     limit = 500,
   ): Promise<Array<PendingVerdict<TSubject>>> {
     const rows = await this.prisma.$queryRaw<
@@ -177,6 +191,7 @@ export class ClaimVerdictLedgerService {
              decided_at
         FROM claim_verdicts
        WHERE lane = ${lane} AND executed_at IS NULL
+         AND rule_version = ${ruleVersion} AND fold_version = ${foldVersion}
        ORDER BY decided_at ASC
        LIMIT ${limit}`;
     return rows.map((row) => ({

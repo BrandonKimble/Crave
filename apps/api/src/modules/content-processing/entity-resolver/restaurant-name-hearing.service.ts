@@ -135,6 +135,8 @@ export class PlaceNameHearingService {
   async resumePendingEffects(limit = 500): Promise<number> {
     const pending = await this.ledger.pendingExecution<PlaceNameEffect>(
       PLACE_NAME_LANE,
+      PLACE_NAME_RULE_VERSION,
+      placeNameLane.keyFoldVersion,
       limit,
     );
     let resumed = 0;
