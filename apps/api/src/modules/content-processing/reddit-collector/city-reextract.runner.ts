@@ -254,19 +254,37 @@ export class CityReextractRunner implements OnApplicationBootstrap {
           );
           return;
         }
-        const open = await this.prisma.$queryRaw<Array<{ open: number }>>`
-          SELECT count(*)::int AS open
+        // TERMINAL IS NOT THE SAME AS DONE (2026-08-31, caught in flight).
+        // This used to complete once every job was merely TERMINAL, counting
+        // 'failed' as finished — but a failed job is UNFINISHED WORK: the
+        // replay skip-check deliberately re-runs failed replays
+        // (replay.service.ts), and a completed campaign is not dispatchable,
+        // so closing the envelope over a failure LOCKED OUT the very retry
+        // the design depends on. It also reported a false "done" for a
+        // campaign missing part of its corpus. A campaign closes when its
+        // work SUCCEEDED; while a recoverable failure stands, it stays open
+        // for the retry and the deadline arm below hands it to a human.
+        const open = await this.prisma.$queryRaw<
+          Array<{ open: number; failed: number }>
+        >`
+          SELECT count(*) FILTER (WHERE status NOT IN ('ingested', 'failed'))::int AS open,
+                 count(*) FILTER (WHERE status = 'failed')::int AS failed
           FROM llm_batch_jobs
           WHERE resume_context->>'campaignId' = ${campaignId}
-            AND status NOT IN ('ingested', 'failed')
         `;
-        if (open[0]?.open === 0) {
+        if (open[0]?.open === 0 && open[0]?.failed === 0) {
           await this.spendCampaigns.complete(campaignId);
           this.logger.info(
-            'CITY RE-EXTRACT DONE — campaign completed by the system (all batch jobs terminal, ingest drained)',
+            'CITY RE-EXTRACT DONE — campaign completed by the system (all batch jobs ingested, ingest drained)',
             { communities, campaignId },
           );
           return;
+        }
+        if (open[0]?.open === 0 && (open[0]?.failed ?? 0) > 0) {
+          this.logger.warn(
+            'CITY RE-EXTRACT: batch queue drained but jobs FAILED — campaign stays open so their retry can dispatch',
+            { communities, campaignId, failed: open[0]?.failed },
+          );
         }
         if (Date.now() >= deadline) {
           this.logger.error(
