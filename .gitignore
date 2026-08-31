@@ -114,3 +114,4 @@ __pycache__/
 # F1662: maestro perf run debris — scratch sink, never committed
 maestro/perf/debug-output/
 .clean-typecheck-worktree/
+artifacts/
