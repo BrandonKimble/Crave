@@ -264,13 +264,37 @@ export class CityReextractRunner implements OnApplicationBootstrap {
         // campaign missing part of its corpus. A campaign closes when its
         // work SUCCEEDED; while a recoverable failure stands, it stays open
         // for the retry and the deadline arm below hands it to a human.
+        // …AND A FAILURE THAT HAS BEEN REDONE IS NOT WORK STILL OWED (same
+        // night, second correction — the first version blocked on the mere
+        // EXISTENCE of a failed row, which a retry never clears, so a
+        // campaign that fully recovered would have hung open until the
+        // deadline handed a finished job to a human). The question is not
+        // "did anything fail?" but "is any work still OWED?" — a failed job
+        // whose SOURCE run has since been replayed to completion is history.
+        // Measured against the replay lineage rather than job-row states,
+        // because the rows are transport and the lineage is the work.
         const open = await this.prisma.$queryRaw<
           Array<{ open: number; failed: number }>
         >`
-          SELECT count(*) FILTER (WHERE status NOT IN ('ingested', 'failed'))::int AS open,
-                 count(*) FILTER (WHERE status = 'failed')::int AS failed
-          FROM llm_batch_jobs
-          WHERE resume_context->>'campaignId' = ${campaignId}
+          SELECT
+            count(*) FILTER (
+              WHERE j.status NOT IN ('ingested', 'failed')
+            )::int AS open,
+            count(*) FILTER (
+              WHERE j.status = 'failed'
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM collection_extraction_runs failed_run
+                  JOIN collection_extraction_runs redone
+                    ON redone.metadata->>'replayOfExtractionRunId'
+                       = failed_run.metadata->>'replayOfExtractionRunId'
+                   AND redone.status = 'completed'
+                  WHERE failed_run.extraction_run_id
+                        = (j.resume_context->>'extractionRunId')::uuid
+                )
+            )::int AS failed
+          FROM llm_batch_jobs j
+          WHERE j.resume_context->>'campaignId' = ${campaignId}
         `;
         if (open[0]?.open === 0 && open[0]?.failed === 0) {
           await this.spendCampaigns.complete(campaignId);
