@@ -478,10 +478,15 @@ export class PoolRegistry {
           confirmed: true,
           unpersisted: Math.max(0, residual),
         });
-      } catch {
+      } catch (error) {
         // If the add committed and only the load failed, the carried delta
         // is already persisted — re-marking it unpersisted would flush it
         // twice (red team F7b). Preserve any residual consumed mid-call.
+        // REPORT THE CAUSE (audit 2026-08-31): this catch used to swallow
+        // the error entirely, so every "spending blind" alert read
+        // "Unknown error" and the outage was undiagnosable from the alert
+        // that exists to diagnose it. Same channel as the tail-flush report.
+        this.onDurableFlushFailure?.(pool.name, error);
         const residualValue = residualNow();
         if (residualValue === null) {
           return;

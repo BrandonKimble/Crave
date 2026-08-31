@@ -624,17 +624,38 @@ export class GovernanceService implements OnModuleInit {
           },
           reservationTtlMs: 60_000,
         });
+        // ONE MEMORY, RECONCILED (audit 2026-08-31). This used to meter the
+        // ledger's spentMicros unconditionally — but meterSpend WRITES
+        // THROUGH to the durable window store, which already remembers this
+        // campaign's consumption across restarts. Every boot therefore
+        // re-added total-spend-to-date on top of the stored total: stored
+        // consumption compounded boot over boot (observed: ~$1,051 and
+        // ~$1,971 stored against ~$50 envelopes), and a mid-campaign
+        // redeploy could push the mirror past the envelope and falsely
+        // exhaust the pool. It also metered BEFORE the window was confirmed,
+        // firing a false "spending blind" alert on every single boot.
+        // Now: confirm the window first, then inject only what the ledger
+        // knows and the store does not (crash-lost flushes heal; a clean
+        // restart injects nothing). If the store is genuinely unreachable,
+        // the full amount is metered against the unconfirmed window and the
+        // alert that fires is telling the truth.
+        await this.pools.ensureWindow(poolName);
+        const status = this.pools.poolStatus(poolName);
+        const storedMicros = status.storeConfirmed === true ? status.used : 0;
         const spentMicros = Number(row.spentMicros);
-        if (spentMicros > 0) {
+        const deltaMicros = spentMicros - storedMicros;
+        if (deltaMicros > 0) {
           await this.pools.meterSpend(
             this.pools.spendPool(poolName),
-            billedMicrosFromStore(spentMicros),
+            billedMicrosFromStore(deltaMicros),
           );
         }
         this.logger.info('Campaign grant re-registered at boot', {
           campaignId: row.campaignId,
           envelopeMicros,
           spentMicros,
+          storedMicros,
+          injectedMicros: Math.max(0, deltaMicros),
         });
       } catch (error) {
         this.logger.warn(
