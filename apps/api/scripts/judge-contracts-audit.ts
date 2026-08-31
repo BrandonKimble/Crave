@@ -128,7 +128,11 @@ function auditLedger(c: JudgeContract): Cell {
 
 function auditReopen(c: JudgeContract): Cell {
   if (typeof c.reopenOn === 'string') return 'OK';
-  return c.reopenOn.final.startsWith('DECLARED DEBT') ? 'DEBT' : 'OK'; // an owner-ruled { final } IS the ideal shape
+  // Scored by the EXPLICIT debt boolean, never by prose shape: the old
+  // check keyed on the reason STARTING with 'DECLARED DEBT', so a reworded
+  // sentence silently flipped a debt to OK. An owner-ruled { final, debt:
+  // false } IS the ideal shape.
+  return c.reopenOn.debt ? 'DEBT' : 'OK';
 }
 
 function auditSchema(c: JudgeContract): Cell {
@@ -178,7 +182,112 @@ function auditSpend(c: JudgeContract): Cell {
       );
     }
   }
+  // Batch purposes (the batch rail's spend identity — ledger tag
+  // gemini-batch.<purpose>). Not profile-keyed: the batch request is built
+  // through the underlying caller's profile. A pooled purpose must wrap a
+  // caller THIS contract owns (PooledBatchRunner submits
+  // 'pooled.<caller>'); any other purpose must exist as a literal in src,
+  // or the declaration claims a rail the code never rides.
+  for (const purpose of c.spend.batchPurposes ?? []) {
+    if (purpose.startsWith('pooled.')) {
+      const inner = purpose.slice('pooled.'.length);
+      const owned = [c.spend.caller, ...(c.spend.extraCallers ?? [])];
+      if (!owned.includes(inner)) {
+        return violate(
+          c.lane,
+          'spend tags',
+          `batchPurpose '${purpose}' wraps caller '${inner}', which this contract does not declare`,
+        );
+      }
+    } else if (!foundInSrc(`'${purpose}'`)) {
+      return violate(
+        c.lane,
+        'spend tags',
+        `batchPurpose '${purpose}' appears nowhere in src — the contract claims a batch rail the code never submits`,
+      );
+    }
+  }
   return 'OK';
+}
+
+/**
+ * PROBE TEETH (rederivation 2026-08-31): both restaurant-name-census probes
+ * asked `pass = 'vocabulary'` — a value NO code ever writes (the generator
+ * stamps label_sweep:<locale>) — so the documented "is my dependency
+ * populated?" question was unsatisfiable and nobody noticed, because
+ * nothing checked the SQL against anything. Static checks, no DB:
+ *   1. every FROM/JOIN table exists in prisma/schema.prisma (@@map);
+ *   2. every compared column name appears in the schema;
+ *   3. every `lane = '<x>'` literal names a registry lane or a lane
+ *      constant found in src.
+ * Value-level correctness beyond lanes (e.g. a pass string) stays a review
+ * concern — but a probe can no longer reference a table, column, or lane
+ * the system does not have.
+ */
+const SCHEMA_SOURCE = readFileSync(
+  join(API_ROOT, 'prisma/schema.prisma'),
+  'utf8',
+);
+const SQL_NOISE = new Set([
+  'select',
+  'from',
+  'where',
+  'and',
+  'or',
+  'not',
+  'exists',
+  'like',
+  'is',
+  'null',
+  'count',
+  'in',
+  'any',
+  'true',
+  'false',
+  'interval',
+  'now',
+]);
+
+function auditProbeSql(
+  ownerId: string,
+  probe: { on: string; sql: string },
+  knownLanes: ReadonlySet<string>,
+): void {
+  const sql = probe.sql;
+  for (const m of sql.matchAll(/\b(?:from|join)\s+([a-z_][a-z0-9_]*)/gi)) {
+    const table = m[1].toLowerCase();
+    if (SQL_NOISE.has(table)) continue;
+    if (!SCHEMA_SOURCE.includes(`@@map("${table}")`)) {
+      violations.push({
+        lane: ownerId,
+        concern: 'dependency probe',
+        detail: `probe for '${probe.on}' reads table '${table}', which prisma/schema.prisma does not map`,
+      });
+    }
+  }
+  for (const m of sql.matchAll(
+    /(?:\b[a-z][a-z0-9_]*\.)?([a-z_][a-z0-9_]*)\s*(?:=|<>|!=|>=|<=|>|<|\blike\b)/gi,
+  )) {
+    const column = m[1].toLowerCase();
+    if (SQL_NOISE.has(column)) continue;
+    if (!new RegExp(`\\b${column}\\b`).test(SCHEMA_SOURCE)) {
+      violations.push({
+        lane: ownerId,
+        concern: 'dependency probe',
+        detail: `probe for '${probe.on}' compares column '${column}', which appears nowhere in prisma/schema.prisma`,
+      });
+    }
+  }
+  for (const m of sql.matchAll(/\blane\s*=\s*'([^']+)'/gi)) {
+    const lane = m[1];
+    if (!knownLanes.has(lane) && !foundInSrc(`'${lane}'`)) {
+      violations.push({
+        lane: ownerId,
+        concern: 'dependency probe',
+        detail: `probe for '${probe.on}' filters lane = '${lane}', which is neither a registry lane nor a lane string in src`,
+      });
+    }
+  }
 }
 
 interface Row {
@@ -330,6 +439,15 @@ function run(): number {
         c.dependsOn.map((d) => ({ on: d.on, sql: d.emptinessProbeSql })),
       );
   }
+  // Probe teeth: every probe's tables/columns against the schema, every
+  // lane literal against the registry + src lane strings.
+  const knownLanes = new Set<string>(declared);
+  for (const [ownerId, ownerProbes] of probes) {
+    for (const probe of ownerProbes) {
+      auditProbeSql(ownerId, probe, knownLanes);
+    }
+  }
+
   order.forEach((id, i) => {
     console.log(`  ${String(i + 1).padStart(2)}. ${id}`);
     for (const probe of probes.get(id) ?? []) {

@@ -25,7 +25,8 @@ export const UNKNOWN_INTAKE_CONTRACT: JudgeContract = {
   foldParticipation: { noClaimKey: 'no ledger rows; dedupe is per-drain' },
   reopenOn: {
     final:
-      'DECLARED DEBT: segmentation results are consumed inline; a prompt change never re-segments already-drained residue (usually harmless — the residue is gone — but undeclared until now).',
+      'Segmentation results are consumed inline; a prompt change never re-segments already-drained residue (usually harmless — the residue is gone — but undeclared until now).',
+    debt: true,
   },
   ledger: {
     unledgered:

@@ -39,6 +39,9 @@ export const DISH_KNOWLEDGE_CONTRACT: JudgeContract = {
   batching: 'either',
   spend: {
     caller: 'dish.knowledge_synthesize',
+    // Synthesis runs on the pooled batch rail (PooledBatchRunner
+    // purpose 'pooled.<caller>').
+    batchPurposes: ['pooled.dish.knowledge_synthesize'],
     workClass: 'gemini.interactive_pipeline',
   },
   failure: { posture: 'fail_closed' }, // knowledgeSynthesizedAt watermark stays unset

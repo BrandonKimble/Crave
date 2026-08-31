@@ -21,7 +21,8 @@ export const PHOTO_IS_FOOD_CONTRACT: JudgeContract = {
   foldParticipation: { noClaimKey: 'per-photo, never re-asked' },
   reopenOn: {
     final:
-      'DECLARED DEBT: permanent by accident — a prompt change never re-classifies old photos; nobody has ruled that intended.',
+      'Permanent by accident — a prompt change never re-classifies old photos; nobody has ruled that intended.',
+    debt: true,
   },
   ledger: { unledgered: 'Topicality status lands on the photo row only.' },
   record: false,

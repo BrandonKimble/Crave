@@ -15,10 +15,11 @@ import { PoolRegistry } from '../governance/pool-registry';
  * §24.5 Leg C RED-proof suite: estimate refuses without a published rate;
  * the pilot path creates a bounded, unpriced micro-campaign; approve
  * rejects a stale hash; an envelope breach flips state + refuses further
- * spend (driven RED by metering past the boundary against a mutated
- * unit-cost fixture); complete() records the drift pair via
- * PoolRegistry.recordActualPair. Uses the REAL PoolRegistry (not a mock)
- * so grant/meter/measureDrift/recordActualPair math is proven, not assumed.
+ * spend from being DISPATCHED while post-breach records still accumulate
+ * (driven RED by metering past the boundary against a mutated unit-cost
+ * fixture); a completed row is the durable drift pair the next estimate's
+ * tolerance derives from. Uses the REAL PoolRegistry (not a mock) for the
+ * non-campaign drift fallback path.
  */
 
 function stubLogger() {
@@ -187,21 +188,26 @@ function buildPrisma() {
       (strings: TemplateStringsArray, ...values: unknown[]) => {
         const sql = strings.join('?');
         if (sql.includes('UPDATE spend_campaigns')) {
-          const [micros, campaignId] = values as [number, string];
+          // Mirrors the accumulation/permission split (2026-08-31): breached
+          // accumulates but STAYS breached (the CASE); terminal states match
+          // zero rows.
+          const [micros, campaignId, states] = values as [
+            number,
+            string,
+            string[],
+          ];
           const existing = campaigns.get(campaignId);
-          if (
-            !existing ||
-            !['approved', 'running'].includes(existing.state as string)
-          ) {
+          if (!existing || !states.includes(existing.state as string)) {
             return Promise.resolve([]);
           }
           const spent = Number(existing.spentMicros ?? 0) + micros;
+          const state = existing.state === 'breached' ? 'breached' : 'running';
           campaigns.set(campaignId, {
             ...existing,
             spentMicros: BigInt(spent),
-            state: 'running',
+            state,
           });
-          return Promise.resolve([{ spent_micros: BigInt(spent) }]);
+          return Promise.resolve([{ spent_micros: BigInt(spent), state }]);
         }
         return Promise.resolve([]);
       },
@@ -380,13 +386,57 @@ describe('SpendCampaignService (§24.5 Leg C)', () => {
       }),
     );
 
-    // Breached campaigns refuse further spend (typed, not silent).
+    // ACCUMULATION/PERMISSION SPLIT (2026-08-31): post-breach spend STILL
+    // accumulates (the tail of in-flight work costs real money and the row
+    // must stay truthful) while the state stays 'breached' — refusing NEW
+    // work is the dispatch gates' job, not the record's.
     await expect(
-      service.recordSpend(estimate.campaignId, 'gemini', ledgerMicros(1)),
-    ).rejects.toBeInstanceOf(CampaignBreachedError);
+      service.recordSpend(estimate.campaignId, 'gemini', ledgerMicros(7)),
+    ).resolves.toBeUndefined();
+    const after = prisma._campaigns.get(estimate.campaignId);
+    expect(after?.state).toBe('breached');
+    expect(after?.spentMicros).toBe(BigInt(1307));
   });
 
-  it('complete() records the declared-vs-actual pair so measureDrift learns for next time', async () => {
+  it('breach invokes the registered reaper (fire-and-forget) so in-flight batch jobs get cancelled', async () => {
+    const prisma = buildPrisma();
+    prisma._unitCosts.set('gemini.reddit_extraction::document', {
+      microUsdPerUnit: 10,
+    });
+    const service = new SpendCampaignService(
+      prisma as never,
+      stubLogger() as never,
+      buildOpsAlerts().mock,
+      buildGovernance(),
+    );
+    const reaped: string[] = [];
+    service.registerBreachReaper((campaignId) => {
+      reaped.push(campaignId);
+      return Promise.resolve();
+    });
+    const estimate = await service.prepareEstimate({
+      name: 'archive:test',
+      workClass: 'gemini.reddit_extraction',
+      unit: 'document',
+      unitCount: 100, // envelope 1250
+    });
+    await service.approve(estimate.campaignId, estimate.estimateHash);
+    await service.recordSpend(estimate.campaignId, 'gemini', ledgerMicros(500));
+    expect(reaped).toEqual([]); // under envelope — no reap
+    await service.recordSpend(
+      estimate.campaignId,
+      'gemini',
+      ledgerMicros(1000),
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(reaped).toEqual([estimate.campaignId]);
+    // Post-breach accumulation does NOT re-invoke the reaper.
+    await service.recordSpend(estimate.campaignId, 'gemini', ledgerMicros(10));
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(reaped).toEqual([estimate.campaignId]);
+  });
+
+  it('a completed campaign row IS the drift pair: the next estimate of the work class derives its tolerance from (estimate, spent)', async () => {
     const prisma = buildPrisma();
     prisma._unitCosts.set('gemini.reddit_extraction::document', {
       microUsdPerUnit: 10,
@@ -405,17 +455,20 @@ describe('SpendCampaignService (§24.5 Leg C)', () => {
       unitCount: 100, // estimate 1000 micro-USD.
     });
     await service.approve(estimate.campaignId, estimate.estimateHash);
-    await service.recordSpend(estimate.campaignId, 'gemini', ledgerMicros(900)); // under envelope.
-
-    expect(
-      governance.pools.measureDrift('gemini.reddit_extraction'),
-    ).toBeNull();
+    await service.recordSpend(estimate.campaignId, 'gemini', ledgerMicros(500)); // under envelope.
     await service.complete(estimate.campaignId);
-    // actual 900 / declared 1000 = 0.9.
-    expect(
-      governance.pools.measureDrift('gemini.reddit_extraction'),
-    ).toBeCloseTo(0.9);
     expect(prisma._campaigns.get(estimate.campaignId)?.state).toBe('completed');
+
+    // The drift memory is DURABLE (the completed row), not an in-memory
+    // pool feed (deleted with the campaign.* mirror): a fresh estimate for
+    // the same work class reads |500/1000 - 1| = 0.5 > the 0.25 bootstrap.
+    const next = await service.prepareEstimate({
+      name: 'archive:test2',
+      workClass: 'gemini.reddit_extraction',
+      unit: 'document',
+      unitCount: 100,
+    });
+    expect(next.toleranceFraction).toBeCloseTo(0.5);
   });
 
   it('§24 red team finding 1: isDispatchable is true only for approved/running, false for breached/missing', async () => {
@@ -455,7 +508,7 @@ describe('SpendCampaignService (§24.5 Leg C)', () => {
     expect(await service.isDispatchable('does-not-exist')).toBe(false);
   });
 
-  it('§24 red team finding 5: a guarded state flip cannot resurrect running over an already-breached row', async () => {
+  it('§24 red team finding 5: a stale writer cannot resurrect running over an already-breached row (the CASE keeps breached breached)', async () => {
     const prisma = buildPrisma();
     prisma._unitCosts.set('gemini.reddit_extraction::document', {
       microUsdPerUnit: 10,
@@ -488,13 +541,21 @@ describe('SpendCampaignService (§24.5 Leg C)', () => {
       breachNote: 'already breached by another writer',
     });
 
-    // recordSpend's top-of-function findUnique sees state==='breached' and
-    // typed-refuses before ever reaching the guarded updateMany — proving
-    // the guard is defense-in-depth, and the row stays 'breached'.
+    // The stale writer's spend ACCUMULATES (accumulation/permission split),
+    // but the guarded CASE cannot flip the row back to 'running' — the
+    // breach verdict stands.
     await expect(
       service.recordSpend(estimate.campaignId, 'gemini', ledgerMicros(1)),
-    ).rejects.toBeInstanceOf(CampaignBreachedError);
+    ).resolves.toBeUndefined();
     expect(prisma._campaigns.get(estimate.campaignId)?.state).toBe('breached');
+    // A terminal state still refuses the record outright.
+    prisma._campaigns.set(estimate.campaignId, {
+      ...prisma._campaigns.get(estimate.campaignId)!,
+      state: 'completed',
+    });
+    await expect(
+      service.recordSpend(estimate.campaignId, 'gemini', ledgerMicros(1)),
+    ).rejects.toBeInstanceOf(CampaignStateError);
   });
 
   it('recordSpend increments spentMicros atomically across sequential calls (no lost updates)', async () => {

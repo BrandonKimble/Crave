@@ -1,6 +1,5 @@
 import type { MeteredService } from './spend-currency';
 import {
-  billedMicrosFromStore,
   scaleBilled,
   unreconciledBilled,
   type BilledMicros,
@@ -143,12 +142,13 @@ export class CampaignNotFoundError extends Error {
   }
 }
 
-/** Typed 'not now' (mirrors PoolDenial, §14.7): a breached campaign's work
- *  refuses further spend until the owner re-approves via resumeAfterBreach.
- *  NOTE (round-3 red team C6): today's callers log-and-continue rather than
- *  requeue — the breached/terminal distinction below exists so a FUTURE
- *  requeue-on-breach caller cannot spin forever against a completed
- *  campaign, not because one exists yet. */
+/** Typed 'not now' (mirrors PoolDenial, §14.7): a breached campaign refuses
+ *  NEW work at the dispatch gates (assertDispatchable; the batch ingest
+ *  hold) until the owner re-approves via resumeAfterBreach. It no longer
+ *  comes out of recordSpend — post-breach spend ACCUMULATES (accumulation
+ *  and permission are split, 2026-08-31). Classified TRANSIENT BY TYPE in
+ *  gemini-batch's failure classifier: a breach is a governance hold, never
+ *  a deterministic failure that may burn a bounded attempt. */
 export class CampaignBreachedError extends Error {
   constructor(public readonly campaignId: string) {
     super(
@@ -227,10 +227,20 @@ export function statesThatMayBecome(to: string): readonly string[] {
   return from;
 }
 
-/** '<vendor>.<resource>'-shaped pool name for a campaign's §14.6 grant. */
-function campaignPoolName(campaignId: string): string {
-  return `campaign.${campaignId}`;
-}
+/**
+ * ONE ENFORCER, ONE MEMORY (rederivation 2026-08-31). Campaigns used to
+ * mirror their envelope into a `campaign.<id>` grant pool (registered at
+ * approve/boot/resume, drained via meterSpend alongside the row's own
+ * atomic increment). The mirror was a SECOND memory of the same fact, and
+ * it produced exactly the defects a second memory produces: boot
+ * re-hydration compounded stored consumption (~$1,051 and ~$1,971 recorded
+ * against ~$50 envelopes), every boot fired a false "spending blind" alarm,
+ * and reconciling the two memories grew its own reconcile logic. The
+ * guarded atomic increment in recordSpend is THE enforcer; the campaign.*
+ * pools are gone. (Grant-pool machinery itself stays — non-campaign pools
+ * use it.) Any historical campaign.* rows in pool_window_consumption are
+ * dead data: see scripts/cleanup-campaign-pool-rows.sql.
+ */
 
 /**
  * Canonical estimate payload hash (§24.3): sha256 over a FIXED-ORDER ARRAY,
@@ -741,20 +751,9 @@ export class SpendCampaignService {
     const envelopeMicros = Math.round(
       Number(row.estimateMicros) * (1 + row.toleranceFraction),
     );
-    this.requireGovernance().pools.register({
-      name: campaignPoolName(campaignId),
-      credential: 'campaign',
-      window: {
-        kind: 'grant',
-        amount: envelopeMicros,
-        denomination: 'billedMicros',
-      },
-      // §16 K3-shaped operational bound (mirrors the other governed pools'
-      // reservationTtlMs): campaign spend is metered post-hoc (meter(), not
-      // reserve/reconcile — see recordSpend), so no reservation is ever
-      // actually held; the field is unused but required by PoolConfig.
-      reservationTtlMs: 60_000,
-    });
+    // No grant pool is minted (one enforcer, one memory — see the header
+    // note): the envelope is enforced by recordSpend's guarded atomic
+    // increment against THIS row, which survives restarts for free.
     const moved = await this.transition(
       'approved',
       { campaignId },
@@ -818,13 +817,41 @@ export class SpendCampaignService {
     );
   }
 
+  /** Narrow state read for holders that must distinguish "breached — hold
+   *  the work, no attempt burned" from every other state (a COMPLETED
+   *  campaign's straggler job should still ingest its paid output; only a
+   *  breach means 'not now'). */
+  async isBreached(campaignId: string): Promise<boolean> {
+    const row = await this.prisma.spendCampaign.findUnique({
+      where: { campaignId },
+      select: { state: true },
+    });
+    return row?.state === 'breached';
+  }
+
+  /** BREACH FINISHES WHAT IT STARTED (rederivation 2026-08-31): stopping
+   *  NEW work (assertDispatchable) is not the same as stopping the work
+   *  already running at the vendor — a breached campaign's open batch jobs
+   *  kept billing until they finished on their own. The batch rail
+   *  registers this reaper (a callback because the rail's module sits above
+   *  this one — same shape as GeminiBatchService.registerIngestor); the
+   *  breach flip invokes it fire-and-forget: reaping is accounting and
+   *  cleanup, never a reason to fail the spend record. */
+  private breachReaper?: (campaignId: string) => Promise<void>;
+
+  registerBreachReaper(reaper: (campaignId: string) => Promise<void>): void {
+    this.breachReaper = reaper;
+  }
+
   /**
-   * §24.1(e): meter actual spend into the campaign's grant. A pilot
+   * §24.1(e): accumulate actual spend into the campaign row. A pilot
    * campaign (no estimate/envelope) just accumulates spentMicros — there is
-   * nothing to breach against yet. A priced campaign whose grant denies
-   * (exhausted) flips 'breached' with a LOUD error carrying actual vs
-   * projected, and further recordSpend calls for a breached campaign are
-   * typed-refused (CampaignBreachedError) — callers re-queue the work.
+   * nothing to breach against yet. A priced campaign crossing its envelope
+   * flips 'breached' with a LOUD alert carrying actual vs projected, and the
+   * breach reaper cancels its in-flight batch jobs. Further recordSpend
+   * calls for a breached campaign STILL ACCUMULATE (the row stays truthful
+   * about what was spent) — refusing NEW work is the dispatch gates' job
+   * (assertDispatchable + the batch ingest hold), not this record's.
    *
    * §24 red team finding 5 ("recordSpend race"): the old read-modify-write
    * (findUnique -> compute newSpentMicros in JS -> update) let two
@@ -864,10 +891,18 @@ export class SpendCampaignService {
     if (!row) {
       throw new CampaignNotFoundError(campaignId);
     }
-    if (row.state === 'breached') {
-      throw new CampaignBreachedError(campaignId);
-    }
-    if (row.state !== 'approved' && row.state !== 'running') {
+    // ACCUMULATION AND PERMISSION ARE DIFFERENT QUESTIONS (rederivation
+    // 2026-08-31). A breached campaign refuses NEW work at the dispatch
+    // gates (assertDispatchable, and the ingest hold in gemini-batch) — but
+    // the money for work already in flight when the breach fired STILL
+    // ARRIVES, and a row that stops counting it lies about what the
+    // campaign actually cost. So 'breached' accumulates below (staying
+    // breached); only genuinely terminal states refuse the record.
+    if (
+      row.state !== 'approved' &&
+      row.state !== 'running' &&
+      row.state !== 'breached'
+    ) {
       throw new CampaignStateError(
         campaignId,
         `cannot record spend in state '${row.state}'`,
@@ -891,50 +926,58 @@ export class SpendCampaignService {
       return;
     }
 
-    const governance = this.requireGovernance();
-    const poolName = campaignPoolName(campaignId);
-    await governance.pools.meterSpend(
-      governance.pools.spendPool(poolName),
-      roundedMicros,
-    );
     // BREACH VERDICT FROM THE INCREMENT'S OWN RESULT (step 5, H7 + red
     // team F6): increment first (guarded, atomic), decide from the value
     // the increment RETURNS. Deciding from a pre-read row was the same
     // lost-update this file's docstring says was fixed — two concurrent
     // recorders each read S and each conclude S+delta is under the
-    // envelope while S+2·delta breaches.
+    // envelope while S+2·delta breaches. This guarded increment is THE ONE
+    // envelope enforcer (the campaign.* grant-pool mirror is deleted —
+    // see the header note).
     const envelopeMicros = Math.round(
       Number(row.estimateMicros) *
         (1 + (row.toleranceFraction ?? ENVELOPE_BOOTSTRAP_TOLERANCE)),
     );
+    // 'breached' accumulates but stays breached (the CASE): accumulation is
+    // truth-keeping, permission is the dispatch gates' job.
+    const accumulatingStates = [...statesThatMayBecome('running'), 'breached'];
     const incremented = await this.prisma.$queryRaw<
-      Array<{ spent_micros: bigint }>
+      Array<{ spent_micros: bigint; state: string }>
     >`
       UPDATE spend_campaigns
       SET spent_micros = spent_micros + ${roundedMicros},
-          state = 'running'
+          state = CASE WHEN state = 'breached' THEN 'breached' ELSE 'running' END
       WHERE campaign_id = ${campaignId}::uuid
-        AND state = ANY(${[...statesThatMayBecome('running')]}::text[])
-      RETURNING spent_micros
+        AND state = ANY(${accumulatingStates}::text[])
+      RETURNING spent_micros, state
     `;
     if (!incremented.length) {
-      // State moved under us — the guarded WHERE refused. Distinguish the
-      // requeue-and-wait case (breached) from terminal states (completed/
-      // cancelled), or callers would requeue against a done campaign
-      // forever (round 2 ④).
+      // State moved to a terminal state under us — the guarded WHERE
+      // refused (breached no longer refuses; it accumulates above).
       const now = await this.prisma.spendCampaign.findUnique({
         where: { campaignId },
         select: { state: true },
       });
-      if (now?.state === 'breached') {
-        throw new CampaignBreachedError(campaignId);
-      }
       throw new CampaignStateError(
         campaignId,
         `cannot record spend in state '${now?.state ?? 'missing'}'`,
       );
     }
     const durableSpent = Number(incremented[0].spent_micros);
+    if (incremented[0].state === 'breached') {
+      // Post-breach tail spend: recorded (the row stays truthful), no new
+      // breach flip, no throw — the breach alert already fired and the
+      // dispatch gates already refuse new work. The watchdog's
+      // breached-still-spending arm is what escalates a tail that never
+      // stops.
+      this.logger.warn('Post-breach campaign spend accumulated', {
+        campaignId,
+        deltaMicros: roundedMicros,
+        spentMicros: durableSpent,
+        envelopeMicros,
+      });
+      return;
+    }
     const breached = durableSpent >= envelopeMicros;
 
     if (breached) {
@@ -965,6 +1008,20 @@ export class SpendCampaignService {
       // Spend already recorded by the increment above — this flip is
       // state-only (a second increment here would double-count).
       await this.transition('breached', { campaignId }, { breachNote });
+      // BREACH FINISHES WHAT IT STARTED: reap the campaign's open batch
+      // jobs at the vendor (cancel remote, meter partial output) so a
+      // wedged-but-alive job cannot keep billing a stopped campaign.
+      // Fire-and-forget — reaping must never fail the spend record.
+      if (this.breachReaper) {
+        void this.breachReaper(campaignId).catch((error: unknown) => {
+          this.logger.error('Breach reaper failed (jobs may still be live)', {
+            campaignId,
+            error: {
+              message: error instanceof Error ? error.message : String(error),
+            },
+          });
+        });
+      }
       return;
     }
     // Non-breach: nothing left to do — the guarded increment above already
@@ -1021,44 +1078,10 @@ export class SpendCampaignService {
     const newEnvelopeMicros = Math.round(
       estimateMicros * (1 + toleranceFraction),
     );
-    const governance = this.requireGovernance();
-    const poolName = campaignPoolName(campaignId);
-    // A BREACHED campaign's grant pool is NOT boot-rehydrated (rehydration
-    // filters to approved/running), so in a fresh process — which is exactly
-    // where the ops resume script runs — the pool doesn't exist yet.
-    // Register it first, mirroring reRegisterCampaignGrants' shape (old
-    // envelope + spent-to-date), then top up to the refined envelope below.
-    let status: ReturnType<typeof governance.pools.poolStatus>;
-    try {
-      status = governance.pools.poolStatus(poolName);
-    } catch {
-      const oldEnvelopeMicros = Math.round(
-        Number(row.estimateMicros ?? estimateMicros) *
-          (1 + (row.toleranceFraction ?? toleranceFraction)),
-      );
-      governance.pools.register({
-        name: poolName,
-        credential: 'campaign',
-        window: {
-          kind: 'grant',
-          amount: oldEnvelopeMicros,
-          denomination: 'billedMicros',
-        },
-        reservationTtlMs: 60_000,
-      });
-      const spentMicros = Number(row.spentMicros);
-      if (spentMicros > 0) {
-        await governance.pools.meterSpend(
-          governance.pools.spendPool(poolName),
-          billedMicrosFromStore(spentMicros),
-        );
-      }
-      status = governance.pools.poolStatus(poolName);
-    }
-    const topUp = Math.max(0, newEnvelopeMicros - status.limit);
-    if (topUp > 0) {
-      await governance.pools.mintGrant(poolName, topUp);
-    }
+    // No pool to register or top up (one enforcer, one memory): the refined
+    // estimate lands on the row below, and recordSpend's guarded increment
+    // enforces the new envelope from the row itself — restart-proof for
+    // free, in any process.
 
     const resumed = await this.transition(
       'approved',
@@ -1082,7 +1105,6 @@ export class SpendCampaignService {
       name: row.name,
       workClass: row.workClass,
       newEnvelopeMicros,
-      toppedUpMicros: topUp,
     });
     return {
       campaignId,
@@ -1139,6 +1161,40 @@ export class SpendCampaignService {
           dedupeKey: `campaign_stale_running:${row.campaign_id}:${dayKey}`,
         });
       }
+      // BREACHED-WITH-ARRIVING-SPEND (rederivation 2026-08-31): a breach is
+      // supposed to stop new work AND reap the work in flight; spend still
+      // arriving a day later means something is dispatching for a stopped
+      // campaign (a gate is bypassed, or the reaper missed a job). The old
+      // watchdog only saw running+silent, so this exact failure was
+      // invisible — the tail spend accumulated (truthfully, per the
+      // accumulation/permission split) with nobody looking.
+      const breachedSpending = await this.prisma.$queryRaw<
+        Array<{ campaign_id: string; name: string; spent_micros: bigint }>
+      >`
+        SELECT c.campaign_id, c.name, c.spent_micros
+        FROM spend_campaigns c
+        WHERE c.state = 'breached'
+          AND EXISTS (
+            SELECT 1 FROM api_usage_ledger l
+            WHERE l.campaign_id = c.campaign_id
+              AND l.created_at > now() - interval '24 hours'
+          )`;
+      for (const row of breachedSpending) {
+        const spentUsd = Math.round(Number(row.spent_micros) / 10_000) / 100;
+        this.opsAlerts.emit({
+          severity: 'warn',
+          kind: 'campaign_breached_still_spending',
+          title: `Breached campaign "${row.name}" is still accruing spend`,
+          body:
+            `Campaign ${row.campaign_id} is 'breached' but recorded ledger ` +
+            `rows in the last 24h ($${spentUsd} spent to date). A breach ` +
+            `should stop new work and reap in-flight jobs — something is ` +
+            `still dispatching for it. Check llm_batch_jobs for open jobs ` +
+            `carrying this campaignId, then resumeAfterBreach or finish the ` +
+            `reap.`,
+          dedupeKey: `campaign_breached_still_spending:${row.campaign_id}:${dayKey}`,
+        });
+      }
     } catch (error) {
       this.logger.warn('Stale-running campaign watchdog failed', {
         error: {
@@ -1178,14 +1234,11 @@ export class SpendCampaignService {
         'state moved during completion — re-read and retry',
       );
     }
-    if (row.estimateMicros !== null) {
-      this.requireGovernance().pools.recordActualPair(
-        campaignPoolName(campaignId),
-        row.workClass,
-        Number(row.estimateMicros),
-        Number(row.spentMicros),
-      );
-    }
+    // The declared-vs-actual pair the drift instrument needs IS the
+    // completed row itself: deriveTolerance reads (estimateMicros,
+    // spentMicros) from completed spend_campaigns rows — durable across
+    // processes, which the old in-memory recordActualPair feed (tied to the
+    // deleted campaign.* pool mirror) never was.
     this.logger.info('Spend campaign completed', {
       campaignId,
       name: row.name,

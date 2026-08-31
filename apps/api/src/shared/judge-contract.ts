@@ -53,12 +53,18 @@ export type LedgerDecl =
   | { readonly unledgered: string };
 
 /** When a stored verdict may be re-bought. `{ final }` is the DECLARED
- *  permanent decision — permanence with a reason, never by accident. */
+ *  permanent decision — permanence with a reason, never by accident.
+ *  `debt` is EXPLICIT: true means "permanent only because no reopen
+ *  mechanism exists yet" (scored DEBT by the audit); false means an
+ *  owner-ruled permanence that IS the ideal shape (scored OK). A boolean
+ *  the compiler requires, never a magic prefix on the prose — the audit
+ *  used to score by whether the reason STARTED with 'DECLARED DEBT', which
+ *  a reworded sentence silently flipped to OK. */
 export type ReopenDecl =
   | 'rule_version'
   | 'input_fingerprint'
   | 'prompt_hash'
-  | { readonly final: string };
+  | { readonly final: string; readonly debt: boolean };
 
 /** A lane whose claim key contains no folded text (UNFOLDED_CLAIM_KEY = 0
  *  in claim-lane-adapter.ts). */
@@ -157,6 +163,14 @@ export interface JudgeContract {
     /** Additional caller tags the same site legitimately uses (e.g. the
      *  entity-match prompt's interactive vs batch tags). */
     readonly extraCallers?: readonly string[];
+    /** BATCH-RAIL purposes this site submits under (GeminiBatchService
+     *  purposes, WITHOUT the 'gemini-batch.' ledger prefix — e.g.
+     *  'collection_extraction', 'pooled.labels.vocabulary'). The batch rail
+     *  is a spend identity like any caller tag: submit() warn-checks
+     *  `gemini-batch.<purpose>` against the registry exactly as callLLMApi
+     *  checks usageCaller, so a contract that rides the batch rail must
+     *  declare it here or every submit logs uncontracted. */
+    readonly batchPurposes?: readonly string[];
     readonly workClass: string;
   };
   readonly failure: FailureDecl;
@@ -194,6 +208,12 @@ export function registeredCallerTags(
   for (const contract of registry.contracts) {
     tags.add(contract.spend.caller);
     for (const extra of contract.spend.extraCallers ?? []) tags.add(extra);
+    // The batch rail's ledger caller tag for a purpose is
+    // `gemini-batch.<purpose>` — registered so submit()'s warn-mode check
+    // recognizes a declared batch purpose.
+    for (const purpose of contract.spend.batchPurposes ?? []) {
+      tags.add(`gemini-batch.${purpose}`);
+    }
   }
   return tags;
 }

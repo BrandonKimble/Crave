@@ -206,7 +206,7 @@ export class CityReextractRunner implements OnApplicationBootstrap {
       }
     }
 
-    this.logger.info('CITY RE-EXTRACT DONE (submission phase)', {
+    this.logger.info('CITY RE-EXTRACT submission phase done', {
       communities,
       campaignId,
       ok,
@@ -220,5 +220,81 @@ export class CityReextractRunner implements OnApplicationBootstrap {
         ? 'ACTIVATE mode. Batch ingestion + projection rebuilds continue asynchronously; when the queue drains: run scripts/reload/anchor-audit.sql, reconcile costs (scripts/rig/cost-reconcile.sh), then remove the REEXTRACT_* vars.'
         : 'SHADOW mode — nothing is live yet. When the batch queue drains: ./scripts/rig/reextract.sh diff <communities> <version>, triage the review file, THEN activate. Do NOT touch CRONS_ENABLED; crons stay on.',
     });
+
+    await this.completeCampaignWhenDrained(communities, campaignId);
+  }
+
+  /**
+   * SYSTEM-OWNED COMPLETION (rederivation 2026-08-31). Completing a campaign
+   * used to be a human step (scripts/complete-campaign.ts) that the human
+   * forgot — prod's v7 replay sat 'running' forever at $30.44 spent, and the
+   * 24h stale watchdog exists only because completion had no owner. THIS
+   * runner is the process that knows what "done" means for a re-extract:
+   * every batch job it caused is terminal ('ingested'/'failed') and the
+   * ingest tree behind them has drained. So it waits for that fact and calls
+   * complete() itself. The watchdog stays as the backstop for crashes (a
+   * killed worker leaves 'running', silent ledger → alert, human completes).
+   */
+  private async completeCampaignWhenDrained(
+    communities: string[],
+    campaignId: string,
+  ): Promise<void> {
+    const POLL_MS = 60_000;
+    // Generous ceiling (vendor SLA is ≤24h per batch; a city is many waves):
+    // past it, stop polling and leave the row to the watchdog + human.
+    const DEADLINE_MS = 72 * 3_600_000;
+    const deadline = Date.now() + DEADLINE_MS;
+    for (;;) {
+      await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+      try {
+        if (await this.spendCampaigns.isBreached(campaignId)) {
+          this.logger.error(
+            'CITY RE-EXTRACT: campaign breached — completion handoff to resumeAfterBreach; not completing',
+            { communities, campaignId },
+          );
+          return;
+        }
+        const open = await this.prisma.$queryRaw<Array<{ open: number }>>`
+          SELECT count(*)::int AS open
+          FROM llm_batch_jobs
+          WHERE resume_context->>'campaignId' = ${campaignId}
+            AND status NOT IN ('ingested', 'failed')
+        `;
+        if (open[0]?.open === 0) {
+          await this.spendCampaigns.complete(campaignId);
+          this.logger.info(
+            'CITY RE-EXTRACT DONE — campaign completed by the system (all batch jobs terminal, ingest drained)',
+            { communities, campaignId },
+          );
+          return;
+        }
+        if (Date.now() >= deadline) {
+          this.logger.error(
+            'CITY RE-EXTRACT: batch jobs still open past the completion deadline — leaving the campaign to the stale watchdog',
+            { communities, campaignId, openJobs: open[0]?.open },
+          );
+          return;
+        }
+      } catch (error) {
+        // Transient poll errors just wait for the next tick; complete()'s
+        // own state errors (e.g. someone completed it by hand) end the loop.
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes('cannot complete from state')) {
+          this.logger.warn(
+            'CITY RE-EXTRACT: campaign state moved out from under completion — stopping the drain watch',
+            { communities, campaignId, error: { message } },
+          );
+          return;
+        }
+        this.logger.warn(
+          'CITY RE-EXTRACT completion poll failed (will retry)',
+          {
+            communities,
+            campaignId,
+            error: { message },
+          },
+        );
+      }
+    }
   }
 }

@@ -58,8 +58,12 @@ export const CONCEPT_SATISFIES_CONTRACT: JudgeContract = {
       // rail's order and the registry's order can never silently diverge.
       on: 'labels.vocabulary',
       why: 'Knowledge rail dependency order: label/vocabulary sweeps run before the satisfies pass.',
+      // No code ever writes pass = 'vocabulary' — the vocabulary/label
+      // generator stamps per-locale label_sweep:<locale> rows
+      // (label-sweep.service.ts sweepPass; verified on staging 2026-08-31:
+      // label_sweep:{en,es,vi,zh} + satisfies are the only pass values).
       emptinessProbeSql:
-        "SELECT count(*) FROM knowledge_pass_runs WHERE pass = 'vocabulary'",
+        "SELECT count(*) FROM knowledge_pass_runs WHERE pass LIKE 'label_sweep:%'",
     },
     {
       // Cuisine widening reads venue cuisine facts: widening from a venue

@@ -22,7 +22,8 @@ export const POLL_SUBJECT_CONTRACT: JudgeContract = {
   // it into a real { final } policy or a reopen mechanism.
   reopenOn: {
     final:
-      'DECLARED DEBT: permanent by accident — no mechanism re-classifies a poll after a prompt change; nobody has ruled that permanence is intended.',
+      'Permanent by accident — no mechanism re-classifies a poll after a prompt change; nobody has ruled that permanence is intended.',
+    debt: true,
   },
   ledger: { unledgered: 'No verdict rows; the poll row carries the subject.' },
   record: false,

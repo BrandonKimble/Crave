@@ -26,7 +26,8 @@ export const VOCABULARY_LABELS_CONTRACT: JudgeContract = {
   foldParticipation: { noClaimKey: 'watermark-driven, not verdict-keyed' },
   reopenOn: {
     final:
-      'DECLARED DEBT: the watermark re-pays on manual reset only; a prompt-builder change does not re-open generated labels.',
+      'The watermark re-pays on manual reset only; a prompt-builder change does not re-open generated labels.',
+    debt: true,
   },
   ledger: {
     unledgered:
@@ -44,6 +45,9 @@ export const VOCABULARY_LABELS_CONTRACT: JudgeContract = {
   batching: 'interactive',
   spend: {
     caller: 'labels.vocabulary',
+    // The vocabulary generator runs on the pooled batch rail
+    // (PooledBatchRunner purpose 'pooled.<caller>').
+    batchPurposes: ['pooled.labels.vocabulary'],
     workClass: 'gemini.interactive_pipeline',
   },
   failure: { posture: 'fail_closed' }, // unanswered concepts stay pending for the next sweep

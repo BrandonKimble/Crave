@@ -62,11 +62,43 @@ const HEARTBEAT_MS = 60 * 1000;
 
 const leaseFromNow = (): Date => new Date(Date.now() + LEASE_MS);
 
+/** Typed 'not now' errors — transient BY TYPE, not by message shape. A
+ *  breached campaign (CampaignBreachedError) is a governance hold that
+ *  lifts on resumeAfterBreach; a closed spend budget
+ *  (SpendBudgetClosedError) reopens with the month window. Neither is a
+ *  property of the input, so neither may burn a bounded deterministic
+ *  attempt. Matched by error NAME across the cause chain (instanceof is
+ *  fragile across module copies; the name IS the type's declared identity —
+ *  every one of these classes sets this.name explicitly). */
+const TRANSIENT_ERROR_NAMES = new Set([
+  'CampaignBreachedError',
+  'SpendBudgetClosedError',
+]);
+
+function causeChainErrors(error: unknown): Error[] {
+  const out: Error[] = [];
+  let cursor: unknown = error;
+  for (let depth = 0; depth < 10 && cursor instanceof Error; depth += 1) {
+    out.push(cursor);
+    cursor = cursor.cause;
+  }
+  return out;
+}
+
 /** Transient = the input can succeed unchanged once the world recovers
- *  (quota, provider blips, network, DB connections). Anything else is
- *  deterministic and bounded by MAX_INGEST_ATTEMPTS. Classification walks the
- *  whole cause chain. */
+ *  (quota, provider blips, network, DB connections, a governance hold).
+ *  Anything else is deterministic and bounded by MAX_INGEST_ATTEMPTS.
+ *  TYPED errors classify FIRST (by name, across the cause chain); the
+ *  message regex is only the fallback for untyped vendor/driver strings —
+ *  a typed error's classification must never hinge on its prose. */
 export function isTransientFailure(error: unknown): boolean {
+  if (
+    causeChainErrors(error).some((cause) =>
+      TRANSIENT_ERROR_NAMES.has(cause.name),
+    )
+  ) {
+    return true;
+  }
   const chain = buildCauseChain(error);
   return /\b429\b|RESOURCE_EXHAUSTED|UNAVAILABLE|DEADLINE_EXCEEDED|\b50[0-4]\b|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|EAI_AGAIN|fetch failed|socket hang up|network|timed? ?out|Connection is closed|Can't reach database|P1001|P1002|P1008|P1017|too many connections/i.test(
     chain,
@@ -146,6 +178,49 @@ export class GeminiBatchService implements OnModuleDestroy {
     private readonly llmService: LLMService,
   ) {
     this.logger = loggerService.setContext('GeminiBatchService');
+    // BREACH FINISHES WHAT IT STARTED (rederivation 2026-08-31): the breach
+    // flip in SpendCampaignService reaps the campaign's open batch jobs
+    // through this callback — same registration shape as registerIngestor,
+    // because the batch rail sits above the shared module and cannot be
+    // injected into it.
+    this.spendCampaigns.registerBreachReaper((campaignId) =>
+      this.cancelCampaignJobs(campaignId),
+    );
+  }
+
+  /**
+   * Cancel every LIVE batch job belonging to a campaign: vendor-cancel +
+   * meter partial output (reapRemote inside cancel()), fail the job, and
+   * terminalize its owning run through the registered failure handler.
+   * Called by the breach reaper; safe to call twice (cancel() is guarded
+   * and no-ops on terminal jobs).
+   */
+  async cancelCampaignJobs(campaignId: string): Promise<void> {
+    const jobs = await this.prisma.$queryRaw<Array<{ job_id: string }>>`
+      SELECT job_id FROM llm_batch_jobs
+      WHERE resume_context->>'campaignId' = ${campaignId}
+        AND status IN ('persisting', 'pending', 'submitting', 'submitted')
+    `;
+    // Deliberately NOT 'succeeded'/'ingesting': those jobs are already PAID
+    // and vendor-terminal — cancelling them would erase completed output.
+    // The ingest-side dispatch hold (see ingest()) parks them instead, so
+    // they resume for free after resumeAfterBreach.
+    if (!jobs.length) return;
+    this.logger.warn('Breach reap: cancelling campaign batch jobs', {
+      campaignId,
+      jobCount: jobs.length,
+    });
+    for (const job of jobs) {
+      try {
+        await this.cancel(job.job_id);
+      } catch (error) {
+        this.logger.error('Breach reap: cancel failed for job (continuing)', {
+          campaignId,
+          jobId: job.job_id,
+          error: { message: buildCauseChain(error) },
+        });
+      }
+    }
   }
 
   private get batchOps() {
@@ -175,6 +250,12 @@ export class GeminiBatchService implements OnModuleDestroy {
     if (!params.items.length) {
       throw new Error('GeminiBatchService.submit: no items');
     }
+    // JUDGE-CONTRACT WARN MODE, batch rail (plans/llm-lane-primitive.md):
+    // the batch purpose is a spend identity exactly like a sync caller tag —
+    // the ledger records it as `gemini-batch.<purpose>` — so it runs the
+    // SAME warn-mode registry check callLLMApi runs on usageCaller.
+    // Contracts declare their purposes via spend.batchPurposes.
+    this.llmService.warnIfUncontractedCaller(`gemini-batch.${params.purpose}`);
     // §24.1 Tier 3 CATASTROPHE BACKSTOP (mirrors llm.service.callLLMApi's
     // assertSpendBudgetOpen; demoted from work governor, §24.4 item 2): a
     // spent or vendor-poisoned gemini.monthlySpend pool refuses NEW batch
@@ -833,6 +914,29 @@ export class GeminiBatchService implements OnModuleDestroy {
         jobId,
         purpose,
       });
+      return;
+    }
+    // DISPATCHABILITY BEFORE CLAIM (rederivation 2026-08-31): ingestion is
+    // itself a spend dispatch — the ingest tree runs interactive calls under
+    // the job's ambient campaign. A BREACHED campaign used to find that out
+    // only when a downstream callLLMApi threw mid-ingest, burning a claimed
+    // attempt against paid vendor output that had done nothing wrong. Check
+    // BEFORE claiming: a breached campaign's job is simply held — status
+    // stays 'succeeded', zero attempts spent, and it resumes on the first
+    // poll after resumeAfterBreach.
+    const preClaim = await this.prisma.llmBatchJob.findUnique({
+      where: { jobId },
+      select: { resumeContext: true },
+    });
+    const holdCampaignId = campaignIdFromResumeContext(preClaim?.resumeContext);
+    if (
+      holdCampaignId &&
+      (await this.spendCampaigns.isBreached(holdCampaignId))
+    ) {
+      this.logger.warn(
+        'Batch ingest held — campaign is breached (job kept, no attempt spent)',
+        { jobId, purpose, campaignId: holdCampaignId },
+      );
       return;
     }
     // Idempotency guard: claim via LEASE. Attempts are NOT consumed at claim

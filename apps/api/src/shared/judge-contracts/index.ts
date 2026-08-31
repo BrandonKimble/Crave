@@ -80,8 +80,12 @@ export const DEPENDENT_CONSUMERS: readonly DependentConsumer[] = [
       {
         on: 'labels.vocabulary',
         why: 'The census is STEP 3 of the knowledge rail, after the label/vocabulary sweeps (RESTAURANT_NAME_CENSUS_ENABLED requires KNOWLEDGE_MAINTENANCE_ENABLED).',
+        // The vocabulary generator stamps label_sweep:<locale>, never a
+        // 'vocabulary' pass (verified against label-sweep.service.ts +
+        // staging pass values, 2026-08-31) — the old = 'vocabulary' probe
+        // was unsatisfiable.
         emptinessProbeSql:
-          "SELECT count(*) FROM knowledge_pass_runs WHERE pass = 'vocabulary'",
+          "SELECT count(*) FROM knowledge_pass_runs WHERE pass LIKE 'label_sweep:%'",
       },
       {
         on: 'content_extraction',

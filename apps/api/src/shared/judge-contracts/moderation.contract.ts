@@ -23,6 +23,7 @@ export const MODERATION_CONTRACT: JudgeContract = {
   reopenOn: {
     final:
       'A username/text is judged at submission time; a later policy change governs later submissions, never retroactively.',
+    debt: false,
   },
   ledger: {
     unledgered:

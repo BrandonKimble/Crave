@@ -1,0 +1,12 @@
+-- Dead campaign.* grant-pool rows (rederivation 2026-08-31): the campaign
+-- envelope's grant-pool mirror was deleted — the spend_campaigns row is the
+-- one enforcer — so pool_window_consumption rows for campaign.* pools are
+-- dead data (and several carry the boot-compounded totals that motivated
+-- the deletion). NOT executed by any code path; run by hand after review.
+--
+-- Dry run (inspect first):
+--   SELECT pool_name, window_key, consumed, granted
+--   FROM pool_window_consumption WHERE pool_name LIKE 'campaign.%';
+--
+-- Cleanup:
+-- DELETE FROM pool_window_consumption WHERE pool_name LIKE 'campaign.%';

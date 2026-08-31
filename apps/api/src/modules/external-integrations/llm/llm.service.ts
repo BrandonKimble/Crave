@@ -3324,8 +3324,12 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
    * warning nobody reads is not a guard (the 8,910-call umbrella lesson
    * above) — which is exactly why this is declared warn-MODE with a flip
    * date, not sold as enforcement.
+   *
+   * PUBLIC because the batch rail runs the SAME check on its purpose tag
+   * (`gemini-batch.<purpose>`, GeminiBatchService.submit) — one warn-mode
+   * implementation, both dispatch doors.
    */
-  private warnIfUncontractedCaller(caller: string): void {
+  warnIfUncontractedCaller(caller: string): void {
     if (process.env.NODE_ENV === 'production') return;
     if (this.uncontractedCallersWarned.has(caller)) return;
     try {

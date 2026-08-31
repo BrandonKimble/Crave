@@ -1,18 +1,17 @@
-import { billedMicrosFromStore } from '../shared/spend-currency';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { LoggerService } from '../../../shared';
 import { PoolRegistry, type PoolDenial } from './pool-registry';
 import { PrismaPoolConsumptionStore } from './pool-consumption.store';
-import { PrismaService } from '../../../prisma/prisma.service';
 import { OpsAlertsService } from '../shared/ops-alerts.service';
 
-/** '<vendor>.<resource>'-shaped pool name for a campaign's §14.6 grant —
- *  mirrors spend-campaign.service.ts's private campaignPoolName (kept
- *  local rather than exported/imported to avoid a governance <-> shared
- *  circular import; it's a one-line naming convention, not logic). */
-function campaignPoolName(campaignId: string): string {
-  return `campaign.${campaignId}`;
-}
+// campaign.* grant pools are GONE (rederivation 2026-08-31): the campaign
+// envelope's one enforcer is the guarded atomic increment on the
+// spend_campaigns row (SpendCampaignService.recordSpend). The boot-time
+// grant re-registration + spent-to-date re-metering that lived here was a
+// second memory of the same fact and compounded stored consumption boot
+// over boot (~$1,051/~$1,971 against ~$50 envelopes) while firing false
+// "spending blind" alerts. Grant-pool machinery itself remains for
+// non-campaign pools.
 
 /**
  * F120 / D14 — ONE DOLLAR GATE, PARAMETERISED BY WHICH BUDGET.
@@ -231,7 +230,6 @@ export class GovernanceService implements OnModuleInit {
   constructor(
     loggerService: LoggerService,
     store: PrismaPoolConsumptionStore,
-    private readonly prisma: PrismaService,
     // Provided by the @Global SharedServicesModule (no module import needed;
     // OpsAlertsService depends only on Prisma + logger, so no provider cycle).
     private readonly opsAlerts: OpsAlertsService,
@@ -559,116 +557,9 @@ export class GovernanceService implements OnModuleInit {
         }
       }),
     );
-    await this.reRegisterCampaignGrants();
-  }
-
-  /**
-   * §24 red team finding 4 ("restart-safe campaigns"): pool grants (§14.6)
-   * are registered ONLY at approve()-time, in-memory — a process restart
-   * forgets every live campaign's grant pool entirely, so the FIRST
-   * recordSpend after a restart throws PoolRegistrationError (pool not
-   * registered) instead of metering. Re-register a grant pool for every
-   * campaign still in a dispatchable state ('approved'/'running') at boot,
-   * sized the same way approve() sizes it (estimateMicros x
-   * (1 + toleranceFraction)), then immediately meter() the campaign's
-   * spentMicros-to-date so the pool's remaining capacity reflects reality,
-   * not a fresh zero. Pilots (estimateMicros null — §24.2) have no envelope
-   * to re-register, same as approve() never minting one for them. Non-fatal
-   * per-row: a bad row must not fail
-   * boot, only skip that one campaign's grant.
-   */
-  private async reRegisterCampaignGrants(): Promise<void> {
-    let rows: Array<{
-      campaignId: string;
-      estimateMicros: bigint | null;
-      toleranceFraction: number | null;
-      spentMicros: bigint;
-    }>;
-    try {
-      rows = await this.prisma.spendCampaign.findMany({
-        where: { state: { in: ['approved', 'running'] } },
-        select: {
-          campaignId: true,
-          estimateMicros: true,
-          toleranceFraction: true,
-          spentMicros: true,
-        },
-      });
-    } catch (error) {
-      this.logger.warn(
-        'Campaign grant re-registration read failed at boot (non-fatal)',
-        {
-          error: {
-            message: error instanceof Error ? error.message : String(error),
-          },
-        },
-      );
-      return;
-    }
-    for (const row of rows) {
-      if (row.estimateMicros === null || row.toleranceFraction === null) {
-        continue; // Pilot campaign — no envelope, nothing to re-register.
-      }
-      try {
-        const envelopeMicros = Math.round(
-          Number(row.estimateMicros) * (1 + row.toleranceFraction),
-        );
-        const poolName = campaignPoolName(row.campaignId);
-        this.pools.register({
-          name: poolName,
-          credential: 'campaign',
-          window: {
-            kind: 'grant',
-            amount: envelopeMicros,
-            denomination: 'billedMicros',
-          },
-          reservationTtlMs: 60_000,
-        });
-        // ONE MEMORY, RECONCILED (audit 2026-08-31). This used to meter the
-        // ledger's spentMicros unconditionally — but meterSpend WRITES
-        // THROUGH to the durable window store, which already remembers this
-        // campaign's consumption across restarts. Every boot therefore
-        // re-added total-spend-to-date on top of the stored total: stored
-        // consumption compounded boot over boot (observed: ~$1,051 and
-        // ~$1,971 stored against ~$50 envelopes), and a mid-campaign
-        // redeploy could push the mirror past the envelope and falsely
-        // exhaust the pool. It also metered BEFORE the window was confirmed,
-        // firing a false "spending blind" alert on every single boot.
-        // Now: confirm the window first, then inject only what the ledger
-        // knows and the store does not (crash-lost flushes heal; a clean
-        // restart injects nothing). If the store is genuinely unreachable,
-        // the full amount is metered against the unconfirmed window and the
-        // alert that fires is telling the truth.
-        await this.pools.ensureWindow(poolName);
-        const status = this.pools.poolStatus(poolName);
-        const storedMicros = status.storeConfirmed === true ? status.used : 0;
-        const spentMicros = Number(row.spentMicros);
-        const deltaMicros = spentMicros - storedMicros;
-        if (deltaMicros > 0) {
-          await this.pools.meterSpend(
-            this.pools.spendPool(poolName),
-            billedMicrosFromStore(deltaMicros),
-          );
-        }
-        this.logger.info('Campaign grant re-registered at boot', {
-          campaignId: row.campaignId,
-          envelopeMicros,
-          spentMicros,
-          storedMicros,
-          injectedMicros: Math.max(0, deltaMicros),
-        });
-      } catch (error) {
-        this.logger.warn(
-          'Campaign grant re-registration failed for one campaign (skipped, boot continues)',
-          {
-            campaignId: row.campaignId,
-            error: {
-              message: error instanceof Error ? error.message : String(error),
-            },
-          },
-        );
-      }
-    }
+    // No campaign-grant re-registration: campaign envelopes live on the
+    // spend_campaigns row (see the header note above) — restart-safe by
+    // construction, nothing to rehydrate.
   }
 
   /**

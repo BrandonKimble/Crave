@@ -32,7 +32,8 @@ export const ATTRIBUTE_PLACEMENT_CONTRACT: JudgeContract = {
   // not laundered into { final }.
   reopenOn: {
     final:
-      'DECLARED DEBT, not policy: no reopen mechanism exists; a placed attribute is never re-judged even after a doctrine change.',
+      'Not policy: no reopen mechanism exists; a placed attribute is never re-judged even after a doctrine change.',
+    debt: true,
   },
   // The 47-merge class, one module over: applyPlan merges without verdict
   // rows (map overlap #11) — an effect applied with no ledger row nobody
@@ -82,7 +83,8 @@ export const ATTRIBUTE_NAME_CONTRACT: JudgeContract = {
   foldParticipation: { noClaimKey: 'un-ledgered; no key was ever specified' },
   reopenOn: {
     final:
-      'DECLARED DEBT: a chosen display name is permanent by accident — nothing re-opens it.',
+      'A chosen display name is permanent by accident — nothing re-opens it.',
+    debt: true,
   },
   ledger: {
     unledgered: 'Name choices write no verdict rows; the name just changes.',

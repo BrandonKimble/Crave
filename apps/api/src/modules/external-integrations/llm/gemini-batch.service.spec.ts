@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { GeminiBatchService } from './gemini-batch.service';
+import { GeminiBatchService, isTransientFailure } from './gemini-batch.service';
+import { CampaignBreachedError } from '../shared/spend-campaign.service';
 
 /**
  * §24 red team finding 1 ("a breach must stop work"): submit() must refuse
@@ -38,6 +39,8 @@ function buildService(isDispatchable: boolean) {
     },
   };
   const spendCampaigns = {
+    registerBreachReaper: jest.fn(),
+    isBreached: jest.fn().mockResolvedValue(false),
     isDispatchable: jest.fn().mockResolvedValue(isDispatchable),
     // ONE ENFORCEMENT (2026-08-12): submit now calls the shared typed
     // assertDispatchable rather than a hand-rolled isDispatchable check.
@@ -53,6 +56,7 @@ function buildService(isDispatchable: boolean) {
   // The transport consumes typed vendor ops from the gateway now — no
   // ConfigService/client of its own.
   const llmService = {
+    warnIfUncontractedCaller: jest.fn(),
     batchTransportOps: () => ({
       create: jest.fn().mockResolvedValue({ name: 'batches/fake' }),
       cancel: jest.fn().mockResolvedValue(undefined),
@@ -183,8 +187,11 @@ describe('GeminiBatchService.cancel — terminal states are unclobberable', () =
       stubLogger() as never,
       { record: jest.fn() } as never,
       { assertGeminiSpendOpen: jest.fn() } as never,
-      { isDispatchable: jest.fn() } as never,
-      { batchTransportOps: () => ({ cancel: jest.fn() }) } as never,
+      { isDispatchable: jest.fn(), registerBreachReaper: jest.fn() } as never,
+      {
+        warnIfUncontractedCaller: jest.fn(),
+        batchTransportOps: () => ({ cancel: jest.fn() }),
+      } as never,
     );
     return { service, updateMany };
   }
@@ -218,6 +225,38 @@ describe('GeminiBatchService.cancel — terminal states are unclobberable', () =
  * is a conditional updateMany from its expected state. This scan is the
  * class-level mutation proof: reintroduce any bare update() and it REDs.
  */
+/**
+ * Rederivation 2026-08-31: a breach is a typed 'not now', never a
+ * deterministic failure. Classification is by TYPE first — a reworded
+ * message cannot demote CampaignBreachedError to deterministic and burn a
+ * bounded ingest attempt against paid vendor output.
+ */
+describe('isTransientFailure — typed errors classify by type, not message', () => {
+  it('CampaignBreachedError is transient, including when nested as a cause', () => {
+    expect(isTransientFailure(new CampaignBreachedError('camp-1'))).toBe(true);
+    const wrapped = new Error('ingest step exploded', {
+      cause: new CampaignBreachedError('camp-1'),
+    });
+    expect(isTransientFailure(wrapped)).toBe(true);
+  });
+
+  it('the message regex remains the fallback for untyped vendor strings', () => {
+    expect(isTransientFailure(new Error('429 RESOURCE_EXHAUSTED'))).toBe(true);
+    expect(isTransientFailure(new Error('cannot parse response JSON'))).toBe(
+      false,
+    );
+  });
+});
+
+describe('GeminiBatchService breach integration (2026-08-31)', () => {
+  it('registers a breach reaper with SpendCampaignService at construction', () => {
+    const { spendCampaigns } = buildService(true);
+    expect(spendCampaigns.registerBreachReaper).toHaveBeenCalledTimes(1);
+    const calls = spendCampaigns.registerBreachReaper.mock.calls as unknown[][];
+    expect(typeof calls[0]?.[0]).toBe('function');
+  });
+});
+
 describe('C3 — no bare llmBatchJob.update() status writes', () => {
   it('every status transition is a guarded updateMany', () => {
     const source = readFileSync(

@@ -42,6 +42,10 @@ export const COLLECTION_EXTRACTOR_CONTRACT: JudgeContract = {
   batching: 'batch_rail', // COLLECTION_LLM_MODE; batch is half price
   spend: {
     caller: 'content.extract',
+    // Extraction submits Gemini batch jobs under this purpose
+    // (extraction-pipeline.service.ts); the ledger tag is
+    // gemini-batch.collection_extraction.
+    batchPurposes: ['collection_extraction'],
     workClass: 'gemini.reddit_extraction',
   },
   failure: {

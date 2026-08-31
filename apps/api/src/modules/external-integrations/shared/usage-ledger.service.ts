@@ -519,13 +519,24 @@ export class UsageLedgerService
       this.spendCampaigns
         .recordSpend(campaignId, event.service, ledgerMicros(micros))
         .catch((error: unknown) => {
-          this.logger.warn('Campaign spend attribution failed', {
-            campaignId,
-            error:
-              error instanceof Error
-                ? { message: error.message }
-                : { message: String(error) },
-          });
+          // ERROR, not warn (2026-08-31): recordSpend no longer throws for a
+          // breached campaign (post-breach spend accumulates — accumulation
+          // and permission are split), so anything landing here means the
+          // spend FAILED TO RECORD and the campaign row is now under-true
+          // by this delta. That is a money-instrumentation failure, not a
+          // routine refusal.
+          this.logger.error(
+            'Campaign spend attribution FAILED — spent_micros is under-true by this delta',
+            {
+              campaignId,
+              service: event.service,
+              micros,
+              error:
+                error instanceof Error
+                  ? { message: error.message }
+                  : { message: String(error) },
+            },
+          );
         });
     } catch {
       // Attribution must never break the usage record itself.
