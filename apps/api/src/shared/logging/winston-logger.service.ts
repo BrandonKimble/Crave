@@ -49,6 +49,18 @@ export class WinstonLoggerService extends LoggerService {
   }
 
   error(message: string, error?: unknown, metadata?: LogMetadata): void {
+    // See buildErrorMetadata: a metadata bag passed in the error slot is
+    // shifted BEFORE both consumers, so Sentry capture sees the truth too.
+    if (
+      metadata === undefined &&
+      error !== null &&
+      typeof error === 'object' &&
+      !(error instanceof Error) &&
+      typeof (error as Record<string, unknown>).message !== 'string'
+    ) {
+      metadata = error as LogMetadata;
+      error = undefined;
+    }
     const errorMetadata = this.buildErrorMetadata(error, metadata);
     this.log('error', message, errorMetadata);
     this.captureToSentry(message, error, metadata);
@@ -153,6 +165,30 @@ export class WinstonLoggerService extends LoggerService {
     error?: unknown,
     metadata?: LogMetadata,
   ): LogMetadata {
+    // THE MISPLACED-METADATA SEAM (audit 2026-08-31). error() has two
+    // adjacent object params, and callers all over the codebase write
+    // `logger.error('msg', { table, error: { message } })` — their METADATA
+    // lands in the `error` slot, getErrorMessage() finds no top-level
+    // string `message`, and every structured error in the app logged as
+    // "Unknown error occurred" (the spending-blind alarm and the
+    // source-table census both hid their real causes behind it). The two
+    // shapes are mechanically distinguishable: a real error is an Error, a
+    // string, or carries a string `message`; a metadata bag is none of
+    // those. error() shifts the bag before calling here (so Sentry sees the
+    // truth too); this method is also reached via warn/fatal paths, so the
+    // guard stays defensive. (The signature itself is the defect — the
+    // rederivation to error(message, metadata) rides the Judge Contract
+    // migration — but this seam fix makes existing call sites truthful.)
+    if (
+      metadata === undefined &&
+      error !== null &&
+      typeof error === 'object' &&
+      !(error instanceof Error) &&
+      typeof (error as Record<string, unknown>).message !== 'string'
+    ) {
+      metadata = error as LogMetadata;
+      error = undefined;
+    }
     const errorMetadata: LogMetadata = { ...metadata };
 
     if (!error) {

@@ -110,10 +110,22 @@ export class SourceTableCollapseAlarmService implements OnApplicationBootstrap {
       }
     }
     const collapsed = verdicts.filter((v) => v.outcome === 'collapsed');
-    if (collapsed.length === 0) {
+    const failed = SOURCE_TABLES.length - verdicts.length;
+    if (collapsed.length === 0 && failed === 0) {
       this.logger.info('Source-table collapse census clean', {
         when,
         tables: verdicts.length,
+      });
+    } else if (collapsed.length === 0) {
+      // A census that could not read every table must not report clean —
+      // "clean, tables 4" while 3 of 7 failed was a lying summary (audit
+      // 2026-08-31; the boot arm races the DB engine in script contexts).
+      // The per-table failures are already logged above; this line makes
+      // the summary agree with them. The nightly arm re-censuses.
+      this.logger.warn('Source-table census INCOMPLETE — no collapse seen', {
+        when,
+        tables: verdicts.length,
+        failed,
       });
     }
     return verdicts;
