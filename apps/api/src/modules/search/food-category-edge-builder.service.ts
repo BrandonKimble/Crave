@@ -92,6 +92,40 @@ export class ItemCategoryEdgeBuilderService extends DerivedIndexJob {
         // replace and a projection rebuild can never interleave on the rows
         // they both own.
         await tx.$executeRawUnsafe(ITEM_CATEGORY_EDGE_LOCK);
+        // REFUSE-EMPTY-INPUT, BEFORE THE DELETE (audit 2026-08-31, R6
+        // class). This builder is unique among the derived rebuilds: its
+        // input is a BACKFILL-GATED facet (knowledge_categories, filled by
+        // dish-knowledge synthesis), not the corpus itself — so "no input"
+        // usually means the backfill hasn't run, not that the world is
+        // empty. The old order deleted first and counted after, so arming
+        // this job before synthesis silently wiped every standing edge and
+        // the zero-input rationale excused it. A wrong ORDER must be a loud
+        // no-op, never a wipe: standing edges survive until real input
+        // exists to replace them.
+        const [{ n: inputDishes }] = await tx.$queryRaw<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM core_entities e
+          WHERE e.type = 'item'::entity_type
+            AND e.status = 'active'::entity_status
+            AND cardinality(e.knowledge_categories) > 0`;
+        if (inputDishes === 0) {
+          const [{ n: standing }] = await tx.$queryRaw<{ n: number }[]>`
+            SELECT count(*)::int AS n FROM derived_food_category_edges`;
+          if (standing > 0) {
+            this.opsAlerts.emit({
+              severity: 'critical',
+              kind: 'derived_rebuild_refused_empty_input',
+              title: 'Food-category edge rebuild REFUSED: empty input facet',
+              body:
+                `knowledge_categories is empty on every active dish but ` +
+                `${standing} standing edges exist — the synthesis backfill ` +
+                `has not run (or regressed). Refusing the full replace so ` +
+                `the standing edges keep serving search. Run dish-knowledge ` +
+                `synthesis, then this rebuild.`,
+              dedupeKey: `category_edge_rebuild_refused:${new Date().toISOString().slice(0, 10)}`,
+            });
+            return standing;
+          }
+        }
         await tx.$executeRawUnsafe(itemCategoryEdgeDeleteSql(null));
         return tx.$executeRawUnsafe(itemCategoryEdgeInsertSql(null));
       },
