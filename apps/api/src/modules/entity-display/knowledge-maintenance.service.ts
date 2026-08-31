@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { AdvisoryLockService } from '../../shared/advisory-lock/advisory-lock.service';
 import { isEnvFlagEnabled } from '../../shared/config/env-flag';
 import { LabelSweepService } from './label-sweep.service';
+import { OrthographicVariantSweepService } from './orthographic-variant-sweep.service';
 import { VocabularyGenerator } from './vocabulary-generator';
 import { ConceptSatisfiesService } from '../content-processing/entity-resolver/concept-satisfies.service';
 import { RestaurantNameCensusService } from '../content-processing/entity-resolver/restaurant-name-census.service';
@@ -20,6 +21,10 @@ import { RestaurantNameCensusService } from '../content-processing/entity-resolv
  * watermarks already make every pass idempotent, incremental and re-entrant;
  * this service just runs them in the one order that matters:
  *
+ *   0. ORTHOGRAPHIC CENSUS (mechanical, free, 2026-08-30) — the closed
+ *      &↔"and" retypings minted as recall surfaces; watermark is the variant
+ *      row itself, so a quiet corpus does zero work and a new mint is
+ *      covered the next night. No LLM, no ledger, no flag of its own.
  *   1. VOCABULARY SWEEP (per locale) — labels + surfaces for concepts below
  *      the current prompt version. Blocked surfaces auto-route to the
  *      word-claim adjudicator inside the sweep itself.
@@ -89,6 +94,7 @@ export class KnowledgeMaintenanceService {
     private readonly satisfies: ConceptSatisfiesService,
     private readonly advisoryLock: AdvisoryLockService,
     private readonly nameCensus: RestaurantNameCensusService,
+    private readonly orthographic: OrthographicVariantSweepService,
   ) {}
 
   onModuleInit(): void {
@@ -128,6 +134,25 @@ export class KnowledgeMaintenanceService {
     // CONCURRENT, ISOLATED, DEADLINED (see RAIL_PERIOD_MS). allSettled, not
     // a loop: one locale's failure is that locale's news, never a reason
     // the languages after it — or the satisfies pass — go unserved.
+    // STEP 0 — THE ORTHOGRAPHIC CENSUS, first and free. Mechanical (&↔"and"
+    // retypings, no LLM, no ledger, watermark = the variant row itself), so
+    // it runs unconditionally under the rail's own flag: a pass that costs
+    // nothing needs no spend gate, and running it BEFORE the label sweeps
+    // means a name minted yesterday is reachable by tonight. Isolated like
+    // every step: its failure is its own news.
+    try {
+      const ortho = await this.orthographic.run();
+      this.logger.log(
+        `maintenance orthographic scanned=${ortho.scanned} touched=${ortho.entitiesTouched} ` +
+          `banked=${ortho.variantsBanked} blocked=${ortho.variantsBlocked}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `maintenance orthographic failed trigger=${trigger}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
     const locales = this.labelSweep.sweepLocales();
     const settled = await Promise.allSettled(
       locales.map((locale) =>

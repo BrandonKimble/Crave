@@ -4,6 +4,12 @@ import {
   GroundingSweepTripwire,
 } from './grounding-sweep-tripwire';
 import {
+  WorkerLaneDeclineAlarm,
+  WORKER_LANE_WINDOW_MINUTES,
+  workerLaneHoldMessage,
+  type WorkerLaneWindowCounts,
+} from './worker-lane-decline-alarm';
+import {
   classifyEnrichmentError,
   classifyNoMatchReason,
   type EnrichmentFailureVerdict,
@@ -441,10 +447,67 @@ export class PlaceLocationEnrichmentService {
     return summary;
   }
 
+  /**
+   * W1's lane alarm (waves 3-4 red team): the mention-driven worker lane's
+   * decline rate, read from the durable attempt breadcrumbs. One aggregate
+   * over core_entities per recheck interval; both timestamps are ISO
+   * strings this service itself writes.
+   */
+  private readonly workerLaneAlarm = new WorkerLaneDeclineAlarm();
+
+  private async readWorkerLaneWindowCounts(): Promise<WorkerLaneWindowCounts> {
+    const cutoff = new Date(
+      Date.now() - WORKER_LANE_WINDOW_MINUTES * 60 * 1000,
+    ).toISOString();
+    const rows = await this.prisma.$queryRaw<
+      Array<{ declines: bigint; successes: bigint }>
+    >(Prisma.sql`
+      SELECT
+        count(*) FILTER (
+          WHERE restaurant_metadata->'lastEnrichmentAttempt'->>'status' = 'no_match'
+            AND restaurant_metadata->'lastEnrichmentAttempt'->>'failureAt' >= ${cutoff}
+        ) AS declines,
+        count(*) FILTER (
+          WHERE restaurant_metadata->'googlePlaces'->>'fetchedAt' >= ${cutoff}
+        ) AS successes
+      FROM core_entities
+      WHERE type = 'place'
+    `);
+    const row = rows[0];
+    return {
+      declines: Number(row?.declines ?? 0),
+      successes: Number(row?.successes ?? 0),
+    };
+  }
+
   async enrichPlaceById(
     entityId: string,
     options: PlaceEnrichmentOptions = {},
   ): Promise<PlaceEnrichmentResult> {
+    // FAIL-CLOSED LANE HOLD (W1): when the trailing window's decline rate is
+    // over the bound, judging is broken — skip WITHOUT spending a Places call
+    // or a strike, and tell the operator loudly. The verdict comes from
+    // durable breadcrumbs, so a restarted worker re-trips while the evidence
+    // stands; jobs resolve as 'skipped' (no Bull retry churn) and the
+    // entities keep their retries for after the root cause is fixed.
+    const laneVerdict = await this.workerLaneAlarm.evaluate(() =>
+      this.readWorkerLaneWindowCounts(),
+    );
+    if (laneVerdict.held) {
+      this.opsAlerts.emit({
+        severity: 'critical',
+        kind: 'grounding_worker_lane_held',
+        title: 'Grounding worker lane held: decline rate over the bound',
+        body: workerLaneHoldMessage(laneVerdict),
+        dedupeKey: 'grounding_worker_lane_held',
+      });
+      return {
+        entityId,
+        status: 'skipped',
+        reason: 'worker_lane_decline_alarm_held',
+      };
+    }
+
     const entity = await this.prisma.entity.findUnique({
       where: { entityId },
       include: { primaryLocation: true, locations: true },

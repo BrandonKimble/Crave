@@ -4,6 +4,7 @@ import type { VocabularyGenerator } from './vocabulary-generator';
 import type { ConceptSatisfiesService } from '../content-processing/entity-resolver/concept-satisfies.service';
 import type { AdvisoryLockService } from '../../shared/advisory-lock/advisory-lock.service';
 import type { RestaurantNameCensusService } from '../content-processing/entity-resolver/restaurant-name-census.service';
+import type { OrthographicVariantSweepService } from './orthographic-variant-sweep.service';
 
 /**
  * THE RAIL'S WAITING CONTRACT (red team 2026-08-12): locale sweeps are
@@ -64,6 +65,15 @@ describe('knowledge maintenance rail — concurrent, isolated, deadlined', () =>
       { run: satisfies } as unknown as ConceptSatisfiesService,
       advisoryLock,
       { run: census } as unknown as RestaurantNameCensusService,
+      {
+        run: jest.fn().mockResolvedValue({
+          scanned: 0,
+          entitiesTouched: 0,
+          variantsOffered: 0,
+          variantsBanked: 0,
+          variantsBlocked: 0,
+        }),
+      } as unknown as OrthographicVariantSweepService,
     );
     return { service, satisfies, census };
   }

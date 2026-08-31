@@ -277,86 +277,79 @@ export class UnknownSearchIntakeService {
       );
       const untyped = demandPieces.filter((piece) => piece.entityType === null);
 
+      // PER-ROW PROCESS-AND-MARK (waves 3-4 red team W5): a row's demand
+      // writes and its status flip travel together, so a mid-group failure
+      // (row 5 of 10) retries ONLY the rows whose demand was never written.
+      // The old shape wrote demand for ALL rows and marked them 'segmented'
+      // in one updateMany at the end — a retry of the group re-recorded
+      // demand for rows 1-4, inflating the ask counts the R4-② every-ask-
+      // is-recorded law exists to keep honest. Idempotency lives at the
+      // WRITE (the drain only refetches status='pending' rows, and a row
+      // leaves 'pending' in the same iteration its demand landed), not in a
+      // guard flag.
+      //
+      // On signals.record: it is a void fire-and-forget BY THE SIGNALS
+      // SERVICE'S OWN LAW (record() attaches its own .catch — a rejection
+      // is warned and dropped, never unhandled). There is nothing to await;
+      // a failed ask write is logged loss, by fleet-wide design.
       for (const row of rows) {
         const rowContext =
           row.context && typeof row.context === 'object'
             ? (row.context as Record<string, unknown>)
             : {};
-        if (typed.length) {
-          // One recordRequests per staged ROW: each searcher's ask keeps its
-          // own user, engines, searchRequestId, and — critically — its
-          // BOUNDS (the signals layer drops geo-less asks).
-          await this.onDemandRequestService.recordRequests(
-            typed.map((entry) => ({
-              term: entry.term.trim(),
-              entityType: entry.entityType,
-              reason: 'unresolved',
-              engineIds: row.engineIds,
-              // The SEGMENT inherits the language of the text it came out of.
-              // A segmenter that split 'bún đậu mắm tôm nhà hàng' cannot
-              // re-detect per fragment — and would not need to: one person
-              // typed one string in one language.
-              detectedLocale: row.detectedLocale,
-              metadata: {
-                source: 'residue_segmenter',
-                residueText,
-                searchRequestId: row.searchRequestId ?? undefined,
-              },
-            })),
-            { userId: row.userId },
-            {
-              source: 'residue_segmenter',
-              searchRequestId: row.searchRequestId,
-              ...(rowContext.bounds ? { bounds: rowContext.bounds } : {}),
-            },
+        try {
+          await this.writeRowDemand(
+            residueText,
+            row,
+            rowContext,
+            typed,
+            untyped,
           );
-        }
-        for (const piece of untyped) {
-          // UNTYPED DEMAND FLOWS DIRECTLY (ideal-abstraction round 5): a
-          // single unknown word is a complete collection seed with no type
-          // needed — the unmet lane reads on_demand_ask signals by
-          // territory. This write moved here from the hot path when the
-          // one-intake merge routed ALL residue through staging; the signal
-          // shape is unchanged (geo = the searcher's viewport, the fused
-          // locale, askSearchRequestId for read-side dedupe).
-          this.signals.record({
-            kind: 'on_demand_ask',
-            userId: row.userId,
-            subject: { entityId: null, term: piece.term },
-            geo: this.signals.bboxFromBounds(
-              this.extractBounds(rowContext.bounds) ?? null,
-            ),
-            occurredAt: new Date(),
-            detectedLocale: row.detectedLocale,
-            meta: {
-              askSearchRequestId: row.searchRequestId ?? undefined,
-              reason: 'unresolved',
-              source: 'gazetteer_residue',
+          await this.prisma.onDemandUnsegmentedResidue.updateMany({
+            where: { residueId: row.residueId },
+            data: {
+              status: pieces.length ? 'segmented' : 'discarded',
+              processedAt: new Date(),
+              attempts: { increment: 1 },
+            },
+          });
+        } catch (error) {
+          // This row's demand may be partially written; count the attempt
+          // and leave it pending (attempts<3) for the next pass, or park it
+          // as failed. Other rows in the group are unaffected.
+          await this.prisma.onDemandUnsegmentedResidue.updateMany({
+            where: { residueId: row.residueId },
+            data: { attempts: { increment: 1 } },
+          });
+          await this.prisma.onDemandUnsegmentedResidue.updateMany({
+            where: { residueId: row.residueId, attempts: { gte: 3 } },
+            data: { status: 'failed', processedAt: new Date() },
+          });
+          this.logger.warn('Residue row demand write failed (will retry)', {
+            residueText,
+            residueId: row.residueId,
+            error: {
+              message: error instanceof Error ? error.message : String(error),
             },
           });
         }
       }
-      // Junk needs no judgment: a residue that segments to nothing is
-      // discarded — it failed to name anything collectible. A residue whose
-      // every piece was already vocabulary (or just became it) DID name
-      // things; it is 'segmented' with nothing left to collect.
-      await this.prisma.onDemandUnsegmentedResidue.updateMany({
-        where: { residueId: { in: ids } },
-        data: {
-          status: pieces.length ? 'segmented' : 'discarded',
-          processedAt: new Date(),
-          attempts: { increment: 1 },
-        },
-      });
     } catch (error) {
-      // Terminal state: the third failure moves the rows to 'failed' —
-      // visible, countable, and out of the drain's way.
+      // Terminal state for GROUP-LEVEL failures (segmentation / matcher —
+      // nothing row-scoped was written yet): the third failure moves the
+      // rows to 'failed' — visible, countable, and out of the drain's way.
+      // Rows already marked by the per-row loop above have left 'pending'
+      // and are untouched by these status writes.
       await this.prisma.onDemandUnsegmentedResidue.updateMany({
-        where: { residueId: { in: ids } },
+        where: { residueId: { in: ids }, status: 'pending' },
         data: { attempts: { increment: 1 } },
       });
       await this.prisma.onDemandUnsegmentedResidue.updateMany({
-        where: { residueId: { in: ids }, attempts: { gte: 3 } },
+        where: {
+          residueId: { in: ids },
+          status: 'pending',
+          attempts: { gte: 3 },
+        },
         data: { status: 'failed', processedAt: new Date() },
       });
       this.logger.warn('Residue intake failed (will retry)', {
@@ -364,6 +357,71 @@ export class UnknownSearchIntakeService {
         rows: ids.length,
         error: {
           message: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+
+  /** One staged row's demand writes: typed pieces → on-demand requests,
+   *  untyped piece → a direct on_demand_ask signal. Extracted so the write
+   *  and the row's status flip can travel together (W5). */
+  private async writeRowDemand(
+    residueText: string,
+    row: StagedRow,
+    rowContext: Record<string, unknown>,
+    typed: Array<ResiduePiece & { entityType: EntityType }>,
+    untyped: ResiduePiece[],
+  ): Promise<void> {
+    if (typed.length) {
+      // One recordRequests per staged ROW: each searcher's ask keeps its
+      // own user, engines, searchRequestId, and — critically — its
+      // BOUNDS (the signals layer drops geo-less asks).
+      await this.onDemandRequestService.recordRequests(
+        typed.map((entry) => ({
+          term: entry.term.trim(),
+          entityType: entry.entityType,
+          reason: 'unresolved',
+          engineIds: row.engineIds,
+          // The SEGMENT inherits the language of the text it came out of.
+          // A segmenter that split 'bún đậu mắm tôm nhà hàng' cannot
+          // re-detect per fragment — and would not need to: one person
+          // typed one string in one language.
+          detectedLocale: row.detectedLocale,
+          metadata: {
+            source: 'residue_segmenter',
+            residueText,
+            searchRequestId: row.searchRequestId ?? undefined,
+          },
+        })),
+        { userId: row.userId },
+        {
+          source: 'residue_segmenter',
+          searchRequestId: row.searchRequestId,
+          ...(rowContext.bounds ? { bounds: rowContext.bounds } : {}),
+        },
+      );
+    }
+    for (const piece of untyped) {
+      // UNTYPED DEMAND FLOWS DIRECTLY (ideal-abstraction round 5): a
+      // single unknown word is a complete collection seed with no type
+      // needed — the unmet lane reads on_demand_ask signals by
+      // territory. This write moved here from the hot path when the
+      // one-intake merge routed ALL residue through staging; the signal
+      // shape is unchanged (geo = the searcher's viewport, the fused
+      // locale, askSearchRequestId for read-side dedupe).
+      this.signals.record({
+        kind: 'on_demand_ask',
+        userId: row.userId,
+        subject: { entityId: null, term: piece.term },
+        geo: this.signals.bboxFromBounds(
+          this.extractBounds(rowContext.bounds) ?? null,
+        ),
+        occurredAt: new Date(),
+        detectedLocale: row.detectedLocale,
+        meta: {
+          askSearchRequestId: row.searchRequestId ?? undefined,
+          reason: 'unresolved',
+          source: 'gazetteer_residue',
         },
       });
     }

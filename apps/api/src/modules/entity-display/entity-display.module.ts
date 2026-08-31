@@ -5,6 +5,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { LLMModule } from '../external-integrations/llm/llm.module';
 import { EntityDisplayService } from './entity-display.service';
 import { LabelSweepService } from './label-sweep.service';
+import { OrthographicVariantSweepService } from './orthographic-variant-sweep.service';
 import { VocabularyGenerator } from './vocabulary-generator';
 
 /**
@@ -23,8 +24,14 @@ import { VocabularyGenerator } from './vocabulary-generator';
     EntityDisplayService,
     LabelSweepService,
     VocabularyGenerator,
+    OrthographicVariantSweepService,
     KnowledgeMaintenanceService,
   ],
-  exports: [EntityDisplayService, LabelSweepService, VocabularyGenerator],
+  exports: [
+    EntityDisplayService,
+    LabelSweepService,
+    VocabularyGenerator,
+    OrthographicVariantSweepService,
+  ],
 })
 export class EntityDisplayModule {}

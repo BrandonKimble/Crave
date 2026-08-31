@@ -11,13 +11,21 @@
  * feeder) — each omission served out-of-market places through a lane the
  * ranked search would never show.
  *
- * Two grains, both exported deliberately:
+ * Three grains, all exported deliberately (waves 3-4 red team W2 — the A-1
+ * floor forked at birth because it only rode the composite):
  * - `marketIncludedSql(alias)` — ONLY the market-membership verdict, for
  *   readers that already carry their own type/status predicates (e.g. the
  *   score lanes require `status = 'active'`, stricter than servable's
  *   `<> 'archived'`; joins that imply type='place' structurally).
+ * - `placeVisibilityFloorSql(alias)` — ONLY the A-1 visibility gate, for
+ *   readers on the market-only grain that are nonetheless SERVING surfaces
+ *   (autocomplete, teaser, curated feeder): they must not seed a journey
+ *   toward a shell the ranked search will refuse to show. Evidence-side
+ *   readers (signal demand, score computation) deliberately omit it — see
+ *   the named opt-out comments at those sites.
  * - `servablePlaceConditionsSql(alias)` — the full public serving floor:
- *   a place row, not archived, in market. Search + coverage use this.
+ *   a place row, not archived, in market, past the A-1 gate. Search +
+ *   coverage use this.
  *
  * OPT-OUT is by name, in a comment at the site: user-owned surfaces
  * (favorites lists, polls a user voted in) may deliberately keep showing
@@ -53,7 +61,7 @@ export function marketIncludedSql(alias: string): string {
  *  The `LIMIT 2` subquery is the cheap existence-of-two test on
  *  idx_restaurant_events_restaurant_time; the grounded arm rides the
  *  locations FK index. */
-function placeVisibilityFloorSql(alias: string): string {
+export function placeVisibilityFloorSql(alias: string): string {
   return `(EXISTS (
       SELECT 1 FROM core_restaurant_locations svgl
       WHERE svgl.restaurant_id = ${alias}.entity_id

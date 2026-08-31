@@ -3,7 +3,10 @@ import { Prisma } from '@prisma/client';
 import { identityScope } from '../../shared/locale';
 import { PrismaService } from '../../prisma/prisma.service';
 import { canonicalFold } from '../content-processing/entity-resolver/entity-identity';
-import { marketIncludedSql } from '../restaurant-enrichment/servable-place-scope';
+import {
+  marketIncludedSql,
+  placeVisibilityFloorSql,
+} from '../restaurant-enrichment/servable-place-scope';
 import { LoggerService } from '../../shared';
 import type {
   ContextOptionId,
@@ -299,6 +302,11 @@ export class TeaserService {
         -- OUT-OF-MARKET is never a teaser (red-team L3 F1: Grape Creek
         -- Vineyards was serveable as an Austin teaser through this lane).
         AND ${Prisma.raw(marketIncludedSql('r'))}
+        -- SUB-FLOOR SHELLS are never teasers either (waves 3-4 red team
+        -- W2): a teaser is a serving surface — it hands the user off to a
+        -- search that refuses A-1 sub-floor places, so teasing one is a
+        -- guaranteed dead end.
+        AND ${Prisma.raw(placeVisibilityFloorSql('r'))}
         AND (SELECT found FROM attrs) = ${attrNames.length}
         AND r.restaurant_attributes @> (SELECT ids FROM attrs)
         AND EXISTS (

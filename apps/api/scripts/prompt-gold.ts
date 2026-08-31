@@ -55,6 +55,7 @@ import {
   buildVocabularyPromptV4,
   buildVocabularyPromptV6,
 } from './fixtures/vocabulary-v6-prompt';
+import { buildVocabularyPromptV7 } from './fixtures/vocabulary-v7-prompt';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 const PROMPT_DIR = join(
@@ -211,10 +212,13 @@ function builderPrompt(
   ];
   if (variant === 'candidate') return buildVocabularyPrompt(batch);
   // --vocab-pred=v4 pins the sweep era that PRODUCED the measured drift;
-  // default v6 is the immediate predecessor text.
+  // --vocab-pred=v6 the pre-boundary-test era; default v7 is the immediate
+  // predecessor text.
   return process.argv.includes('--vocab-pred=v4')
     ? buildVocabularyPromptV4(batch)
-    : buildVocabularyPromptV6(batch);
+    : process.argv.includes('--vocab-pred=v6')
+      ? buildVocabularyPromptV6(batch)
+      : buildVocabularyPromptV7(batch);
 }
 
 function schemaFor(kind: Kind): Record<string, unknown> {
@@ -439,6 +443,12 @@ function grade(
     for (const want of expect.aliasesInclude ?? [])
       if (!aliases.includes(norm(want)))
         failures.push(`missing alias "${want}" (got: ${aliases.join(', ')})`);
+    // notAliases bans the SET (v8 orthographic gold): a wrong abbreviation
+    // expansion or a proper-noun translation banked as an alias is a wrong
+    // recall surface at confidence 1.0.
+    for (const banned of expect.notAliases ?? [])
+      if (aliases.includes(norm(banned)))
+        failures.push(`FORBIDDEN alias "${banned}"`);
   } else {
     const mode = raw.mode === 'ranked' ? 'ranked' : 'discussion';
     if (expect.mode && mode !== expect.mode)

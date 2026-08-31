@@ -81,6 +81,11 @@ const VOCABULARY_RULE_RELEASES: readonly RuleRelease[] = [
     fingerprint: '44c6dd662cfd',
     note: 'THING-vs-MATERIAL boundary test added (gyro != gyro meat); enumerate-not-curate retained',
   },
+  {
+    version: 8,
+    fingerprint: 'e9590be8dfe6',
+    note: 'SPELLINGS COUNT AS WORDS: orthographic retypings (semantic abbreviation expansion, St. Elmo -> Saint Elmo) enter the completeness definition; proper nouns may carry retyping aliases (never translations). The closed &-class is mechanical (orthographic census), not this prompt.',
+  },
 ];
 
 function resolveVocabularyPromptVersion(): number {
@@ -285,10 +290,27 @@ export class VocabularyGenerator implements LabelGenerator {
       // The canonical label is itself a search surface for a real
       // translation — someone who reads "camarones" on a chip will also type
       // it — so it is declared EXPLICITLY here rather than bolted on by the
-      // writer. A proper noun declares none: it is its own label in every
-      // language, but it is not a Spanish word.
+      // writer.
+      //
+      // A PROPER NOUN'S ALIASES ARE RETYPINGS, NOT WORDS (v8, 2026-08-30).
+      // v5-v7 dropped a proper noun's aliases entirely — right for the
+      // translation fabrication that rule was built against ("the English
+      // name is not a Spanish search word"), wrong for the orthographic gap
+      // it also swallowed: "St. Elmo Brewing" typed as "Saint Elmo Brewing"
+      // is the SAME name through a different spelling, and dropping it left
+      // the semantic abbreviation class unreachable (the mechanical &-census
+      // covers only the closed symbol class). The prompt now permits ONLY
+      // retypings on a proper noun, so the declared list passes through —
+      // minus the label itself, which the name arms already match (and
+      // which the door's self-redundancy guard would refuse anyway).
       const aliases = item.proper_noun
-        ? []
+        ? Array.from(
+            new Set(
+              (item.aliases ?? [])
+                .map((alias) => (alias ?? '').trim())
+                .filter((alias) => alias && alias !== label),
+            ),
+          )
         : Array.from(
             new Set(
               [label, ...(item.aliases ?? [])]
@@ -397,6 +419,17 @@ export function buildVocabularyPrompt(
     `- Write each word the way the locale properly writes it, accents and all.`,
     `  The app matches accent-insensitively on its own, so a de-accented`,
     `  respelling is not another word and does not belong in the list.`,
+    `- SPELLINGS COUNT AS WORDS. When a name is really typed through more than`,
+    `  one orthography — an abbreviation and the word it stands for, a symbol`,
+    `  read aloud as a word — each spelling a speaker really types belongs in`,
+    `  the set. The test is the same one this whole rule runs on: would a`,
+    `  speaker really type it for THIS name, meaning THIS thing? An`,
+    `  abbreviation expands only to what it means in this name — "St." is`,
+    `  Saint in "St. Elmo" and Street in "Clinton St.", and expanding it to`,
+    `  the wrong word is not a retyping of the name, it is a different name.`,
+    `  When you cannot tell which word an abbreviation stands for here, leave`,
+    `  it unexpanded — a missing retyping is asked again, a wrong one is`,
+    `  banked as truth.`,
     `- A word being ambiguous is NOT a reason to omit it. When two concepts`,
     `  claim the same word, a later stage that can see both of them decides`,
     `  who gets it. You cannot see the other concept, so do not try — report`,
@@ -433,8 +466,12 @@ export function buildVocabularyPrompt(
     ``,
     `NAMES THAT ARE ALREADY THE ANSWER:`,
     `- A proper noun, brand or place name is its own name in every language.`,
-    `  Return it unchanged, never described or translated, and set`,
-    `  "proper_noun": true.`,
+    `  Return it unchanged as the label, never described or translated, and`,
+    `  set "proper_noun": true. Its "aliases" carry ONLY retypings of that`,
+    `  same name — the spellings rule above ("St. Elmo Brewing" typed as`,
+    `  "Saint Elmo Brewing") — never a translation, never a description, and`,
+    `  never the name repeated unchanged. A proper noun with no real retyping`,
+    `  has empty aliases.`,
     `- A word the culture has taken in untranslated stays untranslated`,
     `  ("sushi", "ramen", "taco", "brunch") — that IS what speakers type.`,
     `- A concept already in ${locale} keeps its word, spelled properly, plus`,

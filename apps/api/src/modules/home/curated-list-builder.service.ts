@@ -27,7 +27,10 @@ import { Prisma } from '@prisma/client';
 import { recallScope } from '../../shared/locale';
 import { parseOnboardingAnswers } from '@crave-search/shared';
 import { activePlaceEventCountSql } from '../content-processing/reddit-collector/extraction-scope.service';
-import { marketIncludedSql } from '../restaurant-enrichment/servable-place-scope';
+import {
+  marketIncludedSql,
+  placeVisibilityFloorSql,
+} from '../restaurant-enrichment/servable-place-scope';
 import { CUISINE_FACET_ROW_WHERE_SQL } from '../search/facet.registry';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
@@ -837,6 +840,10 @@ export class CuratedListBuilderService {
         -- score join + city polygon only protected this INDIRECTLY, with a
         -- one-night stale window; the verdict is now a direct predicate).
         AND ${Prisma.raw(marketIncludedSql('e'))}
+        -- SUB-FLOOR SHELLS never seed curated rows (waves 3-4 red team W2):
+        -- curated lists are a serving surface, and every row links into a
+        -- search/profile journey the A-1 gate would refuse.
+        AND ${Prisma.raw(placeVisibilityFloorSql('e'))}
         AND e.latitude IS NOT NULL
         AND e.longitude IS NOT NULL
         AND ST_Covers(

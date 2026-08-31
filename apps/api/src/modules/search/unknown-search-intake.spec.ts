@@ -111,6 +111,71 @@ afterEach(() => {
   delete process.env.UNKNOWN_INTAKE_ALIAS_MATCH_ENABLED;
 });
 
+describe('UnknownSearchIntakeService — per-row process-and-mark (W5: no double demand on retry)', () => {
+  it('marks each row as its demand lands, so a mid-group failure leaves only the unwritten rows pending', async () => {
+    const rows = [
+      makeRow({ residueId: 'r1', userId: 'u1' }),
+      makeRow({ residueId: 'r2', userId: 'u2' }),
+      makeRow({ residueId: 'r3', userId: 'u3' }),
+    ];
+    const { service, onDemand, prisma } = build({
+      rows,
+      analysis: { ...EMPTY_ANALYSIS, items: ['birria tacos'] },
+    });
+    // Row 2's demand write fails; rows 1 and 3 succeed.
+    onDemand.recordRequests
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error('db hiccup'))
+      .mockResolvedValueOnce([]);
+    await service.drainBatch();
+
+    const updates = prisma.onDemandUnsegmentedResidue.updateMany.mock.calls;
+    const segmented = updates.filter(
+      (c) => (c[0].data as { status?: string }).status === 'segmented',
+    );
+    // Rows 1 and 3 each flipped individually, in the same iteration as
+    // their demand write — NEVER a whole-group updateMany.
+    expect(segmented.map((c) => c[0].where)).toEqual([
+      { residueId: 'r1' },
+      { residueId: 'r3' },
+    ]);
+    // Row 2 only counted an attempt (stays pending for the next pass; the
+    // next drain refetches status='pending' rows only, so r1/r3's demand is
+    // never re-recorded — the R4-② count stays honest).
+    const attemptsOnly = updates.filter(
+      (c) =>
+        (c[0].where as { residueId?: string }).residueId === 'r2' &&
+        (c[0].data as { status?: string }).status === undefined,
+    );
+    expect(attemptsOnly).toHaveLength(1);
+    expect(
+      updates.some(
+        (c) =>
+          (c[0].where as { residueId?: unknown }).residueId !== undefined &&
+          typeof (c[0].where as { residueId?: unknown }).residueId ===
+            'object' &&
+          (c[0].data as { status?: string }).status === 'segmented',
+      ),
+    ).toBe(false);
+  });
+
+  it('a group-level failure (segmentation throws) touches only rows still pending', async () => {
+    const rows = [makeRow({ residueId: 'r1' })];
+    const { service, prisma, llmService } = build({
+      rows,
+      analysis: { ...EMPTY_ANALYSIS, items: ['x'] },
+    });
+    llmService.interpretResidue.mockRejectedValueOnce(new Error('llm down'));
+    await service.drainBatch();
+    const updates = prisma.onDemandUnsegmentedResidue.updateMany.mock.calls;
+    // Both group-level status writes are scoped status: 'pending' so they
+    // can never regress a row the per-row loop already marked.
+    for (const call of updates) {
+      expect((call[0].where as { status?: string }).status).toBe('pending');
+    }
+  });
+});
+
 describe('UnknownSearchIntakeService — segmentation → typed demand (F-3 carried forward)', () => {
   it('records an ingredient answer as an ingredient-typed on-demand request', async () => {
     const { service, onDemand } = build({

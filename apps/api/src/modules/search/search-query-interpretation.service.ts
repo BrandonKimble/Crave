@@ -812,7 +812,8 @@ export class SearchQueryInterpretationService {
     }
 
     // F8400: `llmMs: 0` was a constant emitted as a measurement — the F7601
-    // twin one file over. unsegmented-residue.service.ts:17 records the reason
+    // twin one file over. unknown-search-intake.service.ts (the one-intake
+    // merge's staging-zone doc block) records the reason
     // ("per-search LLM cost -> zero; llmMs disappears"): the LLM left this hot
     // path, so the field is not a zero timing, it is a timing that no longer
     // exists. A phase that does not run has no phaseTiming. The consumer

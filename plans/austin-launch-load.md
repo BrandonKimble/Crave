@@ -193,7 +193,21 @@ class for zero benefit.
 8. **Checkpoint per wave:** doc counts vs archive census, batch failure
    taxonomy clean (the lease/quarantine machinery from the 07-08 audit is
    built — watch it, don't babysit it), `cost-reconcile.sh` after each wave.
-9. Grounding runs mention-driven as docs land (chooser v2, tripwire armed).
+9. **SEQUENCED GROUNDING (waves 3-4 red team W1 — chooser v2 has ZERO live
+   verdicts; do not let the unmeasured judge run job-by-job first):**
+   a. FIRST run the tripwired `enrichMissingPlaces` batch sweep over the
+      1,021-entity ungrounded backlog — the sweep's per-run tripwire halts
+      on a >90% decline rate before strikes pile up.
+   b. OBSERVE v2's live acceptance rate land in `claim_verdicts` (lane
+      place_grounding at the v2 rule version). A healthy sweep = real
+      selected verdicts at a sane rate, not just gold-harness certs.
+   c. ONLY THEN arm mention-driven retries (the worker lane). That lane now
+      carries its own durable-breadcrumb decline alarm
+      (`worker-lane-decline-alarm.ts`: trailing-2h window, >90% decline over
+      ≥20 attempts → fail-closed hold + critical ops alert, no strike
+      spend) — but the alarm is the backstop, not the plan; the sweep-first
+      ordering is what keeps a broken v2 from ever meeting the mention
+      firehose.
    **Places checkpoint at $125 spent** (~2,800 new groundings): eyeball a
    sample, then release the rest of the cap or stop.
 

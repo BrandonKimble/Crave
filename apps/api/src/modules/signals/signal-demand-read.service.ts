@@ -5,7 +5,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import type { SignalKind } from './signals.service';
 import { freshSignalAttributionSql } from './ground-containment';
-import { marketIncludedSql } from '../restaurant-enrichment/servable-place-scope';
+import {
+  marketIncludedSql,
+  placeVisibilityFloorSql,
+} from '../restaurant-enrichment/servable-place-scope';
 import {
   redirectJoinSql,
   resolvedSubjectSql,
@@ -529,6 +532,11 @@ export class SignalDemandReadService {
        -- (Unlike a user's SAVED list, which keeps its rows — see the ruling
        -- in user-list-results.assembler.ts.)
        AND ${Prisma.raw(marketIncludedSql('e'))}
+       -- Same ruling extends to the A-1 floor (waves 3-4 red team W2): a
+       -- sub-floor shell is never suggested for re-search either — search
+       -- refuses it. Rarely binds here (a viewed place was visible when
+       -- viewed), but the suggestion lane must agree with the serving lane.
+       AND ${Prisma.raw(placeVisibilityFloorSql('e'))}
       WHERE s.actor_id = ${actorId}::uuid
         AND s.kind = 'entity_view'
         AND s.subject_id IS NOT NULL
@@ -776,6 +784,8 @@ export class SignalDemandReadService {
        -- Recall SUGGESTION lane (red-team L3 F1): out-of-market places are
        -- never suggested for re-search (same ruling as recentlyViewedPlaces).
        AND ${Prisma.raw(marketIncludedSql('e'))}
+       -- A-1 floor too (waves 3-4 red team W2, same ruling as above).
+       AND ${Prisma.raw(placeVisibilityFloorSql('e'))}
       WHERE s.actor_id = ${actorId}::uuid
         AND s.kind = 'entity_view'
         AND s.subject_id IS NOT NULL

@@ -61,6 +61,28 @@ const LABELED_ENTITY_TYPES = [
 ];
 
 /**
+ * PLACES ENTER THE SWEEP ONLY THROUGH THE ORTHOGRAPHIC ARM (v8, 2026-08-30).
+ * A place is a proper noun — it never needs a translated label — but a name
+ * carrying a SEMANTIC abbreviation ("St. Elmo" is Saint, "Clinton St." is
+ * Street, same token) has retypings only a reader of the name can produce,
+ * and the vocabulary pass is the one reader the system pays. The trigger is
+ * the closed abbreviation classes; it is ENGLISH ORTHOGRAPHY, so the arm
+ * runs in the en sweep alone — a per-locale abbreviation class added later
+ * widens this predicate, not a new mechanism. The mechanical &-class never
+ * comes here (orthographic-variants.ts owns it: one answer, no judgment).
+ */
+const ORTHOGRAPHIC_PLACE_TRIGGER = String.raw`(^|[[:space:]])(St|Ste|Mt|Ft|Dr)\.`;
+
+/** The one due-population predicate both countDue and nextBatch share. */
+function sweepTypePredicate(locale: string): Prisma.Sql {
+  const base = Prisma.sql`e.type::text = ANY(${LABELED_ENTITY_TYPES})`;
+  if (normalizeLocaleTag(locale) !== 'en') return base;
+  return Prisma.sql`(${base} OR (
+    e.type::text = 'place' AND e.name ~* ${ORTHOGRAPHIC_PLACE_TRIGGER}
+  ))`;
+}
+
+/**
  * The ledger key for one locale's sweep. `knowledge_pass_runs` is keyed
  * (pass, subject, prompt_version) and a sweep is PER LOCALE, so the locale
  * belongs in the pass name — es and vi ask different questions about the same
@@ -156,7 +178,7 @@ export class LabelSweepService {
       Prisma.sql`
         SELECT count(*)::bigint AS due
         FROM core_entities e
-        WHERE e.type::text = ANY(${LABELED_ENTITY_TYPES})
+        WHERE ${sweepTypePredicate(locale)}
           AND e.status = 'active'
           AND NOT EXISTS (
             SELECT 1 FROM entity_surface l
@@ -206,7 +228,7 @@ export class LabelSweepService {
       Prisma.sql`
         SELECT e.entity_id, e.name, e.type::text AS type
         FROM core_entities e
-        WHERE e.type::text = ANY(${LABELED_ENTITY_TYPES})
+        WHERE ${sweepTypePredicate(locale)}
           AND e.status = 'active'
           AND NOT EXISTS (
             SELECT 1 FROM entity_surface l

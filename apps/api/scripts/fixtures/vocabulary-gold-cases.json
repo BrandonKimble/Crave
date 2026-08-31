@@ -2,8 +2,15 @@
   {
     "id": "thing-not-material-gyro",
     "why": "THING-vs-MATERIAL: measured drift — v6 answered the sandwich concept with its filling's name ('gyro meat').",
-    "concept": { "name": "gyro", "entityType": "item", "locale": "en" },
-    "expect": { "label": "gyro", "notLabel": ["gyro meat"] }
+    "concept": {
+      "name": "gyro",
+      "entityType": "item",
+      "locale": "en"
+    },
+    "expect": {
+      "label": "gyro",
+      "notLabel": ["gyro meat"]
+    }
   },
   {
     "id": "thing-not-material-cinnamon-roll",
@@ -13,54 +20,170 @@
       "entityType": "item",
       "locale": "en"
     },
-    "expect": { "label": "cinnamon roll", "notLabel": ["cinnamon"] }
+    "expect": {
+      "label": "cinnamon roll",
+      "notLabel": ["cinnamon"]
+    }
   },
   {
     "id": "thing-not-material-key-lime-pie",
     "why": "Measured drift: 'key lime pie' answered with 'key lime'.",
-    "concept": { "name": "key lime pie", "entityType": "item", "locale": "en" },
-    "expect": { "label": "key lime pie", "notLabel": ["key lime"] }
+    "concept": {
+      "name": "key lime pie",
+      "entityType": "item",
+      "locale": "en"
+    },
+    "expect": {
+      "label": "key lime pie",
+      "notLabel": ["key lime"]
+    }
   },
   {
     "id": "thing-not-material-spring-roll",
     "why": "Measured drift: 'spring roll' answered with the material it is wrapped in ('spring roll wrapper').",
-    "concept": { "name": "spring roll", "entityType": "item", "locale": "en" },
-    "expect": { "label": "spring roll", "notLabel": ["spring roll wrapper"] }
+    "concept": {
+      "name": "spring roll",
+      "entityType": "item",
+      "locale": "en"
+    },
+    "expect": {
+      "label": "spring roll",
+      "notLabel": ["spring roll wrapper"]
+    }
   },
   {
     "id": "thing-not-material-bbq",
     "why": "Measured drift: 'bbq' answered with 'bbq sauce'.",
-    "concept": { "name": "bbq", "entityType": "item", "locale": "en" },
-    "expect": { "notLabel": ["bbq sauce"] }
+    "concept": {
+      "name": "bbq",
+      "entityType": "item",
+      "locale": "en"
+    },
+    "expect": {
+      "notLabel": ["bbq sauce"]
+    }
   },
   {
     "id": "thing-not-material-matcha",
     "why": "Measured drift: 'matcha' answered with 'matcha powder'.",
-    "concept": { "name": "matcha", "entityType": "item", "locale": "en" },
-    "expect": { "notLabel": ["matcha powder"] }
+    "concept": {
+      "name": "matcha",
+      "entityType": "item",
+      "locale": "en"
+    },
+    "expect": {
+      "notLabel": ["matcha powder"]
+    }
   },
   {
     "id": "thing-not-material-margarita",
     "why": "The non-mechanically-detectable twin: 'margarita' sliding to 'margarita mix'.",
-    "concept": { "name": "margarita", "entityType": "item", "locale": "en" },
-    "expect": { "label": "margarita", "notLabel": ["margarita mix"] }
+    "concept": {
+      "name": "margarita",
+      "entityType": "item",
+      "locale": "en"
+    },
+    "expect": {
+      "label": "margarita",
+      "notLabel": ["margarita mix"]
+    }
   },
   {
     "id": "thing-not-material-stew",
     "why": "The other undetectable twin: 'stew' sliding to 'stew meat'.",
-    "concept": { "name": "stew", "entityType": "item", "locale": "en" },
-    "expect": { "label": "stew", "notLabel": ["stew meat"] }
+    "concept": {
+      "name": "stew",
+      "entityType": "item",
+      "locale": "en"
+    },
+    "expect": {
+      "label": "stew",
+      "notLabel": ["stew meat"]
+    }
   },
   {
     "id": "boundary-control-caldo",
     "why": "Keep-side control: the original BOUNDARY case must keep holding — es 'soup' never answered by the neighbouring 'caldo'.",
-    "concept": { "name": "soup", "entityType": "item", "locale": "es" },
-    "expect": { "notLabel": ["caldo"] }
+    "concept": {
+      "name": "soup",
+      "entityType": "item",
+      "locale": "es"
+    },
+    "expect": {
+      "notLabel": ["caldo"]
+    }
   },
   {
     "id": "shortform-control-vi-beef",
     "why": "Keep-side control for the v6 bare-head-noun rule: vi beef must still include the short form 'bò'.",
-    "concept": { "name": "beef", "entityType": "ingredient", "locale": "vi" },
-    "expect": { "aliasesInclude": ["bò"] }
+    "concept": {
+      "name": "beef",
+      "entityType": "ingredient",
+      "locale": "vi"
+    },
+    "expect": {
+      "aliasesInclude": ["bò"]
+    }
+  },
+  {
+    "id": "ortho-saint-expansion",
+    "why": "v8 SPELLINGS rule, keep side: a leading 'St.' that means Saint must yield the typed expansion — the semantic half of the &/St. audit gap (mechanical census cannot decide it).",
+    "concept": {
+      "name": "St. Elmo Brewing Company",
+      "entityType": "place",
+      "locale": "en"
+    },
+    "expect": {
+      "aliasesInclude": ["saint elmo brewing company"]
+    }
+  },
+  {
+    "id": "ortho-street-not-saint",
+    "why": "v8 SPELLINGS rule, refuse side: the SAME token means Street here — expanding it to Saint mints a wrong name as a confidence-1.0 recall surface.",
+    "concept": {
+      "name": "Clinton St. Baking Company",
+      "entityType": "place",
+      "locale": "en"
+    },
+    "expect": {
+      "notAliases": ["clinton saint baking company"]
+    }
+  },
+  {
+    "id": "ortho-proper-noun-never-translated",
+    "why": "The v5 proper-noun law survives v8's alias re-opening: retypings yes, translations never — an es sweep of an English place name must not mint the Spanish rendering.",
+    "concept": {
+      "name": "Salt & Time",
+      "entityType": "place",
+      "locale": "es"
+    },
+    "expect": {
+      "notAliases": ["sal y tiempo", "sal and time"]
+    }
+  },
+  {
+    "id": "ortho-concept-ampersand",
+    "why": "Concept-side control: the enumerate definition already owes the '&' name its worded spelling — speakers type 'mac and cheese'.",
+    "concept": {
+      "name": "mac & cheese",
+      "entityType": "item",
+      "locale": "en"
+    },
+    "expect": {
+      "aliasesInclude": ["mac and cheese"]
+    }
+  },
+  {
+    "id": "ortho-ambiguous-abbrev-doctor",
+    "why": "Keep side of the ambiguity rule: leading 'Dr.' before a surname is Doctor, not Drive — the readable case must expand.",
+    "concept": {
+      "name": "Dr. Clark",
+      "entityType": "place",
+      "locale": "en"
+    },
+    "expect": {
+      "aliasesInclude": ["doctor clark"],
+      "notAliases": ["drive clark", "dr clark drive"]
+    }
   }
 ]

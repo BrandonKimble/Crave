@@ -941,6 +941,14 @@ export class PublicCraveScoreService {
         -- its rows would otherwise distort every percentile it sat in.
         -- (Shared fragment, red-team L3 F1: the score lanes keep their own
         -- stricter status = 'active' and compose only the verdict piece.)
+        -- NAMED OPT-OUT of the A-1 visibility floor (waves 3-4 red team
+        -- W2): scoring is EVIDENCE-side, not a serving surface. A one-
+        -- mention ungrounded place still deserves a computed score so the
+        -- moment it crosses the floor (second mention, or grounding) it
+        -- appears WITH its score rather than scoreless; excluding it here
+        -- would also shift every percentile each time the floor moved.
+        -- The serving surfaces (search, teaser, curated, autocomplete)
+        -- gate visibility; the score pool measures the whole corpus.
         AND ${Prisma.raw(marketIncludedSql('r'))}
       JOIN core_restaurant_item_mentions m ON m.connection_id = c.connection_id
       LEFT JOIN collection_source_documents d ON d.document_id = m.source_document_id
@@ -986,7 +994,9 @@ export class PublicCraveScoreService {
       WHERE e.type = 'place'
         AND e.status = 'active'
         -- OUT-OF-MARKET IS NEVER RANKED (v17 S4), same as the dish lane —
-        -- composed through the shared fragment (red-team L3 F1).
+        -- composed through the shared fragment (red-team L3 F1). Same
+        -- NAMED OPT-OUT of the A-1 visibility floor as the dish lane
+        -- above: evidence-side, not a serving surface (waves 3-4 W2).
         AND ${Prisma.raw(marketIncludedSql('e'))}
         AND ${restFixtureFilter}
       GROUP BY e.entity_id, src.source_id, src.platform

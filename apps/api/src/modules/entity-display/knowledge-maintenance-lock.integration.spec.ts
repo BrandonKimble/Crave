@@ -33,6 +33,17 @@ describe('knowledge maintenance advisory lock — proven against a live database
     new AdvisoryLockService(),
     // Census step is flag-gated (default off) and never reached here.
     { run: jest.fn() } as never,
+    // Orthographic census: mechanical no-op double — this spec is about the
+    // lock, not the passes.
+    {
+      run: jest.fn().mockResolvedValue({
+        scanned: 0,
+        entitiesTouched: 0,
+        variantsOffered: 0,
+        variantsBanked: 0,
+        variantsBlocked: 0,
+      }),
+    } as never,
   );
 
   afterAll(async () => {

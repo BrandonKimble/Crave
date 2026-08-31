@@ -11,7 +11,10 @@ import {
   AutocompleteMatchDto,
 } from './dto/autocomplete.dto';
 import { EntitySearchService } from './entity-search.service';
-import { marketIncludedSql } from '../restaurant-enrichment/servable-place-scope';
+import {
+  marketIncludedSql,
+  placeVisibilityFloorSql,
+} from '../restaurant-enrichment/servable-place-scope';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   SearchQuerySuggestionService,
@@ -459,6 +462,17 @@ export class AutocompleteService {
       }),
     );
 
+    // THE A-1 FLOOR REACHES TYPE-AHEAD (waves 3-4 red team W2): the hybrid
+    // recall lane reads entity_surface/name indexes with no corpus scoping,
+    // so a one-mention ungrounded mint (or a zero-evidence shell) would
+    // autocomplete and hand the user to a search that refuses to serve it.
+    // Filter place matches through the shared fragment before ranking.
+    // NAMED OPT-OUT for the injected lanes: favorites are a user-owned
+    // surface (user-list ruling, user-list-results.assembler.ts) and the
+    // viewed lane composes the floor at its own read
+    // (signal-demand-read.service.ts).
+    matches = await this.filterServablePlaceMatches(matches);
+
     const injected = await injectedPromise;
 
     const candidateMatches = this.mergeEntityMatches(
@@ -498,6 +512,38 @@ export class AutocompleteService {
       ...response,
       matches: await this.localizeMatches(response.matches, locale),
     };
+  }
+
+  private async filterServablePlaceMatches(
+    matches: AutocompleteMatchDto[],
+  ): Promise<AutocompleteMatchDto[]> {
+    const placeIds = Array.from(
+      new Set(
+        matches
+          .filter((match) => match.entityType === EntityType.place)
+          .map((match) => match.entityId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+    if (placeIds.length === 0) {
+      return matches;
+    }
+    const rows = await this.prisma.$queryRaw<Array<{ entity_id: string }>>(
+      Prisma.sql`
+        SELECT r.entity_id
+        FROM core_entities r
+        WHERE r.entity_id = ANY(${placeIds}::uuid[])
+          AND ${Prisma.raw(marketIncludedSql('r'))}
+          AND ${Prisma.raw(placeVisibilityFloorSql('r'))}
+      `,
+    );
+    const servable = new Set(rows.map((row) => row.entity_id));
+    return matches.filter(
+      (match) =>
+        match.entityType !== EntityType.place ||
+        !match.entityId ||
+        servable.has(match.entityId),
+    );
   }
 
   private mergeEntityMatches(
@@ -1415,6 +1461,10 @@ export class AutocompleteService {
         FROM core_entities r
         WHERE r.type = 'place'
           AND ${Prisma.raw(marketIncludedSql('r'))}
+          -- A-1 floor (waves 3-4 red team W2): the denominator agrees with
+          -- the servable corpus — sub-floor shells leave the count for the
+          -- same reason out-of-market rows did.
+          AND ${Prisma.raw(placeVisibilityFloorSql('r'))}
       ),
       attribute_refs AS (
         SELECT UNNEST(r.restaurant_attributes) AS attribute_id, r.entity_id AS restaurant_id

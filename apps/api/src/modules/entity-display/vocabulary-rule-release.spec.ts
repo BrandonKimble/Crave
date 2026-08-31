@@ -14,7 +14,7 @@ import { resolvePromptRule } from '../content-processing/entity-resolver/prompt-
  */
 describe('vocabulary prompt version is derived, not declared', () => {
   it('resolves the current template to the ledgered version', () => {
-    expect(VOCABULARY_PROMPT_VERSION).toBe(7);
+    expect(VOCABULARY_PROMPT_VERSION).toBe(8);
   });
 
   it('an unledgered template edit fails loudly with the next version', () => {
@@ -23,8 +23,8 @@ describe('vocabulary prompt version is derived, not declared', () => {
         'labels.vocabulary',
         'vocabulary-generator.ts',
         `${VOCABULARY_RULE_TEXT}\nEDITED WITHOUT A BUMP`,
-        [{ version: 7, fingerprint: '44c6dd662cfd', note: 'current' }],
+        [{ version: 8, fingerprint: 'e9590be8dfe6', note: 'current' }],
       ),
-    ).toThrow(/version: 8/);
+    ).toThrow(/version: 9/);
   });
 });

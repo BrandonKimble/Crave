@@ -176,6 +176,11 @@ export type SurfaceSource =
   | 'cuisine'
   | 'query_banking'
   | 'vocabulary'
+  // A CODE-SYNTHESIZED retyping of a banked name (the closed &↔"and" class,
+  // orthographic-variants.ts). Inferred — the guard polices it — and always
+  // written with surfaceOrigin 'stripped-convenience' (nobody AUTHORED the
+  // spelling; the code derived it), so it banks at 'und'.
+  | 'orthographic'
   | 'seed'
   // The display half's provenances, merged in with its rows (§11-2).
   | 'sweep'
@@ -206,6 +211,10 @@ export type SurfaceStatus = 'candidate' | 'active' | 'deprecated';
 const INFERRED_SURFACE_SOURCES: ReadonlySet<SurfaceSource> = new Set([
   'knowledge_synthesis',
   'vocabulary',
+  // A mechanical retyping is still an INFERENCE about what people type — a
+  // collision ("M & M" colliding with a real "M and M" elsewhere) is the
+  // variant being wrong for THIS entity, so the guard hears it.
+  'orthographic',
   'seed',
   'query_banking',
   // Merged in with the display half: a label sweep and a knowledge
