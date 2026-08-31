@@ -89,7 +89,19 @@ interface JudgeContract {
 }
 ```
 
-## Sequencing as a declared fact (owner order 2026-08-31)
+## Sequencing as a declared fact (owner order 2026-08-31; REFINED same night)
+
+REFINEMENT (owner + coordinator, 2026-08-31): the north star is an
+ORDER-INSENSITIVE system, not a well-ordered one. Every consumer should be
+convergent (re-runnable, self-healing) and guarded (refuses empty input
+loudly) — then wrong order is a loud no-op, not a wipe, and the DAG below is
+a generated cheat-sheet, never an orchestrator. Do NOT build runtime
+choreography on top of this registry. The emptiness guards belong INSIDE
+consumers (first landed: the category edge builder, commit 63905b028,
+RED/GREEN-proven live); the printed order serves runbooks and flip arming.
+The only orderings that stay genuinely mandatory are the one-time
+money-shaped ones (grounding sweep before mention retries), and those live
+in the runbook.
 
 The R6 class (category edge builder full-replacing from a facet that
 synthesis hasn't populated yet) is an ORDERING bug, and today ordering lives
