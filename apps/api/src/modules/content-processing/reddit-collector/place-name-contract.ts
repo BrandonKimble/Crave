@@ -24,6 +24,8 @@
  * in isolation and the same bytes-in produce the same bytes-out forever.
  */
 
+import { canonicalFold } from '../entity-resolver/entity-identity';
+
 /**
  * Trailing location/branch designators the old prompt's B.3 ordered dropped.
  * Deliberately conservative: exactly the tokens the rule named (les, chelsea,
@@ -254,13 +256,119 @@ export function ingredientSpanAppearsInSource(
 }
 
 /**
+ * THE ATOM RUN (2026-08-31, span-refusal distribution study).
+ *
+ * MEASURED PROBLEM: of the 103 `span_not_in_cited_source` refusals banked by
+ * the v18 shadow re-extraction (39,793 documents), 59 were spans the source
+ * DOES contain — written without the spaces, or with different punctuation
+ * between the words:
+ *
+ *   source `fuegolatinogastropub.com`            span `fuego latino gastropub`
+ *   source `@gangnamkrnbbq`                      span `gangnam krn bbq`
+ *   source `@guatemalteca_authentic_food`        span `guatemalteca authentic food`
+ *   source `H‑E‑B` (U+2011 non-breaking hyphen)  span `h-e-b`
+ *   source `J&J's`                               span `j&js`
+ *   source `Curra's Oltorf`                      span `curras oltorf`
+ *   source `Saps spring rolls`                   span `sap`
+ *
+ * The old check could not see any of these, because it looked for the span's
+ * exact character sequence and required a non-word character on each side:
+ * the space in `fuego latino` simply is not in the domain, and `sap` inside
+ * "Saps" is boundary-blocked. Every one of them is a CORRECT recovery of a
+ * name the source genuinely wrote — refusing them is a standing loss.
+ *
+ * THE RULE: an ATOM is a maximal letter/digit run of `canonicalFold` output
+ * (the repo's ONE fold — accents folded, apostrophes DELETED, every other
+ * non-letter/digit run turned into a single space). The span occurs when its
+ * atoms, concatenated, equal a CONTIGUOUS RUN of the source's atoms,
+ * concatenated — allowing only a trailing `s`/`es` in either direction (the
+ * same singular/plural + possessive variance the possessive-clitic path
+ * already licenses, here on the run's tail).
+ *
+ * WHY THIS IS NOT A SUBSTRING MATCH — the hallucination guard is intact.
+ * The match must cover WHOLE atoms at both ends. `oro` still never verifies
+ * against "Loro": "loro" is one atom, and `oro` is not that atom nor any run
+ * of atoms. A span may drop the separators BETWEEN source atoms; it may never
+ * start or end in the middle of one. That is exactly the difference between
+ * "the source wrote this name with different punctuation" and "the model
+ * pulled a fragment out of an unrelated word". No similarity threshold, no
+ * edit distance, no fuzzy scoring — a structural equality on a folded
+ * sequence.
+ *
+ * WHAT REMAINS REFUSED, and why that is the guard working (the other 44 of
+ * the 103, read case by case against their source text):
+ *   - THE SOURCE HAS A TYPO the model silently corrected: "Texas Chili
+ *     Parlol" → `texas chili parlor`, "Jester kingw" → `jester king`,
+ *     "Pontotoc Yineyard" → `pontotoc vineyard`, "fraught house brewery" →
+ *     `draught house brewery`. The name is right in the world and absent
+ *     from the text; accepting it needs edit distance, which is precisely
+ *     the door invention walks through.
+ *   - THE MODEL COMPLETED THE OFFICIAL NAME from its own knowledge: source
+ *     "Better Half" → `better half coffee & cocktails`, "Draught House" →
+ *     `draught house brewery`, "Lil and Big Nonnas" → `lil nonnas`. The
+ *     extra tokens are not in the source; the contract's whole point is
+ *     that the span is the source's words, not the model's.
+ *   - THE MODEL TRUNCATED: source "Cafe Cremé" → `cafe crem`. `crem` is a
+ *     fragment of the atom "creme", so the run rule refuses it — the same
+ *     structural reason `oro` is refused against "Loro".
+ *   - THE SPAN IS A PREFIX INSIDE A LONGER HANDLE/HOST ATOM: `boteco` from
+ *     "botecoatx.com", `ezov` from "ezovatx.com", `tillies` from
+ *     "tilliesdrippingsprings.com". A host is unsegmentable, so licensing a
+ *     prefix of one would license a prefix of EVERY word — `red` would
+ *     verify against "reddit.com". Refused on purpose.
+ *   - GENUINE ABSENCE: `unknown restaurant`, `atx cucina`, `el nino` — no
+ *     trace in any source of the input. The Luckys class; the guard's reason
+ *     for existing.
+ */
+const ATOM_RUN_TAIL_VARIANCE_MAX = 2; // the longest tail the rule adds: "es"
+
+/** The span's / the text's letter-digit atoms under the canonical fold. */
+function foldedAtoms(value: string): string[] {
+  return canonicalFold(value)
+    .split(' ')
+    .filter((atom) => atom.length > 0);
+}
+
+/** Whole-atom-run equality with singular/plural tail variance. */
+function atomRunMatches(run: string, target: string): boolean {
+  return (
+    run === target ||
+    run === `${target}s` ||
+    target === `${run}s` ||
+    run === `${target}es` ||
+    target === `${run}es`
+  );
+}
+
+/** Does the span's folded atom sequence equal a contiguous run of the
+ *  source's folded atoms? See THE ATOM RUN above for what this accepts and
+ *  what it deliberately still refuses. */
+function occursAsAtomRun(sourceText: string, span: string): boolean {
+  const target = foldedAtoms(span).join('');
+  if (!target) return false;
+  const textAtoms = foldedAtoms(sourceText);
+  for (let start = 0; start < textAtoms.length; start += 1) {
+    let run = '';
+    for (let end = start; end < textAtoms.length; end += 1) {
+      run += textAtoms[end];
+      if (run.length > target.length + ATOM_RUN_TAIL_VARIANCE_MAX) break;
+      if (atomRunMatches(run, target)) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * THE REFUSAL CHECK: does the observed span appear inside the cited source's
  * text? A lookup, not a judgment (v17-coherence-redteam F1): both sides get
  * the identical mechanical normalization, the occurrence must be anchored at
  * word boundaries (redteam-l1 F2 — `oro` never verifies against "Loro"), and
  * the only tolerated variance is the possessive clitic (the emitted form may
  * lack a trailing 's / ' the text has, or carry one the text lacks in
- * apostrophe-form drift, including a no-apostrophe "Leftys" spelling).
+ * apostrophe-form drift, including a no-apostrophe "Leftys" spelling), plus
+ * the ATOM RUN above — the same name written with different separators
+ * (a domain, a social handle, an accented spelling, a possessive). The two
+ * paths are ADDITIVE: nothing that verified before stops verifying.
  */
 export function observedSpanAppearsInSource(
   placeObserved: string,
@@ -270,7 +378,12 @@ export function observedSpanAppearsInSource(
   if (!span) return false;
   const text = normalizeSpanMechanically(sourceText);
   if (!text) return false;
-  return possessiveVariants(span).some((variant) =>
-    occursAtWordBoundary(text, variant),
-  );
+  if (
+    possessiveVariants(span).some((variant) =>
+      occursAtWordBoundary(text, variant),
+    )
+  ) {
+    return true;
+  }
+  return occursAsAtomRun(sourceText, placeObserved);
 }

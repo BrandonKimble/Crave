@@ -125,9 +125,15 @@ describe('observedSpanAppearsInSource', () => {
     expect(
       observedSpanAppearsInSource('torchy', "Torchy's queso is elite"),
     ).toBe(true);
-    // The dangerous direction stays refused: bare-plural span vs possessive text.
+    // CHANGED 2026-08-31 (atom run): this direction is now ACCEPTED. It used
+    // to be pinned false as "dangerous", but the banked v18 refusals are full
+    // of exactly it — `torchys` for "Torchy's", `jack allens` for "Jack
+    // Allen's", `curras oltorf` for "Curra's Oltorf", `maudies`, `lil
+    // darlins`. It is the model dropping an apostrophe, not inventing a name,
+    // and the repo's own identity law already rules that "Phil's" and "Phils"
+    // are ONE name (canonicalFold deletes apostrophes outright).
     expect(observedSpanAppearsInSource('leftys', "Lefty's is great")).toBe(
-      false,
+      true,
     );
   });
 
@@ -276,5 +282,142 @@ describe('ingredientSpanAppearsInSource (junk RC2)', () => {
     expect(
       ingredientSpanAppearsInSource('chili-garlic', ['their chili garlic oil']),
     ).toBe(true);
+  });
+});
+
+/**
+ * THE ATOM RUN (2026-08-31). Every ACCEPT below is a span the v18 shadow
+ * re-extraction actually banked as `span_not_in_cited_source`, replayed
+ * against its real source text pulled from staging; every REFUSE is either a
+ * banked refusal that is genuinely unsupported by its source, or the
+ * structural hallucination the rule must never let through. This block FAILS
+ * against the pre-change checker: it had no atom-run path at all, so all
+ * eleven accepts returned false.
+ */
+describe('observedSpanAppearsInSource — atom run (real banked refusals)', () => {
+  it('accepts a name recovered from a domain', () => {
+    expect(
+      observedSpanAppearsInSource(
+        'fuego latino gastropub',
+        'try fuegolatinogastropub.com for the best pupusas',
+      ),
+    ).toBe(true);
+    expect(
+      observedSpanAppearsInSource(
+        'el borrego negro',
+        'https://www.instagram.com/elborregonegro_cocinadehumo/?hl=en',
+      ),
+    ).toBe(true);
+  });
+
+  it('accepts a name recovered from a social handle', () => {
+    expect(
+      observedSpanAppearsInSource('gangnam krn bbq', '3. @gangnamkrnbbq - the'),
+    ).toBe(true);
+    expect(
+      observedSpanAppearsInSource(
+        'guatemalteca authentic food',
+        '7. @guatemalteca_authentic_food - pepian',
+      ),
+    ).toBe(true);
+    expect(
+      observedSpanAppearsInSource(
+        'el paso flauta',
+        '5. @elpasoflauta - Located in Menchaca',
+      ),
+    ).toBe(true);
+  });
+
+  it('accepts punctuation and accent drift between span and source', () => {
+    // U+2011 non-breaking hyphen in the source; ASCII hyphens in the span.
+    expect(observedSpanAppearsInSource('h-e-b', 'in an H‑E‑B tortilla')).toBe(
+      true,
+    );
+    expect(
+      observedSpanAppearsInSource('j&js', "from J&J's up in Cedar Park"),
+    ).toBe(true);
+    expect(observedSpanAppearsInSource('el nino', 'I prefer El Niño')).toBe(
+      true,
+    );
+  });
+
+  it('accepts possessive and plural drift the old path missed', () => {
+    expect(
+      observedSpanAppearsInSource(
+        'curras oltorf',
+        "Queso flameado at Curra's Oltorf",
+      ),
+    ).toBe(true);
+    expect(
+      observedSpanAppearsInSource(
+        'lil darlins',
+        "dates at Lil' Darlins'. Amazing",
+      ),
+    ).toBe(true);
+    expect(
+      observedSpanAppearsInSource('sap', 'Saps spring rolls are great'),
+    ).toBe(true);
+  });
+
+  it('STILL REFUSES what the source does not support', () => {
+    // Mid-atom fragment — the hallucination guard, unchanged.
+    expect(observedSpanAppearsInSource('oro', 'chicharron de loro')).toBe(
+      false,
+    );
+    // Prefix inside an unsegmentable host: licensing it would license `red`
+    // against "reddit.com".
+    expect(
+      observedSpanAppearsInSource(
+        'boteco',
+        'socializing here! https://www.botecoatx.com',
+      ),
+    ).toBe(false);
+    // Model truncated the source's word.
+    expect(
+      observedSpanAppearsInSource(
+        'cafe crem',
+        'Cafe Nena Cafe Cremé for a chill',
+      ),
+    ).toBe(false);
+    // Model completed the official name from its own knowledge.
+    expect(
+      observedSpanAppearsInSource(
+        'better half coffee & cocktails',
+        'between Better Half and Hold Out',
+      ),
+    ).toBe(false);
+    // Source typo the model silently corrected.
+    expect(
+      observedSpanAppearsInSource(
+        'texas chili parlor',
+        "Kerbey, Magnolia, Chuy's, Texas Chili Parlol lol",
+      ),
+    ).toBe(false);
+    // Nothing at all.
+    expect(
+      observedSpanAppearsInSource(
+        'unknown restaurant',
+        'the tacos there are great',
+      ),
+    ).toBe(false);
+    // The handle elided the possessive s INSIDE the run ("tuccissubs" vs the
+    // source atom "tuccisubs"). The tail-variance rule only reaches a run's
+    // END, so this stays refused — recovering it would need an interior
+    // edit, i.e. a distance.
+    expect(
+      observedSpanAppearsInSource(
+        "tucci's subs",
+        '10. @tuccisubs - Grandmas hot ham',
+      ),
+    ).toBe(false);
+    // NOT a comparison defect: the corpus stores the body HTML-escaped, so
+    // the source's "&" reaches us as the literal atom "amp". Recorded here so
+    // the next reader does not mistake it for a fold problem.
+    expect(
+      observedSpanAppearsInSource(
+        'veracruz fonda & bar',
+        'Paprika, Veracruz Fonda &amp; Bar, Discada',
+      ),
+    ).toBe(false);
   });
 });
