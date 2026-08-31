@@ -1,4 +1,5 @@
 import { countEnrichmentFailure } from './enrichment-failure-counter';
+import { selectSweepCandidates } from './grounding-sweep-selection';
 import {
   GroundingSweepHaltError,
   GroundingSweepTripwire,
@@ -376,8 +377,25 @@ export class PlaceLocationEnrichmentService {
       };
     }
 
+    // FINISH WHAT WAS ALREADY DECIDED FIRST (wave-1 contract): stored
+    // verdicts replay ONCE per sweep here — not per entity (grounding red
+    // team 2026-08-31: the per-entity call re-ran the queue N times and
+    // charged a broken verdict's throw to an innocent entity's enrichment).
+    await this.resumePendingGroundingEffects();
+
     const limit = options.limit ?? 25;
-    const places = await this.prisma.entity.findMany({
+    const terminalThreshold = this.configService.get<number>(
+      'locationLifecycle.noMatchAttemptThreshold',
+    )!;
+    // THE SWEEP WEDGE (grounding red team 2026-08-31): selection order and
+    // eligibility live in grounding-sweep-selection.ts — terminal entities
+    // are excluded from the window (they can only be skipped), untried
+    // entities come first, and today's declines sink behind everything
+    // attempted longer ago, so a declined head can no longer starve the
+    // tail of the backlog. The candidate scan is the whole ungrounded
+    // active set (small — ~1k; minimal columns), ordered in memory by the
+    // one shared comparator the spec proves.
+    const candidateRows = await this.prisma.entity.findMany({
       where: {
         type: EntityType.place,
         // ARCHIVED IS NEVER ENRICHED (big-one red team #6): all 308
@@ -387,6 +405,9 @@ export class PlaceLocationEnrichmentService {
         // ~$0.028 each, recurring every run. Same idiom as the janitor
         // and refreshStaleLocations.
         status: EntityStatus.active,
+        ...(options.retryTerminal
+          ? {}
+          : { enrichmentFailureCount: { lt: terminalThreshold } }),
         OR: [
           { primaryLocation: null },
           { locations: { none: {} } },
@@ -396,10 +417,40 @@ export class PlaceLocationEnrichmentService {
           { primaryLocation: { googlePlaceId: null } },
         ],
       },
-      orderBy: { createdAt: 'asc' },
-      take: limit,
-      include: { primaryLocation: true, locations: true },
+      select: {
+        entityId: true,
+        enrichmentFailureCount: true,
+        createdAt: true,
+        placeMetadata: true,
+      },
     });
+    const selected = selectSweepCandidates(
+      candidateRows.map((row) => ({
+        entityId: row.entityId,
+        failureCount: row.enrichmentFailureCount ?? 0,
+        lastAttemptAt: this.lastAttemptTimestamp(row.placeMetadata),
+        createdAt: row.createdAt,
+      })),
+      {
+        terminalThreshold,
+        retryTerminal: Boolean(options.retryTerminal),
+        limit,
+      },
+    );
+    const selectedIds = selected.map((candidate) => candidate.entityId);
+    const placesById = new Map(
+      (
+        await this.prisma.entity.findMany({
+          where: { entityId: { in: selectedIds } },
+          include: { primaryLocation: true, locations: true },
+        })
+      ).map((entity) => [entity.entityId, entity]),
+    );
+    const places = selectedIds
+      .map((entityId) => placesById.get(entityId))
+      .filter((entity): entity is NonNullable<typeof entity> =>
+        Boolean(entity),
+      );
 
     const summary: BatchEnrichmentSummary = {
       attempted: places.length,
@@ -447,6 +498,20 @@ export class PlaceLocationEnrichmentService {
     return summary;
   }
 
+  /** The last recorded attempt's timestamp, read from the durable
+   *  breadcrumb this service itself writes (`failureAt` on both the
+   *  no_match and error paths; `attemptedAt` as the error path's older
+   *  sibling). Null = never attempted, which the sweep order puts FIRST. */
+  private lastAttemptTimestamp(
+    placeMetadata: Prisma.JsonValue | null,
+  ): string | null {
+    const attempt = this.toRecord(
+      this.toRecord(placeMetadata).lastEnrichmentAttempt,
+    );
+    const failureAt = attempt.failureAt ?? attempt.attemptedAt;
+    return typeof failureAt === 'string' && failureAt.length ? failureAt : null;
+  }
+
   /**
    * W1's lane alarm (waves 3-4 red team): the mention-driven worker lane's
    * decline rate, read from the durable attempt breadcrumbs. One aggregate
@@ -484,6 +549,13 @@ export class PlaceLocationEnrichmentService {
     entityId: string,
     options: PlaceEnrichmentOptions = {},
   ): Promise<PlaceEnrichmentResult> {
+    // FINISH WHAT WAS ALREADY DECIDED FIRST (wave-1 contract), once per
+    // entry — worker job start, janitor moved-arm item, --entity= run. The
+    // replay is judge-free and Places-free, and a broken stored verdict is
+    // isolated inside resumePendingGroundingEffects (never charged to THIS
+    // entity's enrichment — grounding red team 2026-08-31).
+    await this.resumePendingGroundingEffects();
+
     // FAIL-CLOSED LANE HOLD (W1): when the trailing window's decline rate is
     // over the bound, judging is broken — skip WITHOUT spending a Places call
     // or a strike, and tell the operator loudly. The verdict comes from
@@ -631,6 +703,19 @@ export class PlaceLocationEnrichmentService {
           data: update,
         });
         summary.updated += 1;
+        // FEED THE CUISINE FINGERPRINT (grounding red team 2026-08-31): the
+        // refresh used to update location rows and stop — entity
+        // placeMetadata.googlePlaces never saw the re-polled types, so the
+        // cuisine extraction's input-fingerprint gate was armed but starved
+        // in steady state (nothing in the fingerprint could ever change).
+        // The primary location's fetch now writes its volatile fields
+        // through as an OVERLAY (item-6 semantics: the lean mask is a
+        // partial fetch, so only the keys it actually asked for overwrite —
+        // editorialSummary et al persist untouched), and a fingerprint
+        // input that actually changed re-enqueues the extraction.
+        if (location.isPrimary) {
+          await this.writeRefreshThroughToEntity(location.placeId, place);
+        }
       } catch (error) {
         summary.failed += 1;
         this.logger.warn('Location refresh failed', {
@@ -646,6 +731,101 @@ export class PlaceLocationEnrichmentService {
 
     this.logger.info('Stale location refresh complete', { ...summary });
     return summary;
+  }
+
+  /**
+   * The refresh's write-through half (see the call site above): overlay the
+   * lean fetch's volatile fields onto entity placeMetadata.googlePlaces and
+   * re-enqueue cuisine extraction when a fingerprint input actually changed.
+   * Fail-isolated: a write-through problem must not fail the refresh that
+   * already succeeded at the location row.
+   *
+   * Deliberately NOT written: `fetchedAt` — the worker-lane decline alarm
+   * reads it as a GROUNDING success signal, and a refresh is not a
+   * grounding; the refresh stamps `refreshedAt` instead.
+   */
+  private async writeRefreshThroughToEntity(
+    entityId: string,
+    place: GooglePlacesV1Place,
+  ): Promise<void> {
+    try {
+      const entity = await this.prisma.entity.findUnique({
+        where: { entityId },
+        select: { placeMetadata: true },
+      });
+      if (!entity) return;
+      const priorGoogle = this.toRecord(
+        this.toRecord(entity.placeMetadata).googlePlaces,
+      );
+
+      const overlay: Record<string, unknown> = {
+        refreshedAt: new Date().toISOString(),
+      };
+      const fetchedTypes = Array.isArray(place.types)
+        ? place.types.filter(
+            (value): value is string => typeof value === 'string',
+          )
+        : null;
+      if (fetchedTypes) {
+        overlay.types = fetchedTypes;
+      }
+      if (typeof place.primaryType === 'string' && place.primaryType) {
+        overlay.primaryType = place.primaryType;
+      }
+      if (place.businessStatus) {
+        overlay.businessStatus = place.businessStatus;
+      }
+      // The lean mask does not request editorialSummary (SKU law — see the
+      // mask), but the overlay handles it generically so a caller holding a
+      // richer fetch writes it through too.
+      if (place.editorialSummary?.text) {
+        overlay.editorialSummary = {
+          text: place.editorialSummary.text,
+          languageCode: place.editorialSummary.languageCode,
+        };
+      }
+
+      const priorTypes = Array.isArray(priorGoogle.types)
+        ? priorGoogle.types.filter(
+            (value): value is string => typeof value === 'string',
+          )
+        : [];
+      const typesChanged =
+        fetchedTypes !== null &&
+        JSON.stringify([...fetchedTypes].sort()) !==
+          JSON.stringify([...priorTypes].sort());
+      const priorEditorial = this.toRecord(priorGoogle.editorialSummary);
+      const editorialChanged =
+        place.editorialSummary?.text !== undefined &&
+        place.editorialSummary.text !== priorEditorial.text;
+
+      const normalizedHours = this.normalizeGoogleOpeningHours(place);
+      const merged = this.mergePlaceMetadata(
+        entity.placeMetadata,
+        overlay,
+        normalizedHours,
+        undefined,
+        'overlay',
+      );
+      await this.prisma.entity.update({
+        where: { entityId },
+        data: { placeMetadata: merged, lastUpdated: new Date() },
+      });
+
+      if (typesChanged || editorialChanged) {
+        await this.cuisineExtractionQueue.queueExtraction(entityId, {
+          source: 'location-refresh',
+        });
+      }
+    } catch (error) {
+      this.logger.warn('Refresh write-through to entity failed', {
+        entityId,
+        error:
+          error instanceof Error
+            ? { message: error.message }
+            : { message: String(error) },
+      });
+    }
   }
 
   async expandSecondaryLocationsForPlace(
@@ -937,11 +1117,12 @@ export class PlaceLocationEnrichmentService {
       };
     }
 
-    // FINISH WHAT WAS ALREADY DECIDED FIRST (wave-1 contract): a verdict
-    // commits before its effect, so a process that died between them left a
-    // grounding the corpus has not obeyed. Those are replayed from their
-    // STORED subjects — no judge, no Places call — before any new docket.
-    await this.resumePendingGroundingEffects();
+    // NOTE: resumePendingGroundingEffects deliberately does NOT run here
+    // (grounding red team 2026-08-31). It used to, which meant a batch of N
+    // entities replayed the pending queue N times, and a broken stored
+    // verdict's throw was charged to whichever INNOCENT entity happened to
+    // be enriching. It now runs once per entry point — enrichMissingPlaces
+    // (the sweep) and enrichPlaceById (worker jobs, janitor, --entity=).
 
     let latestDetails: GooglePlacesV1PlaceDetailsResponse | null = null;
     let latestMatchMetadata: MatchMetadata | null = null;
@@ -2368,8 +2549,12 @@ export class PlaceLocationEnrichmentService {
    * substrate. Non-reddit sources (Google place types, the cuisine LLM)
    * have no source document or extraction run, so they cannot write
    * core_restaurant_entity_events — this is where their evidence lives.
-   * Upsert-by-(restaurant, attribute, sourceClass): a source restating a
-   * claim refreshes it rather than accumulating duplicates.
+   * THE LANE OWNS ITS CLASS (grounding red team 2026-08-31, the cuisine
+   * lane's shape): a (re)grounding states the CURRENT set of this source's
+   * claims — the place's rows for this sourceClass are deleted and the
+   * fresh set written, in one transaction. The old createMany+skipDuplicates
+   * only ever ADDED, so re-groundings accumulated stale claims (a place
+   * that stopped being a 'bar' kept bar evidence forever).
    */
   async recordAttributeEvidence(
     placeId: string,
@@ -2377,17 +2562,22 @@ export class PlaceLocationEnrichmentService {
     sourceClass: string,
   ): Promise<void> {
     const ids = Array.from(new Set(attributeIds.filter(Boolean)));
-    if (!placeId || !ids.length) return;
+    if (!placeId) return;
     try {
-      await this.prisma.placeAttributeEvidence.createMany({
-        data: ids.map((attributeId) => ({
-          placeId,
-          attributeId,
-          sourceClass,
-          observations: 1,
-        })),
-        skipDuplicates: true,
-      });
+      await this.prisma.$transaction([
+        this.prisma.placeAttributeEvidence.deleteMany({
+          where: { placeId, sourceClass },
+        }),
+        this.prisma.placeAttributeEvidence.createMany({
+          data: ids.map((attributeId) => ({
+            placeId,
+            attributeId,
+            sourceClass,
+            observations: 1,
+          })),
+          skipDuplicates: true,
+        }),
+      ]);
     } catch (error) {
       // Evidence recording must never fail the enrichment it accompanies.
       this.logger.warn('Attribute evidence write failed', {
@@ -3625,11 +3815,15 @@ export class PlaceLocationEnrichmentService {
       matchMetadata,
     );
     const trustedWebsiteDomain = this.trustedIdentityDomain(details.websiteUri);
+    // Full-mask fetch → the blob is replaced wholesale (snapshot semantics;
+    // see mergePlaceMetadata). `extras: null` also clears the
+    // lastEnrichmentAttempt breadcrumb: a successful grounding supersedes it.
     const metadata = this.mergePlaceMetadata(
       entity.placeMetadata,
       googlePlacesMetadata,
       normalizedHours,
       null,
+      'snapshot',
     );
 
     const updateData: Prisma.EntityUpdateInput = {
@@ -4297,43 +4491,105 @@ export class PlaceLocationEnrichmentService {
     const pending =
       await this.claimLedger.pendingExecution<PlaceGroundingVerdictSubject>(
         PLACE_GROUNDING_LANE,
+        PLACE_GROUNDING_RULE_VERSION,
+        placeGroundingLane.keyFoldVersion,
         limit,
       );
     let resumed = 0;
+    let broken = 0;
     for (const verdict of pending) {
-      await this.applyGroundingEffect(verdict.subject);
-      await this.claimLedger.markExecuted(
-        PLACE_GROUNDING_LANE,
-        verdict.claimKey,
-        verdict.ruleVersion,
-        verdict.foldVersion,
-      );
-      resumed += 1;
+      // PER-VERDICT ISOLATION (grounding red team 2026-08-31): one stored
+      // verdict whose replay throws must not propagate out of an INNOCENT
+      // entity's enrichment — before this catch, a single poisoned pending
+      // row livelocked the whole lane (every sweep/worker entry re-ran the
+      // same head and died) and charged its exception to whichever entity
+      // happened to trigger the resume. The broken verdict is SKIPPED and
+      // stays pending (never marked executed — the paid decision is not
+      // discarded), the operator is told which claim, and the loop goes on.
+      try {
+        await this.applyGroundingEffect(verdict.subject);
+        await this.claimLedger.markExecuted(
+          PLACE_GROUNDING_LANE,
+          verdict.claimKey,
+          verdict.ruleVersion,
+          verdict.foldVersion,
+        );
+        resumed += 1;
+      } catch (error) {
+        broken += 1;
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error('Pending grounding verdict failed to replay', {
+          claimKey: verdict.claimKey,
+          ruleVersion: verdict.ruleVersion,
+          foldVersion: verdict.foldVersion,
+          error:
+            error instanceof Error
+              ? { message, stack: error.stack }
+              : { message },
+        });
+        this.opsAlerts.emit({
+          severity: 'warn',
+          kind: 'grounding_resume_verdict_failed',
+          dedupeKey: `grounding_resume_verdict_failed:${verdict.claimKey}`,
+          title: 'A stored grounding verdict cannot be replayed',
+          body: [
+            `Claim ${verdict.claimKey} (rule ${verdict.ruleVersion}, fold ${verdict.foldVersion}) threw during resume: ${message}`,
+            'The verdict stays PENDING (the paid decision is kept) and the resume loop continued past it, so it is not blocking the lane — but every resume will retry and re-skip it until the cause is fixed or the claim is voided.',
+          ].join('\n\n'),
+        });
+      }
     }
-    if (resumed) {
+    if (resumed || broken) {
       this.logger.info('Resumed decided-but-unexecuted grounding verdicts', {
         resumed,
+        broken,
       });
     }
     return resumed;
   }
 
+  /**
+   * SNAPSHOT SEMANTICS (grounding red team 2026-08-31): the `googlePlaces`
+   * blob is a wholesale snapshot of the latest FULL fetch — a field Google
+   * stopped returning (a dropped editorial summary, a shed place type)
+   * disappears from the blob on the next grounding instead of surviving
+   * forever under the old delete-a-hand-list-then-spread merge. Non-Google
+   * keys of placeMetadata (hours, timezone, cuisineExtraction,
+   * lastEnrichmentAttempt, …) live BESIDE the blob and are untouched.
+   *
+   * `googleFetchScope`:
+   * - 'snapshot' — the caller holds a full-mask fetch; `googleMetadata` IS
+   *   the new blob. Every consumer's key is re-stated by every full fetch:
+   *   `fetchedAt` (worker-lane decline alarm), `types` (cuisine
+   *   fingerprint + place-type census), `editorialSummary` (cuisine
+   *   fingerprint), `matchSummary` — nothing a consumer reads depends on a
+   *   value only an OLDER fetch could have written.
+   * - 'overlay' — the caller fetched a PARTIAL mask (the lean refresh) or
+   *   nothing at all (the failure-breadcrumb writers pass `{}`): only the
+   *   keys actually fetched overwrite; unfetched keys deliberately persist,
+   *   because their absence means "not asked", not "gone".
+   */
   private mergePlaceMetadata(
     current: Prisma.JsonValue | null | undefined,
     googleMetadata: Record<string, unknown>,
     normalizedHours: NormalizedOpeningHours,
     extras?: Record<string, unknown> | null,
+    googleFetchScope: 'snapshot' | 'overlay' = 'overlay',
   ): Prisma.InputJsonValue {
     const base = this.toRecord(current);
-    const existingGooglePlaces = this.toRecord(base.googlePlaces);
-    delete existingGooglePlaces.fields;
-    delete existingGooglePlaces.openingHours;
-    delete existingGooglePlaces.currentOpeningHours;
+    if (googleFetchScope === 'snapshot') {
+      base.googlePlaces = { ...googleMetadata };
+    } else {
+      const existingGooglePlaces = this.toRecord(base.googlePlaces);
+      delete existingGooglePlaces.fields;
+      delete existingGooglePlaces.openingHours;
+      delete existingGooglePlaces.currentOpeningHours;
 
-    base.googlePlaces = {
-      ...existingGooglePlaces,
-      ...googleMetadata,
-    };
+      base.googlePlaces = {
+        ...existingGooglePlaces,
+        ...googleMetadata,
+      };
+    }
 
     if (normalizedHours.hours) {
       base.hours = normalizedHours.hours;

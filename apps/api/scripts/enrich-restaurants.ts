@@ -42,7 +42,13 @@ function parseArgs(argv: string[]): CliOptions {
     } else if (arg.startsWith('--limit=')) {
       const value = Number(arg.split('=')[1]);
       if (Number.isFinite(value) && value > 0) {
-        options.limit = Math.min(Math.trunc(value), 100);
+        // No hard cap (grounding red team 2026-08-31): the old min(…, 100)
+        // silently clamped a runbook sweep to the head of the backlog, and
+        // combined with createdAt-ordering it re-bought the same ~100
+        // declined entities forever. The runbook sweep may pass the FULL
+        // backlog size; the default stays a sane 25, and the per-run
+        // decline-rate tripwire in enrichMissingPlaces remains the halt.
+        options.limit = Math.trunc(value);
       }
     } else if (arg.startsWith('--entity=')) {
       options.entityId = arg.split('=')[1];

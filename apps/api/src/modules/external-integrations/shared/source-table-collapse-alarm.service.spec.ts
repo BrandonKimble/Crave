@@ -158,4 +158,39 @@ describe('source-table row-collapse alarm', () => {
   it('the threshold constant is the stated one — the alert prose derives from it', () => {
     expect(COLLAPSE_DROP_FRACTION).toBe(0.2);
   });
+
+  it("a table the census cannot COUNT is an 'uncounted' verdict, not a dropped row — and it warns, deduped, naming the table", async () => {
+    const { service, emitted } = build({
+      counts: steady(10_000),
+      snapshots: steady(10_000),
+    });
+    const prisma = (
+      service as unknown as {
+        prisma: { $queryRawUnsafe: jest.Mock };
+      }
+    ).prisma;
+    prisma.$queryRawUnsafe.mockImplementation((sql: string) => {
+      if (sql.includes('FROM entity_surface')) {
+        return Promise.reject(new Error('connection refused'));
+      }
+      return Promise.resolve([{ n: 10_000n }]);
+    });
+
+    const verdicts = await service.runCensus('boot');
+    // Every table gets a verdict — the failed one included.
+    expect(verdicts).toHaveLength(SOURCE_TABLES.length);
+    const uncounted = verdicts.find((v) => v.table === 'entity_surface');
+    expect(uncounted?.outcome).toBe('uncounted');
+    expect(uncounted?.error).toContain('connection refused');
+
+    const alert = emitted.find(
+      (a) =>
+        (a as { dedupeKey: string }).dedupeKey ===
+        'source-table-census-uncounted:entity_surface',
+    ) as { severity: string; title: string; body: string } | undefined;
+    expect(alert).toBeDefined();
+    expect(alert?.severity).toBe('warn');
+    expect(alert?.title).toContain('entity_surface');
+    expect(alert?.body).toContain('connection refused');
+  });
 });

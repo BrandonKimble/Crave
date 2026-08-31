@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { EntityStatus } from '@prisma/client';
+import { EntityStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { PlaceLocationEnrichmentService } from './restaurant-location-enrichment.service';
+import { userAnchoredEntitySql } from './user-anchor-scope';
 
 export interface JanitorSummary {
   archivedClosed: number;
@@ -179,6 +180,10 @@ export class PlaceJanitorService {
     const terminalThreshold = this.config.get<number>(
       'locationLifecycle.noMatchAttemptThreshold',
     )!;
+    // USER ANCHORS ARE INVIOLABLE — and "user anchor" is the ONE shared
+    // predicate in user-anchor-scope.ts (grounding red team 2026-08-31; it
+    // mirrors preserved-anchors.sql's full entity-anchor roster, where this
+    // guard used to hand-copy only 2 of the ~8 sources).
     const ungroundable = await this.prisma.$queryRaw<{ entity_id: string }[]>`
       SELECT e.entity_id FROM core_entities e
       WHERE e.type = 'place' AND e.status = 'active'
@@ -188,13 +193,7 @@ export class PlaceJanitorService {
           WHERE l.restaurant_id = e.entity_id
             AND l.google_place_id IS NOT NULL
         )
-        AND NOT EXISTS (
-          SELECT 1 FROM user_list_items uli
-          WHERE uli.restaurant_id = e.entity_id
-             OR uli.connection_id IN (
-                 SELECT ri.connection_id FROM core_restaurant_items ri
-                  WHERE ri.restaurant_id = e.entity_id)
-        )
+        AND NOT ${Prisma.raw(userAnchoredEntitySql('e'))}
     `;
     if (!dryRun && ungroundable.length) {
       await this.prisma.entity.updateMany({

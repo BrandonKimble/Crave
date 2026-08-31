@@ -83,6 +83,17 @@ export const REFRESH_PLACE_DETAILS_FIELD_MASK_FIELDS = [
   'currentOpeningHours',
   'utcOffsetMinutes',
   'timeZone',
+  // Cuisine-fingerprint feed (grounding red team 2026-08-31): place `types`
+  // drift as Google reclassifies venues, and the cuisine extraction's
+  // input fingerprint keys on them — a refresh that never re-reads types
+  // starves that mechanism in steady state. Both fields are Pro-tier, and
+  // this mask already bills Enterprise (phone/website/hours), so adding
+  // them changes NOTHING about the SKU. `editorialSummary` is deliberately
+  // ABSENT: it is Enterprise+Atmosphere, the exact SKU this lean mask
+  // exists to stay below — editorial drift is only picked up by full
+  // (re)groundings.
+  'types',
+  'primaryType',
 ];
 
 export const DEFAULT_TEXT_SEARCH_FIELD_MASK_FIELDS = [

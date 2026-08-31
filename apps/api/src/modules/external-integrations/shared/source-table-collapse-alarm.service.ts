@@ -59,7 +59,18 @@ export interface SourceTableCensusVerdict {
   readonly table: SourceTable;
   readonly current: number;
   readonly highWater: number;
-  readonly outcome: 'baseline-seeded' | 'ratcheted' | 'steady' | 'collapsed';
+  /** 'uncounted' = the census could not READ this table (query threw). A
+   *  table nobody could count is indistinguishable from a collapsed one
+   *  until someone looks, so it is a real verdict outcome — never a
+   *  silently dropped row — and it blocks the clean summary line. */
+  readonly outcome:
+    | 'baseline-seeded'
+    | 'ratcheted'
+    | 'steady'
+    | 'collapsed'
+    | 'uncounted';
+  /** Present only for 'uncounted': the error that prevented the count. */
+  readonly error?: string;
 }
 
 @Injectable()
@@ -100,6 +111,11 @@ export class SourceTableCollapseAlarmService implements OnApplicationBootstrap {
       try {
         verdicts.push(await this.censusOne(table, when));
       } catch (error) {
+        // A table the census could not READ gets a real verdict —
+        // 'uncounted' — never a dropped row: a count that failed proves
+        // nothing about the table, and "clean" must mean every table was
+        // actually counted and stood steady/ratcheted.
+        const message = error instanceof Error ? error.message : String(error);
         this.logger.error('Source-table census failed for a table', {
           table,
           error:
@@ -107,25 +123,41 @@ export class SourceTableCollapseAlarmService implements OnApplicationBootstrap {
               ? { message: error.message, stack: error.stack }
               : { message: String(error) },
         });
+        this.opsAlerts.emit({
+          severity: 'warn',
+          kind: 'source_table_census_uncounted',
+          dedupeKey: `source-table-census-uncounted:${table}`,
+          title: `Source table ${table} could not be counted by the collapse census`,
+          body:
+            `The ${when} collapse census failed to count ${table}: ${message}\n\n` +
+            'An uncounted source table is indistinguishable from a collapsed one until someone looks. ' +
+            'The census summary will not report clean while any table is uncounted; the nightly arm re-censuses on scheduler runtimes.',
+        });
+        verdicts.push({
+          table,
+          current: 0,
+          highWater: 0,
+          outcome: 'uncounted',
+          error: message,
+        });
       }
     }
     const collapsed = verdicts.filter((v) => v.outcome === 'collapsed');
-    const failed = SOURCE_TABLES.length - verdicts.length;
-    if (collapsed.length === 0 && failed === 0) {
+    const uncounted = verdicts.filter((v) => v.outcome === 'uncounted');
+    if (collapsed.length === 0 && uncounted.length === 0) {
+      // CLEAN requires every table COUNTED and not collapsed — a census
+      // that could not read a table has proven nothing about it ("clean,
+      // tables 4" while 3 of 7 failed was a lying summary — audit
+      // 2026-08-31; the boot arm races the DB engine in script contexts).
       this.logger.info('Source-table collapse census clean', {
         when,
         tables: verdicts.length,
       });
     } else if (collapsed.length === 0) {
-      // A census that could not read every table must not report clean —
-      // "clean, tables 4" while 3 of 7 failed was a lying summary (audit
-      // 2026-08-31; the boot arm races the DB engine in script contexts).
-      // The per-table failures are already logged above; this line makes
-      // the summary agree with them. The nightly arm re-censuses.
       this.logger.warn('Source-table census INCOMPLETE — no collapse seen', {
         when,
         tables: verdicts.length,
-        failed,
+        uncounted: uncounted.map((v) => v.table),
       });
     }
     return verdicts;
