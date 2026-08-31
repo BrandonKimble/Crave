@@ -27,7 +27,7 @@ nothing below runs anywhere until it is true on the prod worker.
 | `ENTITY_EMBEDDING_RECONCILE_ENABLED` | 5-min embedding reconciler (single writer of `name_embedding`) | Off by default posture; reloads backfill via script | Launch (or first, if search quality needs fresh embeddings sooner) |
 | `ENTITY_SIBLING_EDGES_REBUILD_ENABLED` | Nightly derived sibling-edge rebuild | Derived tier follows the master posture | Launch |
 | `NAME_CONTAINMENT_EDGE_BUILDER_ENABLED` | Nightly name-containment edge rebuild | Same | Launch |
-| `FOOD_CATEGORY_EDGE_BUILDER_ENABLED` | Nightly food-category edge rebuild | Same | Launch |
+| `FOOD_CATEGORY_EDGE_BUILDER_ENABLED` | Nightly food-category edge rebuild | Same. **HARD ORDER (audit 2026-08-31): flip ONLY after `DISH_KNOWLEDGE_SYNTHESIS_ENABLED` has finished its backfill and `knowledge_categories` is populated** — the builder full-replaces from that facet and its zero-input scream is silenced, so arming it against an empty facet silently WIPES every standing category edge (R6 class, live: 4,839 edges vs 0 populated facets on 2026-08-31). Gate with `SELECT count(*) FROM core_entities WHERE knowledge_categories <> '{}'` > 0 first | Launch, AFTER synthesis backfill completes |
 | `SIGNAL_DEMAND_AGGREGATE_REFRESH_ENABLED` | 15-min demand read-model rebuild (feeds taste profiles, curated lists) | No user signals yet | Launch |
 | `CURATED_LISTS_BUILD_ENABLED` | 6AM home curated lists | Depends on scores/signals being live | Launch |
 
@@ -38,3 +38,15 @@ Defaults-ON, listed so nobody "flips" them redundantly:
 Not flags but launch-armed in the same breath: the entity-lexicon builder has
 NO disable flag (only `CRONS_ENABLED` stops it); `RUN_KNOWLEDGE_MAINTENANCE_ON_BOOT`
 is the one-shot escape hatch, never a standing switch.
+
+Pre-arming checks (LLM-decision audit 2026-08-31):
+- **Fold/ledger coherence**: `check-fold-drift.ts` now also fails on
+  claim_verdicts rows stranded at an old fold_version (the v2 bump orphaned
+  152k verdicts until a hand re-stamp on 2026-08-31 — every fold bump's
+  backfill decision must cover the LEDGER, not just identity_key). Run it
+  green before arming any judge lane.
+- **Budget scream layer**: ops_alerts shows recurring `pool_window_unconfirmed`
+  ("spending blind", D149 fail-open) for 4 campaign windows + gemini
+  monthlySpend — the spend-confirmation loop is not confirming those windows.
+  Diagnose before arming the collection flywheel; an unconfirmed window means
+  overspend alarms cannot fire.
