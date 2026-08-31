@@ -56,6 +56,33 @@ async function main(): Promise<void> {
       `fold-drift check: algorithm v${FOLD_ALGORITHM_VERSION}, ` +
         `${rows.length} rows sampled, ${drifted.length} drifted`,
     );
+    // THE STRANDED LEDGER (LLM-decision audit 2026-08-31): identity_key is
+    // not the only fold-stamped store. Fold-keyed claim_verdicts lanes read
+    // with `fold_version = FOLD_ALGORITHM_VERSION`, so a version bump whose
+    // backfill decision re-stamps identity keys but forgets the ledger
+    // silently orphans every cached verdict — the v2 bump left 152k verdicts
+    // unreadable (every word re-judged, every match re-bought) until a
+    // hand re-stamp. Any fold-keyed lane still holding rows at an OLD fold
+    // version after a bump means the bump's backfill decision is incomplete:
+    // either re-stamp (fold output byte-identical for those keys) or re-hear.
+    const strandedLanes = await prisma.$queryRawUnsafe<
+      Array<{ lane: string; fold_version: number; count: bigint }>
+    >(
+      `SELECT lane, fold_version, count(*) AS count
+         FROM claim_verdicts
+        WHERE fold_version <> 0 AND fold_version <> $1
+        GROUP BY lane, fold_version`,
+      FOLD_ALGORITHM_VERSION,
+    );
+    if (strandedLanes.length) {
+      for (const row of strandedLanes) {
+        console.error(
+          `  STRANDED-LEDGER lane=${row.lane} fold_version=${row.fold_version} ` +
+            `rows=${row.count} (current algorithm v${FOLD_ALGORITHM_VERSION})`,
+        );
+      }
+      process.exitCode = 1;
+    }
     if (drifted.length) {
       for (const row of drifted.slice(0, 10)) {
         console.error(
