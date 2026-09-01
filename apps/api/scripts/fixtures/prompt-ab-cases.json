@@ -4893,5 +4893,708 @@
       "places": ["sour duck"],
       "items": ["pork belly sandwich"]
     }
+  },
+  {
+    "id": "FA17-named-deal-is-dish-and-affordable",
+    "contract": "v17",
+    "why": "Owner-confirmed root cause (v18→v19): the deal rule's NO-dish clause consumed a HOUSE-COINED named offering. 'The Java special ... at $9.50 is probably the best breakfast deal in town' — the deal's name BELONGS TO THE MENU, so the named offering emits as a dish AND the value testimony still lands (affordable). Neither consumes the other; the parenthetical contents stay the deal's inventory. Verbatim source sentence.",
+    "posts": [
+      {
+        "id": "t3_fa17",
+        "subreddit": "austinfood",
+        "title": "Underrated breakfast spots?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa17",
+            "body": "I absolutely adore Cafe Java... Not to mention the Java special (2 eggs, bacon, hashbrowns, toast and a cup of coffee) at $9.50 is probably the best breakfast deal in town"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "places": ["cafe java"],
+      "items": ["java special"],
+      "attributes": ["affordable"],
+      "somePraise": true,
+      "notFoods": ["bacon", "hashbrowns", "toast"]
+    }
+  },
+  {
+    "id": "FA18-proper-name-deal-dish",
+    "contract": "v17",
+    "why": "Boundary positive for the naming question: 'the Big Tex platter' is a proper house coinage — a diner orders it by name — so deal praise yields BOTH the dish and affordable, exactly like the Java special.",
+    "posts": [
+      {
+        "id": "t3_fa18",
+        "subreddit": "austinfood",
+        "title": "Best BBQ deals?",
+        "body": "Where can I stuff myself without going broke?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa18",
+            "body": "The Big Tex platter at Stiles Switch is hands down the best deal in town."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa18",
+          "places": ["stiles switch"],
+          "items": ["big tex platter"],
+          "attributes": ["affordable"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA19-generic-composition-deal-no-dish",
+    "contract": "v17",
+    "why": "Boundary negative: 'the brisket plate' is generic composition words, not a house coinage — the verdict rides the deal and the naming question grants no dish. Affordable only (the mediocre-steak-frites reasoning stands for generic names).",
+    "posts": [
+      {
+        "id": "t3_fa19",
+        "subreddit": "austinfood",
+        "title": "Cheap eats east side?",
+        "body": "Trying to eat well on a budget this month.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa19",
+            "body": "Can't beat the brisket plate at Micklethwait — best deal in town for the money."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa19",
+          "places": ["micklethwait"],
+          "attributes": ["affordable"],
+          "notFoods": ["brisket"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA20-their-breakfast-special-terms-words",
+    "contract": "v17",
+    "why": "Boundary negative reasoned from the principle: 'their breakfast special' is terms-words (occasion + special), not a house coinage — however standing the offering really is, the writer pointed at a deal, not a menu name. Habitual choice of the deal is value testimony (affordable), no dish.",
+    "posts": [
+      {
+        "id": "t3_fa20",
+        "subreddit": "austinfood",
+        "title": "Weekday breakfast deals?",
+        "body": "Looking for cheap weekday breakfast options.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa20",
+            "body": "Their breakfast special at Arandas is the best deal in town, I get it every week."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa20",
+          "places": ["arandas"],
+          "attributes": ["affordable"],
+          "notFoods": ["breakfast special", "special"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA21-dirt-cheap-value-vouch",
+    "contract": "v17",
+    "why": "Audit M1 (doc 2e79ac3c): a stated cheapness word is a value CLAIM, not price-only — 'Dirt cheap too' as its own reply asserts affordable on the parent's referent. Price-only means quoted numbers with no value word.",
+    "posts": [
+      {
+        "id": "t3_fa21",
+        "subreddit": "austinfood",
+        "title": "Cheap date night spots?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          { "id": "t1_fa21a", "body": "Taco Flats on Burnet is my pick." },
+          {
+            "id": "t1_fa21b",
+            "parent_id": "t1_fa21a",
+            "body": "Dirt cheap too"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa21b",
+          "places": ["taco flats"],
+          "attributes": ["affordable"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA22-imperative-dont-snooze",
+    "contract": "v17",
+    "why": "Audit M1 (doc 547a8730): an imperative steering the reader to a specific thing is a vouch — 'Don't snooze on the hot bar either.' emits the hot bar at the referent place.",
+    "posts": [
+      {
+        "id": "t3_fa22",
+        "subreddit": "austinfood",
+        "title": "Breakfast taco crawl ideas?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          { "id": "t1_fa22a", "body": "Cocina 512 does great migas tacos." },
+          {
+            "id": "t1_fa22b",
+            "parent_id": "t1_fa22a",
+            "body": "Don't snooze on the barbacoa taco either."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa22b",
+          "places": ["cocina 512"],
+          "items": ["barbacoa taco"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA23-slang-good-food-and-margs",
+    "contract": "v17",
+    "why": "Audit M1 (doc b71148ba): slang and clipped words carry full verdicts — 'They got some good food, and Margs.' is place praise (and a margs vouch) with 'they' resolved to the post's subject.",
+    "posts": [
+      {
+        "id": "t3_fa23",
+        "subreddit": "austinfood",
+        "title": "Anyone been to Casa Maria on Stassney?",
+        "body": "Thinking of trying it this weekend.",
+        "extract_from_post": false,
+        "comments": [
+          { "id": "t1_fa23", "body": "They got some good food, and Margs." }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa23",
+          "places": ["casa maria"],
+          "somePraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA24-i-like-the-bologna",
+    "contract": "v17",
+    "why": "Audit M1 (doc f7353353): 'I like the bologna' is a complete dish claim — a short comment is not a low-confidence comment.",
+    "posts": [
+      {
+        "id": "t3_fa24",
+        "subreddit": "austinfood",
+        "title": "What to order at Mum Foods?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [{ "id": "t1_fa24", "body": "I like the bologna" }]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa24",
+          "places": ["mum foods"],
+          "items": ["bologna"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA25-protip-get-the-hash-browns",
+    "contract": "v17",
+    "why": "Audit M1 (doc 301eecd7): a tip the writer passes on as their protip is the writer's own steer — 'get the hash browns deep fried' vouches the hash browns.",
+    "posts": [
+      {
+        "id": "t3_fa25",
+        "subreddit": "austinfood",
+        "title": "First time at Jim's — what's good?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa25",
+            "body": "Protip they recently told me: get the hash browns deep fried"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa25",
+          "places": ["jim's"],
+          "items": ["hash brown"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA26-their-vegan-pho-anaphora",
+    "contract": "v17",
+    "why": "Audit M2 (doc 1129f235): 'their' resolving to the one establishment under discussion is not ambiguity — 'I love their vegan pho!!' plus 3-days-in-a-row habitual choice emits the dish. Dietary claim never dropped.",
+    "posts": [
+      {
+        "id": "t3_fa26",
+        "subreddit": "austinfood",
+        "title": "Pho Van on Lamar appreciation",
+        "body": "This place deserves more love.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa26",
+            "body": "I love their vegan pho!! When I had COVID in March I ordered it from DoorDash 3 days in a row"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa26",
+          "places": ["pho van"],
+          "items": ["vegan pho"],
+          "attributes": ["vegan"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA27-second-person-yall-praise",
+    "contract": "v17",
+    "why": "Audit M2 (doc 6af7b864): second person addressed to the venue is testimony about the venue, not a reaction — 'I love y'all and your food so much' is holistic place praise.",
+    "posts": [
+      {
+        "id": "t3_fa27",
+        "subreddit": "austinfood",
+        "title": "Nonna Gina's is celebrating 10 years this month",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          { "id": "t1_fa27", "body": "I love y'all and your food so much" }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa27",
+          "places": ["nonna gina's"],
+          "somePraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA28-both-locations-one-brand",
+    "contract": "v17",
+    "why": "Audit M2 (doc e2292567): branch plurals praise the ONE brand — 'Both locations have always been great' carries the holistic verdict; two branches are never two ambiguous anchors.",
+    "posts": [
+      {
+        "id": "t3_fa28",
+        "subreddit": "austinfood",
+        "title": "Jet's Pizza worth it?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa28",
+            "body": "Both locations have always been great, never had a bad order."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa28",
+          "places": ["jet's pizza"],
+          "somePraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA29-informational-nomination-late-night",
+    "contract": "v17",
+    "why": "Audit M3 (doc d7eb86a9): a diner volunteering a place in answer to an ask has nominated it however fact-sheet the phrasing — the existence framing introduces a place the asker doesn't know, and 'open til 3am' is the ask's own constraint (a use-note, never a strip). Vendor, not the hosting landmark.",
+    "posts": [
+      {
+        "id": "t3_fa29",
+        "subreddit": "austinfood",
+        "title": "Late night eats after 2am?",
+        "body": "Everything closes so early. Where can I actually eat late?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa29",
+            "body": "There is a food truck called Weird Food at Cboys that's open til like 3am."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa29",
+          "places": ["weird food"],
+          "somePraise": true,
+          "notRestaurants": ["cboys"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA30-chop-house-decades",
+    "contract": "v17",
+    "why": "Audit M3 (doc 201dfd45): 'a good chop house down south' carries its own verdict beside its directions — longevity narration never demotes the nomination to a directory entry.",
+    "posts": [
+      {
+        "id": "t3_fa30",
+        "subreddit": "austinfood",
+        "title": "BBQ south of the river that isn't a tourist trap?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa30",
+            "body": "Chief's BBQ off of S1st and Dittmar, a good chop house down south, it's been there decades"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa30",
+          "places": ["chief's bbq"],
+          "somePraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA31-sells-out-use-note",
+    "contract": "v17",
+    "why": "Audit M3 (doc 487a1c76): 'has what you want but sells out around 4:30' is answer language plus a timing use-note — the pick stands; availability-stripping is for reasons external to the ask.",
+    "posts": [
+      {
+        "id": "t3_fa31",
+        "subreddit": "austinfood",
+        "title": "Best brisket for an out of town guest?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa31",
+            "body": "Micklethwait has what you want but sells out around 4:30"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa31",
+          "places": ["micklethwait"],
+          "somePraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA32-failed-against-benchmarks-vouched",
+    "contract": "v17",
+    "why": "Audit M4 (doc 5905cdb4): the standard a place FAILS against is being vouched — the writer asserts from their own table that the benchmark places deliver. The failing subject earns nothing.",
+    "posts": [
+      {
+        "id": "t3_fa32",
+        "subreddit": "austinfood",
+        "title": "J Prime worth the money?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa32",
+            "body": "Did jprime and the price to quality was not there compared to places like carvers or even ALC or three forks"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa32",
+          "places": ["carvers", "alc", "three forks"],
+          "notRestaurants": ["jprime", "j prime"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA33-excellent-call-dish-seconding",
+    "contract": "v17",
+    "why": "Audit M5 (doc 2a72cdc8): judging another diner's ORDER is dish testimony — 'Excellent call' certifies the Tio Chon enchiladas from the writer's own knowledge; the dish emits, not only praise.",
+    "posts": [
+      {
+        "id": "t3_fa33",
+        "subreddit": "austinfood",
+        "title": "Lunch at Polvos today",
+        "body": "Got the Tio Chon enchiladas and a michelada. No regrets.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa33",
+            "body": "I see you've ordered the Tio Chon enchiladas. Excellent call. And I agree with you."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa33",
+          "places": ["polvos"],
+          "items": ["tio chon enchilada"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA34-kaiseki-amazing-experience",
+    "contract": "v17",
+    "why": "Audit M5 (doc d10cea7f): praising the offering AS an experience is a taste verdict on the offering — one past visit, standard review, dish `kaiseki style omakase`.",
+    "posts": [
+      {
+        "id": "t3_fa34",
+        "subreddit": "austinfood",
+        "title": "Omakase in Austin?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa34",
+            "body": "Went to Tsuke Edomae last month. I had the kaiseki style omakase, which truly was an amazing experience."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa34",
+          "places": ["tsuke edomae"],
+          "items": ["kaiseki style omakase"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA35-gingery-flavor-attribute",
+    "contract": "v17",
+    "why": "Audit M5 (doc 2c89bf16): a flavor adjective derived from an ingredient is a flavor property — `gingery` rides the vouched dish, never dropped as a bare ingredient.",
+    "posts": [
+      {
+        "id": "t3_fa35",
+        "subreddit": "austinfood",
+        "title": "Best curry in town?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa35",
+            "body": "The massaman curry at Dee Dee. It's gingery and sweet. I really like it"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa35",
+          "places": ["dee dee"],
+          "items": ["massaman curry"],
+          "attributes": ["gingery"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA36-case-of-six-retail-silent",
+    "contract": "v17",
+    "why": "Audit O1 (doc 94480dda): a good sold by the case at a market is a shelf good however lovingly vouched — no dish, no ingredients, no place.",
+    "posts": [
+      {
+        "id": "t3_fa36",
+        "subreddit": "austinfood",
+        "title": "Favorite local salad dressing?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa36",
+            "body": "Cashew Tamari Dressing - it's at thoms market or you can buy it in a case of 6.. I ship it to my best friend every Christmas"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "FA37-price-complaint-births-no-dish",
+    "contract": "v17",
+    "why": "Audit O2 (doc f5344b95): a price complaint names food and births no dish at the complained-about place, however specifically named — priced, not vouched; no praise carrier anywhere.",
+    "posts": [
+      {
+        "id": "t3_fa37",
+        "subreddit": "austinfood",
+        "title": "Elizabeth Street Cafe prices lately",
+        "body": "Is it just me or has it gotten out of hand?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa37",
+            "body": "the salt and pepper banh mi is $18 where I could happily get one for $10 at NG Cafe"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa37",
+          "notFoods": ["banh mi"],
+          "noPraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA38-mixed-review-no-carrier",
+    "contract": "v17",
+    "why": "Audit O3 (doc 721181ef): praised parts never aggregate into a holistic carrier — apps and service praised, entrees condemned: `great service` and the praised parts emit, general_praise does not.",
+    "posts": [
+      {
+        "id": "t3_fa38",
+        "subreddit": "austinfood",
+        "title": "Yamas review thread",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa38",
+            "body": "Went to Yamas last night. The spreads were fantastic and service was lovely, but the entrees were borderline inedible."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa38",
+          "places": ["yamas"],
+          "attributes": ["great service"],
+          "noPraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA39-i-bet-speculation-silent",
+    "contract": "v17",
+    "why": "Audit WIN pin: speculation is not testimony — 'never been but I bet their brisket is amazing' emits nothing.",
+    "posts": [
+      {
+        "id": "t3_fa39",
+        "subreddit": "austinfood",
+        "title": "InterStellar BBQ finally reopening",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa39",
+            "body": "Never been but I bet their brisket is amazing"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "FA40-bare-pick-inherits-mashed-potatoes",
+    "contract": "v17",
+    "why": "Audit WIN pin (thread inheritance): a bare pick under a dish-targeted judgment ask inherits the ask's dish — 'Carve' under 'best mashed potatoes?' emits the place and `mashed potato`, is_menu_item false.",
+    "posts": [
+      {
+        "id": "t3_fa40",
+        "subreddit": "austinfood",
+        "title": "Best mashed potatoes in town?",
+        "body": "Craving really good mashed potatoes with dinner.",
+        "extract_from_post": false,
+        "comments": [{ "id": "t1_fa40", "body": "Carve" }]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa40",
+          "places": ["carve"],
+          "items": ["mashed potato"],
+          "noMenuItemTrue": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA41-fit-asserted-mexican",
+    "contract": "v17",
+    "why": "Audit WIN pin (thread inheritance): an unqualified pick fit-asserts the ask's cuisine word on the PLACE side — `mexican` in place_attributes, never a food slot.",
+    "posts": [
+      {
+        "id": "t3_fa41",
+        "subreddit": "austinfood",
+        "title": "Best Mexican in south Austin?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [{ "id": "t1_fa41", "body": "El Dorado Cafe, hands down." }]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa41",
+          "places": ["el dorado cafe"],
+          "attributes": ["mexican"],
+          "notFoods": ["mexican"]
+        }
+      ]
+    }
   }
 ]
