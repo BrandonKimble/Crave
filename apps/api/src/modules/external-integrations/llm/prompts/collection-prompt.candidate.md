@@ -151,7 +151,10 @@ The writer vouches from experience, or reports a clear consensus:
   hot bar", "don't sleep on the jollof", "try the carnitas". Telling someone
   what to order IS vouching for it — the writer stakes their own
   judgment on the reader's plate, and a tip the writer passes on as
-  their protip is the writer's own steer.
+  their protip is the writer's own steer. (The steer still walks Steps
+  B and C like every claim: "junk the tortillas and get fresh ones
+  from HEB" steers you to a grocery SHELF — B.2's retail, and nothing
+  emits.)
 - Consensus reported: "people rave about \_\_\_", "this sub loves \_\_\_".
 - **Answering a request for a pick (THE ANSWER TEST).** When the in-scope
   post, or a parent comment, asks for a recommendation or a judgment — "where
@@ -497,11 +500,19 @@ The writer vouches from experience, or reports a clear consensus:
   judgment ask the name IS the verdict; under a stock/hours/price ask it
   asserts only the fact. Discriminate a bare name by what
   the ask wanted; discriminate a clause by its own words, never by how much the reply said.
-- **HEARSAY or DESIRE.** "I've heard", "supposedly", "want to try", "never been
+- **HEARSAY, DESIRE, or SPECULATION.** "I've heard", "supposedly", "want to try", "never been
   but interested" — including hearsay dressed in commitment ("I bought a
   giftcard… I hear it is a very lovely venue" — money spent is not food
-  eaten). Hearsay CONFIRMED by the writer's own visit is testimony as
+  eaten) and the writer's own guess about a meal never eaten ("I bet
+  Junes All Day does a great burger" — a bet is a prediction, not a
+  verdict; no burger, no praise, nothing). Hearsay CONFIRMED by the
+  writer's own visit is testimony as
   ever ("heard good things, finally went — it lived up").
+- **SELF-PROMOTION.** A writer with a self-disclosed stake in the place
+  — "my shop", "we just launched", "our website", staff speaking for
+  the house — is the business's own voice, not word-of-mouth: nothing
+  emits, however sincere, and no rule elsewhere (geography, posture,
+  the ANSWER TEST) rescues it.
 - **A MIDDLING OR HEDGED VERDICT.** "it's fine", "solid enough", "6/10", "not
   bad", "perfectly fine", "decent for what it is". These withhold endorsement;
   they are not
@@ -1209,7 +1220,10 @@ inherited — Step E.)
    "pho", when the source wrote the marks). **Dish names obey the same as-written law as
    place names (B.3)**: emit the words the source wrote — "cevichi"
    stays `cevichi`, never "corrected" to ceviche, and never a different
-   word ("crudo" is not "steamed") — a downstream judge unifies variants
+   word ("crudo" is not "steamed") — and NEVER TRANSLATED: the source's
+   own language is the observed form ("lemonade" never becomes
+   `limonada`, "phở" never "noodle soup", in either direction) — a
+   downstream judge unifies variants
    of the same dish; your transcript is its evidence. Strip only menu
    bookkeeping ("seafood boil combo #5" — the "#5" numbers the menu, not
    the food). A pro-form is not a name: "the mushroom based one" resolves
@@ -1299,7 +1313,12 @@ pick answering a constrained ask asserts fit** — the ask's VENUE-level
 constraint words ("romantic", "cheap", "outdoor seating", a cuisine like
 "mexican") are that pick's own claim, walking D.1/D.2 like any stated
 word: the answerer chose this place BECAUSE it fits what was asked, and
-that choice vouches for the fit. **A deal answered to a value-seeking
+that choice vouches for the fit. **The ask a pick answers is found by
+the depth-aware order**: a pick replying to an intermediate comment
+(a clarifying question, a sub-thread) still answers the post's ask and
+inherits its constraint words, unless the intermediate comment
+re-framed the question into a different one. **A deal answered to a
+value-seeking
 ask is A.2's posture rule, not a fit assertion**: recommended → its
 identified dish plus `affordable`; reported → nothing. A
 re-scoping annotation blocks the word
@@ -1538,7 +1557,12 @@ Scope follows **what the property describes**, not where the word sits.
   place mention still needs its clause to be testimony) — or a
   fit-asserting pick's ask constraints (the
   opening rule). A term whose only support is a parent's wording or your
-  knowledge of the venue does not pass. If it judges quality, fails the
+  knowledge of the venue does not pass. The stating words must state
+  THAT property, not a neighbor: "never waited more than 20-30 min"
+  states wait time and licenses no `affordable`; "does have a small
+  wait" states no setting word and licenses no `outdoor seating` — a
+  property with no stating words is invented, however plausible. If it
+  judges quality, fails the
   STANDALONE TEST, is a bare ingredient or filler, or has no in-source
   support, drop it. **It is correct to emit an empty
   attribute array for a glowing comment whose only modifiers were praise.**
@@ -1603,24 +1627,48 @@ placement by what the praise NAMES:
   carrier at `true`. The pick endorsed the place, not only the dishes it
   went on to name.
 
-**The carrier needs a CLAUSE that says it.** `general_praise: true`
-records a STATED holistic verdict (or a pick) — praised PARTS never
-aggregate into one. A review that loves the appetizers and the service
-but condemns the entrees ("borderline inedible") emits the praised
-dishes and `great service`, and NO carrier: no clause praised the place
-as a whole, and summing clause verdicts into an endorsement the writer
-never stated invents a claim. (A stated holistic verdict that survives
-its own "but" still carries, per A.2's net-direction law.)
+**THE CARRIER TEST — two steps, run per source per restaurant. This is
+the decision procedure; no example outweighs it.**
+
+1. **FIND THE PLACE-SUBJECT CLAUSE.** A clause whose subject is the
+   PLACE, the VISIT, or the PICK itself — however short or oblique,
+   its referent resolved by the depth-aware order: "110% worth the
+   visit", "it's a good spot", "it was quite good" (it = the visit),
+   habitual patronage ("many many times", "my goto when sick"), "I
+   really like Jewboy", "better than we've ever had" said of the meal.
+   An ANSWER-TEST pick is a place-subject clause by definition. A
+   clause about one DISH, one ASPECT (service, patio, price), or a
+   DEAL is NOT one — its subject is the dish, the aspect, or the deal.
+2. **JUDGE THAT CLAUSE — and only that clause — by A.2's net-direction
+   law.** It lands positive → `general_praise: true`, however plain
+   the words. It lands negative or hedged → no carrier (NEGATIVE
+   CONTENT governs that clause). Several place-subject clauses → judge
+   each; the settle law holds ("really like Jewboy also but preferred
+   this one" praises BOTH places).
+
+**No place-subject clause exists → no carrier, and praised PARTS never
+SUBSTITUTE for one.** A review that loves the appetizers and the
+service emits those parts (the dishes, `great service`) and no carrier
+— summing parts into an endorsement the writer never stated invents a
+claim. The Yamas shape fails at step 2, not by part-counting: its one
+whole-visit clause ("entrees borderline inedible" as the verdict on the
+meal) is NEGATIVE, so no carrier, while its praised apps and `great
+service` still emit. And a dishless recommended DEAL fails at step 1:
+the clause's subject is the deal, so no place-subject clause exists —
+`affordable` records the endorsement (F.1's deal consequence below is
+this test, not a separate rule).
 
 The output shape already enforces the split — a dish mention cannot carry
 the flag. Your one decision is WHERE praise lands, per the three arms
-above. A carrier also holds an adopted verdict whose referent dish
-failed Step C — it emits as the PLACE carrier at `true`. A RECOMMENDED
-deal never needs a carrier: its endorsement rides the dish connection
-when a dish is identified, and a dishless recommended deal is a place
-mention with `affordable` and `general_praise: false` — the
-`affordable` IS the record of the deal praise, exactly as `great
-service` records service praise. Availability, popularity, and a
+above, decided by the CARRIER TEST. A carrier also holds an adopted
+verdict whose referent dish failed Step C — the adoption's
+place-subject clause is the affirmation itself, and it emits as the
+PLACE carrier at `true`. A recommended deal's endorsement rides the
+dish connection when a dish is identified; a dishless recommended deal
+is a place mention with `affordable` and `general_praise: false` (the
+CARRIER TEST's step-1 consequence: the deal, not the place, is the
+clause's subject — `affordable` IS the record, exactly as `great
+service` records service praise). Availability, popularity, and a
 REPORTED deal are never endorsement (Step A.2) and emit nothing.
 
 ### F.2 Fields

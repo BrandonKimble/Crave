@@ -5597,7 +5597,7 @@
   {
     "id": "FA41-fit-asserted-mexican",
     "contract": "v17",
-    "why": "Audit WIN pin (thread inheritance): an unqualified pick fit-asserts the ask's cuisine word on the PLACE side — `mexican` in place_attributes, never a food slot.",
+    "why": "Audit WIN pin, RE-NESTED 2026-08-31 (doc 576d6b47 dropped it live): the pick answers a clarifying FOLLOW-UP under the ask, and still inherits the ask's cuisine constraint by the depth-aware order — `mexican` in place_attributes, never a food.",
     "posts": [
       {
         "id": "t3_fa41",
@@ -5607,7 +5607,17 @@
         "extract_from_post": false,
         "comments": [
           {
-            "id": "t1_fa41",
+            "id": "t1_fa41a",
+            "body": "What part of south? Makes a difference."
+          },
+          {
+            "id": "t1_fa41b",
+            "parent_id": "t1_fa41a",
+            "body": "Around Menchaca, but anywhere south of the river works."
+          },
+          {
+            "id": "t1_fa41c",
+            "parent_id": "t1_fa41b",
             "body": "El Dorado Cafe, hands down."
           }
         ]
@@ -5616,7 +5626,7 @@
     "expect": {
       "perSource": [
         {
-          "source": "t1_fa41",
+          "source": "t1_fa41c",
           "places": ["el dorado cafe"],
           "attributes": ["mexican"],
           "notFoods": ["mexican"]
@@ -5674,6 +5684,452 @@
     ],
     "expect": {
       "emitsNothing": true
+    }
+  },
+  {
+    "id": "FA44-worth-the-visit-carrier",
+    "contract": "v17",
+    "why": "Carrier regression (doc ff484cc8): '110% worth the visit' is a place-subject clause — step 1 finds it, step 2 lands positive → carrier true. The branch phrase resolves to the brand.",
+    "posts": [
+      {
+        "id": "t3_fa44",
+        "subreddit": "austinfood",
+        "title": "Mr. Natural — is it still good?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa44",
+            "body": "The original one is on Cesar Chavez and Chicon, and is 110% worth the visit!"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa44",
+          "places": ["mr. natural"],
+          "somePraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA45-good-spot-carrier",
+    "contract": "v17",
+    "why": "Carrier regression (doc b2f549ed): \"it's a good spot\" is a place-subject clause however plain — mild words standing alone lean positive; carrier true.",
+    "posts": [
+      {
+        "id": "t3_fa45",
+        "subreddit": "austinfood",
+        "title": "Numero 28 on South Lamar worth it?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa45",
+            "body": "can't remember the number but it's a good spot"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa45",
+          "places": ["numero 28"],
+          "somePraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA46-visit-was-quite-good-carrier",
+    "contract": "v17",
+    "why": "Carrier regression (doc 0ea1f0af): 'it was quite good' (it = the visit) is a place-subject clause → carrier true; the kimchi dish claim rides beside it.",
+    "posts": [
+      {
+        "id": "t3_fa46",
+        "subreddit": "austinfood",
+        "title": "Leroy and Lewis new location?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa46",
+            "body": "I had Leroy a week ago, it was quite good. The kimchi was excellent."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa46",
+          "places": ["leroy"],
+          "somePraise": true,
+          "items": ["kimchi"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA47-fave-affirmation-carrier",
+    "contract": "v17",
+    "why": "Carrier regression (doc 43831d47): 'fave!!' under a pick is an affirmation — its own place-subject clause — emitting the adopted dish AND its own carrier from this source's id.",
+    "posts": [
+      {
+        "id": "t3_fa47",
+        "subreddit": "austinfood",
+        "title": "Best crispy pork belly in town?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa47a",
+            "body": "Salty Sow — the crispy pork belly is unreal."
+          },
+          {
+            "id": "t1_fa47b",
+            "parent_id": "t1_fa47a",
+            "body": "fave!!"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa47b",
+          "places": ["salty sow"],
+          "somePraise": true,
+          "items": ["pork belly"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA48-good-too-vegetarian-carrier",
+    "contract": "v17",
+    "why": "Carrier regression (doc 7c253893): 'is good too' is a place-subject clause → carrier; 'makes a great vegetarian dinner' is a dietary claim (never dropped).",
+    "posts": [
+      {
+        "id": "t3_fa48",
+        "subreddit": "austinfood",
+        "title": "Hot pot recs?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa48",
+            "body": "Dipdipdip is good too and makes a great vegetarian dinner."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa48",
+          "places": ["dipdipdip"],
+          "somePraise": true,
+          "attributes": ["vegetarian"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA49-many-many-times-carrier",
+    "contract": "v17",
+    "why": "Carrier regression (doc a29a2199): habitual patronage ('Many many times') is a place-subject clause → carrier true; both praised dishes emit beside it.",
+    "posts": [
+      {
+        "id": "t3_fa49",
+        "subreddit": "austinfood",
+        "title": "Ten Seconds — anyone been?",
+        "body": "Worth a trip?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa49",
+            "body": "Many many times. Fish maw and popcorn chicken *chef kiss"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa49",
+          "places": ["ten seconds"],
+          "somePraise": true,
+          "items": ["fish maw", "popcorn chicken"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA50-better-than-ever-carrier",
+    "contract": "v17",
+    "why": "Carrier regression (doc ca4a6407): 'better than we've ever had' said of the meal is a whole-visit clause → carrier true, with every praised dish emitting too.",
+    "posts": [
+      {
+        "id": "t3_fa50",
+        "subreddit": "austinfood",
+        "title": "Home Slice finally",
+        "body": "Got the pepperoni pie and garlic knots last night. Better than we've ever had — the knots were perfect.",
+        "extract_from_post": true,
+        "comments": []
+      }
+    ],
+    "expect": {
+      "places": ["home slice"],
+      "somePraise": true,
+      "items": ["pepperoni pie", "garlic knot"]
+    }
+  },
+  {
+    "id": "FA51-preferred-this-one-both-praised",
+    "contract": "v17",
+    "why": "Carrier regression (doc 174a64b9): 'really like Jewboy also but preferred this one' — the settle law: preference never un-says a stated verdict; BOTH places carry praise.",
+    "posts": [
+      {
+        "id": "t3_fa51",
+        "subreddit": "austinfood",
+        "title": "Best smash burger?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa51",
+            "body": "Burger Tex for me. I really like Jewboy also but preferred this one."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa51",
+          "places": ["burger tex", "jewboy"],
+          "somePraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA52-magnificent-value-carrier",
+    "contract": "v17",
+    "why": "Carrier regression (doc a77d69eb): '20+ courses at Tsuke with water? Magnificent' is a place-subject verdict on the visit → carrier true; 'unbelievable value' is stated value → affordable.",
+    "posts": [
+      {
+        "id": "t3_fa52",
+        "subreddit": "austinfood",
+        "title": "Omakase decision: Otoko or Tsuke?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa52",
+            "body": "20+ courses at Tsuke with water? Magnificent. Unbelievable value."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa52",
+          "places": ["tsuke"],
+          "somePraise": true,
+          "attributes": ["affordable"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA53-third-place-carrier",
+    "contract": "v17",
+    "why": "Carrier regression (doc d238f078): the THIRD place in a multi-pick comment still gets its own carrier — 'Arlo Grey is right on the water with amazing drinks too' is its own place-subject clause (shared-verb/most-common-miss law).",
+    "posts": [
+      {
+        "id": "t3_fa53",
+        "subreddit": "austinfood",
+        "title": "Date night with a view?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa53",
+            "body": "Loro or Mattie's for the grounds. Arlo Grey is right on the water with amazing drinks too."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa53",
+          "places": ["loro", "mattie's", "arlo grey"],
+          "somePraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA54-imperative-shelf-steer",
+    "contract": "v17",
+    "why": "Straggler (doc abca1478): the imperative vouch still walks B.2's mode — 'Junk the tortillas and get fresh ones from HEB' steers to a grocery shelf; retail, nothing emits.",
+    "posts": [
+      {
+        "id": "t3_fa54",
+        "subreddit": "austinfood",
+        "title": "Store-bought tortillas always disappoint",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa54",
+            "body": "Junk the tortillas and get fresh ones from HEB"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "FA55-self-promo-silent",
+    "contract": "v17",
+    "why": "Straggler (doc b5bda657): a self-disclosed stake is the business's own voice — 'our website' — nothing emits, and no other rule rescues it.",
+    "posts": [
+      {
+        "id": "t3_fa55",
+        "subreddit": "austinfood",
+        "title": "Pastrami in Austin?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa55",
+            "body": "We smoke our pastrami in-house at Henk's — there's a picture on our website. Best in town if you ask me."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "FA56-i-bet-verbatim-silent",
+    "contract": "v17",
+    "why": "Straggler (doc 054f1dfa, verbatim — leaked a burger mention live despite FA39): a bet is a prediction, not a verdict; nothing emits.",
+    "posts": [
+      {
+        "id": "t3_fa56",
+        "subreddit": "austinfood",
+        "title": "Underrated burgers?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa56",
+            "body": "I bet Junes All Day does a great burger"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "FA57-panned-meal-no-translation",
+    "contract": "v17",
+    "why": "Straggler (doc f40e6bea): a panned meal's items never emit, and the as-written law forbids translation — live output minted limonada from 'lemonade'.",
+    "posts": [
+      {
+        "id": "t3_fa57",
+        "subreddit": "austinfood",
+        "title": "Disappointing lunch",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa57",
+            "body": "Ate at El Arroyo yesterday: lame small chicken sandwich, cold tots, lemonade was watery. Sad Oscar's down the street is way better."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa57",
+          "notFoods": ["chicken sandwich", "tots", "lemonade", "limonada"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA58-dat-burger-dish-vouch",
+    "contract": "v17",
+    "why": "Straggler (doc d6a61160): 'Dat burger is good' is a complete dish vouch — slang register changes nothing; burger emits.",
+    "posts": [
+      {
+        "id": "t3_fa58",
+        "subreddit": "austinfood",
+        "title": "Dan's Hamburgers appreciation",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa58",
+            "body": "Dat burger is good"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa58",
+          "places": ["dan's hamburgers"],
+          "items": ["burger"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA59-wait-time-not-affordable",
+    "contract": "v17",
+    "why": "Straggler (doc 4ccc6e28): attributes need words STATING that property — 'never waited more than 20-30 min' states wait time, not price; no affordable, no invented setting words.",
+    "posts": [
+      {
+        "id": "t3_fa59",
+        "subreddit": "austinfood",
+        "title": "Is the InterStellar line insane?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa59",
+            "body": "InterStellar is my pick — I've never waited more than 20-30 min. Does have a small wait on weekends."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa59",
+          "places": ["interstellar"],
+          "notAttributes": ["affordable", "outdoor seating", "patio"]
+        }
+      ]
     }
   }
 ]
