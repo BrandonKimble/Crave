@@ -698,7 +698,7 @@
   },
   {
     "id": "V8l-lunch-special-value",
-    "why": "Re-ruled 2026-08-29 under the named-offering line: still NO dish, but for the PRICE-FRAME reason — 'Around $15 … 2 meals for me' quotes the deal's terms; set them aside and no verdict on the offering itself remains → Gate 1's value arm (place + praise, no item). (2026-08-29: expectation reshaped to the value arm's invariant — place + `affordable`, no dish; the praise FLAG legitimately varies between the praised-deal and deal-nomination shapes.)",
+    "why": "FLIPPED 2026-08-31 (posture ruling): habitual procurement of a deal ('I get the lunch specials... 2 meals for me') IS recommendation posture — the identified offering extracts as the dish `lunch special` plus affordable.",
     "posts": [
       {
         "id": "SRC088",
@@ -710,13 +710,13 @@
     ],
     "expect": {
       "places": ["main noodle house"],
-      "notFoods": ["lunch special", "lunch specials", "special"],
+      "items": ["lunch special"],
       "attributes": ["affordable"]
     }
   },
   {
     "id": "V8m-itemized-deal",
-    "why": "Re-ruled 2026-08-29: deal narration (price + hours + contents-inventory) is Gate 1's value arm — the number is the point. The itemized contents are the deal's inventory, not dish claims. Named-offering rule does NOT rescue it: the verdict is on the deal, not the offering.",
+    "why": "FLIPPED 2026-08-31 (posture ruling): 'Great weekday lunch special at Tacos El Rey' praises the deal — recommending — so `lunch special` extracts plus affordable; the enumerated contents (2 tacos, rice y beans, iced tea) stay the deal's inventory and claim nothing.",
     "posts": [
       {
         "id": "SRC089",
@@ -728,7 +728,9 @@
     ],
     "expect": {
       "places": ["tacos el rey"],
-      "notFoods": ["lunch special", "taco"]
+      "items": ["lunch special"],
+      "attributes": ["affordable"],
+      "notFoods": ["taco"]
     }
   },
   {
@@ -778,7 +780,7 @@
   },
   {
     "id": "ML1-vi-wrapper-thuc-don",
-    "why": "Multilingual ruling R6: the head-noun wrapper rule must hold in Vietnamese BEFORE the global re-extraction — 'thực đơn trưa' (lunch menu) is a venue offer, never a dish; the praise is value testimony for the place.",
+    "why": "Multilingual ruling R6, RE-DERIVED 2026-08-31 under the deal posture flip: 'thực đơn trưa' is a MENU-word wrapper (the document, not an order) — no dish even when the deal is recommended ('quá đáng tiền' = worth the money). The recommended dishless deal yields affordable; the old somePraise expectation encoded the retired value-carrier doctrine and is dropped (affordable IS the record).",
     "posts": [
       {
         "id": "SRC200",
@@ -791,7 +793,7 @@
     "expect": {
       "places": ["quán ngon"],
       "notFoods": ["thực đơn trưa", "thực đơn", "menu"],
-      "somePraise": true
+      "attributes": ["affordable"]
     }
   },
   {
@@ -3817,7 +3819,7 @@
   },
   {
     "id": "N44-vouch-test-deal-fact",
-    "why": "Issue-1 + issue-2: a deal answer to a deal ask ('$2 Al Pastor Trompo tacos on Tuesdays') never births food or praise; under the value arm it may assert only place-side value fit.",
+    "why": "RE-DERIVED 2026-08-31 (posture ruling): 'One Taco on Anderson has $2 Al Pastor Trompo tacos on Tuesdays' states terms with no praise, habit, or ownership — REPORTING, and reporting extracts nothing at all (no dish, no affordable, no praise).",
     "contract": "v17",
     "posts": [
       {
@@ -3838,15 +3840,14 @@
       "perSource": [
         {
           "source": "t1_n44",
-          "notFoods": ["taco", "al pastor"],
-          "noPraise": true
+          "emitsNothing": true
         }
       ]
     }
   },
   {
     "id": "N45-vouch-test-oyster-deal-correction",
-    "why": "Issue-1 (the exact stored leak, t1_jvsqy9k): a deal-fact correction inside a judgment thread — '$1 raw East Coast Oysters every Tuesday' stays true of mediocre oysters; no food, no praise (place-side value fit tolerated).",
+    "why": "RE-DERIVED 2026-08-31 (posture ruling): a category correction plus terms ('isn't an oyster bar, but they have $1 raw East Coast Oysters every Tuesday') is the reporting side by name — extracts nothing.",
     "contract": "v17",
     "posts": [
       {
@@ -3867,8 +3868,7 @@
       "perSource": [
         {
           "source": "t1_n45",
-          "notFoods": ["oyster"],
-          "noPraise": true
+          "emitsNothing": true
         }
       ]
     }
@@ -4075,7 +4075,7 @@
   },
   {
     "id": "N53-praised-deal-affordable",
-    "why": "Issue-2 (owner ruling): '$10 Steak Frites - best deal in Austin!' praises the DEAL — the place stores affordable; the food inside the deal never becomes a dish.",
+    "why": "FLIPPED 2026-08-31 (owner deal ruling: POSTURE decides). 'best deal in Austin!' is RECOMMENDING — offering the deal as a thing to go get — so the identified dish extracts (nobody recommends a deal whose food is bad) AND the place earns affordable. The old no-dish doctrine and its mediocre-steak-frites counterfactual are retired.",
     "contract": "v17",
     "posts": [
       {
@@ -4097,15 +4097,15 @@
         {
           "source": "t1_n53",
           "places": ["justine's"],
-          "attributes": ["affordable"],
-          "notFoods": ["steak frites"]
+          "items": ["steak frites"],
+          "attributes": ["affordable"]
         }
       ]
     }
   },
   {
     "id": "N54-deal-as-answer-affordable",
-    "why": "Issue-2 (owner ruling): a deal OFFERED as the answer to a value-seeking ask is the value domain's bare nomination — the place earns affordable, no dish, no praise flag.",
+    "why": "RE-DERIVED 2026-08-31 (posture ruling): 'Kids eat free at Dickey's' volunteered to a family-budget ask is a NOMINATED deal — recommendation posture — but it identifies no dish, so it is the recommended-dishless shape: place + affordable, no dish, no praise carrier.",
     "contract": "v17",
     "posts": [
       {
@@ -4219,7 +4219,7 @@
   },
   {
     "id": "N58-deal-answer-inherits-no-dish",
-    "why": "Issue-1/2 wild (t1_jvsqy9k, real thread): a deal offered as the answer to 'oyster bars with good happy hours?' nominates the DEAL — affordable at most, never an inherited oyster dish.",
+    "why": "RE-DERIVED 2026-08-31 (posture ruling): the same $1-oysters fact-sheet answering a happy-hour ask is still REPORTING — a bare terms-statement is reporting even when it answers the ask; nothing extracts, and no dish is inherited (a deal answer carries its own words).",
     "contract": "v17",
     "posts": [
       {
@@ -4240,8 +4240,7 @@
       "perSource": [
         {
           "source": "t1_n58",
-          "notFoods": ["oyster"],
-          "noPraise": true
+          "emitsNothing": true
         }
       ]
     }
@@ -4337,7 +4336,7 @@
   {
     "id": "N62-price-frame-refuses",
     "contract": "v17",
-    "why": "Owner-ruled 2026-08-29: a price-frame where the number is the point is NOT a dish — real staging doc answering a deals-masterlist ask ('Executive lunches starting at $21', '$39 vs $63', 'a good deal to me') quotes the deal's terms; the offering was priced, not vouched → value arm: place + affordable, no dish.",
+    "why": "RE-DERIVED 2026-08-31 (posture ruling): sentence 1 ('Executive lunches starting at $21 - your choice of meat...') reports terms and extracts nothing; sentence 2 ('The full churrasco Lunch experience is a good deal to me') is the writer's own verdict — recommending — so that identified offering extracts plus affordable. Slots ('your choice of meat') still never dishes.",
     "posts": [
       {
         "id": "t3_15s6cl3",
@@ -4358,8 +4357,9 @@
         {
           "source": "t1_jwgi6kc",
           "places": ["estancia"],
+          "items": ["churrasco lunch"],
           "attributes": ["affordable"],
-          "notFoods": ["executive lunch", "meat", "churrasco"]
+          "notFoods": ["meat"]
         }
       ]
     }
@@ -4954,7 +4954,7 @@
   {
     "id": "FA19-generic-composition-deal-no-dish",
     "contract": "v17",
-    "why": "Boundary negative: 'the brisket plate' is generic composition words, not a house coinage — the verdict rides the deal and the naming question grants no dish. Affordable only (the mediocre-steak-frites reasoning stands for generic names).",
+    "why": "FLIPPED 2026-08-31 (posture ruling): \"Can't beat the brisket plate at Micklethwait — best deal in town\" is RECOMMENDING, and name pedigree no longer forks the outcome — generic 'brisket plate' extracts as the dish exactly like a coined name, plus affordable.",
     "posts": [
       {
         "id": "t3_fa19",
@@ -4975,8 +4975,8 @@
         {
           "source": "t1_fa19",
           "places": ["micklethwait"],
-          "attributes": ["affordable"],
-          "notFoods": ["brisket"]
+          "items": ["brisket plate"],
+          "attributes": ["affordable"]
         }
       ]
     }
@@ -4984,7 +4984,7 @@
   {
     "id": "FA20-their-breakfast-special-terms-words",
     "contract": "v17",
-    "why": "Boundary negative reasoned from the principle: 'their breakfast special' is terms-words (occasion + special), not a house coinage — however standing the offering really is, the writer pointed at a deal, not a menu name. Habitual choice of the deal is value testimony (affordable), no dish.",
+    "why": "FLIPPED 2026-08-31 (posture ruling): habitual procurement ('I get it every week') plus praise is recommendation posture — 'their breakfast special' extracts as the dish `breakfast special` plus affordable; the terms-words demotion died with the naming test.",
     "posts": [
       {
         "id": "t3_fa20",
@@ -5005,8 +5005,8 @@
         {
           "source": "t1_fa20",
           "places": ["arandas"],
-          "attributes": ["affordable"],
-          "notFoods": ["breakfast special", "special"]
+          "items": ["breakfast special"],
+          "attributes": ["affordable"]
         }
       ]
     }
@@ -5023,7 +5023,10 @@
         "body": "",
         "extract_from_post": false,
         "comments": [
-          { "id": "t1_fa21a", "body": "Taco Flats on Burnet is my pick." },
+          {
+            "id": "t1_fa21a",
+            "body": "Taco Flats on Burnet is my pick."
+          },
           {
             "id": "t1_fa21b",
             "parent_id": "t1_fa21a",
@@ -5054,7 +5057,10 @@
         "body": "",
         "extract_from_post": false,
         "comments": [
-          { "id": "t1_fa22a", "body": "Cocina 512 does great migas tacos." },
+          {
+            "id": "t1_fa22a",
+            "body": "Cocina 512 does great migas tacos."
+          },
           {
             "id": "t1_fa22b",
             "parent_id": "t1_fa22a",
@@ -5085,7 +5091,10 @@
         "body": "Thinking of trying it this weekend.",
         "extract_from_post": false,
         "comments": [
-          { "id": "t1_fa23", "body": "They got some good food, and Margs." }
+          {
+            "id": "t1_fa23",
+            "body": "They got some good food, and Margs."
+          }
         ]
       }
     ],
@@ -5110,7 +5119,12 @@
         "title": "What to order at Mum Foods?",
         "body": "",
         "extract_from_post": false,
-        "comments": [{ "id": "t1_fa24", "body": "I like the bologna" }]
+        "comments": [
+          {
+            "id": "t1_fa24",
+            "body": "I like the bologna"
+          }
+        ]
       }
     ],
     "expect": {
@@ -5194,7 +5208,10 @@
         "body": "",
         "extract_from_post": false,
         "comments": [
-          { "id": "t1_fa27", "body": "I love y'all and your food so much" }
+          {
+            "id": "t1_fa27",
+            "body": "I love y'all and your food so much"
+          }
         ]
       }
     ],
@@ -5558,7 +5575,12 @@
         "title": "Best mashed potatoes in town?",
         "body": "Craving really good mashed potatoes with dinner.",
         "extract_from_post": false,
-        "comments": [{ "id": "t1_fa40", "body": "Carve" }]
+        "comments": [
+          {
+            "id": "t1_fa40",
+            "body": "Carve"
+          }
+        ]
       }
     ],
     "expect": {
@@ -5583,7 +5605,12 @@
         "title": "Best Mexican in south Austin?",
         "body": "",
         "extract_from_post": false,
-        "comments": [{ "id": "t1_fa41", "body": "El Dorado Cafe, hands down." }]
+        "comments": [
+          {
+            "id": "t1_fa41",
+            "body": "El Dorado Cafe, hands down."
+          }
+        ]
       }
     ],
     "expect": {
@@ -5595,6 +5622,58 @@
           "notFoods": ["mexican"]
         }
       ]
+    }
+  },
+  {
+    "id": "FA42-geography-not-a-gate",
+    "contract": "v17",
+    "why": "Owner geography ruling 2026-08-31 (doc 3bf97df0, verbatim): genuine testimony extracts wherever the place is — 'go to San Antonio and India Palace Buffet is one of the best buffets I've ever had' is a real vouch; the source community never scopes eligibility.",
+    "posts": [
+      {
+        "id": "t3_fa42",
+        "subreddit": "austinfood",
+        "title": "Indian buffet with quality seafood?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa42",
+            "body": "I don't know if you'll find one with quality seafood tbh, but go to San Antonio and India Palace Buffet is one of the best buffets I've ever had."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa42",
+          "places": ["india palace buffet"],
+          "somePraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA43-geography-never-rescues",
+    "contract": "v17",
+    "why": "Owner geography ruling 2026-08-31, negative side: distance never rescues an otherwise-droppable mention — 'Lived in Arlington for a while and they had a great Russian food place' names no place (unnamed venue) and offers no live claim; silent for THOSE reasons, not for the city.",
+    "posts": [
+      {
+        "id": "t3_fa43",
+        "subreddit": "austinfood",
+        "title": "Russian food anywhere in Texas?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa43",
+            "body": "Lived in Arlington for a while and they had a great Russian food place"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
     }
   }
 ]

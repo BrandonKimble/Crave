@@ -49,6 +49,17 @@ controls emission from the body only, never the use of context.
 for reading the thread (what "the domain" of local shorthand is). It
 licenses no claims and changes no rule below.
 
+**GEOGRAPHY IS NOT A GATE.** Genuine food testimony extracts wherever
+the place is — the source community never scopes eligibility, and
+distance or city is NEVER a drop reason. "Go to San Antonio and India
+Palace Buffet is one of the best buffets I've ever had" is a real vouch
+and emits, from any community's thread; so does a vouch for a place in
+Houston, Dallas, or another country. Which places a given searcher sees
+is another system's job entirely. Every real drop reason below —
+pastness, closure, speculation, hearsay, asks, self-promotion, retail —
+still applies on its own merits; being far away is simply not one of
+them, and never rescues or condemns a mention on its own.
+
 **In-scope context**: strictly the text of the POST OBJECT the active source
 belongs to — that post's title/body (subject to `extract_from_post`), the
 active comment, and parent/earlier lines within that same post's threads. The
@@ -65,7 +76,13 @@ unify names across different post objects.
   in the same post object.
 
 **Every example in this guide is illustrative.** When an example seems to
-diverge from a principle, follow the principle.
+diverge from a principle, follow the principle. And every rule holds for
+ANY source, from anywhere, in any language: the cities, cuisines,
+currencies, and institutions inside the examples are incidental scenery
+(a rule shown with tacos in Texas governs pho in Sài Gòn, jollof in
+Lagos, and pierogi in Kraków identically), and verdicts, hedges,
+posture, and names are judged in the source's OWN words and grammar —
+never by whether they resemble English phrasing or U.S. dining customs.
 
 ---
 
@@ -131,7 +148,7 @@ The writer vouches from experience, or reports a clear consensus:
 - Indirect recommendation: "worth the trip", "definitely go", "take them to
   \_\_\_", "my go-to" — and the IMPERATIVE steering the reader to a
   specific thing: "get the hash browns deep fried", "don't snooze on the
-  hot bar", "don't miss the tacos", "try the carnitas". Telling someone
+  hot bar", "don't sleep on the jollof", "try the carnitas". Telling someone
   what to order IS vouching for it — the writer stakes their own
   judgment on the reader's plate, and a tip the writer passes on as
   their protip is the writer's own steer.
@@ -173,13 +190,14 @@ The writer vouches from experience, or reports a clear consensus:
      as what the asker is POLLING the crowd for. An ask that names food
      the asker wants to EAT — a craving, a memory, an occasion
      ("Spumoni??? Where can it be found in Austin????", "Goat tacos in
-     Austin? Anyone serve them?", "enchiladas worth it?") — polls the
+     San Antonio? Anyone serve them?", "enchiladas worth it?") — polls the
      crowd's TASTE: nobody posts a craving to a food forum wanting the
      phonebook list, they want the one worth eating. That is a judgment
      ask however procurement-shaped its words. An ask that names an
      OBTAINMENT problem — stock and menu presence ("who has espresso
      buns?", "where can I buy masa?", "who sells single slices?"), hours
-     and openings ("who's open Christmas Day?"), deals and prices ("who
+     and openings ("who's open Christmas Day?", "who's open during
+     Tết?"), deals and prices ("who
      does dollar oysters?"), identification — polls the crowd's KNOWLEDGE
      of the world: a fact ask, however excited its phrasing. **A
      superlative is courtesy dressing, never the criterion**: "best",
@@ -422,32 +440,36 @@ The writer vouches from experience, or reports a clear consensus:
   vouch test has only passed THIS test**: it still walks Steps B and C
   like every claim — habitual love for a CLOSED place is a eulogy (B.1's
   PLACE STATUS), and habitual procurement from a SHELF is retail (B.2).
-  **VALUE is the test's one neighbor domain.** The mediocre-food question
-  decides FOOD testimony only; a deal or price faces its value cousin —
-  _would this be false if it were a BAD deal?_ Praising a deal ("$10 Steak Frites at Justine's — best deal in
-  Austin!") is value testimony: it praises the DEAL, so the place earns
-  `affordable` (Gate 1's value arm may add the praise carrier). Whether a
-  DISH also exists is a SEPARATE question the deal's NAME answers, never
-  its verdict — Gate 1's naming test: a deal that goes by a HOUSE-COINED
-  PROPER NAME ("the Java special", "the Big Tex platter") is a named menu
-  offering, and it emits as a dish BESIDE the value claim; a deal named
-  only by generic food-or-terms words with the price doing the pointing
-  ("$10 steak frites", "half-price wings", "their lunch special") names
-  no dish — the food inside such a deal is priced, not vouched, and a
-  mediocre steak frites leaves "best deal in Austin" standing, so no
-  `steak frites` claim exists, however warm the exclamation. And
-  OFFERING a deal as one's answer to a deals/value-seeking ask is the
-  value domain's bare nomination: the writer chose this deal out of every
-  deal they know, and the choice asserts it is worth having — **emit a
-  PLACE mention with `affordable` in `place_attributes`** and
-  `general_praise: false` — the nomination is of the DEAL, not the
-  kitchen, so it is never an ANSWER-TEST praise carrier — while the
-  deal's foods and prices still emit nothing as food. The naming test
-  above runs here too: a deal nominated BY its house-coined proper name
-  also emits that named offering as a dish; a generically-described deal
-  emits none. (This is a DINER answering with a deal they chose —
-  not the business's own promotion: a marketing post or promo-code roster
-  is A.2's announcement/directory case and stays silent.)
+  **VALUE is the test's one neighbor domain — and for DEALS, POSTURE
+  decides everything.** Ask ONE question of every deal clause: **is the
+  writer RECOMMENDING the deal — offering it as a thing for you to go
+  get — or REPORTING it — stating its terms as a fact about the
+  world?** Recommending looks like praise ("$10 Steak Frites at
+  Justine's happy hour — best deal in town!"), habitual choice ("I get
+  the lunch specials — around $15 and it's 2 meals for me"), or
+  nominating the deal as one's own pick. Reporting looks like a price
+  fact, a menu listing, a schedule or stock note ("they have $1 raw
+  East Coast Oysters every Tuesday until they sell out", "set lunch is
+  ¥1,100, weekdays only"), a correction
+  ("Higher Ground isn't an oyster bar, but they have…"), a complaint,
+  or the business's own promotion. **Nobody recommends a deal whose
+  food is bad** — so a RECOMMENDED deal is food testimony with value
+  testimony riding along: the deal's identified dish extracts as a
+  normal dish claim, the offering as the writer spoke it (`steak
+  frites`, `lunch special`, "the Java special" → `java special`), AND
+  the place earns `affordable` in `place_attributes`. A recommended
+  deal that identifies NO dish ("kids eat free", "their happy hour
+  deal is unbeatable") is a place mention with `affordable` and no
+  dish. A REPORTED deal extracts NOTHING — no dish, no `affordable`,
+  no praise: price-only stays price-only, however responsive the reply
+  (telling the thread where a deal exists is the findability shape
+  below, not a vouch). **Ask-context is not a fork.** A deals-seeking
+  thread demotes nothing — a deal recommended there is still a
+  recommendation to eat that thing, and extracts in full — and
+  elevates nothing: a bare terms-statement is reporting even when it
+  answers the ask. (A marketing post or promo-code roster is the
+  business recommending itself — A.2's announcement/directory case,
+  silent as ever.)
   **Polarity is absolute**: a value word enters only with its own sign —
   "pretty expensive but worth it", "$25-30 drinks, but very much worth
   it" are praise and never `affordable`, however glowing the verdict;
@@ -960,66 +982,48 @@ combo`, "the Hangover Special" → `hangover special`; the article stays
   mushroom based one". With no more specific antecedent, the bare word
   stands as its own generic dish ("their omakase is incredible" →
   `omakase`; "I got the combo" alone → `combo`).
-- **PRICES the offering → the VALUE arm (a dish only if the NAMING
-  question below grants one).** When the clause
+- **PRICES the offering → A.2's POSTURE rule decides.** When the clause
   QUOTES THE TERMS of a deal — a price, a schedule, a
-  contents-inventory — the number is the point and the offering was
-  priced, not vouched ("$25 combo", "lunch specials — around $15 and
-  huge portions", "Executive lunches starting at $21", "great weekday
-  lunch special - 2 tacos, rice y beans, iced tea like $10"). The
-  mention still EMITS, restaurant-only with `general_praise: true` where
-  the praise is real, and `affordable` rides in `place_attributes` where
-  the text supports it (A.2's value law: praise wrapped around quoted
-  terms praises the DEAL — and a praised deal is VALUE TESTIMONY, never
-  a silent fact: "great weekday lunch special - 2 tacos, rice y beans,
-  iced tea like $10" emits the place carrier with `affordable`, no
-  dish, and so does HABITUAL choice of a deal — "I get the lunch
-  specials, around $15 and it's 2 meals for me" is the writer's own
-  repeated return (A.1's vouch), landing here only because the deal is
-  what's vouched; only a deal quoted with NO warmth and NO habit is
-  A.2's plain availability fact and stays silent). Foods DESCRIBED inside the deal are judged by
-  the clause law like any other words: an enumeration that only prices
-  or lists ("2 tacos, rice y beans, iced tea like $10") stays the deal's
-  contents and claims nothing — but a writer who ate SERVED contents and
-  judges them ("got the 2 item combo with brisket and sausage — the
-  sausage was incredible") makes normal dish claims with those foods.
-  A COUNT-frame is the same arm: "2 item combo", "3-course menu" name a
-  quantity structure, not an offering — never a dish. B.2's mode still
-  governs: a grocery haul is eaten too, but it was never SERVED —
-  packaged goods stay out however enthusiastically consumed. **Two
-  independent questions decide a deal clause — never let one answer the
-  other.** FIRST, the verdict question (A.2's pair, asked of the verdict
-  word): would it be false if the FOOD were mediocre, or false if the
-  DEAL were bad? A taste verdict on the offering makes it a dish even
-  with a price sitting nearby ("the tasting menu was extraordinary", "el
-  menú del día sale 12 euros y está buenísimo" — the food is judged;
-  emit the offering); a verdict that rides the deal — "best deal in
-  Austin", "can't beat it for $15", "huge portions for the price", warm
-  words fronting a quoted price-and-contents listing — is value, and the
-  value claim ALWAYS emits, as this arm's opening says — the place
-  mention with `affordable` and/or the praise carrier, never silence.
-  SECOND, for a deal-riding verdict only, the NAMING question: **does
-  the deal go by a HOUSE-COINED PROPER NAME — a name a diner at that
-  restaurant orders by ("the Java special", "the Big Tex platter", "the
-  Hangover Special")?** A proper name is a MENU FACT the writer is
-  pointing at: the named offering is the orderable thing being
-  nominated, so it emits as a DISH (Gate 1's dish arm, as spoken)
-  BESIDE the value claim — "the Java special (2 eggs, bacon,
-  hashbrowns, toast and a cup of coffee) at $9.50 is probably the best
-  breakfast deal in town" emits the dish `java special` AND the place's
-  `affordable`; neither consumes the other, and the parenthetical
-  contents stay the deal's inventory as ever. A deal named only by
-  GENERIC food-or-terms words — a description with the price doing the
-  pointing ("$10 steak frites", "half-price wings on Tuesdays", "the
-  brisket plate", "their breakfast special", "their lunch special") —
-  names no dish: nobody orders "best deal in town", and generic words
-  plus a price describe the terms, not a menu identity. "Their
-  breakfast special" and "the lunch special" are terms-words however
-  standing the offering may really be — without a house coinage the
-  writer pointed at a deal, not a name; a proper token makes the
-  coinage ("the OG breakfast", "the $25 date-night combo" AS a standing
-  named offering). When the clause only quotes terms, the number is the
-  point and the value arm alone speaks.
+  contents-inventory — ask A.2's one deal question, CLAUSE BY CLAUSE:
+  recommending, or reporting? **REPORTING extracts nothing**: "$25
+  combo" cited bare, "$1 raw East Coast Oysters every Tuesday until
+  they sell out" state terms — no dish, no `affordable`, no praise,
+  however dish-specific the detail. **RECOMMENDING routes back to the
+  dish arm**: the recommended deal's identified offering is the dish,
+  as the writer spoke it — "$10 Steak Frites … best deal in town!" →
+  `steak frites`; "great weekday lunch special - 2 tacos, rice y
+  beans, iced tea like $10" → `lunch special`; "the Java special … at
+  $9.50 is probably the best breakfast deal in town" → `java special`;
+  habitual choice ("I get the lunch specials — 2 meals for me") is
+  recommendation posture too, and so is a personal value verdict ("the
+  full churrasco lunch is a good deal to me" → `churrasco lunch`) —
+  the place earns `affordable` beside the dish. One comment can do
+  both — "Estancia has Executive lunches starting at $21 … The full
+  churrasco Lunch experience is a good deal to me" reports the first
+  deal's terms (nothing) and recommends the second (dish +
+  `affordable`): judge each clause's own posture. A taste verdict
+  on the offering was never a deal question at all ("the tasting menu
+  was extraordinary", "el menú del día sale 12 euros y está buenísimo"
+  — the food is judged; emit the offering, price ignored). Two shapes
+  identify NO dish even when recommended, and yield `affordable`
+  alone: a price/count FRAME where the number or count is the whole
+  name ("the $25 combo", "2 item combo", "3-course menu" — a quantity
+  structure, not an offering), and a deal whose terms name no food
+  ("kids eat free", "their happy hour deal"). A MENU-word wrapper is
+  the same no-dish shape: "the lunch menu", "thực đơn trưa" name the
+  DOCUMENT the offerings live on, not an order — a recommended
+  menu-price deal yields `affordable` and no dish ("Thực đơn trưa của
+  họ tầm 150k … quá đáng tiền" → place + `affordable`), while an
+  offering word ("lunch special", "set lunch", "menú del día" — a
+  thing a diner asks for by that name) is the dish arm's as ever. Foods DESCRIBED inside
+  the deal are judged by the clause law like any other words: an
+  enumeration that only prices or lists ("2 tacos, rice y beans, iced
+  tea like $10") stays the deal's contents-inventory and claims
+  nothing — but a writer who ate SERVED contents and judges them
+  ("got the 2 item combo with brisket and sausage — the sausage was
+  incredible") makes normal dish claims with those foods. B.2's mode
+  still governs: a grocery haul is eaten too, but it was never
+  SERVED — packaged goods stay out however enthusiastically consumed.
 - **NAMES the occasion AROUND the food → never a dish.** "brunch",
   "happy hour", "lunch", "dinner" name a time you ATTEND, not a thing
   you order — however warmly praised ("their brunch is the best in
@@ -1133,13 +1137,10 @@ shoestring fries?" → `shoestring fry` with `crispy` peeling into
 as-written law reads the asker's letters here). WHO inherits is the only gate:
 only an unqualified pick — a reply that hedges or re-scopes the ask's
 terms ("ask them to fry it twice") inherits none of them, and a DEAL
-offered as the answer (A.2's value arm) is never an unqualified pick:
-it nominates the deal, not the food, and inherits no dish however
-plainly the ask named one ("oyster happy hours?" answered with a $1
-oyster deal stays a place-plus-`affordable` mention, no dish; a deal
-nominated by its house-coined proper name emits that named offering as
-its OWN dish per Gate 1's naming question — its own words, never
-inheritance) — and
+answer never needs inheritance: it carries its own words, so A.2's
+posture rule owns it outright — a RECOMMENDED deal's dish comes from
+the deal's own identified offering (Gate 1), a reported deal emits
+nothing, and neither borrows the ask's dish phrase — and
 an ask whose food language fails the gates inherits nothing: "craving red
 sauce italian food" targets no orderable dish. Two boundary shapes:
 a dish wrapped in a venue type is still a DISH ask ("best burger joint?",
@@ -1174,9 +1175,9 @@ inherited — Step E.)
    - **"chef's tasting", "executive lunch"** — two diners ordering these
      are handed the same offering; the whole phrase names the order (Gate
      1's dish arm). The sameness question decides which WORDS of a dish
-     name to keep; it never rescues a phrase Gate 1 routed to the value
-     or occasion arm — a price/count frame ("the $25 combo", "3-course
-     menu") or an occasion ("brunch") never became a dish, and no amount
+     name to keep; it never rescues a phrase Gate 1 refused — a
+     price/count frame ("the $25 combo", "3-course menu"), an occasion
+     ("brunch"), or a reported deal never became a dish, and no amount
      of word-keeping makes one.
    - "grilled burger" — the same order as "burger"; "grilled" is a property and
      will be handled in Step D. "good taco" orders a taco — an evaluative
@@ -1298,10 +1299,9 @@ pick answering a constrained ask asserts fit** — the ask's VENUE-level
 constraint words ("romantic", "cheap", "outdoor seating", a cuisine like
 "mexican") are that pick's own claim, walking D.1/D.2 like any stated
 word: the answerer chose this place BECAUSE it fits what was asked, and
-that choice vouches for the fit. **A value-seeking ask is the same law
-in the value domain**: a deal offered as the writer's own answer to a
-deals/budget ask asserts `affordable` on the place (A.2's value arm —
-a place mention with `affordable`, no dish, no praise flag). A
+that choice vouches for the fit. **A deal answered to a value-seeking
+ask is A.2's posture rule, not a fit assertion**: recommended → its
+identified dish plus `affordable`; reported → nothing. A
 re-scoping annotation blocks the word
 it re-scopes ("great but pricey" blocks "cheap"), an off-axis answer that
 pushes back on the ask's frame asserts nothing from it, and the ask
@@ -1433,12 +1433,12 @@ menu`) with no dish. Delivery formats ONLY, never a dish type: "a
     pizza place", "banging pizza scene" still yield NO `pizza`
     attribute. A format the writer ORDERED or ATE is Gate 1's dish,
     never only an attribute.
-  - An occasion ATTENDED ("brunch", "happy hour", "late-night") and a
-    deal are place-side only: the occasion in its bare form ("great
-    happy hour" → `happy hour`), a deal as `affordable` at most, never a
-    food — with Gate 1's one naming carve-out: a deal that goes by a
-    house-coined proper name also emits that named offering as a dish.
-    The carve-out feeds `item` ONLY: no offering, deal, or dish-type
+  - An occasion ATTENDED ("brunch", "happy hour", "late-night") is
+    place-side only, in its bare form ("great happy hour" → `happy
+    hour`). A DEAL is never itself an attribute or a dish-word: a
+    recommended deal contributes `affordable` (place side) and its
+    identified offering as an `item` per A.2's posture rule; a
+    reported deal contributes nothing. No offering, deal, or dish-type
     word ever enters `place_attributes` (the pizza ban above is
     untouched).
 
@@ -1580,7 +1580,8 @@ if the place cannot be resolved with confidence, skip the mention.
 ### F.1 `general_praise`
 
 `general_praise: true` marks **THE CARRIER of holistic, place-level
-endorsement** — "this place is incredible", "my favorite spot in Austin", or
+endorsement** — "this place is incredible", "my favorite spot in the
+city", or
 a name offered as the writer's own pick (the ANSWER TEST, A.1). Decide
 placement by what the praise NAMES:
 
@@ -1613,13 +1614,14 @@ its own "but" still carries, per A.2's net-direction law.)
 
 The output shape already enforces the split — a dish mention cannot carry
 the flag. Your one decision is WHERE praise lands, per the three arms
-above. A carrier also holds endorsement whose target failed the dish
-gates: praise of a deal or price-frame (Gate 1's value arm) and an
-adopted verdict whose referent dish failed Step C both emit as the PLACE
-carrier at `true`. Availability, popularity, and price are never
-endorsement (Step A.2) — and a deal offered as the answer to a value ask
-is A.2's value arm: a place mention with `affordable` and
-`general_praise: false`, never a praise carrier.
+above. A carrier also holds an adopted verdict whose referent dish
+failed Step C — it emits as the PLACE carrier at `true`. A RECOMMENDED
+deal never needs a carrier: its endorsement rides the dish connection
+when a dish is identified, and a dishless recommended deal is a place
+mention with `affordable` and `general_praise: false` — the
+`affordable` IS the record of the deal praise, exactly as `great
+service` records service praise. Availability, popularity, and a
+REPORTED deal are never endorsement (Step A.2) and emit nothing.
 
 ### F.2 Fields
 
