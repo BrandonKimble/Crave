@@ -144,7 +144,7 @@
   },
   {
     "id": "D5-availability-only",
-    "why": "Availability is not endorsement — the rule exists in Step 6 today but never gates eligibility.",
+    "why": "FLIPPED 2026-09-01 (owner Ruling 1): the duplicate copy of the overturned findability silence — a volunteered source banks the sought item at each place, no carriers. (Quack's span boundary deliberately unpinned, as in V8f.)",
     "posts": [
       {
         "id": "SRC013",
@@ -160,7 +160,9 @@
       }
     ],
     "expect": {
-      "emitsNothing": true
+      "places": ["epoch"],
+      "items": ["kouign amann"],
+      "noPraise": true
     }
   },
   {
@@ -584,7 +586,7 @@
   },
   {
     "id": "V8f-CONTROL-findability-ask",
-    "why": "Regression guard: fact/findability ask stays non-testimony after the ANSWER TEST widening.",
+    "why": "FLIPPED 2026-09-01 (owner Ruling 1, volunteer principle): a findability answer banks the sought item at the volunteered sources as dish mentions, no carriers. (Span boundary of 'Quack's on 43rd' is B.3's business and deliberately unpinned here.)",
     "posts": [
       {
         "id": "SRC079",
@@ -600,7 +602,9 @@
       }
     ],
     "expect": {
-      "emitsNothing": true
+      "places": ["epoch"],
+      "items": ["kolache"],
+      "noPraise": true
     }
   },
   {
@@ -861,7 +865,7 @@
   },
   {
     "id": "G1-hedged-annotated-list",
-    "why": "v8 audit class 1 (top MAJOR class): hedged/operational annotations inside a rec-list reply were extracted anyway (doc 5cda6279). Each entry's own annotation strips it: 'decent' and 'not spectacular' hedge, 'serves BBQ' is availability.",
+    "why": "FLIPPED 2026-09-01 (coordinator diagnosis + no-inertia ruling): 'cheaper BBQ but decent' LANDS on 'decent' — a mild word standing against a price frame (another axis) — net-positive under the landing law, answering a taste-criterion budget ask: rudy's BANKS (latitude on affordable/carrier). Kolache Factory ends on the price reason and still strips; H-E-B volunteers nothing bankable and still emits nothing. Pin predated the landing law.",
     "posts": [
       {
         "id": "SRC001",
@@ -877,7 +881,8 @@
       }
     ],
     "expect": {
-      "emitsNothing": true
+      "places": ["rudy's"],
+      "notRestaurants": ["kolache factory", "h-e-b", "heb"]
     }
   },
   {
@@ -1167,7 +1172,7 @@
   },
   {
     "id": "G6-availability-on-tap",
-    "why": "v8 audit class 6 (doc 5b2ba4e8): 'still has it on tap' is availability answering a findability ask — never a food claim; the holistic 'food there is delicious' is the only verdict and lands as the carrier.",
+    "why": "FLIPPED 2026-09-01 (owner Ruling 1): the on-tap answer to a findability ask is a volunteered source — the sought pour banks at Casa Columbia (the rare-item coverage case), and 'the food there is delicious' still lands as the carrier.",
     "posts": [
       {
         "id": "SRC001",
@@ -1184,7 +1189,7 @@
     ],
     "expect": {
       "places": ["casa columbia"],
-      "notFoods": ["thirsty goat", "beer"],
+      "items": ["thirsty goat"],
       "somePraise": true
     }
   },
@@ -2790,7 +2795,7 @@
   },
   {
     "id": "N10-fact-ask-deal-availability",
-    "why": "v17 preflight residual (plans/v17-preflight-trace-20260826.md #5): deal/stock-flavored fact asks read as judgment asks — availability answers emitted as picks. Pins the sharpened A.1 condition 1. (Expectation re-derived 2026-08-27: 'their oysters are the best in town' is DISH-directed praise — the oyster claim IS the endorsement; no place carrier is owed.)",
+    "why": "FLIPPED 2026-09-01 (Ruling 1), loosened same day: F&D's volunteered dollar-oyster deal banks (dish + affordable). Clark's ('has a happy hour deal', zero terms) is a marginal dishless volunteer the model legitimately splits on — deliberately unpinned.",
     "posts": [
       {
         "id": "t3_factask1",
@@ -2814,7 +2819,9 @@
       "perSource": [
         {
           "source": "t1_fa1",
-          "notRestaurants": ["f&d", "clark's", "clarks"]
+          "places": ["f&d"],
+          "items": ["oyster"],
+          "attributes": ["affordable"]
         },
         {
           "source": "t1_fa2",
@@ -3763,7 +3770,7 @@
   },
   {
     "id": "N42-vouch-test-findability-slices",
-    "why": "Issue-1 (ask-taxonomy study): the Cherrywood leak — a findability ask answered with a menu-detail-rich stock fact ('sells cold slices of pie and cake') stays true of mediocre food; the VOUCH TEST refuses it.",
+    "why": "FLIPPED 2026-09-01 (Ruling 1): 'Cherrywood Coffeehouse sells cold slices of pie and cake' answering a where-can-I-get-slices ask is a volunteered source — pie and cake bank there.",
     "contract": "v17",
     "posts": [
       {
@@ -3784,14 +3791,15 @@
       "perSource": [
         {
           "source": "t1_n42",
-          "emitsNothing": true
+          "places": ["cherrywood coffeehouse"],
+          "items": ["pie", "cake"]
         }
       ]
     }
   },
   {
     "id": "N43-vouch-test-variety-fact",
-    "why": "Issue-1: 'has a wide variety of enchiladas, including shrimp' is menu-presence stated with dish specificity — still true of mediocre enchiladas; no dish, no praise.",
+    "why": "FLIPPED 2026-09-01 (Ruling 1): volunteering El Mercado's enchiladas to an enchilada-seeking ask banks the item — coverage over silence; no carrier.",
     "contract": "v17",
     "posts": [
       {
@@ -3812,14 +3820,16 @@
       "perSource": [
         {
           "source": "t1_n43",
-          "emitsNothing": true
+          "places": ["el mercado"],
+          "items": ["enchilada"],
+          "noPraise": true
         }
       ]
     }
   },
   {
     "id": "N44-vouch-test-deal-fact",
-    "why": "RE-DERIVED 2026-08-31 (posture ruling): 'One Taco on Anderson has $2 Al Pastor Trompo tacos on Tuesdays' states terms with no praise, habit, or ownership — REPORTING, and reporting extracts nothing at all (no dish, no affordable, no praise).",
+    "why": "FLIPPED 2026-09-01 (Ruling 1): volunteering a deal to a taco-deals ask IS nominating it — recommendation posture; the identified dish banks plus affordable.",
     "contract": "v17",
     "posts": [
       {
@@ -3840,14 +3850,16 @@
       "perSource": [
         {
           "source": "t1_n44",
-          "emitsNothing": true
+          "places": ["one taco"],
+          "items": ["al pastor trompo taco"],
+          "attributes": ["affordable"]
         }
       ]
     }
   },
   {
     "id": "N45-vouch-test-oyster-deal-correction",
-    "why": "RE-DERIVED 2026-08-31 (posture ruling): a category correction plus terms ('isn't an oyster bar, but they have $1 raw East Coast Oysters every Tuesday') is the reporting side by name — extracts nothing.",
+    "why": "FLIPPED 2026-09-01 (Ruling 1, reasoned from the principle): the correction frames, the offer stands — 'isn't an oyster bar, BUT they have $1 oysters' still hands the thread the sought thing; oysters bank at Higher Ground. A correction that WITHDREW the thing would stay silent.",
     "contract": "v17",
     "posts": [
       {
@@ -3868,14 +3880,15 @@
       "perSource": [
         {
           "source": "t1_n45",
-          "emitsNothing": true
+          "places": ["higher ground"],
+          "items": ["oyster"]
         }
       ]
     }
   },
   {
     "id": "N46-vouch-test-ingredient-presence",
-    "why": "Issue-1: ingredient-presence stated for two places ('both put it in their bun bo hue') is a recipe fact, not a vouch for either bowl.",
+    "why": "FLIPPED 2026-09-01 (Ruling 1, update missed in first pass): volunteering both spots to a who-uses-huyết ask banks the bun bo hue at each — coverage over silence, no carriers.",
     "contract": "v17",
     "posts": [
       {
@@ -3896,14 +3909,16 @@
       "perSource": [
         {
           "source": "t1_n46",
-          "emitsNothing": true
+          "places": ["fresh bowl", "tan my"],
+          "items": ["bun bo hue"],
+          "noPraise": true
         }
       ]
     }
   },
   {
     "id": "N47-vouch-test-has-it-stock",
-    "why": "Issue-1: 'The Meteor has it' answering a stock/procurement ask asserts only stock — a clause, not a bare nomination, and it fails the VOUCH TEST.",
+    "why": "RE-GROUNDED 2026-09-01: still silent, but for the RETAIL reason — sourdough starter is a take-home shelf good (B.2's mode), and the held shelf law outranks the volunteer principle. Not the old findability silence.",
     "contract": "v17",
     "posts": [
       {
@@ -3988,7 +4003,7 @@
   },
   {
     "id": "N50-bare-nomination-stock-ask-refuses",
-    "why": "Issue-1: the same bare 'Julio's.' under a stock/obtainment ask inherits the fact question and asserts only stock — nothing emits.",
+    "why": "RE-GROUNDED 2026-09-01: still silent, but for the SHELF reason — 'take home and reheat' makes the ask a shelf errand (B.2 mode inheritance); the volunteer principle banks only served food.",
     "contract": "v17",
     "posts": [
       {
@@ -4219,7 +4234,7 @@
   },
   {
     "id": "N58-deal-answer-inherits-no-dish",
-    "why": "RE-DERIVED 2026-08-31 (posture ruling): the same $1-oysters fact-sheet answering a happy-hour ask is still REPORTING — a bare terms-statement is reporting even when it answers the ask; nothing extracts, and no dish is inherited (a deal answer carries its own words).",
+    "why": "FLIPPED 2026-09-01 (Ruling 1): same text answering a deal-seeking ask — a volunteered deal is recommended; oysters bank plus affordable.",
     "contract": "v17",
     "posts": [
       {
@@ -4240,7 +4255,9 @@
       "perSource": [
         {
           "source": "t1_n58",
-          "emitsNothing": true
+          "places": ["higher ground"],
+          "items": ["oyster"],
+          "attributes": ["affordable"]
         }
       ]
     }
@@ -6128,6 +6145,364 @@
           "source": "t1_fa59",
           "places": ["interstellar"],
           "notAttributes": ["affordable", "outdoor seating", "patio"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA60-wheatsville-bagel-banks",
+    "contract": "v17",
+    "why": "Ruling 1 (verbatim class): a volunteered source with price banks the item — the bagel comes from Wheatsville's deli counter (kitchen), and the price is just terms.",
+    "posts": [
+      {
+        "id": "t3_fa60",
+        "subreddit": "austinfood",
+        "title": "Bacon egg and cheese bagel anywhere?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa60",
+            "body": "Wheatsville has a bacon egg & cheese bagel on their breakfast menu, runs like $7-8."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa60",
+          "places": ["wheatsville"],
+          "items": ["bacon egg & cheese bagel"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA61-jib-potato-wedges-bank",
+    "contract": "v17",
+    "why": "Ruling 1 (verbatim class): 'you're in luck, Jack in the Box has them as a limited item rn' volunteers the sought potato wedges — banks, no carrier.",
+    "posts": [
+      {
+        "id": "t3_fa61",
+        "subreddit": "austinfood",
+        "title": "Who still does potato wedges?",
+        "body": "Craving crispy potato wedges like the old KFC ones.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa61",
+            "body": "you're in luck, Jack in the Box has them as a limited item rn"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa61",
+          "places": ["jack in the box"],
+          "items": ["potato wedge"],
+          "noPraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA62-huckleberry-special-banks",
+    "contract": "v17",
+    "why": "Ruling 1 (verbatim class): a volunteered deal is recommended per the posture rule — the identified offering banks plus affordable.",
+    "posts": [
+      {
+        "id": "t3_fa62",
+        "subreddit": "austinfood",
+        "title": "Cheap date ideas downtown?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa62",
+            "body": "Huckleberry has a burger and cocktail special for $12"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa62",
+          "places": ["huckleberry"],
+          "items": ["burger"],
+          "attributes": ["affordable"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA63-hudsons-retail-still-silent",
+    "contract": "v17",
+    "why": "Ruling 1's held boundary: the shelf law is UNCHANGED — Hudson's Meat Market's dried sausage is a take-home shelf good; the volunteer principle banks only served food. (Owner-flagged tension: coverage logic vs blessed retail law.)",
+    "posts": [
+      {
+        "id": "t3_fa63",
+        "subreddit": "austinfood",
+        "title": "Where to find good dried sausage?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa63",
+            "body": "Hudson's Meat Market in Cedar Park has great dried sausage, we grab a few links every time we drive through."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "FA64-suerte-hedge-attribute",
+    "contract": "v17",
+    "why": "Ruling 2 (verbatim, live drop): attribute-uncertainty never defeats a verdict — two stated verdicts stand; 'not perfectly authentic, a bit overpriced' is conceded past by 'but it's good'.",
+    "posts": [
+      {
+        "id": "t3_fa64",
+        "subreddit": "austinfood",
+        "title": "Is Suerte worth the hype?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa64",
+            "body": "Suerte is good. Not perfectly authentic, and probably a bit overpriced, but it's good mexican-inspired food."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa64",
+          "places": ["suerte"],
+          "somePraise": true,
+          "notAttributes": ["authentic", "affordable"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA65-revival-empanadas-bank",
+    "contract": "v17",
+    "why": "Ruling 2 (verbatim, live drop): 'Taste pretty good imo' is a complete verdict on the empanadas; 'authentic Colombian' is describing words, not a hedge.",
+    "posts": [
+      {
+        "id": "t3_fa65",
+        "subreddit": "austinfood",
+        "title": "Colombian food in Austin?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa65",
+            "body": "Revival Coffee recently started carrying authentic Colombian food — empanadas and pandebono. Taste pretty good imo"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa65",
+          "places": ["revival coffee"],
+          "items": ["empanada"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA66-home-slice-sandwich-banks",
+    "contract": "v17",
+    "why": "Ruling 2 (verbatim, live drop): a following-sentence pan of a DIFFERENT dish never reaches back — the sandwich verdict stands; no pizza claim.",
+    "posts": [
+      {
+        "id": "t3_fa66",
+        "subreddit": "austinfood",
+        "title": "Underrated sandwiches?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa66",
+            "body": "The sandwich at Home Slice is really quite good. I don't know if that's a compliment since I think their pizza is garbage."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa66",
+          "places": ["home slice"],
+          "items": ["sandwich"],
+          "notFoods": ["pizza"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA67-po-boys-hedged-property",
+    "contract": "v17",
+    "why": "Ruling 2 (the ruling's own case): the 'but' hedges authenticity — a property — not the verdict; po boys bank, authentic enters no array.",
+    "posts": [
+      {
+        "id": "t3_fa67",
+        "subreddit": "austinfood",
+        "title": "Po boys outside of Louisiana?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa67",
+            "body": "The po boys at quality seafood are good but I don't know how authentic they are"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa67",
+          "places": ["quality seafood"],
+          "items": ["po boy"],
+          "notAttributes": ["authentic"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA68-most-authentic-picks-bank",
+    "contract": "v17",
+    "why": "Ruling 2: authenticity is a taste-linked criterion — 'the most authentic ones' is a judgment ask's answer shape; both picks bank as food testimony.",
+    "posts": [
+      {
+        "id": "t3_fa68",
+        "subreddit": "austinfood",
+        "title": "Best banh mi in town?",
+        "body": "Looking for the real thing, not fusion.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa68",
+            "body": "Baguette House and Lily's are the most authentic ones"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa68",
+          "places": ["baguette house", "lily's"],
+          "somePraise": true,
+          "notAttributes": ["authentic"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA69-sushi-goto-in-logistics",
+    "contract": "v17",
+    "why": "Ruling 3 (doc 9888ed8d): one vouch clause is never outweighed by a logistics comment's gravity — 'Soto and Uchi is a go to' emits both places.",
+    "posts": [
+      {
+        "id": "t3_fa69",
+        "subreddit": "austinfood",
+        "title": "Anniversary planning thread",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa69",
+            "body": "We're still juggling reservations and might push the trip to March depending on flights. Always love good sushi. Soto and Uchi is a go to. Will probably book whichever has availability."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa69",
+          "places": ["soto", "uchi"],
+          "somePraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA70-pepperoni-one-in-chatter",
+    "contract": "v17",
+    "why": "Ruling 3 (doc 98992a47): a dish vouch inside scheduling/meta chatter still banks — 'the pepperoni one is really good too' resolves and emits.",
+    "posts": [
+      {
+        "id": "t3_fa70",
+        "subreddit": "austinfood",
+        "title": "Pizza night order thread",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa70a",
+            "body": "Getting a couple pies from Via 313 for game night, probably the Detroiter."
+          },
+          {
+            "id": "t1_fa70b",
+            "parent_id": "t1_fa70a",
+            "body": "The pepperoni one is really good too. Something about the sauce is just different, in a good way."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa70b",
+          "places": ["via 313"],
+          "items": ["pepperoni"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "FA71-treat-list-with-rider",
+    "contract": "v17",
+    "why": "Ruling 3 (doc 0ff1d6b4): a habitual treat list emits its dishes however long the health rider around it — habitual choice is the verdict.",
+    "posts": [
+      {
+        "id": "t3_fa71",
+        "subreddit": "austinfood",
+        "title": "Quality Seafood appreciation",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_fa71a",
+            "body": "Quality Seafood is the best counter in town."
+          },
+          {
+            "id": "t1_fa71b",
+            "parent_id": "t1_fa71a",
+            "body": "I heartily agree. Not the healthiest habit and my doctor would have notes, but I treat myself pretty frequently — oysters on the half shell, lobster bisque, gumbo and étouffée."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_fa71b",
+          "places": ["quality seafood"],
+          "items": ["oysters on the half shell", "lobster bisque", "gumbo"]
         }
       ]
     }
