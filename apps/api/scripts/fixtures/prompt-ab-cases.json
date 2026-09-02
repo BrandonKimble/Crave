@@ -1657,7 +1657,7 @@
   },
   {
     "id": "B1-availability-retailer-bleed",
-    "why": "Part-1 bleed class (real doc t1_jwir5du, live defect: Local Pastures->yoghurt in corpus): the praised yogurt claim must stay on Mother Culture; the retailer named only as where to BUY it (packaged, availability) must emit nothing.",
+    "why": "FLIPPED 2026-09-01 (v22, grocery-case=shelf ruling): the ask is a yogurt SHELF errand ('farmers market or shops') and Mother Culture is a yogurt maker whose tubs are taken home — retail, however great; B.2's mode inheritance already made every pick under a shop ask silent, and this pin predated it. Local Pastures still emits nothing. Original why: the praised yogurt claim must stay on Mother Culture; the retailer named only as where to BUY it must emit nothing.",
     "posts": [
       {
         "id": "t3_yog",
@@ -1673,9 +1673,7 @@
       }
     ],
     "expect": {
-      "places": ["mother culture"],
-      "notRestaurants": ["local pastures"],
-      "somePraise": true
+      "emitsNothing": true
     }
   },
   {
@@ -6478,6 +6476,1047 @@
           "items": ["oysters on the half shell", "lobster bisque", "gumbo"]
         }
       ]
+    }
+  },
+  {
+    "id": "V22-landing-casino-burger",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). THE LANDING TEST: only a subject's OWN clauses count — the 'but' is about the photo and the wrong order (other subjects), so casino and the burger land on 'love'. v21 went silent 3/3 (doc 2cd13837).",
+    "posts": [
+      {
+        "id": "t3_v22a",
+        "subreddit": "austinfood",
+        "title": "Casino El Camino burger",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22a1",
+            "body": "I've never liked this place and it's because the cook on their burgers are so inconsistent. I thought I was going crazy with all the recommendations here."
+          },
+          {
+            "id": "t1_v22a2",
+            "body": "Ignore the downvotes, you’re 100% correct. I’m starting to think this sub should be called r/austinshittyfoodpics instead. This last week in particular has been a streak of unappetizing photos with people losing their mind in the caption. I love casino and that burger, but this photo (and the order being wrong as described above) are a crime to both of them.",
+            "parent_id": "t1_v22a1"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_v22a2",
+          "places": ["casino"],
+          "items": ["burger"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "V22-landing-rhetorical-pollo-regio",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). LANDING TEST meaning rule + A.2 ASK: a rhetorical question asserts — 'Why Pollo Rico when Pollo Regio is the GOAT?' is a verdict for Pollo Regio and asks nothing; Pollo Rico earns nothing. v21 silent (doc e588f250).",
+    "posts": [
+      {
+        "id": "t3_v22b",
+        "subreddit": "austinfood",
+        "title": "Hot take on Austin Mexican",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22b1",
+            "body": "Listen, y’all. As a Mexican man, y’all can keep Suerte, Comedor, Gabriela’s, La Condesa. You can have all that. Find me outside any local Pollo Rico with a grease stain on my shirt."
+          },
+          {
+            "id": "t1_v22b2",
+            "body": "Why Pollo Rico when Pollo Regio is the GOAT?",
+            "parent_id": "t1_v22b1"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_v22b2",
+          "places": ["pollo regio"],
+          "notRestaurants": ["pollo rico"],
+          "somePraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "V22-landing-bodhi-fake-meat-noodles",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). LANDING TEST: the correction ('They don’t') withdraws the sought thing, but the second clause is its own subject with its own verdict ('plenty of great fake meat noodle dishes') and lands high. v21 silent (doc 3fa9811c).",
+    "posts": [
+      {
+        "id": "t3_v22c",
+        "subreddit": "austinfood",
+        "title": "Anyone know a vegan bún bò huế in town?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22c1",
+            "body": "Bodhi Viet Vegan might have some"
+          },
+          {
+            "id": "t1_v22c2",
+            "body": "They don’t but they have plenty of great fake meat noodle dishes.",
+            "parent_id": "t1_v22c1"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_v22c2",
+          "places": ["bodhi viet vegan"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "V22-landing-salty-sow-chicken-entree",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). A.1 direct verdict, roundabout wording: 'The only restaurant where I’ll gladly order the chicken entree!' is a verdict on Salty Sow's chicken, resolved to the parent's name. v21 silent (doc 26ade6a5).",
+    "posts": [
+      {
+        "id": "t3_v22d",
+        "subreddit": "austinfood",
+        "title": "Happy hour + dinner for two under $150?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22d1",
+            "body": "Salty sow have the best happy hour in town and the food is decent. If you stick to the HH menu, you can easily leave with under $150."
+          },
+          {
+            "id": "t1_v22d2",
+            "body": "The only restaurant where I'll gladly order the chicken entree!",
+            "parent_id": "t1_v22d1"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_v22d2",
+          "places": ["salty sow"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "V22-landing-home-slice-subs-under-pizza-pan",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). LANDING TEST: the thread's pizza pan is another subject and invisible to the subs — 'so good' lands both subs high. v21 silent 3/3.",
+    "posts": [
+      {
+        "id": "t3_v22e",
+        "subreddit": "austinfood",
+        "title": "Home Slice is overrated",
+        "body": "Their pizza is garbage and I don't get the hype at all.",
+        "extract_from_post": true,
+        "comments": [
+          {
+            "id": "t1_v22e1",
+            "body": "Their turkey sub and meatball sub are so good. For sure they could just have those menu items and kill it."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_v22e1",
+          "places": ["home slice"],
+          "items": ["turkey sub", "meatball sub"]
+        },
+        {
+          "source": "t3_v22e",
+          "emitsNothing": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "V22-landing-red-ash-not-worth-it",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). LANDING TEST: the subject's own clauses end on 'Not worth it' after the contrast marker — lands low; 'delicious' is not the landing. v21 BANKED Red Ash (doc fb1ea526).",
+    "posts": [
+      {
+        "id": "t3_v22f",
+        "subreddit": "austinfood",
+        "title": "Red Ash — am I the only one?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22f1",
+            "body": "You know when you go to the movies and the popcorn is soo buttery and delicious but then about halfway through you start to feel like shit? Thats how I felt about Red Ash."
+          },
+          {
+            "id": "t1_v22f2",
+            "body": "I've been to Red Ash twice now and both times I found the food delicious, but ended up throwing up a tummy full of grease the next morning. Not worth it.",
+            "parent_id": "t1_v22f1"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_v22f2",
+          "emitsNothing": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "V22-landing-buffet-palace-best-bet-of-panned-field",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). LANDING TEST meaning rule: a superlative relative to a panned field ('They all suck … probably your best bet still') endorses nothing; 'used to be great' is the past. v21 BANKED Buffet Palace (doc 0059600b).",
+    "posts": [
+      {
+        "id": "t3_v22g",
+        "subreddit": "austinfood",
+        "title": "Best Asian buffet in or near Austin?",
+        "body": "My son asked me to see what is the best Asian buffet in or near Austin Texas. He is wanting real crab meat, crawfish, shrimp, fried squid, etc.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22g1",
+            "body": "They all suck. Buffet palace used to be great but why down hill during the pandemic. Probably your best best still"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V22-baseline-mooyah-a-okay",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). THE BASELINE TEST: 'A okay' sits AT the ordinary in the writer's idiom — withholds. v21 BANKED Mooyah (doc 340d29cd).",
+    "posts": [
+      {
+        "id": "t3_v22h",
+        "subreddit": "austinfood",
+        "title": "Mooyah burgers",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22h1",
+            "body": "That burger has always been amazing whenever I’ve been there. I don’t think they’re even capable of making a bad burger."
+          },
+          {
+            "id": "t1_v22h2",
+            "body": "yeah been to Mooyah too and it’s A okay.",
+            "parent_id": "t1_v22h1"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_v22h2",
+          "emitsNothing": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "V22-baseline-aight-then-small",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). BASELINE + LANDING: 'definitely aight' sits at the ordinary and the clause then lands on 'very small' — nothing emits. v21 BANKED a cheesesteak (doc 0dfd022e).",
+    "posts": [
+      {
+        "id": "t3_v22i",
+        "subreddit": "austinfood",
+        "title": "Coast 2 Coast subs — anyone tried it?",
+        "body": "New place in the same building as Pizzaria Grata, called Coast 2 Coast. Has anyone tried it? I have not, and wouldn't know a proper cheesesteak from a bad one.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22i1",
+            "body": "That place has been around since like summer of 2022, back when Grata was still in the Valero station on Manchaca. It's definitely aight, but it's very small cheesesteak."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V22-meaning-sarcasm-waffle-house",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). LANDING TEST meaning rule: sarcasm read for what the writer means — 'Makes sense if your go to is Waffle House' endorses nothing. v21 BANKED Waffle House (doc b7da7b69).",
+    "posts": [
+      {
+        "id": "t3_v22j",
+        "subreddit": "austinfood",
+        "title": "Kerbey Lane is the best diner in town, hands down",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22j1",
+            "body": "Makes sense if your go to is Waffle House"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V22-baseline-above-average-banks",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). THE BASELINE TEST (owner-ruled): a phrase placing the food ABOVE the ordinary, however slightly ('above average'), leans positive as the whole verdict — banks with its carrier. v21 silent.",
+    "posts": [
+      {
+        "id": "t3_v22k",
+        "subreddit": "austinfood",
+        "title": "What's your favorite food rn?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22k1",
+            "body": "Bahn MI Galang is above average"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_v22k1",
+          "places": ["bahn mi galang"],
+          "somePraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "V22-directory-halal-list-nominates-every-entry",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). Directory rule re-keyed to the ANNOUNCING ACT (owner ruling): a diner answering an attribute-constrained rec ask with a categorized 40-name list is NOMINATING every entry; each banks as a pick with the ask's attribute `halal` (Step D fit). v21 read it as a directory and went silent (doc 0fcacdcb).",
+    "posts": [
+      {
+        "id": "t3_v22l",
+        "subreddit": "austinfood",
+        "title": "Halal recommendations?",
+        "body": "Recently moved to Austin after living in NYC my entire life. Considering how diverse NYC was there were tons halal food options, any halal recommendations I should consider?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22l1",
+            "body": "Indian- spice fine, star of india, sizzler, biriyani n grill, rock n grill Pakistani - zaviya grill, mirchi express, desi dhaba Bangladeshi - shahi cafe Afghan - afghani village Palestine - peace cafe Irani - caspian, shandeez Turkish - mezzme, usta kabobgy, kismet corner Lebanese - beirut reatrurant, al demashqi, rayan, tarbouch, phoenician Buffet - Dimassi Fastfood - halal wings, incredible burgers, promise pizza, urban turban, halal corner, halal taza, halal bros, buzadoah, yalla burgers, halal time, pita shack"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_v22l1",
+          "places": [
+            "star of india",
+            "zaviya grill",
+            "shahi cafe",
+            "peace cafe",
+            "halal bros",
+            "pita shack"
+          ],
+          "attributes": ["halal"],
+          "somePraise": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "V22-directory-vegan-list-stays-green",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). Held side of the announcing-act ruling: an annotated vegan list under a vegan ask is a pick per name, each with `vegan` — v21 already banked all ten; this pins it against drift.",
+    "posts": [
+      {
+        "id": "t3_v22m",
+        "subreddit": "austinfood",
+        "title": "Vegan visiting Austin — where should I eat?",
+        "body": "Hi! I am a vegan and will be visiting my sister in Austin soon. I’ve been googling some restaurants to try and I see Austin has a lot of vegan spots! Where should I go?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22m1",
+            "body": "Loro, eldorado, curras, lenoir will accommodate vegans, sway, Elizabeth street cafe, biscuits and groovy for brunch, ezov, asters, Fonda San Miguel (controversial here lately but they do have a separate vegan menu), Sazan or daiboku for ramen"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_v22m1",
+          "places": [
+            "loro",
+            "eldorado",
+            "curras",
+            "lenoir",
+            "sway",
+            "ezov",
+            "asters",
+            "fonda san miguel"
+          ],
+          "attributes": ["vegan"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "V22-volunteer-describe-cornbread",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). VOLUNTEER PRINCIPLE scope: an answer to a describe question ('sweet type or savory type?') hands nothing to go get — facts, no volunteered item. v21 banked cornbread + honey butter (doc bb9f0f10).",
+    "posts": [
+      {
+        "id": "t3_v22n",
+        "subreddit": "austinfood",
+        "title": "Cornbread at True Texas BBQ",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22n1",
+            "body": "Is it the sweet type or the savory type? I’ve been meaning to try their BBQ, my neighbor raves about it"
+          },
+          {
+            "id": "t1_v22n2",
+            "body": "It's a little sweet and they serve it with honey butter",
+            "parent_id": "t1_v22n1"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_v22n2",
+          "emitsNothing": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "V22-volunteer-explain-dumplings-steamed",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). VOLUNTEER PRINCIPLE scope: an answer to a how-is-it-made question explains and volunteers nothing — Din Tai Fung is cited as a fact about process, not handed as a thing to go get. v21 banked `dumpling` (doc 5db4e531).",
+    "posts": [
+      {
+        "id": "t3_v22o",
+        "subreddit": "austinfood",
+        "title": "Are dumplings at restaurants ever actually made to order?",
+        "body": "Or is everything pre-made and reheated?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22o1",
+            "body": "They can be. Din tai fung and other less famous places make them fresh. Maybe not specifically “to order” but they’re steamed on demand, not cooked in advance and held at temp."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V22-volunteer-does-it-magnolia-pancakes",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). VOLUNTEER PRINCIPLE scope: 'does Magnolia have waffles?' is a does-it question; the factual answer ('No waffles but they do have gingerbread pancakes') volunteers nothing. v21 banked two pancake dishes (doc 5cf4b9f9).",
+    "posts": [
+      {
+        "id": "t3_v22p",
+        "subreddit": "austinfood",
+        "title": "Does Magnolia Cafe have waffles?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22p1",
+            "body": "I can confirm magnolia does not have waffles!"
+          },
+          {
+            "id": "t1_v22p2",
+            "body": "No waffles but they do have gingerbread pancakes and corn pancakes.",
+            "parent_id": "t1_v22p1"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_v22p2",
+          "emitsNothing": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "V22-volunteer-todays-board-not-standing",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). VOLUNTEER PRINCIPLE scope: 'The current daily special at X is swordfish' reports today's board, not a standing thing to go get — nothing at Little Darlin'; the Los Palomas clause is its own verdict and banks. v21 banked swordfish (doc d2712f36).",
+    "posts": [
+      {
+        "id": "t3_v22q",
+        "subreddit": "austinfood",
+        "title": "Decent fish meal in Austin?",
+        "body": "where in Austin can one get a decent fish meal like halibut, redfish, mahi-mahi, cod, sword fish, flounder, barramundi, snapper, trout etc. that is blackened or grilled or pan seared?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22q1",
+            "body": "The current daily special at Little Darlin’ is swordfish with potatoes and broccolini. Los Palomas has an excellent Redfish Al Mojo De Ajo."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_v22q1",
+          "places": ["los palomas"],
+          "items": ["redfish al mojo de ajo"],
+          "notRestaurants": ["little darlin'", "the little darlin'"],
+          "notFoods": ["swordfish"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "V22-fit-quotation-parents-not-family-friendly",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). FIT IS A QUOTATION: the ask wrote no 'family-friendly' — parents in their 50s are an inferred constraint and assert nothing; the picks still bank. v21 stamped `good for children` on Jack Allen's (doc 834195d3).",
+    "posts": [
+      {
+        "id": "t3_v22r",
+        "subreddit": "austinfood",
+        "title": "Places to take my parents?",
+        "body": "My parents (in their late 50s) are starting to visit me more often which is great, but I don’t eat out much and can only suggest so many places. So far they’ve liked Mandola’s and Loro. Suggestions?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22r1",
+            "body": "I usually take my parents to Jack Allens if we are going to a sit down type of restaurant and they always enjoy it."
+          },
+          {
+            "id": "t1_v22r2",
+            "body": "Since they liked Mandola’s, they also have a higher end Italian restaurant in Driftwood - Trattoria Lisina. Duchman Family Winery is on the same property if you want to start with some wine tasting and snacks then walk next door for dinner."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "places": ["jack allens", "trattoria lisina"],
+      "notAttributes": [
+        "family-friendly",
+        "family friendly",
+        "good for children",
+        "kid friendly",
+        "kid-friendly",
+        "good for groups"
+      ]
+    }
+  },
+  {
+    "id": "V22-polarity-pricey-but-worth-it-never-affordable",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). Polarity is absolute: 'a bit pricey … but IMO well worth it' is praise riding the carrier and NEVER `affordable`. v21 stamped affordable on Comadre (doc 8350d756).",
+    "posts": [
+      {
+        "id": "t3_v22s",
+        "subreddit": "austinfood",
+        "title": "Finally tried Comadre Panadería",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22s1",
+            "body": "Was this the most recommended spot? Never been but when I saw the details/photos of them making them, I knew these were going to be overpriced and not like any traditional concha."
+          },
+          {
+            "id": "t1_v22s2",
+            "body": "It was one of the top, yes! They are a bit pricey so not an every weekend thing but IMO well worth it for the occasional treat.",
+            "parent_id": "t1_v22s1"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_v22s2",
+          "somePraise": true,
+          "notAttributes": ["affordable", "cheap"]
+        },
+        {
+          "source": "t1_v22s1",
+          "emitsNothing": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "V22-onequestion-no-tip-policy-ask",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). THE ONE QUESTION: a mediocre kitchen correctly answers 'paid good wages and no tipping' — a policy ask; bare picks assert fit only and emit nothing. Tso's own clause 'Delicious food' is a vouch on its own words and banks (no `affordable`). v21 banked Ikea, Tsuke Edomae, Black Star as picks.",
+    "posts": [
+      {
+        "id": "t3_v22t",
+        "subreddit": "austinfood",
+        "title": "Restaurants where workers are paid well and there's no tipping?",
+        "body": "I'd like to try out a restaurant where the workers are paid good wages and I don't have to tip. Any suggestions?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22t1",
+            "body": "Ikea cafe"
+          },
+          {
+            "id": "t1_v22t2",
+            "body": "Tsuke Edomae."
+          },
+          {
+            "id": "t1_v22t3",
+            "body": "Black Star Co-op"
+          },
+          {
+            "id": "t1_v22t4",
+            "body": "Tsos Chinese delivery has got you. Delicious food and they don’t accept tips cuz they pay staff well."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_v22t1",
+          "emitsNothing": true
+        },
+        {
+          "source": "t1_v22t2",
+          "emitsNothing": true
+        },
+        {
+          "source": "t1_v22t3",
+          "emitsNothing": true
+        },
+        {
+          "source": "t1_v22t4",
+          "places": ["tsos|tsos chinese delivery|tsos chinese"],
+          "notAttributes": ["affordable"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "V22-onequestion-stoned-cooks-joke-ask",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). THE ONE QUESTION: a joke criterion is answered correctly by any kitchen — picks assert fit only; nothing emits. v21 banked Cheba Hut despite the prompt's own example (doc 61bfeb77).",
+    "posts": [
+      {
+        "id": "t3_v22u",
+        "subreddit": "austinfood",
+        "title": "Which Austin restaurant is most likely to have stoned cooks?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22u1",
+            "body": "And don’t say “all of them.” There’s got to be one with the absolute best chance."
+          },
+          {
+            "id": "t1_v22u2",
+            "body": "Everyone saying Thunder cloud but Cheba Hut is actually a *weed themed* Being stoned is a requirement",
+            "parent_id": "t1_v22u1"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V22-onequestion-treats-employees-well",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). THE ONE QUESTION + HEARSAY: 'which places treat employees well' is a non-taste ask and the reply relays what staff say — nothing emits. v21 banked Dai Due (doc 9aef8272).",
+    "posts": [
+      {
+        "id": "t3_v22v",
+        "subreddit": "austinfood",
+        "title": "Restaurants that treat their staff well?",
+        "body": "After reading about Fonda San Miguel’s nightmare sounding owner, wondering if folks have food or beverage establishments they’ve worked at where they were treated very well?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22v1",
+            "body": "Know some people at Dai Due - many many employees have stayed for years, pays well, good treatment. Anecdotal but gives me faith it’s real and possible"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V22-host-home-depot-tamale-lady",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). HOST VENUE IS NEVER THE VENDOR'S STAND-IN: the unnamed tamale lady consumes the verdict; the hardware store earns nothing. v21 banked `tamale` at The Home Depot (doc 4b9e7a94).",
+    "posts": [
+      {
+        "id": "t3_v22w",
+        "subreddit": "austinfood",
+        "title": "The tamale lady outside the Home Depot on Ben White",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22w1",
+            "body": "Yes! The day I saw her it was a Friday and we were getting supplies for decorating a wedding venue and the rehearsal dinner was that night so my best friend talked me out of getting any."
+          },
+          {
+            "id": "t1_v22w2",
+            "body": "Ooooo yeah, that lady makes exceptional tamales plus she’s a sweetheart.",
+            "parent_id": "t1_v22w1"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V22-host-hi-sign-truck",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). HOST VENUE law: 'Taco truck at Hi Sign is fire!' praises an unnamed truck; the brewery earns nothing. v21 banked Hi Sign Brewing (doc 935a306c).",
+    "posts": [
+      {
+        "id": "t3_v22x",
+        "subreddit": "austinfood",
+        "title": "Taco tour buddies?",
+        "body": "Yes I know that’s cheesy af, but if you like tacos as much as I do let’s go on a taco tour and try all the tacos we can in the area. I like beer too if you are a fan of breweries.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22x1",
+            "body": "Taco truck at Hi Sign is fire!"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V22-host-draught-house-truck",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). HOST VENUE law: 'the truck at Draught House' is an unnamed vendor; the pub earns nothing. v21 banked Draught House (doc 0a8e0eeb).",
+    "posts": [
+      {
+        "id": "t3_v22y",
+        "subreddit": "austinfood",
+        "title": "Underrated spots around Rosedale?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22y1",
+            "body": "There’s a Garbo’s on North Lamar in the old Counter Cafe building now. One I never see mentioned here that is pretty decent is Little House."
+          },
+          {
+            "id": "t1_v22y2",
+            "body": "Another recommendation for the truck at Draught House. They had a DJ last night when I walked by. My dog insisted that she stop and beg",
+            "parent_id": "t1_v22y1"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_v22y2",
+          "emitsNothing": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "V22-shelf-99-ranch-food-court-banks",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). PLACE TEST served-or-sold: a store's food court SERVES — the youtiao bank from both the parent ('pretty good', above the ordinary) and the reply ('blown away'). Held side of the grocery-case ruling (doc 41d56b2a).",
+    "posts": [
+      {
+        "id": "t3_v22z",
+        "subreddit": "austinfood",
+        "title": "Cheap lunch near the Crestview station?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22z1",
+            "body": "Try the food court at 99ranch. The youtiao there are pretty good."
+          },
+          {
+            "id": "t1_v22z2",
+            "body": "I just tried this for an impromptu lunch, and wow, I was blown away. So good and well priced. That whole shopping center is a fun place for an excursion, and right across Lamar from the Crestview train and bus stops.",
+            "parent_id": "t1_v22z1"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_v22z1",
+          "places": ["99ranch"],
+          "items": ["youtiao"]
+        },
+        {
+          "source": "t1_v22z2",
+          "places": ["99ranch"],
+          "items": ["youtiao"]
+        }
+      ]
+    }
+  },
+  {
+    "id": "V22-shelf-store-praised-as-store",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). PLACE TEST: a Japanese grocery praised AS a store ('Ashahi Imports slaps') is praise of aisles — nothing emits. v21 banked Asahi Imports (doc 5c61634d).",
+    "posts": [
+      {
+        "id": "t3_v22aa",
+        "subreddit": "austinfood",
+        "title": "Where to buy Japanese snacks and pantry stuff?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22aa1",
+            "body": "Asahi Imports"
+          },
+          {
+            "id": "t1_v22aa2",
+            "body": "This is the correct answer. It's a Japanese grocery store catacorner from the HEB.",
+            "parent_id": "t1_v22aa1"
+          },
+          {
+            "id": "t1_v22aa3",
+            "body": "And my axe! Legit tho - Ashahi Imports slaps",
+            "parent_id": "t1_v22aa2"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V22-shelf-grocery-bakery-case",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). Grocery case = shelf (owner ruling): a grocery's pastry/dessert case is stock taken home, not food served — nothing emits, however good.",
+    "posts": [
+      {
+        "id": "t3_v22ab",
+        "subreddit": "austinfood",
+        "title": "Birthday dessert for a crowd — bakery recs?",
+        "body": "Need something for ~20 people this weekend.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22ab1",
+            "body": "Central Market pastries or desserts"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V22-shelf-restaurant-take-home-masa",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). Restaurant mirror image: a restaurant selling a pantry good ('masa by the pint') is the shelf's — and the whole doc answers a buy-masa shelf errand. Nothing emits.",
+    "posts": [
+      {
+        "id": "t3_v22ac",
+        "subreddit": "austinfood",
+        "title": "Best tortillería to buy masa for tamales?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22ac1",
+            "body": "Suerte used to sell their masa by the pint"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V22-shelf-whole-foods-bakery-case",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). Grocery case = shelf: 'Whole foods bakery has been better for everything I've tried' praises a grocery's bakery case — retail; no place, no `expensive`. v21 banked Whole Foods with `expensive` (doc 48a0ed89).",
+    "posts": [
+      {
+        "id": "t3_v22ad",
+        "subreddit": "austinfood",
+        "title": "Tried the new HEB in-store bakery croissants",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22ad1",
+            "body": "It’s better than Whole Foods but not near the quality of a true bakery like Abby Jane"
+          },
+          {
+            "id": "t1_v22ad2",
+            "body": "Whole foods bakery has been better for everything I've tried. It's just expensive.",
+            "parent_id": "t1_v22ad1"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "t1_v22ad2",
+          "emitsNothing": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "V22-shelf-bottled-soda-in-cooler",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). Shelf: a bottled soda found 'in the cooler' at two stores is retail — no place, no ingredient. v21 minted `blueberry` ingredients at Central Market and Natural Gardner (doc 7494638d).",
+    "posts": [
+      {
+        "id": "t3_v22ae",
+        "subreddit": "austinfood",
+        "title": "Where can I find that blueberry soda?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22ae1",
+            "body": "No lie I see it at Heb all the time. The belterra heb has it and so does the nutty brown. I know this was an old post but thought I’d add on"
+          },
+          {
+            "id": "t1_v22ae2",
+            "body": "I appreciate this note! Btw, I actually found the blueberry soda at Central Market and, of all places, in the cooler at Natural Gardner.",
+            "parent_id": "t1_v22ae1"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V22-shelf-yogurt-maker-retail",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). Shelf: a yogurt maker's tubs preordered for farmer's-market pickup and 'carried around town' are retail however amazing — nothing emits (carry-forward from the audit).",
+    "posts": [
+      {
+        "id": "t3_v22af",
+        "subreddit": "austinfood",
+        "title": "Best yogurt in Austin?",
+        "body": "Looking for really good yogurt — farmers market or shops. Any recs?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22af1",
+            "body": "Mother Culture"
+          },
+          {
+            "id": "t1_v22af2",
+            "body": "Their yogurt is absolutely amazing. You can preorder for farmer's market pickup and it's carried around town",
+            "parent_id": "t1_v22af1"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V22-hearsay-proxy-spouse",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). HEARSAY by proxy: 'She swears by Papasitos version' is the spouse's verdict, not the writer's — whose mouth did it come out of? Nothing emits. v21 banked tres leches at Pappasito's (doc 62dc4b9c).",
+    "posts": [
+      {
+        "id": "t3_v22ag",
+        "subreddit": "austinfood",
+        "title": "Tres leches cake for a birthday?",
+        "body": "It's my friends bday this Friday and i wanna get her a tres leches cake! Any recommendations?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22ag1",
+            "body": "Tres Leches is my wife’s favorite dessert and she’s from Austin. She swears by Papasitos version. 🤷🏼‍♂️"
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V22-hearsay-proxy-ratings",
+    "contract": "v17",
+    "why": "v22 (2026-09-01, audit-v21 live case). HEARSAY by proxy: a review count and star rating is the crowd's verdict, not the writer's; 'avoid Abbys' is NEGATIVE CONTENT. Nothing emits. v21 banked Mr Crabbys (doc 4c8cf871).",
+    "posts": [
+      {
+        "id": "t3_v22ah",
+        "subreddit": "austinfood",
+        "title": "Seafood boil spots?",
+        "body": "Any one got any good recommendations for seafood boil spots in town? Preferable anything with crab and lobster.",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "t1_v22ah1",
+            "body": "Drive to Mr Crabbys in SA. They have like 7,600 reviews and have a 4.9 rating. Avoid Abbys in Kyle like the plauge."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
     }
   }
 ]
