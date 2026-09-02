@@ -2733,33 +2733,6 @@
     }
   },
   {
-    "id": "N8-geo-fredericksburg",
-    "why": "Geography gate (no rule exists in any prompt yet): Fredericksburg/Johnson City picks in an Austin community must not enter the Austin corpus once the community-scope rule lands.",
-    "contract": "v16",
-    "posts": [
-      {
-        "id": "t3_166i6yq",
-        "title": "Fredericksburg wineries and food, cool outdoor spots?",
-        "body": "Going to enchanted rock this weekend and want to grab some food and wine after in Fredericksburg. Any must-go to places that serve wine and/or food outdoors? Looking for a nice patio maybe with misters and some shade.\n\nThanks!",
-        "comments": [
-          {
-            "id": "t1_jylgsjf",
-            "body": "Altdorf Beer Garden in Fredericksburg is solid. Also, Hye Thai (in Johnson City) is surprisingly good Thai.\n\nMost wineries don’t have food, and some are reservation only, especially on weekends (not sure if Labor Day is good or bad for you). If you go that route, call/ email and ask them about reservations.\n\nI’ve also eaten at Pecan St. Brewing in Johnson City and it’s also good."
-          },
-          {
-            "id": "t1_jyksfhy",
-            "body": "I'd say about 4/10 wineries in Fredericksburg have good wine and food is almost a mystery entirely. Plenty of great outdoor spaces!"
-          }
-        ],
-        "subreddit": "austinfood"
-      }
-    ],
-    "expect": {
-      "notRestaurants": ["altdorf beer garden", "hye thai", "pecan st. brewing"]
-    },
-    "pending": "out-of-market exclusion is owned by the grounding layer (deterministic coordinates), not extraction — ruled 2026-08-26 after 3x model non-compliance; this case documents the decision and re-arms if extraction ever claims the job again"
-  },
-  {
     "id": "N9-hedge-adjacency-fixe",
     "why": "Hedge adjacency (t1_nt8fn1w): \"consistently pretty good\" for Fixe must emit even though the neighboring clauses hedge Boa (hearsay) and Nido (middling) — a hedge strips exactly its own clause. Re-derived 2026-08-26: 'I liked Fixe well enough' is itself a middling verdict (A.2 net direction) — t1_nt8ahyo emits nothing; the real praise carrier is t1_nt8fn1w ('consistently pretty good'). Extended 2026-08-29: 'been at least once a year for brunch or HH' — brunch is an occasion ATTENDED, never a dish (named-offering ruling).",
     "contract": "v16",
