@@ -53,6 +53,11 @@ LEFT JOIN collection_extraction_input_documents eid
 -- canonical-name match with at least one overlapping evidence document.
 -- Matched pairs move to the RESOLVE-SHIFT section; LOST SUPPORT reads real
 -- losses only.
+-- Support is evidence of EITHER kind: an item/attribute event OR a bare place
+-- mention (core_restaurant_events). Reading only entity_events made a place
+-- whose old support was an over-banked attribute and whose new support is a
+-- clean place mention read as LOST (v21 diff 2026-09-01: 65 of 89 anchored
+-- "losses" were this artifact).
 CREATE TEMP TABLE active_entity_docs AS
 SELECT x.entity_id, x.document_id
 FROM (
@@ -65,6 +70,11 @@ FROM (
   FROM core_restaurant_entity_events ev
   JOIN target_docs d ON d.document_id = ev.source_document_id
    AND d.active_extraction_run_id = ev.extraction_run_id
+  UNION
+  SELECT pe.restaurant_id, pe.source_document_id
+  FROM core_restaurant_events pe
+  JOIN target_docs d ON d.document_id = pe.source_document_id
+   AND d.active_extraction_run_id = pe.extraction_run_id
 ) x;
 
 CREATE TEMP TABLE shadow_entity_docs AS
@@ -77,6 +87,10 @@ FROM (
   SELECT ev.restaurant_id, ev.source_document_id
   FROM core_restaurant_entity_events ev
   JOIN shadow_runs sr ON sr.extraction_run_id = ev.extraction_run_id
+  UNION
+  SELECT pe.restaurant_id, pe.source_document_id
+  FROM core_restaurant_events pe
+  JOIN shadow_runs sr ON sr.extraction_run_id = pe.extraction_run_id
 ) x;
 
 CREATE TEMP TABLE lost_entities AS
