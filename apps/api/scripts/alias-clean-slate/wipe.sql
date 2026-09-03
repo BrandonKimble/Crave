@@ -40,7 +40,14 @@ SELECT count(*) AS merge_losers_to_unarchive
  WHERE e.status = 'archived'
    AND e.born_extraction_run_id IS NULL
    AND EXISTS (SELECT 1 FROM entity_redirects r
-                WHERE r.from_entity_id = e.entity_id);
+                WHERE r.from_entity_id = e.entity_id)
+   -- A loser whose identity_key is HELD by a live entity was a fold-twin
+   -- merge — identity by construction, nothing to re-hear, and re-activating
+   -- it would violate the attribute/ingredient identity uniques. Only
+   -- judgment-based merges (different keys) reopen.
+   AND NOT EXISTS (SELECT 1 FROM core_entities t
+                    WHERE t.type = e.type AND t.identity_key = e.identity_key
+                      AND t.status <> 'archived');
 
 SELECT count(*) AS redirects_to_delete FROM entity_redirects;
 
@@ -49,7 +56,14 @@ UPDATE core_entities e
  WHERE e.status = 'archived'
    AND e.born_extraction_run_id IS NULL
    AND EXISTS (SELECT 1 FROM entity_redirects r
-                WHERE r.from_entity_id = e.entity_id);
+                WHERE r.from_entity_id = e.entity_id)
+   -- A loser whose identity_key is HELD by a live entity was a fold-twin
+   -- merge — identity by construction, nothing to re-hear, and re-activating
+   -- it would violate the attribute/ingredient identity uniques. Only
+   -- judgment-based merges (different keys) reopen.
+   AND NOT EXISTS (SELECT 1 FROM core_entities t
+                    WHERE t.type = e.type AND t.identity_key = e.identity_key
+                      AND t.status <> 'archived');
 
 DELETE FROM entity_redirects;
 
