@@ -37,13 +37,31 @@ visible in cert form: four wordings of the doctrine each fixed the pin
 while breaking FA63 (shelf law) or FA47 (affirmation carrier) — a
 measured seesaw. The pin is parked as THIS design's acceptance test.
 
-## Next experiment (queued)
+## Round 2 (repeat=1, all three variants)
 
-Run `perPost` on the same chunks: if isolation alone kills the leaks, the
-design conversation becomes "how to buy isolation cheaply" (per-post
-calls + prompt caching for the shared 27k-token system prompt), not "how
-to teach a worksheet". Also queued: a large random sample (~500 docs) for
-precision/recall beyond the leak set once a variant earns it.
+| variant | leaks | cost vs single |
+|---|---|---|
+| single | 4 | 1.0x |
+| two-pass worksheet | 5 | ~2.0x |
+| perPost isolation | 6 | ~1.0x |
+
+**The decisive discovery: `perPost` == `single` by construction** — the
+production chunks each hold ONE post; the "~30 documents" are that post's
+comments. Post-level isolation is already what production does. So the
+leak floor does not live between unrelated posts; it lives INSIDE one
+thread's 30+ comments (castle-hill leaks 3-5 mentions per run from its
+own thread even with the closure edit in force — the model fails to apply
+the post-object-wide PLACE STATUS closure).
+
+## Verdict + the real next design question
+
+Neither the worksheet (2x cost, noise-level gain) nor post isolation
+(a no-op) moves the floor. The only isolation regime left is
+PER-COMMENT (comment + its ancestor chain — the exact regime where every
+pin certifies 3/3): ~30 calls per thread, viable only with prompt caching
+on the shared ~27k-token system prompt. That is the experiment that
+decides the two-pass question, and it needs a caching-aware harness —
+queued, not run.
 
 ## Position analysis (owner theory, tested 2026-09-03)
 
