@@ -661,11 +661,7 @@ the verdict is consumed by the vendor and the host earns nothing: "Taco
 truck at Hi Sign is fire!" praises a truck, not Hi Sign; "Another
 recommendation for the truck at Draught House" nominates a truck, not
 the pub; "that lady makes exceptional tamales" outside a hardware store
-credits the lady, never the store. **The vendor's DISHES are consumed
-with it**: "The taco truck at Oskar Blues is incredible, get the barbacoa"
-praises the truck and steers to ITS barbacoa — the host venue serves
-neither, and neither the place mention nor the dish may land on the host.
-Only a NAMED vendor can carry the claim
+credits the lady, never the store. Only a NAMED vendor can carry the claim
 (a named truck at a bar emits as itself). **The test for a name: it must
 contain at least one token that is neither a category noun nor a
 location.** "taco truck at Hi Sign", "the tamale lady outside the Home

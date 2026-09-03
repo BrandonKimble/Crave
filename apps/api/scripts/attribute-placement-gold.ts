@@ -14,12 +14,15 @@
 import 'dotenv/config';
 process.env.PROCESS_ROLE ||= 'api';
 
-import { readFileSync } from 'fs';
 import { join } from 'path';
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from '../src/app.module';
 import { LLMService } from '../src/modules/external-integrations/llm/llm.service';
-import { stopCronsForScript } from '../src/shared/utils/stop-crons';
+import {
+  bootGoldApp,
+  certify,
+  loadGoldCases,
+  out,
+  parseGoldArgs,
+} from './lib/gold-harness';
 
 interface GoldCase {
   id: string;
@@ -32,30 +35,12 @@ interface GoldCase {
 }
 
 async function bootstrap(): Promise<void> {
-  let repeat = 3;
-  let only: string | null = null;
-  for (const arg of process.argv.slice(2)) {
-    if (arg.startsWith('--repeat=')) repeat = Number(arg.split('=')[1]) || 3;
-    else if (arg.startsWith('--only=')) only = arg.split('=')[1];
-    else throw new Error(`Unknown argument: ${arg}`);
-  }
-
-  const fixture = JSON.parse(
-    readFileSync(
-      join(__dirname, 'fixtures/attribute-placement-gold-cases.json'),
-      'utf8',
-    ),
-  ) as { cases: GoldCase[] };
-  const cases = only
-    ? fixture.cases.filter((c) => c.id === only)
-    : fixture.cases;
-  if (!cases.length) throw new Error(`No cases matched --only=${only}`);
-
-  const app = await NestFactory.createApplicationContext(AppModule, {
-    logger: ['error', 'warn'],
-  });
-  stopCronsForScript(app);
-  const out = (msg = '') => process.stdout.write(`${msg}\n`);
+  const { repeat, only } = parseGoldArgs();
+  const cases = loadGoldCases<GoldCase>(
+    join(__dirname, 'fixtures/attribute-placement-gold-cases.json'),
+    only,
+  );
+  const app = await bootGoldApp();
 
   try {
     const llm = app.get(LLMService);
@@ -85,20 +70,12 @@ async function bootstrap(): Promise<void> {
       }
     }
 
-    out('\n==== CERTIFICATION ====');
-    let allPass = true;
-    for (const goldCase of cases) {
-      const n = hits.get(goldCase.id) ?? 0;
-      const grade = n === repeat ? 'PASS' : n > 0 ? 'FLAKY' : 'FAIL';
-      if (grade !== 'PASS') allPass = false;
-      out(`  ${grade.padEnd(6)} ${n}/${repeat}  ${goldCase.id}`);
-    }
-    out(
-      allPass
-        ? `\nALL ${cases.length} CASES PASS x${repeat} — prompt certified`
-        : '\nNOT CERTIFIED — fix the prompt before the ontology hears with it',
+    certify(
+      cases.map((c) => c.id),
+      hits,
+      repeat,
+      { failureHint: 'fix the prompt before the ontology hears with it' },
     );
-    if (!allPass) process.exitCode = 1;
   } finally {
     await app.close();
   }

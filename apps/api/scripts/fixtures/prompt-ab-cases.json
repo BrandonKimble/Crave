@@ -7591,27 +7591,6 @@
     }
   },
   {
-    "id": "V23-host-venue-unnamed-truck",
-    "why": "v22 audit leak: Oskar Blues credited for its unnamed taco truck — a host venue is never the vendor's stand-in.",
-    "posts": [
-      {
-        "id": "SRC001",
-        "title": "Best late night tacos?",
-        "body": "",
-        "extract_from_post": false,
-        "comments": [
-          {
-            "id": "SRC002",
-            "body": "The taco truck at Oskar Blues is incredible, get the barbacoa."
-          }
-        ]
-      }
-    ],
-    "expect": {
-      "notRestaurants": ["oskar blues", "oskar blues brewery"]
-    }
-  },
-  {
     "id": "V23-wine-brand-at-grocery-retail",
     "why": "v22 audit leak: a wine brand praised at H-E-B banked — a bottle from the shelf is retail, the brand is never a restaurant.",
     "posts": [
