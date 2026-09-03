@@ -93,7 +93,9 @@ function buildHarness(rows: Row[]) {
       }
       return hits.map((r) => ({
         entity_id: r.entityId,
-        identity_key: fold(r.name),
+        // The two-arm pre-sink (clean-slate item 4) selects the matched key
+        // as `fold` — the double mirrors the real column name.
+        fold: fold(r.name),
       }));
     }
     // ensureRejectTombstone live-twin probe: single fold, active/pending.

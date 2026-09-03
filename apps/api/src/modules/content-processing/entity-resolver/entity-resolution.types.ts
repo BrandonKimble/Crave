@@ -68,6 +68,19 @@ export interface EntityResolutionResult {
    *  content-processing resolution. */
   decomposed?: boolean;
   matchedName?: string;
+  /**
+   * RESOLUTION TRACE (plans/alias-clean-slate.md item 2): WHAT decided this
+   * match, recorded so every event row can carry it into
+   * `metadata.resolution` — "why is this mention on this entity" becomes a
+   * column read instead of an unanswerable question. `form` = the surface
+   * spelling that matched (alias/joined tiers); `claimKey` = the ledger
+   * claim behind a judge decision (fuzzy tier / remembered verdict).
+   */
+  matchedVia?: {
+    tier: string;
+    form?: string;
+    claimKey?: string;
+  };
   originalInput: EntityResolutionInput;
 
   // Additional fields for transaction-based entity creation (PRD approach)

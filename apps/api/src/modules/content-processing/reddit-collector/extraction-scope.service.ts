@@ -197,6 +197,17 @@ export class ExtractionScopeService {
  * double-counting" incident class). The fragment lives HERE so the
  * definition cannot fork; readers import it, never hand-roll the join.
  */
+/** Inputs belonging to each document's ACTIVE generation — the scope the
+ *  observed-spelling backfill (alias-clean-slate) replays testimony from.
+ *  Exposed here because the activation pointer has ONE owner. */
+export function activeExtractionInputsJoinSql(): string {
+  return `FROM collection_extraction_inputs i
+    JOIN collection_extraction_input_documents idoc ON idoc.input_id = i.input_id
+    JOIN collection_source_documents d
+      ON d.document_id = idoc.document_id
+     AND d.active_extraction_run_id = i.extraction_run_id`;
+}
+
 export function activePlaceEventExistsSql(placeRef: string): string {
   return `EXISTS (
     SELECT 1 FROM core_restaurant_events ev_scope
@@ -678,7 +689,20 @@ export async function finalizeMergeCompletion(
   tx: Prisma.TransactionClient,
   canonicalId: string,
   duplicateId: string,
-  options: { pruneLoserScores?: boolean } = {},
+  options: {
+    pruneLoserScores?: boolean;
+    /** The ledger verdict that ordered this merge (plans/alias-clean-slate.md
+     *  item 3). With it, the loser's name folds onto the winner as a
+     *  `judged` identity alias tied to that verdict; without it the fold is
+     *  recall-grade — searchable, but earning no authority to route
+     *  mentions. Every court that merges should pass this. */
+    mergeVerdict?: {
+      lane: string;
+      claimKey: string;
+      ruleVersion: number;
+      foldVersion: number;
+    };
+  } = {},
 ): Promise<void> {
   if (canonicalId === duplicateId) {
     throw new Error(`self-merge refused: ${canonicalId}`);
@@ -686,7 +710,9 @@ export async function finalizeMergeCompletion(
   // A1: the loser's name + surface ROWS fold onto the winner through THE
   // surface writer — provenance ('merge_fold') and each carried row's
   // locale survive, where the old array_agg destroyed both.
-  await foldSurfacesFromMerge(tx, canonicalId, duplicateId);
+  await foldSurfacesFromMerge(tx, canonicalId, duplicateId, {
+    mergeVerdict: options.mergeVerdict,
+  });
   // Widening edges are a substrate too (F1): rekey both sides to the winner
   // HERE, in the one completion contract, so every merge court inherits it.
   await rekeySatisfiesEdgesToCanonical(tx, canonicalId, duplicateId);

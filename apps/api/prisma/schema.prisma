@@ -279,6 +279,26 @@ model EntitySurface {
   /// the machinery re-hears them.
   claimJudgeVersion Int?    @map("claim_judge_version")
 
+  /// THE GRADE OF CLAIM this row makes (plans/alias-clean-slate.md, 2026-09-02):
+  /// observed | judged | recall. AUTHORITY KEYS ON GRADE, NEVER ON `source`:
+  ///   observed — a person wrote this string about this entity; identity by
+  ///              construction (routes mentions, decides sameness).
+  ///   judged   — a court ruled it; authoritative only while the origin
+  ///              verdict's rule version is the lane's rule in force (a rule
+  ///              bump silently demotes it to recall until re-heard).
+  ///   recall   — a model's guess; search recall ONLY. Never routes a
+  ///              mention, never decides sameness.
+  /// Raw-SQL CHECKs (migration 20260902130000): grade ∈ the three values,
+  /// and judged ⇒ all four origin_* columns present.
+  claimGrade        String  @default("recall") @map("claim_grade") @db.VarChar(16)
+  /// The verdict that earned a `judged` claim, by ledger coordinates —
+  /// (lane, claim_key, rule_version, fold_version) into claim_verdicts.
+  /// NULL on observed/recall rows.
+  originLane        String? @map("origin_lane") @db.VarChar(64)
+  originClaimKey    String? @map("origin_claim_key")
+  originRuleVersion Int?    @map("origin_rule_version")
+  originFoldVersion Int?    @map("origin_fold_version")
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
 
@@ -295,6 +315,10 @@ model EntitySurface {
   @@index([entityId], map: "idx_entity_surface_entity_id")
   @@index([locale], map: "idx_entity_surface_locale")
   @@index([locale, status], map: "idx_entity_surface_locale_status")
+  // Raw-SQL PARTIAL index (migration 20260902130000):
+  // idx_entity_surface_identity_grade ON (form_folded)
+  // WHERE status='active' AND claim_grade <> 'recall' — the resolution
+  // read's slice. Partial, so not expressible here.
   @@map("entity_surface")
 }
 

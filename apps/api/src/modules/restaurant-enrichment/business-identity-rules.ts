@@ -40,6 +40,22 @@ import {
 } from '../content-processing/entity-resolver/entity-identity';
 
 /**
+ * THE PLACE-MERGE LANE (plans/alias-clean-slate.md item 3): every
+ * restaurant-identity merge — same-name/prefix/domain sweep verdicts and
+ * Places place-id collision merges — records a claim_verdicts row on this
+ * lane BEFORE its effect, and the loser-name alias it folds is `judged` at
+ * this rule version. Bumping the version demotes every such alias from
+ * identity to recall until re-heard — which is the entire point: a merge's
+ * authority must die with the rule that ordered it.
+ *
+ * Version 1 = the doctrine as of this file (evidence hierarchy + aggregator
+ * denylist + the owned-domain purity test). Bump it when the doctrine
+ * changes, exactly like ENTITY_DEDUPE_RULE_VERSION.
+ */
+export const PLACE_MERGE_LANE = 'place_merge';
+export const PLACE_MERGE_RULE_VERSION = 1;
+
+/**
  * Regex FRAGMENTS (POSIX-and-JS-compatible), the single source. Note
  * `square\.site` is escaped: a bare dot would also match e.g.
  * "squareXsite.com" — the spec pins the escape.

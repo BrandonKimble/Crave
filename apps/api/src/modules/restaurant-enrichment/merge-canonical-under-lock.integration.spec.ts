@@ -40,6 +40,7 @@
 import { PrismaClient } from '@prisma/client';
 import { PlaceEntityMergeService } from './restaurant-entity-merge.service';
 import { EntityAnchorRehomeService } from '../content-processing/entity-resolver/entity-anchor-rehome.service';
+import { ClaimVerdictLedgerService } from '../content-processing/entity-resolver/claim-verdict-ledger.service';
 
 const TEST_TAG = 'itest-merge-under-lock';
 
@@ -68,6 +69,7 @@ const service = new PlaceEntityMergeService(
   prisma as never,
   projectionRebuild,
   new EntityAnchorRehomeService(logger),
+  new ClaimVerdictLedgerService(prisma as never),
   logger,
 );
 
@@ -91,6 +93,11 @@ async function cleanup(): Promise<void> {
   await prisma.$executeRawUnsafe(`
     DELETE FROM entity_surface s USING core_entities e
     WHERE s.entity_id = e.entity_id AND e.name LIKE '${TEST_TAG}:%'`);
+  // Merge verdicts recorded against test entities (claim_key carries the
+  // entity ids, which are random uuids — match on the reason instead).
+  await prisma.$executeRawUnsafe(
+    `DELETE FROM claim_verdicts WHERE lane = 'place_merge' AND reason LIKE 'integration test:%'`,
+  );
   await prisma.$executeRawUnsafe(
     `DELETE FROM core_entities WHERE name LIKE '${TEST_TAG}:%'`,
   );
@@ -129,6 +136,7 @@ describe('mergeDuplicateRestaurant re-resolves its canonical under the lock', ()
       canonical: loser as never, // the STALE choice — what every caller holds
       duplicate: duplicate as never,
       canonicalUpdate: {},
+      reason: 'integration test: stale-canonical redirect follow',
     });
 
     // The evidence landed on the LIVE winner, not the tombstone.
@@ -156,6 +164,21 @@ describe('mergeDuplicateRestaurant re-resolves its canonical under the lock', ()
     expect(after.find((e) => e.entityId === winner.entityId)?.status).toBe(
       'active',
     );
+
+    // A MERGE IS A HEARING (plans/alias-clean-slate.md item 3): the verdict
+    // row lands BEFORE the effect and is marked executed after the commit.
+    // A merge with no ledger row is the log-line-only class the clean slate
+    // exists to end — 35 of 95 audited merges had no accountable ruling.
+    const verdicts = await prisma.$queryRawUnsafe<
+      Array<{ outcome: string; executed_at: Date | null }>
+    >(
+      `SELECT outcome, executed_at FROM claim_verdicts
+        WHERE lane = 'place_merge' AND claim_key = $1`,
+      `place|${duplicate.entityId}|${winner.entityId}`,
+    );
+    expect(verdicts).toHaveLength(1);
+    expect(verdicts[0].outcome).toBe('merge');
+    expect(verdicts[0].executed_at).not.toBeNull();
   });
 
   it('refuses when the chosen canonical is archived with nowhere to forward', async () => {
@@ -167,6 +190,7 @@ describe('mergeDuplicateRestaurant re-resolves its canonical under the lock', ()
         canonical: stranded as never,
         duplicate: duplicate as never,
         canonicalUpdate: {},
+        reason: 'integration test: archived canonical refusal',
       }),
     ).rejects.toThrow(/not active under the identity lock/);
 
@@ -192,6 +216,7 @@ describe('mergeDuplicateRestaurant re-resolves its canonical under the lock', ()
         canonical: canonical as never,
         duplicate: duplicate as never,
         canonicalUpdate: {},
+        reason: 'integration test: merged-away duplicate refusal',
       }),
     ).rejects.toThrow(/already merged away under the identity lock/);
     expect(rebuilt).toEqual([]);

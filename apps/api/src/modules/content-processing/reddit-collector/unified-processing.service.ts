@@ -27,6 +27,11 @@ import {
   identityProbeNames,
 } from '../entity-resolver/entity-identity';
 import { addSurfaces } from '../entity-resolver/entity-surface.service';
+import {
+  ENTITY_MATCH_LANE,
+  entityMatchLane,
+} from '../entity-resolver/entity-match-lane';
+import { ENTITY_DEDUPE_RULE_VERSION } from '../entity-resolver/entity-dedupe-rule';
 import { derivedBboxSelectSql } from '../../places/places-catalog.service';
 import {
   ProcessingResult,
@@ -1673,6 +1678,23 @@ export class UnifiedProcessingService implements OnModuleInit {
         }
       }
 
+      // RESOLUTION TRACE (plans/alias-clean-slate.md item 2): what decided
+      // each mention's identity, carried onto every event row's metadata so
+      // "why is this mention on this entity" is a column read forever. The
+      // deterministic tiers used to leave `{}` — the audit could not tell a
+      // Tier-2 alias route from an exact name hit on any of 44k events.
+      const resolutionTraceByTempId = new Map<
+        string,
+        { tier: string; form?: string; claimKey?: string }
+      >();
+      for (const resolution of resolutionResult.resolutionResults) {
+        if (!resolution.entityId) continue;
+        resolutionTraceByTempId.set(
+          resolution.tempId,
+          resolution.matchedVia ?? { tier: resolution.resolutionTier },
+        );
+      }
+
       // PRD 6.6.2: Single atomic transaction
       const result = await this.prismaService.$transaction(
         async (tx) => {
@@ -1836,13 +1858,33 @@ export class UnifiedProcessingService implements OnModuleInit {
                         .filter(Boolean),
                     ),
                   );
-                  if (revalidatedId && surfaces.length) {
+                  // THE ALIAS RATCHET ENDS HERE (plans/alias-clean-slate.md
+                  // item 2). This bank used to be an unmarked permanent
+                  // identity claim: one judge match froze the spelling as a
+                  // 0.95 Tier-2 route forever, immune to every later rule
+                  // bump and to the judge's own reversals (the bubble→boba
+                  // and mandala→Mandola's classes). The STRING is still
+                  // testimony — a person really wrote it — but the
+                  // ASSOCIATION with this entity is the judge's inference,
+                  // so the claim banks as grade `judged`, carrying the very
+                  // verdict that earned it. It routes mentions exactly as
+                  // long as that verdict's rule is the rule in force, and
+                  // not a day longer.
+                  const claimKey = resolution.matchedVia?.claimKey;
+                  if (revalidatedId && surfaces.length && claimKey) {
                     await addSurfaces(
                       tx,
                       revalidatedId,
                       surfaces.map((surface) => ({
                         form: surface,
                         source: 'extraction' as const,
+                        claimGrade: 'judged' as const,
+                        originVerdict: {
+                          lane: ENTITY_MATCH_LANE,
+                          claimKey,
+                          ruleVersion: ENTITY_DEDUPE_RULE_VERSION,
+                          foldVersion: entityMatchLane.keyFoldVersion,
+                        },
                       })),
                       {
                         touchLastUpdated: true,
@@ -2269,6 +2311,10 @@ export class UnifiedProcessingService implements OnModuleInit {
                   resolution.validatedAliases.map((alias) => ({
                     form: alias,
                     source: 'extraction' as const,
+                    // Grade OBSERVED: the resolver adopted this entity
+                    // because these spellings fold to its own name — a
+                    // person wrote the entity's name, no inference involved.
+                    claimGrade: 'observed' as const,
                   })),
                   {
                     touchLastUpdated: true,
@@ -2456,6 +2502,10 @@ export class UnifiedProcessingService implements OnModuleInit {
                       adoptSurfaces.map((alias) => ({
                         form: alias,
                         source: 'extraction' as const,
+                        // Grade OBSERVED: P2002 means the winner shares this
+                        // very name — the spelling IS the entity's name as a
+                        // person wrote it.
+                        claimGrade: 'observed' as const,
                       })),
                       {
                         markEmbeddingStale: false,
@@ -2494,6 +2544,9 @@ export class UnifiedProcessingService implements OnModuleInit {
                     createSurfaces.map((alias) => ({
                       form: alias,
                       source: 'extraction' as const,
+                      // Grade OBSERVED: the entity is being MINTED from
+                      // these spellings — they are its name as written.
+                      claimGrade: 'observed' as const,
                     })),
                     {
                       markEmbeddingStale: false,
@@ -2597,6 +2650,7 @@ export class UnifiedProcessingService implements OnModuleInit {
               tempIdToEntityIdMap,
               batchId,
               sourceMetadata.extractionTrace,
+              resolutionTraceByTempId,
             );
 
             placeMetadataOperations.push(
@@ -2843,6 +2897,10 @@ export class UnifiedProcessingService implements OnModuleInit {
     tempIdToEntityIdMap: Map<string, string>,
     batchId: string,
     extractionTrace: ExtractionTraceContext,
+    resolutionTraceByTempId?: Map<
+      string,
+      { tier: string; form?: string; claimKey?: string }
+    >,
   ): {
     placeMetadataOperations: PlaceMetadataUpdateOperation[];
     affectedConnectionIds: string[];
@@ -3005,6 +3063,20 @@ export class UnifiedProcessingService implements OnModuleInit {
         );
       }
 
+      // RESOLUTION TRACE onto event metadata: the place's trace rides every
+      // row of this mention (the place is what routing decided); the item's
+      // own trace rides its dish row. `{}` again only when a mention somehow
+      // resolved without a recorded tier — which the trace invariant counts.
+      const traceOf = (
+        tempId: string | null | undefined,
+      ): Prisma.InputJsonObject => {
+        const trace = tempId ? resolutionTraceByTempId?.get(tempId) : undefined;
+        return trace
+          ? ({ resolution: trace } as unknown as Prisma.InputJsonObject)
+          : {};
+      };
+      const placeTraceMeta = traceOf(placeLookupKey);
+
       if (inputId && sourceDocumentId && generalPraise) {
         placeEvents.push({
           extractionRunId: extractionTrace.extractionRunId,
@@ -3015,7 +3087,7 @@ export class UnifiedProcessingService implements OnModuleInit {
           evidenceType: 'general_praise',
           mentionedAt: mentionCreatedAt,
           sourceUpvotes: mention.source_ups ?? 0,
-          metadata: {},
+          metadata: placeTraceMeta,
         });
       }
 
@@ -3038,7 +3110,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             isMenuItem: mention.is_menu_item ?? null,
             mentionedAt: mentionCreatedAt,
             sourceUpvotes: mention.source_ups ?? 0,
-            metadata: {},
+            metadata: traceOf(itemEntityLookupKey),
           });
         }
 
@@ -3055,7 +3127,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             isMenuItem: mention.is_menu_item ?? null,
             mentionedAt: mentionCreatedAt,
             sourceUpvotes: mention.source_ups ?? 0,
-            metadata: {},
+            metadata: placeTraceMeta,
           });
         });
 
@@ -3072,7 +3144,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             isMenuItem: mention.is_menu_item ?? null,
             mentionedAt: mentionCreatedAt,
             sourceUpvotes: mention.source_ups ?? 0,
-            metadata: {},
+            metadata: placeTraceMeta,
           });
         });
 
@@ -3089,7 +3161,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             isMenuItem: mention.is_menu_item ?? null,
             mentionedAt: mentionCreatedAt,
             sourceUpvotes: mention.source_ups ?? 0,
-            metadata: {},
+            metadata: placeTraceMeta,
           });
         });
 
@@ -3106,7 +3178,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             isMenuItem: null,
             mentionedAt: mentionCreatedAt,
             sourceUpvotes: mention.source_ups ?? 0,
-            metadata: {},
+            metadata: placeTraceMeta,
           });
         });
       }

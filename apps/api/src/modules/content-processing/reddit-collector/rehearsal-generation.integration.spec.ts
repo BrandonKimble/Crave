@@ -70,8 +70,12 @@ describe('rehearsal generation — sandbox acceptance (live DB)', () => {
         madeEntities,
       );
     }
+    // By SOURCE alone misses flipped verdicts (flip() renames the source to
+    // 'steady'), which is how 37 probe rows leaked into the local ledger and
+    // turned the fold-drift stranded-ledger check red (found 2026-09-02).
     await prisma.$executeRawUnsafe(
-      `DELETE FROM claim_verdicts WHERE source = ANY($1::text[])`,
+      `DELETE FROM claim_verdicts
+        WHERE source = ANY($1::text[]) OR claim_key LIKE 'rehearsal-probe|%'`,
       [`rehearsal:${runA}`, `rehearsal:${runB}`],
     );
     await prisma.$disconnect();
@@ -157,7 +161,8 @@ describe('rehearsal generation — sandbox acceptance (live DB)', () => {
       lane: 'entity_dedupe',
       claimKey,
       ruleVersion: 999,
-      foldVersion: 1,
+      foldVersion: 0, // probe key is not fold-derived; 0 exempts the stranded-ledger scan
+
       outcome: 'new',
       reason: 'rehearsal acceptance probe',
       subject: {},
@@ -166,18 +171,18 @@ describe('rehearsal generation — sandbox acceptance (live DB)', () => {
     const ownRun = await ledger.decidedVerdicts(
       'entity_dedupe',
       999,
-      1,
+      0,
       [claimKey],
       { rehearsalRunId: runA },
     );
     const foreignRun = await ledger.decidedVerdicts(
       'entity_dedupe',
       999,
-      1,
+      0,
       [claimKey],
       { rehearsalRunId: runB },
     );
-    const liveCaller = await ledger.decidedVerdicts('entity_dedupe', 999, 1, [
+    const liveCaller = await ledger.decidedVerdicts('entity_dedupe', 999, 0, [
       claimKey,
     ]);
     expect(ownRun.has(claimKey)).toBe(true);

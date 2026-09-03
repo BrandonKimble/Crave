@@ -33,6 +33,7 @@ import { PrismaService } from '../src/prisma/prisma.service';
 import { CollectionEvidenceService } from '../src/modules/content-processing/reddit-collector/collection-evidence.service';
 import { ProjectionRebuildService } from '../src/modules/content-processing/reddit-collector/projection-rebuild.service';
 import { RehearsalGenerationService } from '../src/modules/content-processing/reddit-collector/rehearsal-generation.service';
+import { PlaceEntityMergeService } from '../src/modules/restaurant-enrichment/restaurant-entity-merge.service';
 import { ExtractionScopeService } from '../src/modules/content-processing/reddit-collector/extraction-scope.service';
 import { PromptRegistryService } from '../src/modules/external-integrations/llm/prompt-registry.service';
 import { RescoreCoordinatorService } from '../src/modules/content-processing/public-crave-score/rescore-coordinator.service';
@@ -332,6 +333,23 @@ async function main(): Promise<void> {
     console.log(
       `Rehearsal flip: ${flippedGeneration.entities} entities, ${flippedGeneration.surfaces} surfaces, ${flippedGeneration.verdicts} verdicts -> live.`,
     );
+
+    // CROSS-RUN TWIN UNIFICATION (plans/alias-clean-slate.md item 5): each
+    // shadow run minted independently, so the same restaurant can flip live
+    // as N same-(type, identity_key) twins (measured: 16 groups / 35
+    // entities per activation). Rather than hand-roll a fold here, run the
+    // SAME judged machinery the nightly convergence uses — evidence
+    // hierarchy, accent veto, owned-domain test, ledgered verdicts — until
+    // it stops merging (it pair-peels two members per group per pass).
+    // Held pairs are the judge's honest "not the same business"; they stay.
+    const twinSweep = app.get(PlaceEntityMergeService);
+    for (let pass = 1; pass <= 6; pass += 1) {
+      const swept = await twinSweep.sweepSameNameDuplicates({ apply: true });
+      console.log(
+        `Twin sweep pass ${pass}: ${swept.merged} merged, ${swept.held} held.`,
+      );
+      if (swept.merged === 0) break;
+    }
 
     let flipped = 0;
     for (const step of plan) {

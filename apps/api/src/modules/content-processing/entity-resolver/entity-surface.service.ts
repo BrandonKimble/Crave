@@ -6,6 +6,11 @@ import {
   normalizeSurface,
 } from './entity-identity';
 import { bankableLanguageTag } from '../../../shared/locale';
+import { ENTITY_DEDUPE_RULE_VERSION } from './entity-dedupe-rule';
+import {
+  PLACE_MERGE_LANE,
+  PLACE_MERGE_RULE_VERSION,
+} from '../../restaurant-enrichment/business-identity-rules';
 
 /**
  * THE SURFACE WRITER (multilingual plan A1) — the ONE writer of
@@ -104,6 +109,68 @@ export interface SurfaceInput {
    * its writer claims.
    */
   surfaceOrigin?: SurfaceOrigin;
+  /**
+   * THE GRADE OF CLAIM (plans/alias-clean-slate.md): 'observed' — a person
+   * wrote this string about this entity; 'judged' — a court ruled it (must
+   * carry {@link SurfaceInput.originVerdict}); 'recall' — a model's guess,
+   * search recall only. DEFAULTS TO 'recall', the safe direction: a writer
+   * that does not state its evidence banks a form that can never route a
+   * mention or decide sameness. Authority everywhere keys on THIS, never on
+   * `source`.
+   */
+  claimGrade?: SurfaceClaimGrade;
+  /** Ledger coordinates of the verdict that earned a 'judged' claim.
+   *  Required when claimGrade === 'judged'; ignored otherwise. */
+  originVerdict?: {
+    lane: string;
+    claimKey: string;
+    ruleVersion: number;
+    foldVersion: number;
+  };
+}
+
+export type SurfaceClaimGrade = 'observed' | 'judged' | 'recall';
+
+/** Precedence for the ON CONFLICT grade merge: a re-offer may only ever
+ *  RAISE a row's authority (recall < judged < observed) — a wrong upgrade
+ *  is repairable by demotion at the next rule bump or hearing, while a
+ *  silent downgrade would strip identity earned by real evidence. */
+const GRADE_RANK: Record<SurfaceClaimGrade, number> = {
+  recall: 0,
+  judged: 1,
+  observed: 2,
+};
+
+/**
+ * THE IDENTITY-GRADE PREDICATE (plans/alias-clean-slate.md item 2) — the ONE
+ * SQL spelling of "this surface may route a mention": grade 'observed'
+ * (identity by construction), or grade 'judged' whose origin verdict was
+ * heard AT THE RULE IN FORCE. A rule bump silently demotes every judged
+ * alias back to candidate until re-heard; 'recall' never routes. Lives here,
+ * beside the grade definitions, so the resolver and any future reader share
+ * one law instead of each re-spelling the version map.
+ */
+export function identityGradeSql(alias = 's'): Prisma.Sql {
+  const t = Prisma.raw(alias);
+  return Prisma.sql`(${t}.claim_grade = 'observed'
+     OR (${t}.claim_grade = 'judged'
+         AND ((${t}.origin_lane IN ('entity_match', 'entity_dedupe')
+               AND ${t}.origin_rule_version = ${ENTITY_DEDUPE_RULE_VERSION})
+           OR (${t}.origin_lane = ${PLACE_MERGE_LANE}
+               AND ${t}.origin_rule_version = ${PLACE_MERGE_RULE_VERSION}))))`;
+}
+
+/** A 'judged' bank without its verdict is the alias ratchet again — refused
+ *  at the door, loudly, before any SQL. */
+export class JudgedClaimWithoutVerdictError extends Error {
+  constructor(form: string) {
+    super(
+      `A surface bank for "${form}" claimed grade 'judged' with no origin ` +
+        `verdict. A judged identity claim is authoritative only through the ` +
+        `ledger row that earned it (plans/alias-clean-slate.md item 1).`,
+    );
+    this.name = 'JudgedClaimWithoutVerdictError';
+  }
 }
 
 /**
@@ -332,9 +399,15 @@ export async function addSurfaces(
     // row lands at — is already decided by the time a row exists. Keeping it
     // on the row would invite a second reader downstream to re-litigate the
     // question the writer already answered.
-    Required<Omit<SurfaceInput, 'locale' | 'description' | 'surfaceOrigin'>> & {
+    Required<
+      Omit<
+        SurfaceInput,
+        'locale' | 'description' | 'surfaceOrigin' | 'originVerdict'
+      >
+    > & {
       locale: string;
       description: string | null;
+      originVerdict: SurfaceInput['originVerdict'] | null;
     }
   > = [];
   const seen = new Set<string>();
@@ -395,6 +468,10 @@ export async function addSurfaces(
       continue;
     }
     seen.add(dedupeKey);
+    const claimGrade = input.claimGrade ?? 'recall';
+    if (claimGrade === 'judged' && !input.originVerdict) {
+      throw new JudgedClaimWithoutVerdictError(form);
+    }
     rows.push({
       form,
       locale,
@@ -407,6 +484,8 @@ export async function addSurfaces(
       rank: input.rank ?? 0,
       promptVersion: input.promptVersion ?? 1,
       claimJudgeVersion: input.claimJudgeVersion ?? null,
+      claimGrade,
+      originVerdict: claimGrade === 'judged' ? input.originVerdict! : null,
     });
   }
 
@@ -639,6 +718,13 @@ interface SurfaceRow {
   rank: number;
   promptVersion: number;
   claimJudgeVersion: number | null;
+  claimGrade: SurfaceClaimGrade;
+  originVerdict: SurfaceInput['originVerdict'] | null;
+}
+
+/** SQL rank of a grade literal/column, for the upgrade-only conflict merge. */
+function gradeRankSql(ref: Prisma.Sql): Prisma.Sql {
+  return Prisma.sql`(CASE ${ref} WHEN 'observed' THEN ${Prisma.raw(String(GRADE_RANK.observed))} WHEN 'judged' THEN ${Prisma.raw(String(GRADE_RANK.judged))} ELSE ${Prisma.raw(String(GRADE_RANK.recall))} END)`;
 }
 
 /**
@@ -687,14 +773,16 @@ async function insertRehearsalSurfaceRows(
   const values = Prisma.join(
     rows.map(
       (r) =>
-        Prisma.sql`(${entityId}::uuid, ${r.form}, ${canonicalFold(r.form)}, ${r.locale}, ${r.role}, ${r.source}, ${r.confidence}, 'rehearsal', ${r.description}, false, ${r.rank}, ${r.promptVersion}, ${r.claimJudgeVersion}, ${bornExtractionRunId}::uuid)`,
+        Prisma.sql`(${entityId}::uuid, ${r.form}, ${canonicalFold(r.form)}, ${r.locale}, ${r.role}, ${r.source}, ${r.confidence}, 'rehearsal', ${r.description}, false, ${r.rank}, ${r.promptVersion}, ${r.claimJudgeVersion}, ${bornExtractionRunId}::uuid, ${r.claimGrade}, ${r.originVerdict?.lane ?? null}, ${r.originVerdict?.claimKey ?? null}, ${r.originVerdict?.ruleVersion ?? null}, ${r.originVerdict?.foldVersion ?? null})`,
     ),
   );
   await tx.$executeRaw(Prisma.sql`
     INSERT INTO entity_surface
       (entity_id, form, form_folded, locale, role, source, confidence,
        status, description, is_default, rank, prompt_version,
-       claim_judge_version, born_extraction_run_id)
+       claim_judge_version, born_extraction_run_id,
+       claim_grade, origin_lane, origin_claim_key, origin_rule_version,
+       origin_fold_version)
     VALUES ${values}
     ON CONFLICT (entity_id, locale, form) DO NOTHING`);
 }
@@ -720,7 +808,7 @@ async function insertSurfaceRows(
                AND d.locale = ${r.locale}
                AND d.is_default)`
         : Prisma.sql`false`;
-      return Prisma.sql`(${entityId}::uuid, ${r.form}, ${canonicalFold(r.form)}, ${r.locale}, ${r.role}, ${r.source}, ${r.confidence}, ${r.status}, ${r.description}, ${isDefaultExpr}, ${r.rank}, ${r.promptVersion}, ${r.claimJudgeVersion})`;
+      return Prisma.sql`(${entityId}::uuid, ${r.form}, ${canonicalFold(r.form)}, ${r.locale}, ${r.role}, ${r.source}, ${r.confidence}, ${r.status}, ${r.description}, ${isDefaultExpr}, ${r.rank}, ${r.promptVersion}, ${r.claimJudgeVersion}, ${r.claimGrade}, ${r.originVerdict?.lane ?? null}, ${r.originVerdict?.claimKey ?? null}, ${r.originVerdict?.ruleVersion ?? null}, ${r.originVerdict?.foldVersion ?? null})`;
     }),
   );
   // The one place widening authority is spent. `mayWiden=false` PINS an
@@ -779,11 +867,41 @@ async function insertSurfaceRows(
       INSERT INTO entity_surface
         (entity_id, form, form_folded, locale, role, source, confidence,
          status, description, is_default, rank, prompt_version,
-         claim_judge_version)
+         claim_judge_version, claim_grade, origin_lane, origin_claim_key,
+         origin_rule_version, origin_fold_version)
       VALUES ${values}
       ON CONFLICT (entity_id, locale, form) DO UPDATE SET
         role = ${roleExpr},
         status = ${statusExpr},
+        -- GRADE ONLY EVER RISES (recall < judged < observed): a re-offer
+        -- carrying better evidence upgrades the row's authority; a re-offer
+        -- carrying less never strips authority earned by real evidence.
+        -- Demotion has exactly two doors — a rule bump (the in-force read
+        -- ignores stale judged rows by construction) and the clean-slate
+        -- wipe — never a passing write.
+        claim_grade = CASE
+          WHEN ${gradeRankSql(Prisma.sql`EXCLUDED.claim_grade`)}
+             > ${gradeRankSql(Prisma.sql`entity_surface.claim_grade`)}
+          THEN EXCLUDED.claim_grade ELSE entity_surface.claim_grade END,
+        -- A judged re-offer refreshes the verdict coordinates (a re-hearing
+        -- at a newer rule re-arms the claim); an observed row's origin is
+        -- history and never overwritten.
+        origin_lane = CASE
+          WHEN EXCLUDED.claim_grade = 'judged'
+           AND entity_surface.claim_grade <> 'observed'
+          THEN EXCLUDED.origin_lane ELSE entity_surface.origin_lane END,
+        origin_claim_key = CASE
+          WHEN EXCLUDED.claim_grade = 'judged'
+           AND entity_surface.claim_grade <> 'observed'
+          THEN EXCLUDED.origin_claim_key ELSE entity_surface.origin_claim_key END,
+        origin_rule_version = CASE
+          WHEN EXCLUDED.claim_grade = 'judged'
+           AND entity_surface.claim_grade <> 'observed'
+          THEN EXCLUDED.origin_rule_version ELSE entity_surface.origin_rule_version END,
+        origin_fold_version = CASE
+          WHEN EXCLUDED.claim_grade = 'judged'
+           AND entity_surface.claim_grade <> 'observed'
+          THEN EXCLUDED.origin_fold_version ELSE entity_surface.origin_fold_version END,
         description = CASE WHEN EXCLUDED.role = 'recall'
                            THEN entity_surface.description
                            ELSE EXCLUDED.description END,
@@ -830,15 +948,37 @@ export async function foldSurfacesFromMerge(
   tx: Prisma.TransactionClient,
   canonicalId: string,
   duplicateId: string,
-  options: AddSurfacesOptions = {},
+  options: AddSurfacesOptions & {
+    /**
+     * The ledger coordinates of the verdict that ordered THIS merge
+     * (plans/alias-clean-slate.md item 3). With it, the loser's name lands
+     * as a `judged` identity claim on the winner — revocable at the next
+     * rule bump like every judged claim. Without it the name lands as
+     * `recall` only: an unledgered merge may keep search recall, but it
+     * earns NO authority to route future mentions (the merge-fold arm of
+     * the alias ratchet ends here).
+     */
+    mergeVerdict?: {
+      lane: string;
+      claimKey: string;
+      ruleVersion: number;
+      foldVersion: number;
+    };
+  } = {},
 ): Promise<void> {
+  const v = options.mergeVerdict ?? null;
   // The loser's own display name becomes a surface on the winner. role is
   // STATED, not defaulted: an entity's name is a recall key (that is what a
   // merge fold is for), and a column default is not a decision anyone made.
   await tx.$executeRaw`
     INSERT INTO entity_surface
-      (entity_id, form, form_folded, locale, role, source, confidence, status)
-    SELECT ${canonicalId}::uuid, x.name, x.identity_key, 'und', 'recall', 'merge_fold', 1, 'active'
+      (entity_id, form, form_folded, locale, role, source, confidence, status,
+       claim_grade, origin_lane, origin_claim_key, origin_rule_version,
+       origin_fold_version)
+    SELECT ${canonicalId}::uuid, x.name, x.identity_key, 'und', 'recall', 'merge_fold', 1, 'active',
+           ${v ? 'judged' : 'recall'},
+           ${v?.lane ?? null}, ${v?.claimKey ?? null},
+           ${v?.ruleVersion ?? null}, ${v?.foldVersion ?? null}
     FROM core_entities x
     WHERE x.entity_id = ${duplicateId}::uuid
       AND x.identity_key IS NOT NULL
@@ -871,13 +1011,20 @@ export async function foldSurfacesFromMerge(
   await tx.$executeRaw`
     INSERT INTO entity_surface
       (entity_id, form, form_folded, locale, role, source, confidence, status,
-       prompt_version, claim_judge_version, born_extraction_run_id)
+       prompt_version, claim_judge_version, born_extraction_run_id,
+       claim_grade, origin_lane, origin_claim_key, origin_rule_version,
+       origin_fold_version)
     SELECT ${canonicalId}::uuid, a.form, a.form_folded, a.locale, a.role, a.source, a.confidence, a.status,
            a.prompt_version, a.claim_judge_version,
            -- Rehearsal provenance rides the fold (red team 2026-08-19
            -- entity-D4): a loser's in-flight rehearsal row without its run
            -- id could never be flipped or rejected — permanently invisible.
-           a.born_extraction_run_id
+           a.born_extraction_run_id,
+           -- A carried row keeps ITS OWN grade and origin: it earned exactly
+           -- what it earned, and moving houses in a merge changes nothing
+           -- about the evidence behind it.
+           a.claim_grade, a.origin_lane, a.origin_claim_key,
+           a.origin_rule_version, a.origin_fold_version
     FROM entity_surface a
     WHERE a.entity_id = ${duplicateId}::uuid
     ON CONFLICT (entity_id, locale, form) DO UPDATE SET

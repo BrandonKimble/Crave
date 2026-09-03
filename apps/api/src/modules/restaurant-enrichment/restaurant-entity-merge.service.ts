@@ -18,7 +18,12 @@ import {
 import {
   nonAggregatorDomainSql,
   sameBusinessVerdict,
+  identityDomain,
+  brandClusterPurity,
+  PLACE_MERGE_LANE,
+  PLACE_MERGE_RULE_VERSION,
 } from './business-identity-rules';
+import { ClaimVerdictLedgerService } from '../content-processing/entity-resolver/claim-verdict-ledger.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { ProjectionRebuildService } from '../content-processing/reddit-collector/projection-rebuild.service';
@@ -53,6 +58,7 @@ export class PlaceEntityMergeService {
     @Inject(forwardRef(() => ProjectionRebuildService))
     private readonly projectionRebuildService: ProjectionRebuildService,
     private readonly anchorRehome: EntityAnchorRehomeService,
+    private readonly claimLedger: ClaimVerdictLedgerService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('RestaurantEntityMergeService');
@@ -85,6 +91,14 @@ export class PlaceEntityMergeService {
     canonical: PlaceEntity;
     duplicate: PlaceEntity;
     canonicalUpdate: Prisma.EntityUpdateInput;
+    /**
+     * THE MERGE'S STATED GROUND (plans/alias-clean-slate.md item 3) —
+     * recorded on the `place_merge` ledger lane BEFORE any effect, exactly
+     * like every other hearing. Name the evidence ("shared google place_id
+     * X", "same-name sweep: shared owned domain Y"), never a bare verb.
+     * Callers that cannot state a reason should not be merging.
+     */
+    reason: string;
     prepare?: (
       tx: Prisma.TransactionClient,
     ) => Promise<Prisma.EntityUpdateInput | void>;
@@ -180,6 +194,40 @@ export class PlaceEntityMergeService {
         );
       }
 
+      // VERDICT BEFORE EFFECT (H5 amendment (c), extended to place merges —
+      // plans/alias-clean-slate.md item 3). Restaurant merges were the last
+      // unledgered mutation of identity: 35 of the 95 merges ever executed
+      // joined DIFFERENT restaurants via shared ordering-platform domains,
+      // and nothing on the record said who ordered them or why. Every place
+      // merge now states its ground in claim_verdicts inside the same
+      // transaction, before a single row moves.
+      const mergeVerdict = {
+        lane: PLACE_MERGE_LANE,
+        claimKey: `place|${duplicateId}|${canonicalId}`,
+        ruleVersion: PLACE_MERGE_RULE_VERSION,
+        // 0 = NOT FOLD-KEYED: the claim key is a pair of uuids, so no fold
+        // algorithm bump can ever strand it (check-fold-drift treats 0 as
+        // exempt from the stranded-ledger scan, by design).
+        foldVersion: 0,
+      };
+      await this.claimLedger.record(
+        {
+          lane: mergeVerdict.lane,
+          claimKey: mergeVerdict.claimKey,
+          ruleVersion: mergeVerdict.ruleVersion,
+          foldVersion: mergeVerdict.foldVersion,
+          outcome: 'merge',
+          reason: params.reason,
+          subject: {
+            canonicalId,
+            duplicateId,
+            canonicalName: canonical.name,
+            duplicateName: duplicate.name,
+          },
+        },
+        tx,
+      );
+
       await this.mergePlaceEvents(tx, canonicalId, duplicateId);
       await this.mergePlaceEntityEvents(tx, canonicalId, duplicateId);
       await this.rehomePlaceEntityReferences(tx, canonicalId, duplicateId);
@@ -193,8 +241,12 @@ export class PlaceEntityMergeService {
 
       // Alias bank + archive + score prune + redirect flatten: ONE
       // contract shared with the food merge (round-12 audit — the two
-      // copy-pasted tails had diverged; see finalizeMergeCompletion).
-      await finalizeMergeCompletion(tx, canonicalId, duplicateId);
+      // copy-pasted tails had diverged; see finalizeMergeCompletion). The
+      // verdict rides in so the loser's name folds as a JUDGED identity
+      // claim tied to it.
+      await finalizeMergeCompletion(tx, canonicalId, duplicateId, {
+        mergeVerdict,
+      });
 
       return updatedCanonical;
     };
@@ -211,6 +263,16 @@ export class PlaceEntityMergeService {
       canonicalId: result.entityId,
     });
 
+    // The hearing is finished only once its effect committed (H5 ordering) —
+    // executed_at flips after the transaction above, so a crash between
+    // leaves resumable work, never a bought answer forgotten.
+    await this.claimLedger.markExecuted(
+      PLACE_MERGE_LANE,
+      `place|${duplicate.entityId}|${result.entityId}`,
+      PLACE_MERGE_RULE_VERSION,
+      0,
+    );
+
     // POST-COMMIT, ALWAYS (P2028 #2): the rebuild opens its own transaction
     // over core_restaurant_items rows the merge just re-keyed, so it must
     // run after the commit above — and because the service owns both the
@@ -218,6 +280,28 @@ export class PlaceEntityMergeService {
     await this.projectionRebuildService.rebuildForPlaces([result.entityId]);
 
     return result;
+  }
+
+  /**
+   * THE OWNED-DOMAIN TEST (plans/alias-clean-slate.md item 3). A domain is
+   * ownership evidence iff every active place carrying it corpus-wide folds
+   * to one brand root. Positive test, not a list: getsauce.com fails because
+   * seven unrelated restaurants carry it; mandolasmarket.com passes because
+   * only Mandola's does. The extra names (the merging pair) are included so
+   * a domain carried by only one existing row still has to agree with the
+   * pair being merged under it.
+   */
+  async domainIsOwned(
+    domain: string,
+    extraNames: string[] = [],
+  ): Promise<boolean> {
+    const rows = await this.prisma.$queryRaw<Array<{ name: string }>>`
+      SELECT name FROM core_entities
+      WHERE type = 'place'
+        AND status = 'active'
+        AND lower(canonical_domain) = lower(${domain})
+    `;
+    return brandClusterPurity([...rows.map((r) => r.name), ...extraNames]).pure;
   }
 
   private async mergePlaceEvents(
@@ -655,6 +739,53 @@ export class PlaceEntityMergeService {
         decisions.push({ name: group.name, verdict: 'hold' });
         continue;
       }
+      // THE OWNED-DOMAIN TEST (plans/alias-clean-slate.md item 3 — replaces
+      // trusting the denylist's silence). A shared domain is ownership
+      // evidence ONLY when the domain is actually OWNED: every active place
+      // carrying it corpus-wide agrees on one brand root. The denylist
+      // stays as the fast negative, but it is a list, and lists miss —
+      // getsauce.com, order.online, mealkeyway, toast.site, rebrand.ly and
+      // friends merged 35 different restaurants before this test existed.
+      // A shared-but-unowned domain HOLDS: real evidence for a judge, never
+      // an auto-merge.
+      // The gate bites only when the domain is the DECIDING basis: a pair
+      // that would merge anyway with the domains blinded (shared placeId, or
+      // dominant-community identity) carries its own evidence, and holding
+      // it over a platform domain both share would block a legitimate merge.
+      const domainDecides =
+        identityDomain(a.domain) !== null &&
+        identityDomain(a.domain) === identityDomain(b.domain) &&
+        !sameBusinessVerdict(
+          {
+            placeIds: a.place_ids,
+            domain: null,
+            communities: a.communities,
+            dominantCommunity: a.dominant_community,
+          },
+          {
+            placeIds: b.place_ids,
+            domain: null,
+            communities: b.communities,
+            dominantCommunity: b.dominant_community,
+          },
+        );
+      if (domainDecides) {
+        const owned = await this.domainIsOwned(identityDomain(a.domain)!, [
+          a.name,
+          b.name,
+        ]);
+        if (!owned) {
+          held += 1;
+          decisions.push({ name: group.name, verdict: 'hold' });
+          this.logger.warn('Domain-lane pair HELD — domain is not owned', {
+            operation: 'same_name_duplicate_sweep',
+            domain: identityDomain(a.domain),
+            a: a.name,
+            b: b.name,
+          });
+          continue;
+        }
+      }
       const aGrounded = a.place_ids.length > 0;
       const bGrounded = b.place_ids.length > 0;
       const [canonicalId, duplicateId] =
@@ -686,6 +817,7 @@ export class PlaceEntityMergeService {
           canonical,
           duplicate,
           canonicalUpdate: {},
+          reason: `same-business sweep: pair grouped by "${group.name}" passed sameBusinessVerdict (shared ground, shared owned domain, or dominant-community identity) with accent agreement`,
         });
         merged += 1;
       } catch (error) {

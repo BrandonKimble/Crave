@@ -684,6 +684,84 @@ export const INVARIANTS: readonly Invariant[] = [
     ],
   },
   {
+    // THE GRADE LAW (plans/alias-clean-slate.md, 2026-09-02). An alias is an
+    // identity claim and must meet the same bar as a merge. All three tests
+    // hold: the mechanism can silently die (identityGradeSql is one SQL
+    // fragment a refactor can weaken with every type still checking, and the
+    // judged-verdict guard is a single throw), the defect is an attractor
+    // (every new surface writer regenerates the chance to bank speculation
+    // as testimony — seven writers existed before the one-door law), and
+    // being wrong is expensive (the audited corpus: ~93% of alias-shaped
+    // extraction rows carried identity authority with no provenance, and
+    // "mandala" routed a real restaurant's mentions to Mandola's).
+    id: 'identity.alias-authority-keys-on-grade',
+    statement:
+      "Mention routing admits only 'observed' surfaces and 'judged' surfaces whose origin verdict was heard at the rule in force; a 'judged' bank without its verdict is refused; 'recall' never routes.",
+    incident:
+      "The alias ratchet (audited 2026-09-02): a judge match permanently banked BOTH the verbatim and the LLM-normalized string as source='extraction', indistinguishable from testimony. 16,719 'legacy' rows and 640 aliases equal to another live entity's name then routed mentions at 0.95 confidence with the judge never asked again — bubble→boba tea, mandala→Mandola's Italian Kitchen.",
+    level: 'behaviour',
+    mechanism:
+      'entity-surface.service.ts — identityGradeSql (the ONE spelling of "may route a mention") + the JudgedClaimWithoutVerdictError door; proven by alias-claim-grade.integration.spec.ts against a real database',
+    check: {
+      command: 'yarn test:db --testPathPattern="alias-claim-grade" --silent',
+      reads: 'real banked rows of all three grades, through the real predicate',
+    },
+    mutations: [
+      {
+        // The ratchet reborn: authority stops keying on grade, every recall
+        // guess routes mentions again.
+        file: 'src/modules/content-processing/entity-resolver/entity-surface.service.ts',
+        find: "return Prisma.sql`(${t}.claim_grade = 'observed'\n     OR (${t}.claim_grade = 'judged'",
+        replace:
+          "return Prisma.sql`(${t}.claim_grade IS NOT NULL\n     OR (${t}.claim_grade = 'judged'",
+      },
+      {
+        // A rule bump no longer demotes: verdicts from superseded rules stay
+        // authoritative forever, which is how the pre-Aug judge's 60%
+        // flip-rate era kept ruling from the grave.
+        file: 'src/modules/content-processing/entity-resolver/entity-surface.service.ts',
+        find: 'AND ${t}.origin_rule_version = ${ENTITY_DEDUPE_RULE_VERSION})',
+        replace: 'AND TRUE)',
+      },
+      {
+        // The door stops refusing: a judged claim banks with no ledger row
+        // behind it — unauditable, un-re-hearable.
+        file: 'src/modules/content-processing/entity-resolver/entity-surface.service.ts',
+        find: "    if (claimGrade === 'judged' && !input.originVerdict) {\n      throw new JudgedClaimWithoutVerdictError(form);\n    }",
+        replace: '    // MUTATED: judged claims bank without their verdict.',
+      },
+    ],
+  },
+  {
+    // The other half of the same law, one lane over: a MERGE is the
+    // heaviest identity claim in the system, and 35 of the 95 restaurant
+    // merges the audit examined had joined DIFFERENT restaurants with
+    // nothing but a log line to show for it — no ruling to re-hear, no
+    // reason to audit, no way to tell a judged fold from an accident.
+    id: 'identity.a-place-merge-is-a-hearing',
+    statement:
+      'Every place merge records a claim_verdicts ruling (lane place_merge) BEFORE its effect and marks it executed after the commit — no merge exists that the ledger cannot account for.',
+    incident:
+      'Audited 2026-09-02: platform ordering domains (getsauce.com ×7, order.online ×5, mealkeyway ×5…) merged 35 unrelated restaurants across 95 merges, and the only trace was service log lines that rotated away. The clean-slate rebuild depends on every future merge being re-derivable from the ledger.',
+    level: 'behaviour',
+    mechanism:
+      'restaurant-entity-merge.service.ts — claimLedger.record before runMerge effects, markExecuted post-commit; proven by merge-canonical-under-lock.integration.spec.ts',
+    check: {
+      command:
+        'yarn test:db --testPathPattern="merge-canonical-under-lock" --silent',
+      reads: 'a real merge in a real database, then the ledger row it wrote',
+    },
+    mutations: [
+      {
+        // The log-line-only merge, verbatim: effects run, nothing is heard.
+        file: 'src/modules/restaurant-enrichment/restaurant-entity-merge.service.ts',
+        find: '      await this.claimLedger.record(',
+        replace:
+          '      const skipHearing = (..._: unknown[]) => Promise.resolve(); // MUTATED\n      await skipHearing(',
+      },
+    ],
+  },
+  {
     id: 'identity.a-deleted-person-has-no-name-in-the-database',
     statement:
       'From the moment deletion is requested, users.username/display_name/avatar_url are NULL and the originals live only in users.deleted_identity — so no read anywhere can expose a departed person’s name, whatever it does with the row.',

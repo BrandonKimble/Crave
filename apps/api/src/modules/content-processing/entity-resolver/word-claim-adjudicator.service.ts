@@ -92,14 +92,13 @@ const PER_CALL = 10;
  */
 const DUE_SCAN_PAGE = 500;
 
-const TESTIMONY_SOURCES: ReadonlySet<string> = new Set([
-  'legacy',
-  'merge_fold',
-  'ontology_rename',
-  'extraction',
-  'places',
-  'cuisine',
-]);
+// TESTIMONY BY GRADE (alias-clean-slate, 2026-09-02): the old
+// TESTIMONY_SOURCES set branched on WRITER provenance, which let a
+// judge-normalized or template-generated string masquerade as testimony
+// because of who wrote it. Authority now keys on claim_grade — only
+// 'observed' (a person or the ground-truth provider actually used this
+// string for this entity) is unevictable testimony. 'judged' rows are
+// court output, re-hearable by construction; 'recall' is speculation.
 
 export interface ContestedClaim {
   /** The word (verbatim surface) the target entity wants to claim. */
@@ -723,15 +722,17 @@ export class WordClaimAdjudicatorService {
         source: string | null;
         surface_id: string | null;
         is_name: boolean;
+        claim_grade: string | null;
       }>
     >`SELECT e.entity_id::text, e.name, e.type::text, e.name AS form,
-             NULL AS source, NULL::uuid AS surface_id, TRUE AS is_name
+             NULL AS source, NULL::uuid AS surface_id, TRUE AS is_name,
+             NULL AS claim_grade
         FROM core_entities e
        WHERE e.identity_key = ${folded} AND e.status <> 'archived'
          AND e.entity_id <> ${exceptEntityId}::uuid
       UNION ALL
       SELECT e.entity_id::text, e.name, e.type::text, a.form, a.source,
-             a.surface_id, FALSE
+             a.surface_id, FALSE, a.claim_grade
         FROM entity_surface a
         JOIN core_entities e ON e.entity_id = a.entity_id
        WHERE a.form_folded = ${folded} AND a.status = 'active'
@@ -750,7 +751,7 @@ export class WordClaimAdjudicatorService {
         name: row.name,
         type: row.type,
         context: await this.sampleSurfaces(row.entity_id, form),
-        testimony: row.is_name || TESTIMONY_SOURCES.has(row.source ?? ''),
+        testimony: row.is_name || row.claim_grade === 'observed',
         aliasId: row.surface_id,
         adjacency: await this.adjacencyOf(exceptEntityId, row.entity_id),
       });

@@ -1307,6 +1307,7 @@ export class PlaceLocationEnrichmentService {
               canonical: canonical as never,
               duplicate: entity,
               canonicalUpdate: {},
+              reason: `grounding collision: chooser selected google place ${best.entry.candidate.placeId}, already owned by the canonical entity`,
             },
           );
           // The chooser's select IS a grounding verdict even when the effect
@@ -1862,8 +1863,12 @@ export class PlaceLocationEnrichmentService {
     const aliasForms: SurfaceInput[] = mergedAliases.map((form) => ({
       form,
       source: 'places' as const,
-      ...(locale && canonicalTrimmed && form === canonicalTrimmed
-        ? { locale }
+      // GRADE (alias-clean-slate): Google's own display name is TESTIMONY —
+      // the ground-truth provider stating what this place is called —
+      // grade 'observed'. Every other form in this merge (pre-existing
+      // untagged surfaces, a merged duplicate's name) is carried recall.
+      ...(canonicalTrimmed && form === canonicalTrimmed
+        ? { claimGrade: 'observed' as const, ...(locale ? { locale } : {}) }
         : {}),
     }));
 
@@ -2076,6 +2081,8 @@ export class PlaceLocationEnrichmentService {
         canonical,
         duplicate: entity,
         canonicalUpdate: mergedUpdate,
+        reason:
+          'place-id collision: enrichment grounded this entity to a google place whose location row already belongs to the canonical entity',
         prepare: async (tx) => {
           const location = await tx.placeLocation.update({
             where: { locationId: canonicalLocation.locationId },
@@ -2239,6 +2246,8 @@ export class PlaceLocationEnrichmentService {
         canonical,
         duplicate: entity,
         canonicalUpdate: mergedUpdate,
+        reason:
+          'place-id collision: enrichment selected a google place already grounded on the canonical entity (shared place_id)',
         prepare: async (tx) => {
           const location = await this.upsertPrimaryLocation({
             tx,
@@ -2427,6 +2436,7 @@ export class PlaceLocationEnrichmentService {
         canonical,
         duplicate: params.entity,
         canonicalUpdate: mergedUpdate,
+        reason: `shared owned canonical domain ${canonicalDomain ?? '(unknown)'} — one operating business (domain identity lane)`,
       });
 
     const refreshedCanonical = await this.prisma.entity.findUnique({

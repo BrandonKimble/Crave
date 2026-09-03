@@ -38,6 +38,7 @@ import {
   ENTITY_DEDUPE_RULE_FINGERPRINT,
   ENTITY_DEDUPE_RULE_VERSION,
 } from './entity-dedupe-rule';
+import { identityGradeSql } from './entity-surface.service';
 import {
   EntityResolutionInput,
   EntityResolutionResult,
@@ -488,6 +489,7 @@ export class EntityResolutionService implements OnModuleInit {
       entityType,
       engineId,
       documentLocale,
+      rehearsalRunId,
     );
     const unmatchedAfterAlias = unmatchedAfterExact.filter(
       (entity) =>
@@ -1133,11 +1135,26 @@ export class EntityResolutionService implements OnModuleInit {
    * `aliases[]` projection contained, so the widening here is the FOLD and
    * nothing else.
    */
+  /**
+   * IDENTITY AUTHORITY (plans/alias-clean-slate.md item 2) — which surface
+   * rows may ROUTE A MENTION. Grade decides, never `source`:
+   *   observed — always (a person wrote it about this entity);
+   *   judged   — only while its origin verdict's rule is THE RULE IN FORCE
+   *              for its lane (the `=` law: forward or back, any other rule
+   *              re-opens the question). A rule bump therefore demotes every
+   *              judged alias to search-recall-only, silently and instantly,
+   *              until the re-hearing re-arms it;
+   *   recall   — never. A model's guess about how people type serves search
+   *              and nothing else. This single predicate is what ends the
+   *              alias ratchet: a stale or unledgered claim can still be
+   *              FOUND (search), but it can no longer DECIDE (identity).
+   */
   private async performAliasMatches(
     entities: EntityResolutionInput[],
     entityType: EntityType,
     engineId: string | null,
     documentLocale: string | null,
+    rehearsalRunId: string | null,
   ): Promise<EntityResolutionResult[]> {
     if (entities.length === 0) return [];
 
@@ -1184,6 +1201,17 @@ export class EntityResolutionService implements OnModuleInit {
       // a SQL FRAGMENT, and $queryRaw's own template turns every
       // interpolation into a bind parameter — the fragment would arrive as a
       // parameter object instead of a predicate.
+      // IDENTITY-GRADE FORMS ONLY (identityGradeSql): this tier routes
+      // mentions, so recall-grade guesses are invisible to it — they still
+      // serve search, the judge's candidate recall, and autocomplete, but
+      // they no longer claim a mention at 0.95 with the judge never asked.
+      // REHEARSAL ENTITIES follow Tier 1's law (shadow-sandbox): visible
+      // only to their own run — this predicate was missing here, so a
+      // foreign shadow mint was alias-matchable by live runs.
+      const rehearsalEntitySql = rehearsalRunId
+        ? Prisma.sql`AND (e.status <> 'rehearsal'::entity_status
+                       OR e.born_extraction_run_id = ${rehearsalRunId}::uuid)`
+        : Prisma.sql`AND e.status <> 'rehearsal'::entity_status`;
       const surfaceRows = await this.prisma.$queryRaw<
         Array<{ entity_id: string; name: string; forms: string[] }>
       >(Prisma.sql`
@@ -1193,11 +1221,14 @@ export class EntityResolutionService implements OnModuleInit {
           JOIN entity_surface s ON s.entity_id = e.entity_id
          WHERE e.type = ${entityType}::entity_type
            AND e.status <> 'archived'::entity_status
+           ${rehearsalEntitySql}
            AND ${recallScope(documentLocale)}
+           AND ${identityGradeSql()}
            AND EXISTS (
              SELECT 1 FROM entity_surface m
               WHERE m.entity_id = e.entity_id
                 AND ${recallScope(documentLocale, 'm')}
+                AND ${identityGradeSql('m')}
                 AND m.form_folded = ANY(${foldedProbes}::text[])
            )
          GROUP BY e.entity_id, e.name`);
@@ -1310,12 +1341,26 @@ export class EntityResolutionService implements OnModuleInit {
           accentAdmits,
         );
 
+        // The trace records the surface spelling that carried the claim —
+        // the first of the candidate's forms sharing a probe fold.
+        const probeFolds = new Set(
+          aliasProbesOf(entity)
+            .map((term) => canonicalFold(term))
+            .filter(Boolean),
+        );
+        const matchedForm = matchedEntity?.aliases.find((form) =>
+          probeFolds.has(canonicalFold(form)),
+        );
+
         return {
           tempId: entity.tempId,
           entityId: matchedEntity?.entityId || null,
           confidence: matchedEntity ? 0.95 : 0.0,
           resolutionTier: matchedEntity ? 'alias' : 'unmatched',
           matchedName: matchedEntity?.name,
+          ...(matchedEntity
+            ? { matchedVia: { tier: 'alias', form: matchedForm } }
+            : {}),
           originalInput: entity,
         };
       });
@@ -1445,7 +1490,12 @@ export class EntityResolutionService implements OnModuleInit {
           JOIN entity_surface s ON s.entity_id = e.entity_id
          WHERE e.type = ${entityType}::entity_type
            AND e.status <> 'archived'::entity_status
+           AND (e.status <> 'rehearsal'::entity_status
+                OR e.born_extraction_run_id = ${rehearsalRunId}::uuid)
            AND ${recallScope(documentLocale)}
+           -- A joined-spelling claim is an IDENTITY claim, same as Tier 2:
+           -- only identity-grade forms may make it.
+           AND ${identityGradeSql()}
            AND replace(s.form_folded, ' ', '') = ANY(${probeArray}::text[])`);
 
       // Per squeezed key: the distinct owning entities, and whether ANY
@@ -1491,6 +1541,7 @@ export class EntityResolutionService implements OnModuleInit {
             confidence: 0.95,
             resolutionTier: 'alias' as const,
             matchedName: name,
+            matchedVia: { tier: 'joined-identity', form: name },
             originalInput: entity,
           };
         }
@@ -1576,26 +1627,54 @@ export class EntityResolutionService implements OnModuleInit {
         ),
       );
       if (folds.length) {
+        // Two arms, one standdown law. Arm 1: the tombstone's own name key
+        // (the original reject sink). Arm 2 — CLOSED-PLACE STANDDOWN
+        // (plans/alias-clean-slate.md item 4): an archived redirect-free
+        // entity also absorbs mentions matching its OBSERVED spellings. A
+        // real place that closed (janitor-archived after Google reported it
+        // gone) still owns its name: "mandala" must sink into the archived
+        // Mandala Kitchen — hidden from search, mention absorbed — rather
+        // than mint a duplicate or drift to the nearest look-alike
+        // spelling. Observed grade only: a judged/recall alias on a dead
+        // entity is not the dead entity's name. The active-twin standdown
+        // applies to both arms per FOLD: any live entity holding the fold
+        // as its identity key stands the sink down and the judge decides.
         const rows = await this.prisma.$queryRaw<
-          Array<{ entity_id: string; identity_key: string }>
+          Array<{ entity_id: string; fold: string }>
         >(Prisma.sql`
-          SELECT e.entity_id, e.identity_key
-            FROM core_entities e
-           WHERE e.type = ${entityType}::entity_type
-             AND e.status = 'archived'
-             AND e.identity_key = ANY(${folds}::text[])
-             AND NOT EXISTS (
+          SELECT x.entity_id, x.fold FROM (
+            SELECT e.entity_id, e.identity_key AS fold
+              FROM core_entities e
+             WHERE e.type = ${entityType}::entity_type
+               AND e.status = 'archived'
+               AND e.identity_key = ANY(${folds}::text[])
+            UNION
+            SELECT e.entity_id, s.form_folded AS fold
+              FROM core_entities e
+              JOIN entity_surface s ON s.entity_id = e.entity_id
+             WHERE e.type = ${entityType}::entity_type
+               AND e.status = 'archived'
+               AND s.claim_grade = 'observed'
+               AND s.status IN ('active', 'deprecated')
+               AND s.form_folded = ANY(${folds}::text[])
+          ) x
+           WHERE NOT EXISTS (
                SELECT 1 FROM entity_redirects r
-                WHERE r.from_entity_id = e.entity_id
+                WHERE r.from_entity_id = x.entity_id
              )
              AND NOT EXISTS (
                SELECT 1 FROM core_entities live
-                WHERE live.type = e.type
-                  AND live.identity_key = e.identity_key
+                WHERE live.type = ${entityType}::entity_type
+                  AND live.identity_key = x.fold
                   AND live.status IN ('active', 'pending')
              )`);
         for (const row of rows) {
-          tombstoneByFold.set(row.identity_key, { entityId: row.entity_id });
+          // First owner wins deterministically enough for a sink; two
+          // archived owners of one fold is a wipe-era edge the clean slate
+          // removes.
+          if (!tombstoneByFold.has(row.fold)) {
+            tombstoneByFold.set(row.fold, { entityId: row.entity_id });
+          }
         }
       }
     }
@@ -1611,6 +1690,7 @@ export class EntityResolutionService implements OnModuleInit {
           confidence: 1.0,
           resolutionTier: 'exact',
           matchedName: entity.normalizedName,
+          matchedVia: { tier: 'tombstone-sink' },
           originalInput: entity,
           isNewEntity: false,
         });
@@ -1923,6 +2003,16 @@ export class EntityResolutionService implements OnModuleInit {
           confidence: 1.0,
           resolutionTier: 'fuzzy',
           matchedName: matched.name,
+          matchedVia: {
+            tier: resolvedFromMemory.has(entity.tempId)
+              ? 'fuzzy:remembered'
+              : 'fuzzy:judge',
+            claimKey: entityMatchLane.canonicalClaimKey({
+              kind,
+              term: entity.normalizedName,
+              candidateEntityId: matched.entityId,
+            }),
+          },
           originalInput: entity,
         };
       },

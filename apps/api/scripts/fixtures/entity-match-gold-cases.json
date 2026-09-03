@@ -512,6 +512,60 @@
         }
       ],
       "expected": "match"
+    },
+    {
+      "id": "bubbles-is-sparkling-wine-not-boba",
+      "why": "clean-slate audit wrong-identity pin: 'bubbles' in a wine context is sparkling wine slang; a recall-grade alias routed it to boba tea at 0.95 with no hearing",
+      "kind": "item",
+      "term": "bubbles",
+      "mention": "Their wine list is small but the bubbles they pour by the glass are outstanding.",
+      "candidates": [
+        {
+          "name": "boba tea"
+        },
+        {
+          "name": "sparkling wine"
+        }
+      ],
+      "expected": "match",
+      "expectedCandidate": 1
+    },
+    {
+      "id": "mandala-is-not-mandolas",
+      "why": "clean-slate audit wrong-identity pin: Mandala (Himalayan) vs Mandola's Italian Kitchen — one-letter neighbors, different businesses; the alias tier merged their mentions",
+      "kind": "place",
+      "term": "Mandala",
+      "mention": "Mandala has the best momos in town, get the jhol ones.",
+      "candidates": [
+        {
+          "name": "Mandola's Italian Kitchen"
+        }
+      ],
+      "expected": "new"
+    },
+    {
+      "id": "mole-not-mole-plate",
+      "why": "clean-slate audit pin: mole (the sauce, corpus-global) vs mole plate (a plated dish a diner orders) — component/format split, same law as carnitas",
+      "kind": "item",
+      "term": "mole",
+      "candidates": [
+        {
+          "name": "mole plate"
+        }
+      ],
+      "expected": "new"
+    },
+    {
+      "id": "breakfast-croissant-not-breakfast-sandwich",
+      "why": "clean-slate audit pin: the carrier is a decision test — a croissant and a sandwich are different orders, not spellings of one dish",
+      "kind": "item",
+      "term": "breakfast croissant",
+      "candidates": [
+        {
+          "name": "breakfast sandwich"
+        }
+      ],
+      "expected": "new"
     }
   ]
 }
