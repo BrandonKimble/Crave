@@ -205,21 +205,26 @@ async function main(): Promise<void> {
   let banked = 0;
   for (let i = 0; i < entityIds.length; i += 100) {
     const slice = entityIds.slice(i, i + 100);
-    await prisma.$transaction(async (tx) => {
-      for (const entityId of slice) {
-        const forms = [...derived.get(entityId)!];
-        await addSurfaces(
-          tx,
-          entityId,
-          forms.map((form) => ({
-            form,
-            source: 'extraction' as const,
-            claimGrade: 'observed' as const,
-          })),
-        );
-        banked += forms.length;
-      }
-    });
+    await prisma.$transaction(
+      async (tx) => {
+        for (const entityId of slice) {
+          const forms = [...derived.get(entityId)!];
+          await addSurfaces(
+            tx,
+            entityId,
+            forms.map((form) => ({
+              form,
+              source: 'extraction' as const,
+              claimGrade: 'observed' as const,
+            })),
+          );
+          banked += forms.length;
+        }
+        // Remote (proxied) targets need a real budget — the default 5s
+        // transaction timeout dies mid-chunk over the staging tunnel.
+      },
+      { timeout: 10 * 60 * 1000, maxWait: 30_000 },
+    );
     if ((i / 100) % 10 === 0 && i > 0)
       console.log(`  banked through ${i}/${entityIds.length} entities…`);
   }
