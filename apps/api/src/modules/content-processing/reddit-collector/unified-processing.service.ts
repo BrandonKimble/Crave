@@ -1817,9 +1817,14 @@ export class UnifiedProcessingService implements OnModuleInit {
                 // the judge on every future occurrence, forever.
                 //
                 // Banking it makes the next occurrence a free lexical hit.
-                // Source 'extraction': a real person wrote this word about this
-                // thing, so it is TESTIMONY and correctly exempt from P0-b's
-                // collision guard.
+                // GRADE 'judged', deliberately (spec item 2 amended
+                // 2026-09-03): a person really wrote the string, but the
+                // ASSOCIATION with this entity is the judge's inference —
+                // so it routes only while the verdict's rule version is in
+                // force, and it is NOT word-court testimony. (The collision
+                // guard still keys its exemption on source='extraction' —
+                // the one remaining source-branching authority read, noted
+                // in plans/alias-clean-slate.md as open debt.)
                 //
                 // UNTAGGED ('und'), AND THAT IS THE PRINCIPLE, NOT A GAP.
                 // A source's configured language is READER CONTEXT — it decides

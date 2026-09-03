@@ -22,10 +22,13 @@ import { WORD_CLAIM_LANE, wordClaimLane } from './word-claim-lane';
  * THE WORD-CLAIM ADJUDICATOR — the judge behind the collision guard
  * (concept-graph §9.9, owner-ruled 2026-08-07: "build the claims registry").
  *
- * THE LAW IT ENFORCES. A word→concept claim carries provenance:
- *   testimony (observed: extraction/legacy/places — a person really said it)
+ * THE LAW IT ENFORCES. A word→concept claim carries a GRADE (the alias
+ * clean slate, 2026-09-02 — authority keys on claim_grade, never on which
+ * writer banked the row):
+ *   testimony (claim_grade 'observed' — a person or the ground-truth
+ *   provider really used this string for this entity)
  *     > judged (this service's verdicts)
- *     > inferred (vocabulary/knowledge_synthesis/seed/query_banking).
+ *     > inferred (claim_grade 'recall' — a model's guess).
  * The collision guard (P0-b) refuses an inferred claim when ANY other entity
  * already holds the word. That is correct against testimony — an inference
  * never overrides evidence — but between two INFERENCES it is first-writer-

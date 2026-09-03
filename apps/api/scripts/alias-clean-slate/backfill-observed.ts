@@ -28,7 +28,10 @@
  */
 import 'dotenv/config';
 import { PrismaClient, Prisma } from '@prisma/client';
-import { canonicalFold } from '../../src/modules/content-processing/entity-resolver/entity-identity';
+import {
+  canonicalFold,
+  normalizeSurface,
+} from '../../src/modules/content-processing/entity-resolver/entity-identity';
 import { canonicalizeObservedPlaceName } from '../../src/modules/content-processing/reddit-collector/place-name-contract';
 import { activeExtractionInputsJoinSql } from '../../src/modules/content-processing/reddit-collector/extraction-scope.service';
 import { addSurfaces } from '../../src/modules/content-processing/entity-resolver/entity-surface.service';
@@ -238,7 +241,20 @@ async function main(): Promise<void> {
            AND status = 'active'
            AND claim_grade = 'observed'
            AND source = 'extraction'`);
-      const stale = rows.filter((r) => !derived.get(r.entity_id)?.has(r.form));
+      // Compare in the WRITER'S normalization (red team 2026-09-03 P1#4):
+      // addSurfaces banks normalizeSurface(form), so raw strings with odd
+      // whitespace would otherwise be flagged stale in the same run that
+      // banked them.
+      const normalizedDerived = new Map<string, Set<string>>();
+      for (const [id, forms] of derived) {
+        normalizedDerived.set(
+          id,
+          new Set([...forms].map((f) => normalizeSurface(f))),
+        );
+      }
+      const stale = rows.filter(
+        (r) => !normalizedDerived.get(r.entity_id)?.has(r.form),
+      );
       if (stale.length) {
         await prisma.$executeRaw(Prisma.sql`
           UPDATE entity_surface

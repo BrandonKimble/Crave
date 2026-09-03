@@ -10,10 +10,12 @@
 --   1. entity_surface        — ALL rows. Regenerated: observed via
 --                              backfill-observed.ts, judged via hearings,
 --                              recall via the vocabulary sweeps.
---   2. entity_redirects      — ALL rows, after un-archiving merge losers.
---   3. merge-archived losers — status back to 'active'; the nightly
---                              convergence re-hears every pair under
---                              current rules, fully ledgered.
+--   2. judgment-based merge losers — reopened (status 'active') and their
+--      redirects deleted, freeing the stolen identity; future mentions
+--      Tier-1 resolve to the shell and the re-extraction refills it.
+--   3. fold-twin losers — STAY archived WITH their redirects: identity by
+--      construction, and the redirect is the only bridge from loser-keyed
+--      user signals to the surviving entity.
 --
 -- WHAT THIS NEVER TOUCHES (ground truth + history):
 --   documents, extraction runs/inputs/outputs, events, place-grounded
@@ -49,7 +51,22 @@ SELECT count(*) AS merge_losers_to_unarchive
                     WHERE t.type = e.type AND t.identity_key = e.identity_key
                       AND t.status <> 'archived');
 
-SELECT count(*) AS redirects_to_delete FROM entity_redirects;
+-- REDIRECTS ARE IDENTITY HISTORY, NOT DERIVED STATE (red team 2026-09-03):
+-- signals resolve loser-keyed user history through the redirect join, and a
+-- fold-twin loser that stays archived keeps its redirect as the ONLY bridge
+-- from that history to the surviving entity. Only the redirects of losers
+-- that REOPEN are deleted — deleting one frees the name (the tombstone
+-- pre-sink skips redirect-free archived rows, and reopening restores
+-- Tier-1 resolution to the shell), and the loser's own signals then
+-- correctly re-point at the reopened entity itself.
+SELECT count(*) AS redirects_to_delete
+  FROM entity_redirects r
+  JOIN core_entities e ON e.entity_id = r.from_entity_id
+ WHERE e.status = 'archived'
+   AND e.born_extraction_run_id IS NULL
+   AND NOT EXISTS (SELECT 1 FROM core_entities t
+                    WHERE t.type = e.type AND t.identity_key = e.identity_key
+                      AND t.status <> 'archived');
 
 UPDATE core_entities e
    SET status = 'active', last_updated = now()
@@ -65,7 +82,13 @@ UPDATE core_entities e
                     WHERE t.type = e.type AND t.identity_key = e.identity_key
                       AND t.status <> 'archived');
 
-DELETE FROM entity_redirects;
+-- Ordering note: the UPDATE above already reopened the judgment-based
+-- losers (status now 'active'), so their redirects are found here by the
+-- reopened status rather than re-testing archived+twin-free.
+DELETE FROM entity_redirects r
+ USING core_entities e
+ WHERE e.entity_id = r.from_entity_id
+   AND e.status = 'active';
 
 DELETE FROM entity_surface;
 

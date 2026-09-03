@@ -18,6 +18,8 @@ import {
 import {
   nonAggregatorDomainSql,
   sameBusinessVerdict,
+  resolveMergeRoute,
+  placeNamesAgree,
   identityDomain,
   brandClusterPurity,
   sameBusinessClaimKey,
@@ -56,6 +58,14 @@ type PlaceEntity = Entity;
  * bare, in a file where every other threshold records its evidence.
  */
 const PREFIX_LANE_PER_RUN_CEILING = 200;
+
+/** Per-run court budget (red team 2026-09-03 P1#5): verdict memory bounds
+ *  LIFETIME cost per pair, but a rule-version bump reopens every remembered
+ *  pair at once — without this cap the next nightly run pays them all in one
+ *  unattended pass. Deferred pairs hold and re-enter the next run's budget;
+ *  the sweep is idempotent and converges over nights, same rationale as the
+ *  prefix ceiling above. */
+const SAME_BUSINESS_HEARING_CEILING = 50;
 
 @Injectable()
 export class PlaceEntityMergeService {
@@ -794,6 +804,7 @@ export class PlaceEntityMergeService {
 
     let merged = 0;
     let held = 0;
+    let hearingsThisRun = 0;
     const decisions: Array<{
       name: string;
       verdict: 'merge' | 'hold';
@@ -862,7 +873,7 @@ export class PlaceEntityMergeService {
       // regex lacked facebook/instagram while the SQL lane above had them,
       // so two entities that merely shared facebook.com read as one owned
       // domain and merged.
-      const mergeable = sameBusinessVerdict(
+      const judgment = sameBusinessVerdict(
         {
           placeIds: a.place_ids,
           domain: a.domain,
@@ -876,11 +887,6 @@ export class PlaceEntityMergeService {
           dominantCommunity: b.dominant_community,
         },
       );
-      if (!mergeable) {
-        held += 1;
-        decisions.push({ name: group.name, verdict: 'hold' });
-        continue;
-      }
       // ACCENT VETO (2026-08-12 red team): identity_key strips accents, so
       // tone-differing names ("Cơm Chay" vs "Cơm Cháy") group as fold twins
       // and sameBusinessVerdict's dominant-community arm would merge two
@@ -888,72 +894,94 @@ export class PlaceEntityMergeService {
       // (entity-identity.ts, same law as the resolver's mint veto): both
       // sides accented + accent-preserving folds conflict => different
       // businesses => hold. One-sided/absent accents still merge as before.
-      if (!accentsAgreeUnbanked(a.name, b.name)) {
+      if (judgment.merge && !accentsAgreeUnbanked(a.name, b.name)) {
         held += 1;
         decisions.push({ name: group.name, verdict: 'hold' });
         continue;
       }
-      // THE OWNED-DOMAIN TEST (plans/alias-clean-slate.md item 3 — replaces
-      // trusting the denylist's silence). A shared domain is ownership
-      // evidence ONLY when the domain is actually OWNED: every active place
-      // carrying it corpus-wide agrees on one brand root. The denylist
-      // stays as the fast negative, but it is a list, and lists miss —
-      // getsauce.com, order.online, mealkeyway, toast.site, rebrand.ly and
-      // friends merged 35 different restaurants before this test existed.
-      // A shared-but-unowned domain HOLDS: real evidence for a judge, never
-      // an auto-merge.
-      // The gate bites only when the domain is the DECIDING basis: a pair
-      // that would merge anyway with the domains blinded (shared placeId, or
-      // dominant-community identity) carries its own evidence, and holding
-      // it over a platform domain both share would block a legitimate merge.
-      const domainDecides =
+      // THE ROUTING LAW (red team 2026-09-03 P0 — resolveMergeRoute, one
+      // home in business-identity-rules.ts). The old bare-boolean verdict
+      // let the domain lane's DIFFERENT-named pairs merge via the
+      // dominant-community arm — same metro was enough, and neither the
+      // ownership test nor the court ever ran; that is the exact getsauce/
+      // order.online mega-merge mechanism this campaign closes. Now the
+      // BASIS routes: ground truth merges; a shared domain merges only when
+      // the corpus-wide OWNERSHIP test vouches (brandClusterPurity — the
+      // denylist stays as the fast negative, but lists miss: getsauce.com,
+      // order.online, mealkeyway, toast.site, rebrand.ly merged 35
+      // different restaurants before this test existed); community identity
+      // merges only NAME-AGREEING pairs; everything else with a shared
+      // domain gets a HEARING, and without one holds.
+      const sharedIdentityDomain =
         identityDomain(a.domain) !== null &&
-        identityDomain(a.domain) === identityDomain(b.domain) &&
-        !sameBusinessVerdict(
-          {
-            placeIds: a.place_ids,
-            domain: null,
-            communities: a.communities,
-            dominantCommunity: a.dominant_community,
-          },
-          {
-            placeIds: b.place_ids,
-            domain: null,
-            communities: b.communities,
-            dominantCommunity: b.dominant_community,
-          },
-        );
-      if (domainDecides) {
-        const owned = await this.domainIsOwned(identityDomain(a.domain)!, [
-          a.name,
-          b.name,
-        ]);
-        if (!owned) {
-          // THE SAME-BUSINESS COURT (owner-ordered 2026-09-03): a pair the
-          // purity test cannot vouch for is not parked forever — it gets a
-          // hearing, once, remembered by the ledger. Only in apply mode:
-          // dry runs must stay free.
-          const hearing = options.apply
-            ? await this.hearSameBusinessPair(a, b, identityDomain(a.domain)!)
-            : 'distinct';
-          if (hearing !== 'same_business') {
-            held += 1;
-            decisions.push({ name: group.name, verdict: 'hold' });
-            this.logger.warn(
-              'Domain-lane pair HELD — domain is not owned and the court did not join them',
-              {
-                operation: 'same_name_duplicate_sweep',
-                domain: identityDomain(a.domain),
-                a: a.name,
-                b: b.name,
-                hearing,
-              },
-            );
-            continue;
+        identityDomain(a.domain) === identityDomain(b.domain)
+          ? identityDomain(a.domain)
+          : null;
+      const route = resolveMergeRoute({
+        judgment,
+        namesAgree: placeNamesAgree(a.name, b.name),
+        sharedIdentityDomain,
+        domainIsOwned:
+          judgment.merge && judgment.basis === 'shared_domain'
+            ? await this.domainIsOwned(sharedIdentityDomain!, [a.name, b.name])
+            : undefined,
+      });
+      let mergeGround: string;
+      if (route === 'merge') {
+        mergeGround =
+          judgment.basis === 'shared_place_id'
+            ? 'shared google place_id'
+            : judgment.basis === 'shared_domain'
+              ? `shared owned domain ${sharedIdentityDomain} (corpus-wide brand purity)`
+              : 'dominant-community identity, names agreeing';
+      } else if (route === 'court') {
+        // THE SAME-BUSINESS COURT (owner-ordered 2026-09-03): a pair the
+        // deterministic tests cannot vouch for gets a hearing, once,
+        // remembered by the ledger — capped per run so a rule bump can
+        // never turn one nightly pass into an unbounded bill. Dry runs
+        // stay free and report the pair as held (the preview understates
+        // merges the court may later join — by design, never the reverse).
+        if (
+          !options.apply ||
+          hearingsThisRun >= SAME_BUSINESS_HEARING_CEILING
+        ) {
+          held += 1;
+          decisions.push({ name: group.name, verdict: 'hold' });
+          if (options.apply) {
+            this.logger.warn('Same-business hearing deferred — run ceiling', {
+              operation: 'same_name_duplicate_sweep',
+              a: a.name,
+              b: b.name,
+            });
           }
-          // same_business: fall through to the normal merge path below —
-          // the merge itself still records its own place_merge verdict.
+          continue;
         }
+        hearingsThisRun += 1;
+        const hearing = await this.hearSameBusinessPair(
+          a,
+          b,
+          sharedIdentityDomain ?? '(none shared)',
+        );
+        if (hearing !== 'same_business') {
+          held += 1;
+          decisions.push({ name: group.name, verdict: 'hold' });
+          this.logger.warn(
+            'Pair HELD — deterministic evidence insufficient and the court did not join them',
+            {
+              operation: 'same_name_duplicate_sweep',
+              domain: sharedIdentityDomain,
+              a: a.name,
+              b: b.name,
+              hearing,
+            },
+          );
+          continue;
+        }
+        mergeGround = `same-business hearing verdict (lane same_business, rule v${SAME_BUSINESS_RULE_VERSION})`;
+      } else {
+        held += 1;
+        decisions.push({ name: group.name, verdict: 'hold' });
+        continue;
       }
       const aGrounded = a.place_ids.length > 0;
       const bGrounded = b.place_ids.length > 0;
@@ -986,7 +1014,10 @@ export class PlaceEntityMergeService {
           canonical,
           duplicate,
           canonicalUpdate: {},
-          reason: `same-business sweep: pair grouped by "${group.name}" passed sameBusinessVerdict (shared ground, shared owned domain, or dominant-community identity) with accent agreement`,
+          // THE STATED GROUND IS THE ACTUAL GROUND (red team 2026-09-03
+          // P2#6): a court-joined pair must not be recorded as if the
+          // deterministic hierarchy vouched for it.
+          reason: `same-business sweep: pair grouped by "${group.name}" — ${mergeGround}, accent agreement`,
         });
         merged += 1;
       } catch (error) {

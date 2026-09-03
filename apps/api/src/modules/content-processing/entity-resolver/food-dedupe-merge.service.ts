@@ -1024,7 +1024,24 @@ export class ItemDedupeMergeService {
           loser.entityId,
         );
 
-        await finalizeMergeCompletion(tx, winner.entityId, loser.entityId);
+        // THE VERDICT RIDES THE FOLD (red team 2026-09-03 P1#1): every
+        // dedupe merge is ledgered under ENTITY_DEDUPE_LANE, and passing its
+        // coordinates makes the loser's name fold as grade 'judged' — an
+        // identity claim that keeps ROUTING mentions while its rule version
+        // is in force. The old verdict-less call banked it 'recall', so
+        // "taco al pastor" stopped resolving the moment it merged and every
+        // later mention re-paid the judge.
+        await finalizeMergeCompletion(tx, winner.entityId, loser.entityId, {
+          mergeVerdict: {
+            lane: ENTITY_DEDUPE_LANE,
+            claimKey: entityDedupeLane.canonicalClaimKey({
+              entityId: winner.entityId,
+              otherEntityId: loser.entityId,
+            }),
+            ruleVersion: ENTITY_DEDUPE_RULE_VERSION,
+            foldVersion: entityDedupeLane.keyFoldVersion,
+          },
+        });
       },
       // Explicit budget (round-12: default 5s + per-event loop = a
       // taco/tacos merge could never complete; matches the rebuild's).

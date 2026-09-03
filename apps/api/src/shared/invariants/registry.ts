@@ -720,7 +720,7 @@ export const INVARIANTS: readonly Invariant[] = [
         // authoritative forever, which is how the pre-Aug judge's 60%
         // flip-rate era kept ruling from the grave.
         file: 'src/modules/content-processing/entity-resolver/entity-surface.service.ts',
-        find: 'AND ${t}.origin_rule_version = ${ENTITY_DEDUPE_RULE_VERSION})',
+        find: 'AND ${t}.origin_rule_version = ${entry.ruleVersion})',
         replace: 'AND TRUE)',
       },
       {

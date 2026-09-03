@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { identityScope } from '../../../shared/locale';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { canonicalFold } from './entity-identity';
+import { identityGradeSql } from './entity-surface.service';
 import { LoggerService } from '../../../shared';
 
 /**
@@ -130,6 +131,10 @@ export class MetroAdoptionService {
             SELECT 1 FROM entity_surface s
              WHERE s.entity_id = e.entity_id
                AND ${identityScope('s')}
+               -- GRADE LAW (red team 2026-09-03 P1#2): this arm ROUTES a
+               -- mention, so a recall-grade guess must not decide it — the
+               -- same predicate Tier 2 applies.
+               AND ${identityGradeSql('s')}
                AND s.form_folded = ${canonicalFold(surface)}
           )
         )

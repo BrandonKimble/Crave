@@ -58,6 +58,17 @@ import { localeLookupChain } from './accept-language';
  * it assert identity would resurrect exactly the claim that lost. That test
  * used to be safe to omit here by data coincidence; it no longer is — the
  * `und` slice now holds 23 `both` rows and one `display` row.
+ *
+ * ⚠ THIS SCOPE IS NOT THE WHOLE IDENTITY BAR (grade law, 2026-09-03). It is
+ * the STATUS/ROLE half only. A read that ROUTES A MENTION or DECIDES
+ * SAMENESS must ALSO apply `identityGradeSql` (entity-surface.service.ts):
+ * only 'observed' rows and in-force 'judged' rows carry identity authority;
+ * a 'recall'-grade guess passing this scope alone is exactly how "bubbles"
+ * routed sparkling-wine mentions to boba tea. The deliberate exception:
+ * reuse-vs-mint probes for DERIVED knowledge (dish-knowledge synthesis,
+ * cuisine extraction) stay grade-blind — a wrong reuse there attaches
+ * synthesized text to a fold-equal concept, it does not move testimony, and
+ * grading it would make those writers mint duplicates instead.
  */
 export function identityScope(alias = 's'): Prisma.Sql {
   const table = Prisma.raw(alias);

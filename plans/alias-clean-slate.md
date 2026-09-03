@@ -48,11 +48,13 @@ Consequences, each a build item:
    lane's current version; a rule bump silently demotes every judged alias
    to candidate until re-heard). `recall` never resolves a mention. Tier 2
    writes a RESOLUTION TRACE on every event (tier, matched surface_id or
-   verdict key, fold version) — `metadata` is never `{}` again. The judge's
-   match may bank ONLY the verbatim observed string as `observed`; the
-   LLM-normalized string is banked as `judged` with the verdict key (ends
-   the alias ratchet). Tier 2 SQL gains the rehearsal predicate Tiers 1/2.5
-   already have.
+   verdict key, fold version) — `metadata` is never `{}` again. AMENDED
+   2026-09-03 (build decision, upheld on red-team review): the judge's match
+   banks BOTH the verbatim and the normalized string as `judged` — the
+   string may be a person's, but the ASSOCIATION with the entity is the
+   judge's inference, so it routes only while the verdict's rule version is
+   in force and is not word-court testimony. Tier 2 SQL gains the rehearsal
+   predicate Tiers 1/2.5 already have.
 3. **Merges**: every merge (food dedupe, restaurant same-name/prefix/domain
    sweeps, place-id collision, ontology) writes a claim_verdicts row BEFORE
    its effect — no more log-line-only merges. Merge folds land as `judged`
@@ -83,6 +85,37 @@ Consequences, each a build item:
 8. **Gold pins for the identity judge**: bubbles (sparkling wine vs boba),
    mole vs mole plate, breakfast croissant vs breakfast sandwich, mandala
    vs Mandola's — all four absent today from entity-match gold.
+
+## Red-team ledger (2026-09-03 — fixed vs deferred)
+
+FIXED same day: basis-aware merge routing (`resolveMergeRoute` — the
+dominant-community arm no longer merges different-named domain-lane pairs;
+the P0 that would have re-executed the platform mega-merges); food +
+attribute merges now pass their verdicts so losers fold `judged`, not
+`recall`; merge-fold conflict writes honor grade monotonicity; the
+metro-adoption local re-resolve applies the grade predicate; identity-lane
+registry (attribute_merge honored; new lanes have one place to join);
+per-run same-business hearing cap (50); honest per-basis ledger reasons;
+wipe keeps fold-twin redirects (signal history) and deletes only reopened
+losers' redirects; backfill `--replace` compares in the writer's
+normalization; stale-comment sweep (word-court header, identityScope doc,
+testimony-exemption note); reject-tombstone trace + deterministic pre-sink
+ordering.
+
+DEFERRED, deliberately (each safe-direction): `origin_fold_version` has no
+reader (fold bumps don't demote judged aliases — rule bumps do, and fold
+bumps are rare + hand-run); judged origin refresh is last-writer-wins
+rather than monotonic (exploitable only by a stale-code node racing a
+bump); the collision guard still keys its testimony exemption on
+source='extraction' (the last source-branching authority read — retire
+when the guard is next touched); plan-item-7 invariants delivered 2 of 6
+(trace-non-empty, merge-older-than-redirect, ledger self-consistency,
+projection-property still owed); place_merge/same_business lanes have no
+pendingExecution drain (effect commits atomically, so a pending row is
+cosmetic); reused judgment-based losers reopen as event-less shells until
+the community's next re-extraction — do NOT run entity GC between the wipe
+and that re-extraction. Dish-knowledge/cuisine reuse-vs-mint probes stay
+grade-blind BY DESIGN (see identityScope doc).
 
 ## The generation-following law (owner, 2026-09-02)
 

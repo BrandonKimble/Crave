@@ -243,22 +243,82 @@ export interface BusinessEvidence {
  *     sweep's D5 hold does); two sides each with a DIFFERENT dominant
  *     metro → hold for the enrichment-time resolver.
  */
+export type SameBusinessBasis =
+  /** A grounded google_place_id both sides hold — ground truth. */
+  | 'shared_place_id'
+  /** Equal registrable non-aggregator domains — MUST still pass the
+   *  corpus-wide ownership test before it may merge (red team 2026-09-03:
+   *  this arm alone re-executes the platform mega-merge class). */
+  | 'shared_domain'
+  | 'distinct_owned_domains'
+  /** Same dominant metro / no conflicting metro. VALID ONLY FOR
+   *  NAME-AGREEING PAIRS: this arm was derived for fold twins, and the
+   *  domain lane feeds pairs with arbitrary names — community identity says
+   *  nothing about two differently-named kitchens in one city. */
+  | 'community'
+  | 'cross_metro';
+
+export interface SameBusinessJudgment {
+  merge: boolean;
+  basis: SameBusinessBasis;
+}
+
 export function sameBusinessVerdict(
   a: BusinessEvidence,
   b: BusinessEvidence,
-): boolean {
+): SameBusinessJudgment {
   const domainA = identityDomain(a.domain);
   const domainB = identityDomain(b.domain);
   const sharedPlaceId = a.placeIds.some((p) => b.placeIds.includes(p));
-  if (sharedPlaceId || (domainA && domainB && domainA === domainB)) {
-    return true;
+  if (sharedPlaceId) return { merge: true, basis: 'shared_place_id' };
+  if (domainA && domainB && domainA === domainB) {
+    return { merge: true, basis: 'shared_domain' };
   }
   if (domainA && domainB) {
-    return false; // two distinct owned domains = two businesses
+    // two distinct owned domains = two businesses
+    return { merge: false, basis: 'distinct_owned_domains' };
   }
   const sharedDominantCommunity =
     a.dominantCommunity !== null && a.dominantCommunity === b.dominantCommunity;
-  return (
-    sharedDominantCommunity || !a.communities.length || !b.communities.length
-  );
+  if (sharedDominantCommunity || !a.communities.length || !b.communities.length)
+    return { merge: true, basis: 'community' };
+  return { merge: false, basis: 'cross_metro' };
+}
+
+/**
+ * THE ROUTING LAW (red team 2026-09-03, P0). The old shape returned a bare
+ * boolean, discarding WHICH arm decided — so the sweep's domain lane
+ * (different-named pairs grouped purely by a shared domain) merged via the
+ * community arm, bypassing both the ownership test and the court: Pho Van
+ * and Halal Taza, same metro, shared order.online → auto-merge, exactly the
+ * class the court was built to end. Routing is now a pure function of the
+ * basis plus name agreement:
+ *  - shared_place_id            → merge (ground truth);
+ *  - shared_domain              → merge only via the OWNERSHIP test
+ *                                 (caller-supplied, DB-backed); else court;
+ *  - community + names agree    → merge (the fold-twin arm, as designed);
+ *  - community + names disagree → the pair's only real evidence is whatever
+ *                                 domain both carry: court if they share
+ *                                 one, else hold (nothing to hear);
+ *  - no merge verdict           → hold.
+ */
+export function resolveMergeRoute(input: {
+  judgment: SameBusinessJudgment;
+  namesAgree: boolean;
+  sharedIdentityDomain: string | null;
+  domainIsOwned?: boolean;
+}): 'merge' | 'court' | 'hold' {
+  const { judgment, namesAgree, sharedIdentityDomain } = input;
+  if (!judgment.merge) return 'hold';
+  switch (judgment.basis) {
+    case 'shared_place_id':
+      return 'merge';
+    case 'shared_domain':
+      return input.domainIsOwned === true ? 'merge' : 'court';
+    case 'community':
+      if (namesAgree) return 'merge';
+      return sharedIdentityDomain ? 'court' : 'hold';
+    default:
+      return 'hold';
+  }
 }

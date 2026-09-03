@@ -1197,9 +1197,9 @@ export class EntityResolutionService implements OnModuleInit {
       // entities are matchable. One round trip: the matching entities AND
       // every recall form they carry, so the in-memory ranking below never
       // needs a second query.
-      // Prisma.sql, not a bare tagged template: `RECALL_SURFACE_SCOPE_SQL` is
-      // a SQL FRAGMENT, and $queryRaw's own template turns every
-      // interpolation into a bind parameter — the fragment would arrive as a
+      // Prisma.sql, not a bare tagged template: the scope/grade predicates
+      // are SQL FRAGMENTS, and $queryRaw's own template turns every
+      // interpolation into a bind parameter — a fragment would arrive as a
       // parameter object instead of a predicate.
       // IDENTITY-GRADE FORMS ONLY (identityGradeSql): this tier routes
       // mentions, so recall-grade guesses are invisible to it — they still
@@ -1667,7 +1667,10 @@ export class EntityResolutionService implements OnModuleInit {
                 WHERE live.type = ${entityType}::entity_type
                   AND live.identity_key = x.fold
                   AND live.status IN ('active', 'pending')
-             )`);
+             )
+           -- Deterministic ownership: without an order, the winning
+           -- tombstone for a shared fold could flip between batches.
+           ORDER BY x.fold, x.entity_id`);
         for (const row of rows) {
           // First owner wins deterministically enough for a sink; two
           // archived owners of one fold is a wipe-era edge the clean slate
@@ -1973,6 +1976,9 @@ export class EntityResolutionService implements OnModuleInit {
         confidence: 1.0,
         resolutionTier: 'fuzzy',
         matchedName: r.entity.normalizedName,
+        // The trace must say a REJECT happened, not look like a judge match
+        // (red team 2026-09-03 #8d).
+        matchedVia: { tier: 'fuzzy:reject-tombstoned' },
         originalInput: r.entity,
         isNewEntity: false,
       });

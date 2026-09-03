@@ -662,7 +662,20 @@ export class AttributeDedupeMergeService {
           where: { entityId: plan.winnerId },
           data: { nameEmbeddingStale: true },
         });
-        await finalizeMergeCompletion(tx, plan.winnerId, plan.loserId);
+        // THE VERDICT RIDES THE FOLD (red team 2026-09-03 P1#1) — same law
+        // as the food and place merges: a ledgered merge folds the loser's
+        // name at grade 'judged', never 'recall'.
+        await finalizeMergeCompletion(tx, plan.winnerId, plan.loserId, {
+          mergeVerdict: {
+            lane: ATTRIBUTE_MERGE_LANE,
+            claimKey: attributeMergeLane.canonicalClaimKey({
+              entityId: plan.winnerId,
+              otherEntityId: plan.loserId,
+            }),
+            ruleVersion: ATTRIBUTE_MERGE_RULE_VERSION,
+            foldVersion: attributeMergeLane.keyFoldVersion,
+          },
+        });
       },
       { timeout: 15 * 60 * 1000, maxWait: 30_000 },
     );

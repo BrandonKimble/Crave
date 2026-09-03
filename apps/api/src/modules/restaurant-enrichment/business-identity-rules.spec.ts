@@ -179,7 +179,7 @@ describe('evidence hierarchy (sameBusinessVerdict)', () => {
       sameBusinessVerdict(
         side({ placeIds: ['p1'], domain: 'a.com' }),
         side({ placeIds: ['p1', 'p2'], domain: 'b.com' }),
-      ),
+      ).merge,
     ).toBe(true);
   });
 
@@ -188,7 +188,7 @@ describe('evidence hierarchy (sameBusinessVerdict)', () => {
       sameBusinessVerdict(
         side({ domain: 'FranklinBBQ.com' }),
         side({ domain: 'franklinbbq.com' }),
-      ),
+      ).merge,
     ).toBe(true);
   });
 
@@ -197,7 +197,7 @@ describe('evidence hierarchy (sameBusinessVerdict)', () => {
       sameBusinessVerdict(
         side({ domain: 'a.com', dominantCommunity: 'austinfood' }),
         side({ domain: 'b.com', dominantCommunity: 'austinfood' }),
-      ),
+      ).merge,
     ).toBe(false);
   });
 
@@ -216,7 +216,7 @@ describe('evidence hierarchy (sameBusinessVerdict)', () => {
           dominantCommunity: 'foodnyc',
           communities: ['foodnyc'],
         }),
-      ),
+      ).merge,
     ).toBe(false);
   });
 
@@ -225,18 +225,18 @@ describe('evidence hierarchy (sameBusinessVerdict)', () => {
       sameBusinessVerdict(
         side({ dominantCommunity: 'austinfood', communities: ['austinfood'] }),
         side({ dominantCommunity: 'austinfood', communities: ['austinfood'] }),
-      ),
+      ).merge,
     ).toBe(true);
     expect(
       sameBusinessVerdict(
         side({ dominantCommunity: 'austinfood', communities: ['austinfood'] }),
         side({ dominantCommunity: 'foodnyc', communities: ['foodnyc'] }),
-      ),
+      ).merge,
     ).toBe(false);
   });
 
   it('rule 3: two evidence-free sides merge (pre-enrichment duplicates of the same stream)', () => {
-    expect(sameBusinessVerdict(side({}), side({}))).toBe(true);
+    expect(sameBusinessVerdict(side({}), side({})).merge).toBe(true);
   });
 
   it('rule 3 (R2 widening): a side with NO community evidence cannot conflict — it merges into its evidenced fold twin', () => {
@@ -246,7 +246,7 @@ describe('evidence hierarchy (sameBusinessVerdict)', () => {
       sameBusinessVerdict(
         side({ communities: ['austinfood'], dominantCommunity: 'austinfood' }),
         side({ communities: [] }),
-      ),
+      ).merge,
     ).toBe(true);
   });
 
@@ -255,7 +255,7 @@ describe('evidence hierarchy (sameBusinessVerdict)', () => {
       sameBusinessVerdict(
         side({ communities: ['austinfood'], dominantCommunity: 'austinfood' }),
         side({ communities: ['foodnyc'], dominantCommunity: 'foodnyc' }),
-      ),
+      ).merge,
     ).toBe(false);
   });
 });

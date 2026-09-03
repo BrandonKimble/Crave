@@ -11,6 +11,8 @@ import {
   PLACE_MERGE_LANE,
   PLACE_MERGE_RULE_VERSION,
 } from '../../restaurant-enrichment/business-identity-rules';
+import { ATTRIBUTE_MERGE_LANE } from '../../attribute-ontology/attribute-merge-lane.adapter';
+import { ATTRIBUTE_MERGE_RULE_VERSION } from '../../attribute-ontology/attribute-merge-rule';
 
 /**
  * THE SURFACE WRITER (multilingual plan A1) — the ONE writer of
@@ -142,22 +144,39 @@ const GRADE_RANK: Record<SurfaceClaimGrade, number> = {
 };
 
 /**
- * THE IDENTITY-GRADE PREDICATE (plans/alias-clean-slate.md item 2) — the ONE
- * SQL spelling of "this surface may route a mention": grade 'observed'
- * (identity by construction), or grade 'judged' whose origin verdict was
- * heard AT THE RULE IN FORCE. A rule bump silently demotes every judged
- * alias back to candidate until re-heard; 'recall' never routes. Lives here,
- * beside the grade definitions, so the resolver and any future reader share
- * one law instead of each re-spelling the version map.
+ * THE IDENTITY-LANE REGISTRY (feeds identityGradeSql below — the ONE SQL
+ * spelling of "this surface may route a mention": grade 'observed', or
+ * grade 'judged' whose origin verdict was heard AT THE RULE IN FORCE; a
+ * rule bump silently demotes every judged alias until re-heard, and
+ * 'recall' never routes.) — every lane whose verdicts may mint a routing
+ * ('judged') alias, with the rule version currently in force. A judged row
+ * from a lane absent here NEVER routes (safe direction), but that silence
+ * is also the trap: a new court that banks judged aliases MUST add its lane
+ * or its verdicts are dead on arrival (red team 2026-09-03 #5 — the list
+ * used to be inlined in the SQL where nobody would look).
  */
+const IDENTITY_LANES: ReadonlyArray<{
+  lanes: readonly string[];
+  ruleVersion: number;
+}> = [
+  {
+    lanes: ['entity_match', 'entity_dedupe'],
+    ruleVersion: ENTITY_DEDUPE_RULE_VERSION,
+  },
+  { lanes: [PLACE_MERGE_LANE], ruleVersion: PLACE_MERGE_RULE_VERSION },
+  { lanes: [ATTRIBUTE_MERGE_LANE], ruleVersion: ATTRIBUTE_MERGE_RULE_VERSION },
+];
+
 export function identityGradeSql(alias = 's'): Prisma.Sql {
   const t = Prisma.raw(alias);
+  const laneArms = IDENTITY_LANES.map(
+    (entry) =>
+      Prisma.sql`(${t}.origin_lane IN (${Prisma.join(entry.lanes.map((l) => Prisma.sql`${l}`))})
+             AND ${t}.origin_rule_version = ${entry.ruleVersion})`,
+  );
   return Prisma.sql`(${t}.claim_grade = 'observed'
      OR (${t}.claim_grade = 'judged'
-         AND ((${t}.origin_lane IN ('entity_match', 'entity_dedupe')
-               AND ${t}.origin_rule_version = ${ENTITY_DEDUPE_RULE_VERSION})
-           OR (${t}.origin_lane = ${PLACE_MERGE_LANE}
-               AND ${t}.origin_rule_version = ${PLACE_MERGE_RULE_VERSION}))))`;
+         AND (${Prisma.join(laneArms, ' OR ')})))`;
 }
 
 /** A 'judged' bank without its verdict is the alias ratchet again — refused
@@ -982,7 +1001,32 @@ export async function foldSurfacesFromMerge(
     FROM core_entities x
     WHERE x.entity_id = ${duplicateId}::uuid
       AND x.identity_key IS NOT NULL
-    ON CONFLICT (entity_id, locale, form) DO NOTHING`;
+    ON CONFLICT (entity_id, locale, form) DO UPDATE SET
+      -- GRADE ONLY RISES — the same monotonicity law as insertSurfaceRows
+      -- (red team 2026-09-03 P1#3: DO NOTHING here meant a judged merge
+      -- verdict landed NOTHING when the winner already held the loser's
+      -- name at recall — the name never routed and the verdict just paid
+      -- for was defeated at the door).
+      claim_grade = CASE
+        WHEN ${gradeRankSql(Prisma.sql`EXCLUDED.claim_grade`)}
+           > ${gradeRankSql(Prisma.sql`entity_surface.claim_grade`)}
+        THEN EXCLUDED.claim_grade ELSE entity_surface.claim_grade END,
+      origin_lane = CASE
+        WHEN EXCLUDED.claim_grade = 'judged'
+         AND entity_surface.claim_grade <> 'observed'
+        THEN EXCLUDED.origin_lane ELSE entity_surface.origin_lane END,
+      origin_claim_key = CASE
+        WHEN EXCLUDED.claim_grade = 'judged'
+         AND entity_surface.claim_grade <> 'observed'
+        THEN EXCLUDED.origin_claim_key ELSE entity_surface.origin_claim_key END,
+      origin_rule_version = CASE
+        WHEN EXCLUDED.claim_grade = 'judged'
+         AND entity_surface.claim_grade <> 'observed'
+        THEN EXCLUDED.origin_rule_version ELSE entity_surface.origin_rule_version END,
+      origin_fold_version = CASE
+        WHEN EXCLUDED.claim_grade = 'judged'
+         AND entity_surface.claim_grade <> 'observed'
+        THEN EXCLUDED.origin_fold_version ELSE entity_surface.origin_fold_version END`;
   // NOTE: identity_key IS canonicalFold(name), APP-WRITTEN by
   // identityInsertData — reusing it is reading a stored fold, not
   // computing one in SQL. Names with no foldable identity (emoji-only)
@@ -1031,7 +1075,31 @@ export async function foldSurfacesFromMerge(
       prompt_version = GREATEST(entity_surface.prompt_version,
                                 EXCLUDED.prompt_version),
       claim_judge_version = GREATEST(entity_surface.claim_judge_version,
-                                     EXCLUDED.claim_judge_version)`;
+                                     EXCLUDED.claim_judge_version),
+      -- GRADE ONLY RISES here too (red team 2026-09-03 P1#3b): a loser's
+      -- OBSERVED testimony must survive landing on a winner that held the
+      -- same form at recall — discarding it silently stripped word-court
+      -- testimony status from a string a person really wrote.
+      claim_grade = CASE
+        WHEN ${gradeRankSql(Prisma.sql`EXCLUDED.claim_grade`)}
+           > ${gradeRankSql(Prisma.sql`entity_surface.claim_grade`)}
+        THEN EXCLUDED.claim_grade ELSE entity_surface.claim_grade END,
+      origin_lane = CASE
+        WHEN ${gradeRankSql(Prisma.sql`EXCLUDED.claim_grade`)}
+           > ${gradeRankSql(Prisma.sql`entity_surface.claim_grade`)}
+        THEN EXCLUDED.origin_lane ELSE entity_surface.origin_lane END,
+      origin_claim_key = CASE
+        WHEN ${gradeRankSql(Prisma.sql`EXCLUDED.claim_grade`)}
+           > ${gradeRankSql(Prisma.sql`entity_surface.claim_grade`)}
+        THEN EXCLUDED.origin_claim_key ELSE entity_surface.origin_claim_key END,
+      origin_rule_version = CASE
+        WHEN ${gradeRankSql(Prisma.sql`EXCLUDED.claim_grade`)}
+           > ${gradeRankSql(Prisma.sql`entity_surface.claim_grade`)}
+        THEN EXCLUDED.origin_rule_version ELSE entity_surface.origin_rule_version END,
+      origin_fold_version = CASE
+        WHEN ${gradeRankSql(Prisma.sql`EXCLUDED.claim_grade`)}
+           > ${gradeRankSql(Prisma.sql`entity_surface.claim_grade`)}
+        THEN EXCLUDED.origin_fold_version ELSE entity_surface.origin_fold_version END`;
 
   // Merge-fold carries OBSERVED surfaces (testimony), which the collision
   // guard exempts, so there is nothing to report refusing — the fold returns
