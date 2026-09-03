@@ -20,9 +20,17 @@ import {
   sameBusinessVerdict,
   identityDomain,
   brandClusterPurity,
+  sameBusinessClaimKey,
+  SAME_BUSINESS_LANE,
   PLACE_MERGE_LANE,
   PLACE_MERGE_RULE_VERSION,
 } from './business-identity-rules';
+import {
+  SAME_BUSINESS_JUDGE_PROMPT,
+  SAME_BUSINESS_RULE_FINGERPRINT,
+  SAME_BUSINESS_RULE_VERSION,
+} from './same-business-rule';
+import { LLMService } from '../external-integrations/llm/llm.service';
 import { ClaimVerdictLedgerService } from '../content-processing/entity-resolver/claim-verdict-ledger.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
@@ -59,6 +67,7 @@ export class PlaceEntityMergeService {
     private readonly projectionRebuildService: ProjectionRebuildService,
     private readonly anchorRehome: EntityAnchorRehomeService,
     private readonly claimLedger: ClaimVerdictLedgerService,
+    private readonly llm: LLMService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('RestaurantEntityMergeService');
@@ -280,6 +289,151 @@ export class PlaceEntityMergeService {
     await this.projectionRebuildService.rebuildForPlaces([result.entityId]);
 
     return result;
+  }
+
+  /**
+   * THE SAME-BUSINESS HEARING (owner-ordered 2026-09-03). The deterministic
+   * owned-domain test decides the clear cases for free; a shared-domain pair
+   * it cannot vouch for comes here. Verdict memory first (one hearing per
+   * pair per rule version, ever); then one interactive FLASH call with the
+   * evidence card — names, grounded addresses, mention counts, communities,
+   * and the shared domain shown as context. 'distinct' is remembered so the
+   * nightly sweep never re-pays; 'same_business' falls through to the normal
+   * merge path, which records its own place_merge verdict. A transport
+   * failure returns 'unheard' and the pair simply holds — fail closed.
+   */
+  private async hearSameBusinessPair(
+    a: {
+      entity_id: string;
+      name: string;
+      mention_count: number;
+      communities: string[];
+    },
+    b: {
+      entity_id: string;
+      name: string;
+      mention_count: number;
+      communities: string[];
+    },
+    domain: string,
+  ): Promise<'same_business' | 'distinct' | 'unheard'> {
+    const claimKey = sameBusinessClaimKey(a.entity_id, b.entity_id);
+    const remembered = await this.claimLedger.decidedVerdicts(
+      SAME_BUSINESS_LANE,
+      SAME_BUSINESS_RULE_VERSION,
+      0,
+      [claimKey],
+    );
+    const prior = remembered.get(claimKey);
+    if (prior) {
+      return prior.outcome === 'same_business' ? 'same_business' : 'distinct';
+    }
+
+    const locations = await this.prisma.$queryRaw<
+      Array<{
+        restaurant_id: string;
+        address: string | null;
+        city: string | null;
+      }>
+    >`
+      SELECT restaurant_id, address, city FROM core_restaurant_locations
+       WHERE restaurant_id IN (${a.entity_id}::uuid, ${b.entity_id}::uuid)`;
+    const card = (side: typeof a): string => {
+      const locs = locations
+        .filter((l) => l.restaurant_id === side.entity_id)
+        .map((l) => [l.address, l.city].filter(Boolean).join(', '))
+        .filter((s) => s.length);
+      return (
+        `"${side.name}" — grounded locations: ` +
+        `${locs.length ? locs.join(' | ') : 'none'}; ` +
+        `active mentions: ${side.mention_count}; ` +
+        `communities: ${side.communities.join(', ') || 'none'}`
+      );
+    };
+
+    try {
+      const text = await this.llm.generateForCaller({
+        caller: 'enrichment.same_business_judge',
+        systemInstruction: SAME_BUSINESS_JUDGE_PROMPT,
+        prompt:
+          `Shared domain: ${domain}\n\n` +
+          `1. RECORD A: ${card(a)}\n   RECORD B: ${card(b)}`,
+        generationConfig: {
+          // Zero: sameness verdicts are persisted rulings; a re-ask must
+          // return the same answer.
+          temperature: 0,
+          responseMimeType: 'application/json',
+          responseJsonSchema: {
+            type: 'object',
+            properties: {
+              items: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    n: { type: 'number' },
+                    verdict: {
+                      type: 'string',
+                      enum: ['same_business', 'distinct'],
+                    },
+                    reason: {
+                      type: 'string',
+                      description:
+                        'The evidence that decided it — a blank reason leaves the case unjudged',
+                    },
+                  },
+                  required: ['n', 'verdict', 'reason'],
+                },
+              },
+            },
+            required: ['items'],
+          },
+        },
+      });
+      const start = text.indexOf('{');
+      const end = text.lastIndexOf('}');
+      const parsed = JSON.parse(text.slice(start, end + 1)) as {
+        items?: Array<{ n?: number; verdict?: string; reason?: string }>;
+      };
+      const ruling = (parsed.items ?? []).find(
+        (item) => item.n === 1 && (item.reason ?? '').trim().length > 0,
+      );
+      if (!ruling) return 'unheard';
+      const outcome =
+        ruling.verdict === 'same_business' ? 'same_business' : 'distinct';
+      await this.claimLedger.record({
+        lane: SAME_BUSINESS_LANE,
+        claimKey,
+        ruleVersion: SAME_BUSINESS_RULE_VERSION,
+        foldVersion: 0,
+        outcome,
+        reason: (ruling.reason ?? '').trim(),
+        ruleFingerprint: SAME_BUSINESS_RULE_FINGERPRINT,
+        subject: {
+          aId: a.entity_id,
+          aName: a.name,
+          bId: b.entity_id,
+          bName: b.name,
+          domain,
+        },
+      });
+      // The ruling's own effect is the returned answer (a merge records and
+      // executes its own place_merge verdict) — executed now, either way.
+      await this.claimLedger.markExecuted(
+        SAME_BUSINESS_LANE,
+        claimKey,
+        SAME_BUSINESS_RULE_VERSION,
+        0,
+      );
+      return outcome;
+    } catch (error) {
+      this.logger.error('Same-business hearing failed — pair holds', {
+        claimKey,
+        domain,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 'unheard';
+    }
   }
 
   /**
@@ -775,15 +929,30 @@ export class PlaceEntityMergeService {
           b.name,
         ]);
         if (!owned) {
-          held += 1;
-          decisions.push({ name: group.name, verdict: 'hold' });
-          this.logger.warn('Domain-lane pair HELD — domain is not owned', {
-            operation: 'same_name_duplicate_sweep',
-            domain: identityDomain(a.domain),
-            a: a.name,
-            b: b.name,
-          });
-          continue;
+          // THE SAME-BUSINESS COURT (owner-ordered 2026-09-03): a pair the
+          // purity test cannot vouch for is not parked forever — it gets a
+          // hearing, once, remembered by the ledger. Only in apply mode:
+          // dry runs must stay free.
+          const hearing = options.apply
+            ? await this.hearSameBusinessPair(a, b, identityDomain(a.domain)!)
+            : 'distinct';
+          if (hearing !== 'same_business') {
+            held += 1;
+            decisions.push({ name: group.name, verdict: 'hold' });
+            this.logger.warn(
+              'Domain-lane pair HELD — domain is not owned and the court did not join them',
+              {
+                operation: 'same_name_duplicate_sweep',
+                domain: identityDomain(a.domain),
+                a: a.name,
+                b: b.name,
+                hearing,
+              },
+            );
+            continue;
+          }
+          // same_business: fall through to the normal merge path below —
+          // the merge itself still records its own place_merge verdict.
         }
       }
       const aGrounded = a.place_ids.length > 0;

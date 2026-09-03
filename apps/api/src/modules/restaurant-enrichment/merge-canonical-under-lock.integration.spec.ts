@@ -70,6 +70,13 @@ const service = new PlaceEntityMergeService(
   projectionRebuild,
   new EntityAnchorRehomeService(logger),
   new ClaimVerdictLedgerService(prisma as never),
+  // The same-business hearing is unreachable from these merge paths — a
+  // throwing stand-in proves it stays that way.
+  {
+    generateForCaller: () => {
+      throw new Error('LLM must not be reached by direct merges');
+    },
+  } as never,
   logger,
 );
 

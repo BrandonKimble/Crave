@@ -262,6 +262,17 @@ export const GEMINI_CALLER_PROFILES: Record<string, GeminiCallerProfile> = {
     context: 'query',
     maxOutputTokens: MODEL_MAX_OUTPUT,
   },
+  // THE SAME-BUSINESS COURT (2026-09-03): "one operating business, or two
+  // strangers on one ordering platform?" — the hearing behind the sweep's
+  // owned-domain test (the getsauce.com mega-merge class). One hearing per
+  // pair per rule version, remembered in claim_verdicts; FLASH because a
+  // wrong merge rewrites a restaurant's identity — same stakes rationale as
+  // the entity-match judge.
+  'enrichment.same_business_judge': {
+    model: FLASH,
+    context: 'query',
+    maxOutputTokens: MODEL_MAX_OUTPUT,
+  },
   // THE JUDGED VOCABULARY (2026-08-13) — the two lanes that retired the query
   // path's last hand lists. One word, one language, one boolean; 40 words per
   // call, and each word is asked exactly once ever, so the whole certified

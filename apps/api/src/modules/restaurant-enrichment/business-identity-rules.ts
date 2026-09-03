@@ -52,6 +52,18 @@ import {
  * denylist + the owned-domain purity test). Bump it when the doctrine
  * changes, exactly like ENTITY_DEDUPE_RULE_VERSION.
  */
+/** The same-business court's lane: "one operating business, or two
+ *  strangers on one platform?" for pairs the owned-domain test cannot
+ *  vouch for. Claim keys are uuid pairs (fold 0 — never fold-stranded). */
+export const SAME_BUSINESS_LANE = 'same_business';
+
+/** Order-independent pair key — the same two entities are one claim
+ *  whichever side the sweep peels first. */
+export function sameBusinessClaimKey(a: string, b: string): string {
+  const [low, high] = [a, b].sort();
+  return `pair|${low}|${high}`;
+}
+
 export const PLACE_MERGE_LANE = 'place_merge';
 export const PLACE_MERGE_RULE_VERSION = 1;
 

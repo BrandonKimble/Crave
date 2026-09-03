@@ -24,6 +24,7 @@ import {
 import { ENTITY_MATCH_CONTRACT } from './entity-match.contract';
 import { ENTITY_DEDUPE_CONTRACT } from './entity-dedupe.contract';
 import { RESTAURANT_NAME_CONTRACT } from './restaurant-name.contract';
+import { SAME_BUSINESS_CONTRACT } from './same-business.contract';
 import { WORD_CLAIM_CONTRACT } from './word-claim.contract';
 import {
   WORD_GENERICNESS_CONTRACT,
@@ -124,6 +125,7 @@ export const JUDGE_CONTRACT_REGISTRY: JudgeContractRegistry = {
     ENTITY_MATCH_CONTRACT,
     ENTITY_DEDUPE_CONTRACT,
     RESTAURANT_NAME_CONTRACT,
+    SAME_BUSINESS_CONTRACT,
     WORD_CLAIM_CONTRACT,
     WORD_GENERICNESS_CONTRACT,
     WORD_NEGATION_CONTRACT,
