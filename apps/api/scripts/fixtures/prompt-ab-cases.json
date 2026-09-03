@@ -7518,5 +7518,118 @@
     "expect": {
       "emitsNothing": true
     }
+  },
+  {
+    "id": "V23-closure-state-is-closure",
+    "why": "v22 audit leak: praise beside 'now a dilapidated ruin' banked Castle Hill — closure stated as present STATE, no closure verb; pinned with the doctrine tightening.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Places you miss",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Castle Hill had the best enchiladas verdes in town back in the day. Sadly the building is now a dilapidated ruin."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V23-would-love-to-try-desire",
+    "why": "v22 audit leak: 'would love to try' banked Roaring Fork — desire is not eating; phrase pinned beside 'want to try'.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Underrated downtown dinner spots?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "I would love to try the green chile pork at Roaring Fork, it looks incredible."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
+  },
+  {
+    "id": "V23-asker-situation-never-an-attribute",
+    "why": "v22 audit leak x4: 'my 5-year-old' / 'mother-in-law' asks minted good-for-children/family-friendly on the answers — FIT IS A QUOTATION; a situation is not a constraint word.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Dinner with my 5 year old and my mother-in-law",
+        "body": "Taking my 5 year old and my mother-in-law out Saturday. Where should we go?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Phil's Icehouse. Great burgers."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "places": ["phil's icehouse"],
+      "notAttributes": [
+        "family-friendly",
+        "family friendly",
+        "good for children",
+        "kid-friendly",
+        "kid friendly",
+        "kids"
+      ]
+    }
+  },
+  {
+    "id": "V23-host-venue-unnamed-truck",
+    "why": "v22 audit leak: Oskar Blues credited for its unnamed taco truck — a host venue is never the vendor's stand-in.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Best late night tacos?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "The taco truck at Oskar Blues is incredible, get the barbacoa."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "notRestaurants": ["oskar blues", "oskar blues brewery"]
+    }
+  },
+  {
+    "id": "V23-wine-brand-at-grocery-retail",
+    "why": "v22 audit leak: a wine brand praised at H-E-B banked — a bottle from the shelf is retail, the brand is never a restaurant.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Good cheap wine?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Grabbed a bottle of Frog Leaps merlot at HEB last week, so good for the price."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "emitsNothing": true
+    }
   }
 ]

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Pre-load gate cert sweep driver (2026-08-30). Sequential; all read-only probes.
 set -uo pipefail
-cd /Users/brandonkimble/Crave/Crave/apps/api
+# Run from anywhere: paths resolve relative to this script (apps/api/scripts/fixtures).
+cd "$(dirname "$0")/../.." || exit 1
 FX=scripts/fixtures
-LOG=/private/tmp/claude-501/-Users-brandonkimble-Crave-Crave/9c76ce4e-ff73-44a9-949c-84dcb10614d4/scratchpad/gate-cert.log
+LOG=${LOG_FILE:-/tmp/gate-cert.log}
 run() { echo "=== $(date +%T) $*" >> "$LOG"; TS_NODE_TRANSPILE_ONLY=1 npx ts-node "$@" >> "$LOG" 2>&1; echo "=== exit $? : $*" >> "$LOG"; }
 
 for i in 1 2 3; do

@@ -8,9 +8,9 @@ process.env.PROCESS_ROLE ||= 'api';
 import { readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from '../../src/app.module';
-import { LLMService } from '../../src/modules/external-integrations/llm/llm.service';
-import { stopCronsForScript } from '../../src/shared/utils/stop-crons';
+import { AppModule } from '../../../src/app.module';
+import { LLMService } from '../../../src/modules/external-integrations/llm/llm.service';
+import { stopCronsForScript } from '../../../src/shared/utils/stop-crons';
 
 const SC =
   '/private/tmp/claude-501/-Users-brandonkimble-Crave-Crave/9c76ce4e-ff73-44a9-949c-84dcb10614d4/scratchpad';
@@ -19,7 +19,7 @@ async function main(): Promise<void> {
   const prompt = readFileSync(
     join(
       __dirname,
-      '../../src/modules/external-integrations/llm/prompts/collection-prompt.candidate.md',
+      '../../../src/modules/external-integrations/llm/prompts/collection-prompt.candidate.md',
     ),
     'utf-8',
   );
