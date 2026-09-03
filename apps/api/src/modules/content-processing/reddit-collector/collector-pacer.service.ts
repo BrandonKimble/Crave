@@ -37,8 +37,10 @@ import {
 } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { LoggerService, CorrelationUtils } from '../../../shared';
-import { isEnvFlagExplicitlyDisabled } from '../../../shared/config/env-flag';
-import { isWorkerRuntime } from '../../../shared/utils/process-role';
+import {
+  CompletionWorkTimerHandle,
+  startCompletionWorkTimer,
+} from '../../../shared/completion-work-timer';
 import { GovernanceService } from '../../external-integrations/governance/governance.service';
 import {
   CollectorSourceRegistryService,
@@ -115,7 +117,7 @@ export class CollectorPacerService implements OnModuleInit, OnModuleDestroy {
    * off-switch (COLLECTION_RECONCILER_ENABLED=false), unref()'d and cleared
    * on shutdown. Same shape as gemini-batch.service.ts's poller.
    */
-  private reconcilerTimer: NodeJS.Timeout | null = null;
+  private reconcilerTimer: CompletionWorkTimerHandle | null = null;
   private reconcilerInFlight = false;
 
   constructor(
@@ -131,28 +133,16 @@ export class CollectorPacerService implements OnModuleInit, OnModuleDestroy {
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('CollectorPacer');
     this.enabled = isEnvFlagEnabled(process.env.COLLECTION_SCHEDULER_ENABLED);
-    if (
-      isEnvFlagExplicitlyDisabled(process.env.COLLECTION_RECONCILER_ENABLED)
-    ) {
-      return;
-    }
-    if (!isWorkerRuntime()) return;
-    this.reconcilerTimer = setInterval(
-      () => void this.runExpectedBatchesReconciler(),
-      RECONCILER_INTERVAL_MS,
-    );
-    this.reconcilerTimer.unref();
-    // BOOT ARM: a restart re-reads the lane verdicts immediately, so a
-    // shortfall that opened while the loop was dead is visible on the
-    // heartbeat within one boot rather than one cadence.
-    void this.runExpectedBatchesReconciler();
+    this.reconcilerTimer = startCompletionWorkTimer({
+      intervalMs: RECONCILER_INTERVAL_MS,
+      offSwitchEnv: 'COLLECTION_RECONCILER_ENABLED',
+      run: () => this.runExpectedBatchesReconciler(),
+    });
   }
 
   onModuleDestroy(): void {
-    if (this.reconcilerTimer) {
-      clearInterval(this.reconcilerTimer);
-      this.reconcilerTimer = null;
-    }
+    this.reconcilerTimer?.stop();
+    this.reconcilerTimer = null;
   }
 
   /** STAYS AN @Cron ON PURPOSE: this tick STARTS work — Reddit draws and the

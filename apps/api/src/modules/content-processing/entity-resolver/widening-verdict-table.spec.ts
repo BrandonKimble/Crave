@@ -92,6 +92,7 @@ describe('settleReviewedVerdicts', () => {
       ),
     };
     const ledger = {
+      pendingExecution: jest.fn(() => Promise.resolve([])),
       decidedKeys: jest.fn(
         async (_l: string, _v: number, _f: unknown, keys: string[]) =>
           options.decided ? new Set(keys) : new Set<string>(),

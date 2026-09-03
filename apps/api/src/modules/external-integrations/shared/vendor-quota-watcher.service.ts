@@ -1,8 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Cron } from '@nestjs/schedule';
 import { v2 as cloudinary } from 'cloudinary';
 import { LoggerService } from '../../../shared';
+import {
+  CompletionWorkTimerHandle,
+  startCompletionWorkTimer,
+} from '../../../shared/completion-work-timer';
 import { OpsAlertsService } from './ops-alerts.service';
 
 /**
@@ -60,7 +63,26 @@ interface CloudinaryUsageBucket {
  * it buys false confidence. A read failure warns, with its own dedupe key.
  */
 @Injectable()
-export class VendorQuotaWatcherService {
+export class VendorQuotaWatcherService
+  implements OnModuleInit, OnModuleDestroy
+{
+  private watchdogTimer: CompletionWorkTimerHandle | null = null;
+
+  onModuleInit(): void {
+    // Watchdogs are completion-truth infrastructure — self-owned timer,
+    // never @Cron (red team 2026-09-03 governance #2: dead on staging).
+    this.watchdogTimer = startCompletionWorkTimer({
+      intervalMs: 60 * 60 * 1000,
+      offSwitchEnv: 'VENDOR_QUOTA_WATCHER_ENABLED',
+      run: () => this.hourlyCheck(),
+    });
+  }
+
+  onModuleDestroy(): void {
+    this.watchdogTimer?.stop();
+    this.watchdogTimer = null;
+  }
+
   private readonly logger: LoggerService;
   private readonly cloudName: string | undefined;
   private readonly apiKey: string | undefined;
@@ -89,7 +111,6 @@ export class VendorQuotaWatcherService {
    * registered when isSchedulerRuntime() (src/app.module.ts), so this @Cron
    * is inert outside worker processes.
    */
-  @Cron('0 * * * *')
   async hourlyCheck(now: Date = new Date()): Promise<void> {
     try {
       await this.checkCloudinary(now);

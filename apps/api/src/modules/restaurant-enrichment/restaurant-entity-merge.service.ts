@@ -409,8 +409,13 @@ export class PlaceEntityMergeService {
         (item) => item.n === 1 && (item.reason ?? '').trim().length > 0,
       );
       if (!ruling) return 'unheard';
-      const outcome =
-        ruling.verdict === 'same_business' ? 'same_business' : 'distinct';
+      // CLOSED SET, never coercion (red team 2026-09-03): a verdict that is
+      // not exactly one of the enum's two values is a mis-parse, and a
+      // mis-parse must not become a permanently remembered 'distinct'.
+      if (ruling.verdict !== 'same_business' && ruling.verdict !== 'distinct') {
+        return 'unheard';
+      }
+      const outcome = ruling.verdict;
       await this.claimLedger.record({
         lane: SAME_BUSINESS_LANE,
         claimKey,

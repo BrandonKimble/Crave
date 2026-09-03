@@ -1,7 +1,9 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { LoggerService } from '../../shared';
-import { isEnvFlagExplicitlyDisabled } from '../../shared/config/env-flag';
-import { isWorkerRuntime } from '../../shared/utils/process-role';
+import {
+  CompletionWorkTimerHandle,
+  startCompletionWorkTimer,
+} from '../../shared/completion-work-timer';
 import { PhotosService } from './photos.service';
 import { CloudinaryService } from './cloudinary.service';
 
@@ -41,7 +43,7 @@ export class PhotoReconciliationService
    * false) on top of the existing `enabled` (Cloudinary configured at all),
    * unref()'d, cleared on shutdown.
    */
-  private sweepTimer: NodeJS.Timeout | null = null;
+  private sweepTimer: CompletionWorkTimerHandle | null = null;
   private sweepInFlight = false;
 
   constructor(
@@ -56,22 +58,16 @@ export class PhotoReconciliationService
 
   onModuleInit(): void {
     if (!this.enabled) return;
-    if (isEnvFlagExplicitlyDisabled(process.env.PHOTO_RECONCILE_ENABLED)) {
-      return;
-    }
-    if (!isWorkerRuntime()) return;
-    this.sweepTimer = setInterval(() => void this.sweep(), SWEEP_INTERVAL_MS);
-    this.sweepTimer.unref();
-    // BOOT ARM: a restart settles whatever webhooks were missed while the
-    // loop was dead, rather than waiting out a full cadence.
-    void this.sweep();
+    this.sweepTimer = startCompletionWorkTimer({
+      intervalMs: SWEEP_INTERVAL_MS,
+      offSwitchEnv: 'PHOTO_RECONCILE_ENABLED',
+      run: () => this.sweep(),
+    });
   }
 
   onModuleDestroy(): void {
-    if (this.sweepTimer) {
-      clearInterval(this.sweepTimer);
-      this.sweepTimer = null;
-    }
+    this.sweepTimer?.stop();
+    this.sweepTimer = null;
   }
 
   async sweep(): Promise<void> {

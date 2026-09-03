@@ -23,6 +23,7 @@
  * backlog with crons off must SCREAM instead of sitting silent — the
  * kill-switch-honest pattern from derived-index-job.ts:110-127.
  */
+import { startCompletionWorkTimer } from './completion-work-timer';
 import { CollectionEvidenceService } from '../modules/content-processing/reddit-collector/collection-evidence.service';
 import { CollectorPacerService } from '../modules/content-processing/reddit-collector/collector-pacer.service';
 import { NotificationDispatcherService } from '../modules/notifications/notification-dispatcher.service';
@@ -91,6 +92,61 @@ const flush = async () => {
 
 const timerOf = (service: unknown, field: string): unknown =>
   (service as Record<string, unknown>)[field];
+
+describe('the completion-work timer — the shared block itself, tested once', () => {
+  // The four (a) services now delegate their timer plumbing here
+  // (startCompletionWorkTimer); their suites below stay as the per-service
+  // WIRING proof (right off-switch env, right cadence, right pass, handle
+  // stored in the field + cleared on destroy). This block owns the
+  // obligations of the mechanism.
+  const saved = { ...process.env };
+  beforeEach(() => {
+    jest.useFakeTimers();
+    delete process.env.TEST_COMPLETION_TIMER_ENABLED;
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+    process.env = { ...saved, PROCESS_ROLE: 'worker', CRONS_ENABLED: 'false' };
+  });
+
+  it('arms with CRONS_ENABLED=false, boot-arms one pass, ticks, unrefs, stops dead', () => {
+    const run = jest.fn().mockResolvedValue(undefined);
+    const setIntervalSpy = jest.spyOn(global, 'setInterval');
+    const handle = startCompletionWorkTimer({
+      intervalMs: 1000,
+      offSwitchEnv: 'TEST_COMPLETION_TIMER_ENABLED',
+      run,
+    });
+    expect(handle).not.toBeNull();
+    // BOOT ARM: one immediate pass, outside the interval.
+    expect(run).toHaveBeenCalledTimes(1);
+    // unref()'d: a script booting the full graph still exits.
+    const timer = setIntervalSpy.mock.results[0].value as NodeJS.Timeout;
+    expect(timer.hasRef()).toBe(false);
+    jest.advanceTimersByTime(1000);
+    expect(run).toHaveBeenCalledTimes(2);
+    handle!.stop();
+    jest.advanceTimersByTime(10_000);
+    expect(run).toHaveBeenCalledTimes(2);
+    setIntervalSpy.mockRestore();
+  });
+
+  it('its explicit off-switch arms nothing and runs nothing', () => {
+    process.env.TEST_COMPLETION_TIMER_ENABLED = 'false';
+    const run = jest.fn().mockResolvedValue(undefined);
+    const handle = startCompletionWorkTimer({
+      intervalMs: 1000,
+      offSwitchEnv: 'TEST_COMPLETION_TIMER_ENABLED',
+      run,
+    });
+    expect(handle).toBeNull();
+    jest.advanceTimersByTime(10_000);
+    expect(run).not.toHaveBeenCalled();
+  });
+  // (The worker-runtime gate is exercised through the (a) suites: the whole
+  // file pins PROCESS_ROLE=worker before the first resolveProcessRole() read,
+  // which caches at module scope — a non-worker case cannot be staged here.)
+});
 
 describe('(a) collection evidence reconciler — armed on a worker with CRONS_ENABLED=false', () => {
   const saved = { ...process.env };

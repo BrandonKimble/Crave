@@ -8,7 +8,9 @@ import {
   ITEM_CATEGORY_EDGE_LOCK,
   itemCategoryEdgeDeleteSql,
   itemCategoryEdgeInsertSql,
+  itemCategoryEdgeProspectiveCountSql,
 } from '../content-processing/reddit-collector/food-category-edge-sql';
+import { COLLAPSE_DROP_FRACTION } from '../external-integrations/shared/source-table-collapse-alarm.service';
 
 /**
  * THE FIFTH DERIVED TABLE FINALLY GETS THE LAW (D3, 2026-08-13).
@@ -102,25 +104,30 @@ export class ItemCategoryEdgeBuilderService extends DerivedIndexJob {
         // the zero-input rationale excused it. A wrong ORDER must be a loud
         // no-op, never a wipe: standing edges survive until real input
         // exists to replace them.
-        const [{ n: inputDishes }] = await tx.$queryRaw<{ n: number }[]>`
-          SELECT count(*)::int AS n FROM core_entities e
-          WHERE e.type = 'item'::entity_type
-            AND e.status = 'active'::entity_status
-            AND cardinality(e.knowledge_categories) > 0`;
-        if (inputDishes === 0) {
-          const [{ n: standing }] = await tx.$queryRaw<{ n: number }[]>`
-            SELECT count(*)::int AS n FROM derived_food_category_edges`;
-          if (standing > 0) {
+        // COLLAPSE-PRICED, not merely non-empty (red team 2026-09-03,
+        // widening-era F2): the a98d4808c doctrine is backfill-COMPLETE —
+        // a PARTIAL facet (11 of 3,910 dishes stamped) passes an emptiness
+        // check and still wipes 4,839 edges down to ~14. Same guard as the
+        // activation path (projection-rebuild.service.ts): refuse whenever
+        // the replace would collapse standing membership.
+        const [{ n: standing }] = await tx.$queryRaw<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM derived_food_category_edges`;
+        if (standing > 0) {
+          const [prospective] = await tx.$queryRawUnsafe<Array<{ n: number }>>(
+            itemCategoryEdgeProspectiveCountSql(null),
+          );
+          const prospectiveEdges = prospective?.n ?? 0;
+          if (prospectiveEdges < standing * (1 - COLLAPSE_DROP_FRACTION)) {
             this.opsAlerts.emit({
               severity: 'critical',
               kind: 'derived_rebuild_refused_empty_input',
-              title: 'Food-category edge rebuild REFUSED: empty input facet',
+              title: 'Food-category edge rebuild REFUSED: facet behind corpus',
               body:
-                `knowledge_categories is empty on every active dish but ` +
-                `${standing} standing edges exist — the synthesis backfill ` +
-                `has not run (or regressed). Refusing the full replace so ` +
-                `the standing edges keep serving search. Run dish-knowledge ` +
-                `synthesis, then this rebuild.`,
+                `Rebuilding would produce ${prospectiveEdges} edges where ` +
+                `${standing} stand — knowledge_categories is empty or ` +
+                `PARTIAL (the synthesis backfill has not run, or regressed). ` +
+                `Refusing the full replace so standing edges keep serving ` +
+                `search. Run dish-knowledge synthesis, then this rebuild.`,
               dedupeKey: `category_edge_rebuild_refused:${new Date().toISOString().slice(0, 10)}`,
             });
             return standing;

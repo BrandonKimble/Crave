@@ -23,7 +23,7 @@
 
 ## 2. Trace verification
 
-Every quoted failure in the edit rationales was checked against `plans/v17-preflight-trace-20260826.md`; the trace itself is backed by `apps/api/scripts/fixtures/v17-preflight-outputs.json` (28,883 lines of raw model output, committed — the receipts exist).
+Every quoted failure in the edit rationales was checked against `plans/v17-preflight-trace-20260826.md`; the trace itself is backed by `apps/api/scripts/fixtures/archive/v17-preflight-outputs.json` (28,883 lines of raw model output, committed — the receipts exist).
 
 - N10 (fact-ask deals): trace §2.1, real ("Dollar oysters on Tuesday at Foreign and Domestic"). The fixture's F&D + Perla's text is a synthetic recreation, not the real doc — acceptable per gold-case practice, and the keep-side clause is faithfully modeled on the trace's "killer deal and killer pizza" observation.
 - N13 (yardstick): §2.4 credential list + Jeffreys comparison loser — both real, quoted verbatim.

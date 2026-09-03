@@ -378,10 +378,23 @@ export class GeminiBatchService implements OnModuleInit, OnModuleDestroy {
         status: 'persisting',
         leaseExpiresAt: leaseFromNow(),
         requestCount: params.items.length,
+        // THE RESOLVED CAMPAIGN RIDES THE ROW (red team 2026-09-03
+        // governance #4): the dispatch gate above resolves explicit-or-
+        // ambient, but every downstream reader — pollOne's metering, the
+        // breach reaper, the ingest hold, the runner's completion query —
+        // reads resume_context->>'campaignId' only. An ambient-campaign
+        // submit that did not persist the id was gated at dispatch yet
+        // unmetered, unreapable, and invisible to completion. One truth:
+        // whatever id the gate used is the id the row carries.
         resumeContext:
-          params.resumeContext === undefined
-            ? Prisma.JsonNull
-            : (params.resumeContext as Prisma.InputJsonValue),
+          campaignId !== null && campaignId !== undefined
+            ? ({
+                ...((params.resumeContext as object | undefined) ?? {}),
+                campaignId,
+              } as Prisma.InputJsonValue)
+            : params.resumeContext === undefined
+              ? Prisma.JsonNull
+              : (params.resumeContext as Prisma.InputJsonValue),
       },
       select: { jobId: true },
     });

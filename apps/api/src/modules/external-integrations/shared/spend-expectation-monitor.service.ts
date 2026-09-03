@@ -1,5 +1,8 @@
-import { Injectable } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
+import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import {
+  CompletionWorkTimerHandle,
+  startCompletionWorkTimer,
+} from '../../../shared/completion-work-timer';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { OpsAlertsService } from './ops-alerts.service';
@@ -63,7 +66,26 @@ import {
  *     each carrying the current numbers, is the honest middle.
  */
 @Injectable()
-export class SpendExpectationMonitorService {
+export class SpendExpectationMonitorService
+  implements OnModuleInit, OnModuleDestroy
+{
+  private watchdogTimer: CompletionWorkTimerHandle | null = null;
+
+  onModuleInit(): void {
+    // Watchdogs are completion-truth infrastructure — self-owned timer,
+    // never @Cron (red team 2026-09-03 governance #2: dead on staging).
+    this.watchdogTimer = startCompletionWorkTimer({
+      intervalMs: 6 * 60 * 60 * 1000,
+      offSwitchEnv: 'SPEND_EXPECTATION_MONITOR_ENABLED',
+      run: () => this.nightlyCheck(),
+    });
+  }
+
+  onModuleDestroy(): void {
+    this.watchdogTimer?.stop();
+    this.watchdogTimer = null;
+  }
+
   private readonly logger: LoggerService;
 
   constructor(
@@ -80,7 +102,6 @@ export class SpendExpectationMonitorService {
    * ScheduleModule.forRoot() is only registered when isSchedulerRuntime()
    * (src/app.module.ts), so this @Cron is inert outside worker processes.
    */
-  @Cron('10 4 * * *')
   async nightlyCheck(now: Date = new Date()): Promise<void> {
     try {
       await this.compareToExpectation(now);

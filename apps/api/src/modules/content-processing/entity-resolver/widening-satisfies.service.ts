@@ -132,6 +132,11 @@ export class WideningSatisfiesService {
     options: { dryRun?: boolean } = {},
   ): Promise<WideningHearingSummary> {
     const dryRun = options.dryRun ?? true;
+    // Bought answers land before new hearings — the item court's own entry
+    // rule, at THIS lane's versions (see resumePendingWideningEffects).
+    if (!dryRun) {
+      await this.resumePendingWideningEffects();
+    }
     const summary: WideningHearingSummary = {
       heard: 0,
       satisfies: 0,
@@ -371,6 +376,10 @@ export class WideningSatisfiesService {
     skippedGone: number;
     skippedFaceted: number;
   }> {
+    // Bought answers land before decidedKeys reads — otherwise a
+    // decided-but-unexecuted verdict is counted skippedDecided and its
+    // paid edge never lands (red team 2026-09-03 F1).
+    await this.resumePendingWideningEffects();
     const result = {
       settled: 0,
       skippedDecided: 0,
@@ -461,6 +470,48 @@ export class WideningSatisfiesService {
       ...result,
     });
     return result;
+  }
+
+  /**
+   * DECIDED BUT NOT EXECUTED — the widening lanes' own drain (red team
+   * 2026-09-03 F1). c3ed944e3 made pendingExecution version-scoped, which
+   * silently turned "eventually resumed" into "structurally stranded" for
+   * this court: the item court's drain runs only at ITS version, so a crash
+   * between record and effect here left a paid widening verdict pending
+   * forever — and decidedKeys treats decided-but-unexecuted as decided, so
+   * re-runs reported it skippedDecided and the edge never landed. One drain
+   * per (lane, version) that has an executor, always.
+   */
+  async resumePendingWideningEffects(limit = 500): Promise<number> {
+    let resumed = 0;
+    for (const version of [
+      ATTRIBUTE_SATISFIES_PROMPT_VERSION,
+      INGREDIENT_SATISFIES_PROMPT_VERSION,
+    ]) {
+      const pending =
+        await this.ledger.pendingExecution<SatisfiesVerdictSubject>(
+          CONCEPT_SATISFIES_LANE,
+          version,
+          conceptSatisfiesLane.keyFoldVersion,
+          limit,
+        );
+      for (const verdict of pending) {
+        await this.applyEffect([verdict.subject]);
+        await this.ledger.markExecuted(
+          CONCEPT_SATISFIES_LANE,
+          verdict.claimKey,
+          verdict.ruleVersion,
+          verdict.foldVersion,
+        );
+        resumed += 1;
+      }
+    }
+    if (resumed) {
+      this.logger.info('Resumed pending widening satisfies effects', {
+        resumed,
+      });
+    }
+    return resumed;
   }
 
   /** Verdict before effect (H5 amendment (c)) — the item court's settle
@@ -616,7 +667,13 @@ export class WideningSatisfiesService {
     >();
     for (const item of parsed.items ?? []) {
       if (typeof item.n !== 'number') continue;
-      const verdict = item.verdict === 'satisfies' ? 'satisfies' : 'reject';
+      // CLOSED SET, never coercion (red team 2026-09-03 F4): a malformed
+      // verdict ("unsure", schema drift, partial JSON) must be UNRETURNED —
+      // coercing it to 'reject' persisted a ruling the model never made, at
+      // rule-version durability, contradicting the "a missing verdict is
+      // never a reject" law three lines up. Same fix as the item court.
+      if (item.verdict !== 'satisfies' && item.verdict !== 'reject') continue;
+      const verdict = item.verdict;
       const reason = (item.reason ?? '').trim();
       // Schema-forced evidence reasons (the sameness court's law): a
       // degenerate reason — empty or the bare verdict word — is not a

@@ -221,6 +221,21 @@ export class CityReextractRunner implements OnApplicationBootstrap {
         : 'SHADOW mode — nothing is live yet. When the batch queue drains: ./scripts/rig/reextract.sh diff <communities> <version>, triage the review file, THEN activate. Do NOT touch CRONS_ENABLED; crons stay on.',
     });
 
+    // A RUN THAT FAILED BEFORE A JOB ROW EXISTED IS OWED WORK THE JOB QUERY
+    // CANNOT SEE (red team 2026-09-03 governance #3): the drained-queue
+    // completion counts llm_batch_jobs only, so a submission-phase failure
+    // (spend gate closed, dispatch refusal, DB error) leaves documents owed
+    // with zero rows — degenerately, a campaign whose every submit failed
+    // would complete as "done" on the first tick over an un-executed corpus.
+    // The runner is the one process that knows its own manifest: any
+    // pre-submit failure means the system may not declare done.
+    if (failed > 0) {
+      this.logger.error(
+        'CITY RE-EXTRACT: runs failed before submission — campaign left OPEN for retry/human, system completion refused',
+        { communities, campaignId, failedRuns: failed, okRuns: ok },
+      );
+      return;
+    }
     await this.completeCampaignWhenDrained(communities, campaignId);
   }
 

@@ -7,8 +7,10 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
-import { isEnvFlagExplicitlyDisabled } from '../../../shared/config/env-flag';
-import { isWorkerRuntime } from '../../../shared/utils/process-role';
+import {
+  CompletionWorkTimerHandle,
+  startCompletionWorkTimer,
+} from '../../../shared/completion-work-timer';
 import { OpsAlertsService } from '../../external-integrations/shared/ops-alerts.service';
 import { GeminiBatchService } from '../../external-integrations/llm/gemini-batch.service';
 import { ChunkProcessingResult } from '../../external-integrations/llm/llm-concurrent-processing.service';
@@ -126,7 +128,7 @@ export class CollectionEvidenceService
    * unref()s so a script booting the full graph still exits, and clears on
    * shutdown. Same shape as gemini-batch.service.ts's poller.
    */
-  private reconcileTimer: NodeJS.Timeout | null = null;
+  private reconcileTimer: CompletionWorkTimerHandle | null = null;
   private reconcileInFlight = false;
 
   constructor(
@@ -138,27 +140,16 @@ export class CollectionEvidenceService
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('CollectionEvidenceService');
-    if (isEnvFlagExplicitlyDisabled(process.env.COLLECTION_RECONCILE_ENABLED)) {
-      return;
-    }
-    if (!isWorkerRuntime()) return;
-    this.reconcileTimer = setInterval(
-      () => void this.runReconcilePass(),
-      RECONCILE_INTERVAL_MS,
-    );
-    this.reconcileTimer.unref();
-    // BOOT ARM, deliberately outside the interval: a worker restart is
-    // enough to surface (and drain) a backlog that accumulated while the
-    // loop was dead — a deploy, a crash, or the whole job being gated off,
-    // which is precisely how ten days of claims went unseen.
-    void this.runReconcilePass();
+    this.reconcileTimer = startCompletionWorkTimer({
+      intervalMs: RECONCILE_INTERVAL_MS,
+      offSwitchEnv: 'COLLECTION_RECONCILE_ENABLED',
+      run: () => this.runReconcilePass(),
+    });
   }
 
   onModuleDestroy(): void {
-    if (this.reconcileTimer) {
-      clearInterval(this.reconcileTimer);
-      this.reconcileTimer = null;
-    }
+    this.reconcileTimer?.stop();
+    this.reconcileTimer = null;
   }
 
   /** Interval/boot entry point: never throws, never stacks. */

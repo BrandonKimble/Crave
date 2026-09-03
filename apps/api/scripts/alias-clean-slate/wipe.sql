@@ -94,7 +94,10 @@ DELETE FROM entity_surface;
 
 \if :execute
 COMMIT;
-\echo 'EXECUTED. Next: backfill-observed.ts --execute, then the nightly'
+\echo 'EXECUTED. DO NOT run gc-unsupported-entities.sql until the next'
+\echo 're-extraction has re-supported the reopened shells — GC would delete'
+\echo 'them and silently undo this wipe (red team 2026-09-03 F5).'
+\echo 'Next: backfill-observed.ts --execute, then the nightly'
 \echo 'convergence sweeps (or activate-shadow''s twin sweep), then the'
 \echo 'vocabulary sweeps per locale. Verify with README.md queries.'
 \else

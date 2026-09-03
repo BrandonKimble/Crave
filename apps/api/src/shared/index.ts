@@ -29,3 +29,8 @@ export { SharedModule } from './shared.module';
 export { AdvisoryLockService } from './advisory-lock/advisory-lock.service';
 export type { AdvisoryLockOutcome } from './advisory-lock/advisory-lock.service';
 export { buildCauseChain } from './error-cause';
+export { startCompletionWorkTimer } from './completion-work-timer';
+export type {
+  CompletionWorkTimerHandle,
+  CompletionWorkTimerOptions,
+} from './completion-work-timer';

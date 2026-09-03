@@ -302,10 +302,6 @@ export class UsageLedgerService
   }
 
   record(event: UsageEvent): void {
-    this.meterGeminiSpend(event);
-    this.meterPlacesSpend(event);
-    this.meterTomtomSpend(event);
-    this.meterCampaignSpend(event);
     const data = {
       service: event.service,
       operation: event.operation,
@@ -339,9 +335,43 @@ export class UsageLedgerService
     // createMany + skipDuplicates makes keyed records idempotent (unique
     // dedupe_key): crash/retry re-records are no-ops, so callers never have
     // to choose between under- and double-recording via statement ordering.
+    //
+    // THE METERS RIDE THE ROW (red team 2026-09-03 governance #1): they used
+    // to fire unconditionally BEFORE the insert, so the dedupe key protected
+    // the ledger row while a crash-retry re-drained the vendor pool and
+    // re-debited the campaign envelope — the boot-compounding class
+    // surviving at the per-job retry seam. Metering now runs only when the
+    // insert actually created the row; a deduped retry meters nothing. The
+    // campaign id was already resolved into `data` above, so ambient
+    // context loss inside the continuation cannot mis-attribute it.
+    const meteredEvent: UsageEvent = {
+      ...event,
+      campaignId: data.campaignId ?? undefined,
+    };
     const write = this.prisma.apiUsageEvent
       .createMany({ data: [data], skipDuplicates: true })
+      .then(({ count }) => {
+        if (count === 0) {
+          this.logger.info('Duplicate usage event skipped — already metered', {
+            operation: event.operation,
+            dedupeKey: data.dedupeKey,
+          });
+          return;
+        }
+        this.meterGeminiSpend(meteredEvent);
+        this.meterPlacesSpend(meteredEvent);
+        this.meterTomtomSpend(meteredEvent);
+        this.meterCampaignSpend(meteredEvent);
+      })
       .catch((error: unknown) => {
+        // A FAILED write still meters — no row exists, so nothing marks the
+        // spend as seen, and the pools are catastrophe backstops where
+        // under-metering is the bad direction. (A retry after a FAILED
+        // write can double-meter — rare, and the safe way to be wrong.)
+        this.meterGeminiSpend(meteredEvent);
+        this.meterPlacesSpend(meteredEvent);
+        this.meterTomtomSpend(meteredEvent);
+        this.meterCampaignSpend(meteredEvent);
         this.logger.warn('Usage ledger write failed', {
           operation: event.operation,
           error:

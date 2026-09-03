@@ -2,8 +2,10 @@ import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Notification, NotificationDevice, $Enums } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
-import { isEnvFlagExplicitlyDisabled } from '../../shared/config/env-flag';
-import { isWorkerRuntime } from '../../shared/utils/process-role';
+import {
+  CompletionWorkTimerHandle,
+  startCompletionWorkTimer,
+} from '../../shared/completion-work-timer';
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 
@@ -80,7 +82,7 @@ export class NotificationDispatcherService
    * still exit, cleared on shutdown. Same shape as
    * gemini-batch.service.ts's poller.
    */
-  private dispatchTimer: NodeJS.Timeout | null = null;
+  private dispatchTimer: CompletionWorkTimerHandle | null = null;
   private dispatchInFlight = false;
 
   constructor(
@@ -89,27 +91,16 @@ export class NotificationDispatcherService
   ) {}
 
   onModuleInit(): void {
-    if (
-      isEnvFlagExplicitlyDisabled(process.env.NOTIFICATION_DISPATCH_ENABLED)
-    ) {
-      return;
-    }
-    if (!isWorkerRuntime()) return;
-    this.dispatchTimer = setInterval(
-      () => void this.runDispatchPass(),
-      DISPATCH_INTERVAL_MS,
-    );
-    this.dispatchTimer.unref();
-    // BOOT ARM: a restart drains whatever queued while the loop was dead,
-    // instead of waiting a full cadence to notice.
-    void this.runDispatchPass();
+    this.dispatchTimer = startCompletionWorkTimer({
+      intervalMs: DISPATCH_INTERVAL_MS,
+      offSwitchEnv: 'NOTIFICATION_DISPATCH_ENABLED',
+      run: () => this.runDispatchPass(),
+    });
   }
 
   onModuleDestroy(): void {
-    if (this.dispatchTimer) {
-      clearInterval(this.dispatchTimer);
-      this.dispatchTimer = null;
-    }
+    this.dispatchTimer?.stop();
+    this.dispatchTimer = null;
   }
 
   /** Interval/boot entry point: never throws, never stacks (a slow Expo

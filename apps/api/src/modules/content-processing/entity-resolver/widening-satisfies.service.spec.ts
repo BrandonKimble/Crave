@@ -54,6 +54,7 @@ describe('WideningSatisfiesService', () => {
       ),
     };
     const ledger = {
+      pendingExecution: jest.fn(() => Promise.resolve([])),
       decidedKeys: jest.fn(() => Promise.resolve(opts.decided ?? new Set())),
       record: jest.fn((input: unknown) => {
         records.push(input);

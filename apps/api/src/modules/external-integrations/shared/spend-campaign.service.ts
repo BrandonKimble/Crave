@@ -5,8 +5,16 @@ import {
   type BilledMicros,
   type LedgerMicros,
 } from './spend-currency';
-import { Injectable, Optional } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
+import {
+  Injectable,
+  Optional,
+  OnModuleInit,
+  OnModuleDestroy,
+} from '@nestjs/common';
+import {
+  CompletionWorkTimerHandle,
+  startCompletionWorkTimer,
+} from '../../../shared/completion-work-timer';
 import { createHash } from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
@@ -327,8 +335,9 @@ const MANIFEST_ENTITY_RATIO = {
 } as const;
 
 @Injectable()
-export class SpendCampaignService {
+export class SpendCampaignService implements OnModuleInit, OnModuleDestroy {
   private readonly logger: LoggerService;
+  private watchdogTimer: CompletionWorkTimerHandle | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -339,6 +348,26 @@ export class SpendCampaignService {
     private readonly reconciliation?: ReconciliationMultiplierService,
   ) {
     this.logger = loggerService.setContext('SpendCampaignService');
+  }
+
+  onModuleInit(): void {
+    // A DETECTOR gated on the switch it detects around is no detector
+    // (red team 2026-09-03 governance #2): this watchdog lived behind
+    // @Cron, so on scheduler-off environments — staging, the active one —
+    // the stale-running and breached-still-spending arms simply never ran
+    // while the runner's comments deferred to them. Watchdogs are
+    // completion-truth infrastructure, not discretionary work: self-owned
+    // timer, own off-switch, alive wherever the worker runs.
+    this.watchdogTimer = startCompletionWorkTimer({
+      intervalMs: 6 * 60 * 60 * 1000,
+      offSwitchEnv: 'SPEND_CAMPAIGN_WATCHDOG_ENABLED',
+      run: () => this.alertStaleRunningCampaigns(),
+    });
+  }
+
+  onModuleDestroy(): void {
+    this.watchdogTimer?.stop();
+    this.watchdogTimer = null;
   }
 
   private requireGovernance(): GovernanceService {
@@ -1131,7 +1160,6 @@ export class SpendCampaignService {
    * as spend-expectation-monitor. Inert outside the scheduler runtime
    * (main.ts stops crons on non-worker processes).
    */
-  @Cron('25 4 * * *')
   async alertStaleRunningCampaigns(): Promise<void> {
     try {
       const stale = await this.prisma.$queryRaw<

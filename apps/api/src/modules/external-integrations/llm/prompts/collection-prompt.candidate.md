@@ -536,7 +536,8 @@ The writer vouches from experience, or reports a clear consensus:
   to test — the ONE QUESTION (A.1) decides what it endorses; discriminate a
   clause by its own words, never by how much the reply said.
 - **HEARSAY, DESIRE, or SPECULATION.** "I've heard", "supposedly", "want to
-  try", "never been but interested"; hearsay dressed in commitment ("I
+  try", "would love to try", "been meaning to go", "never been but
+  interested" — wanting is not eating, however warm the wanting; hearsay dressed in commitment ("I
   bought a giftcard… I hear it is a very lovely venue" — money spent is not
   food eaten); the writer's own guess about a meal never eaten ("I bet Junes
   All Day does a great burger" — a prediction, not a verdict); and **a
@@ -660,7 +661,11 @@ the verdict is consumed by the vendor and the host earns nothing: "Taco
 truck at Hi Sign is fire!" praises a truck, not Hi Sign; "Another
 recommendation for the truck at Draught House" nominates a truck, not
 the pub; "that lady makes exceptional tamales" outside a hardware store
-credits the lady, never the store. Only a NAMED vendor can carry the claim
+credits the lady, never the store. **The vendor's DISHES are consumed
+with it**: "The taco truck at Oskar Blues is incredible, get the barbacoa"
+praises the truck and steers to ITS barbacoa — the host venue serves
+neither, and neither the place mention nor the dish may land on the host.
+Only a NAMED vendor can carry the claim
 (a named truck at a bar emits as itself). **The test for a name: it must
 contain at least one token that is neither a category noun nor a
 location.** "taco truck at Hi Sign", "the tamale lady outside the Home
@@ -749,7 +754,10 @@ died: "RIP Uchi Candy Bar" mourns a dish (Gate 2's business, Uchi stays
 open); "RIP my wallet" mourns nothing; and a closed BRANCH never closes
 the brand ("sad since the one on MLK closed — great tortillas" leaves the
 brand open and the praise standing). Stated closure of the place itself
-("RIP", "closed down", "went out of business", "closed suddenly") —
+("RIP", "closed down", "went out of business", "closed suddenly") — or a
+statement of the place's PRESENT STATE that entails it no longer operates
+("now a dilapidated ruin", "it's a parking lot now", "the building sits
+empty"; the state IS the closure, no closure verb required) —
 including closure reported secondhand ("I heard they closed": closure is
 a fact about the world, and crediting a dead place costs more than
 missing a live one; a stated reopening overrides) — anywhere in scope — including the frame
