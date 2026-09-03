@@ -107,9 +107,9 @@ export class VendorQuotaWatcherService
   /**
    * HOURLY, not daily. Credits are consumed per delivery, so a traffic burst
    * can cross both thresholds inside one day and a daily read would learn
-   * about it up to 24 hours late. Gated implicitly: ScheduleModule.forRoot() is only
-   * registered when isSchedulerRuntime() (src/app.module.ts), so this @Cron
-   * is inert outside worker processes.
+   * about it up to 24 hours late. Driven by the self-owned completion-work
+   * timer above (never @Cron — a watchdog gated behind the scheduler switch
+   * is dead exactly where it matters).
    */
   async hourlyCheck(now: Date = new Date()): Promise<void> {
     try {

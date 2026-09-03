@@ -97,10 +97,10 @@ export class SpendExpectationMonitorService
   }
 
   /**
-   * 04:10 UTC — after SpendAnalyticsService's 03:40 nightly, so the ledger
-   * has settled and the two spend crons don't contend. Gated implicitly:
-   * ScheduleModule.forRoot() is only registered when isSchedulerRuntime()
-   * (src/app.module.ts), so this @Cron is inert outside worker processes.
+   * Six-hourly via the self-owned completion-work timer above (never
+   * @Cron — a watchdog gated behind the scheduler switch is dead exactly
+   * where it matters; the comparator's day-bucketed dedupe keeps repeat
+   * ticks quiet).
    */
   async nightlyCheck(now: Date = new Date()): Promise<void> {
     try {
