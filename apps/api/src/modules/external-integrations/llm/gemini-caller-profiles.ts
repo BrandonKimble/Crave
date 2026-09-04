@@ -95,7 +95,7 @@ const MODEL_MAX_OUTPUT = 65536;
  * entity-match / attribute-placement / moderation decision, so a quality
  * regression after a tier change is a queryable diff, not a vibe.
  */
-export const GEMINI_CALLER_PROFILES: Record<string, GeminiCallerProfile> = {
+export const GEMINI_CALLER_PROFILES = {
   // ---- collection / extraction ----
   // Session default ON PURPOSE (proven tier for extraction; see strategy
   // note above — moves only via the prompt A/B harness).
@@ -131,6 +131,15 @@ export const GEMINI_CALLER_PROFILES: Record<string, GeminiCallerProfile> = {
     timeoutMs: INTERACTIVE_QUERY_TIMEOUT_MS,
   },
   'moderation.classify': {
+    model: FLASH_LITE,
+    context: 'query',
+    maxOutputTokens: MODEL_MAX_OUTPUT,
+    timeoutMs: INTERACTIVE_QUERY_TIMEOUT_MS,
+  },
+  // SCRIPT-ONLY: the search launch-gate grader (scripts/search-harness).
+  // Lived for weeks with no profile and no contract — invisible to the
+  // case-sensitive lockdown regex (G-5); the caller tag is a type now.
+  'searchHarness.launchGateGrader': {
     model: FLASH_LITE,
     context: 'query',
     maxOutputTokens: MODEL_MAX_OUTPUT,
@@ -302,13 +311,27 @@ export const GEMINI_CALLER_PROFILES: Record<string, GeminiCallerProfile> = {
     context: 'query',
     maxOutputTokens: MODEL_MAX_OUTPUT,
   },
-};
+} satisfies Record<string, GeminiCallerProfile>;
+
+/**
+ * THE CALLER TAG IS A TYPE (red team 2026-09-04 G-5). A generation caller
+ * that had no profile used to be a runtime bookkeeping gap: session model,
+ * default thinking, no timeout, a ledger tag no contract or rate knew —
+ * and the lockdown scanner that was meant to catch it was a case-sensitive
+ * regex that missed 'searchHarness.launchGateGrader'. Now an unprofiled
+ * tag does not compile.
+ */
+export type GeminiCallerTag = keyof typeof GEMINI_CALLER_PROFILES;
 
 /** Per-caller thinking levels harvested from the profiles — the value
  *  source for gemini-thinking's perCaller channel. Empty today by design. */
 export const PROFILE_THINKING_LEVELS: Record<string, string> =
   Object.fromEntries(
-    Object.entries(GEMINI_CALLER_PROFILES)
+    (
+      Object.entries(GEMINI_CALLER_PROFILES) as Array<
+        [string, GeminiCallerProfile]
+      >
+    )
       .filter(([, profile]) => profile.thinkingLevel)
       .map(([caller, profile]) => [caller, profile.thinkingLevel!]),
   );
@@ -322,5 +345,7 @@ export const PROFILE_THINKING_LEVELS: Record<string, string> =
 export function callerProfile(
   caller: string | undefined,
 ): GeminiCallerProfile | undefined {
-  return caller ? GEMINI_CALLER_PROFILES[caller] : undefined;
+  return caller
+    ? (GEMINI_CALLER_PROFILES as Record<string, GeminiCallerProfile>)[caller]
+    : undefined;
 }

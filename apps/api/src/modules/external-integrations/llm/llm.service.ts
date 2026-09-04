@@ -1,3 +1,4 @@
+import { GeminiCallerTag } from './gemini-caller-profiles';
 import { applyAuditReasonPolicy } from './llm-audit-policy';
 import {
   EntityMatchPromptMode,
@@ -3333,8 +3334,9 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
    * response shape — never mechanics.
    */
   async generateForCaller(params: {
-    /** §24 usageCaller tag; selects the caller profile AND the ledger tag. */
-    caller: string;
+    /** §24 usageCaller tag; selects the caller profile AND the ledger tag.
+     *  A TYPE (G-5): an unprofiled tag does not compile. */
+    caller: GeminiCallerTag;
     prompt: string;
     systemInstruction?: string;
     mediaParts?: Array<{ inlineData: { mimeType: string; data: string } }>;

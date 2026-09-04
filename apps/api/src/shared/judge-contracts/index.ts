@@ -50,6 +50,7 @@ import { POLL_SUBJECT_CONTRACT } from './poll-subject.contract';
 import { PHOTO_IS_FOOD_CONTRACT } from './photo-is-food.contract';
 import { UNKNOWN_INTAKE_CONTRACT } from './unknown-intake.contract';
 import { VOCABULARY_LABELS_CONTRACT } from './vocabulary-labels.contract';
+import { SEARCH_HARNESS_GRADER_CONTRACT } from './search-harness-grader.contract';
 
 /**
  * NON-JUDGE CONSUMERS in the sequencing DAG — deterministic systems whose
@@ -146,6 +147,7 @@ export const JUDGE_CONTRACT_REGISTRY: JudgeContractRegistry = {
     PHOTO_IS_FOOD_CONTRACT,
     UNKNOWN_INTAKE_CONTRACT,
     VOCABULARY_LABELS_CONTRACT,
+    SEARCH_HARNESS_GRADER_CONTRACT,
   ],
   consumers: DEPENDENT_CONSUMERS,
 };

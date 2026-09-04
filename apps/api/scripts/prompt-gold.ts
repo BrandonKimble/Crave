@@ -32,6 +32,7 @@ import { readFileSync, writeFileSync } from 'fs';
 import { join, isAbsolute } from 'path';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
+import { GeminiCallerTag } from '../src/modules/external-integrations/llm/gemini-caller-profiles';
 import { LLMService } from '../src/modules/external-integrations/llm/llm.service';
 import {
   ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA,
@@ -144,7 +145,7 @@ type GoldCase = {
   };
 };
 
-const CALLER: Record<Kind, string> = {
+const CALLER: Record<Kind, GeminiCallerTag> = {
   moderation: 'moderation.classify',
   'relevance-gate': 'relevance-gate.judgeBatch',
   'poll-subject': 'poll.infer_subject',
