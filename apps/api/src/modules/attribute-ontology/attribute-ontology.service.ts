@@ -2,18 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { EntityType, Prisma } from '@prisma/client';
 import { LoggerService } from '../../shared';
 import { identityInsertData } from '../content-processing/entity-resolver/entity-identity';
-import {
-  addSurfaces,
-  foldSurfacesFromMerge,
-} from '../content-processing/entity-resolver/entity-surface.service';
+import { addSurfaces } from '../content-processing/entity-resolver/entity-surface.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AttributeDedupeMergeService } from './attribute-dedupe-merge.service';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { EmbeddingService } from '../external-integrations/llm/embedding.service';
 import { LLMAttributePlacementResult } from '../external-integrations/llm/llm.types';
-import {
-  repointAttributeIdRefs,
-  stripAttributeIdRefs,
-} from './attribute-reference-registry';
+import { stripAttributeIdRefs } from './attribute-reference-registry';
 
 /** Attribute entity types this service canonicalizes. */
 export type AttributeEntityType = 'item_attribute' | 'place_attribute';
@@ -83,6 +78,9 @@ export interface PlannedMerge {
   canonicalName: string;
   mergedEntityId: string;
   mergedName: string;
+  /** The placement judge's stated ground — recorded with the merge verdict
+   *  (the reason tripwire reads it). */
+  reason: string;
 }
 
 /** A term the LLM judged invalid: the entity is deleted (and dropped from any arrays). */
@@ -125,7 +123,10 @@ export interface ApplyResult {
   merges: number;
   rejections: number;
   renames: number;
-  /** Connection/entity rows whose attribute arrays were re-pointed (merge). */
+  /** Connection/entity rows an id was re-pointed on. Merges now execute
+   *  through the ledgered merge door, which repoints via the reference
+   *  registry and reports in its own log — this counter no longer covers
+   *  them (0 for merges). */
   refsRepointed: number;
   /** Connection/entity rows an id was stripped from (reject). */
   refsRemoved: number;
@@ -286,6 +287,9 @@ export class AttributeOntologyService {
     private readonly llmService: LLMService,
     private readonly embeddingService: EmbeddingService,
     loggerService: LoggerService,
+    /** THE merge door — every attribute merge, ontology-decided or
+     *  dedupe-decided, is ledgered and executed by one implementation. */
+    private readonly dedupeMerge: AttributeDedupeMergeService,
   ) {
     this.logger = loggerService.setContext('AttributeOntologyService');
   }
@@ -440,6 +444,7 @@ export class AttributeOntologyService {
             canonicalName: target.name,
             mergedEntityId: row.entityId,
             mergedName: row.name,
+            reason: result.reason ?? '(audit reasons off)',
           });
         } else {
           // new canonical: promote if it was pending; always becomes an anchor.
@@ -619,6 +624,7 @@ export class AttributeOntologyService {
           canonicalName: target.name,
           mergedEntityId: canonical.entityId,
           mergedName: canonical.name,
+          reason: result.reason ?? '(audit reasons off)',
         });
         folded++;
       } else {
@@ -774,6 +780,30 @@ export class AttributeOntologyService {
       refsRemoved: 0,
     };
 
+    // MERGES GO THROUGH THE ONE MERGE DOOR (red team 2026-09-04 ID-3),
+    // each its own ledgered transaction: verdict recorded in the
+    // attribute_merge lane, refs repointed, anchors rehomed, redirect
+    // written, loser's name folded at 'judged'. They run BEFORE the
+    // promotions/rejections/renames transaction so the group's aliases are
+    // already folded in when renames run (the order the old in-tx loop
+    // kept). Verify mode (apply:false) COUNTS planned merges and executes
+    // none — a ledgered merge cannot be rolled back with the rest.
+    if (options.apply) {
+      for (const merge of plan.merges) {
+        const outcome = await this.dedupeMerge.mergeDecidedElsewhere({
+          type: plan.type,
+          winnerId: merge.canonicalEntityId,
+          winnerName: merge.canonicalName,
+          loserId: merge.mergedEntityId,
+          loserName: merge.mergedName,
+          reason: merge.reason,
+        });
+        if (outcome === 'merge') counts.merges += 1;
+      }
+    } else {
+      counts.merges = plan.merges.length;
+    }
+
     try {
       await this.prisma.$transaction(
         async (tx) => {
@@ -782,37 +812,6 @@ export class AttributeOntologyService {
               `UPDATE core_entities SET status = 'active'
                WHERE entity_id = $1::uuid AND status = 'pending'`,
               promotion.entityId,
-            );
-          }
-
-          for (const merge of plan.merges) {
-            // Fold the merged entity's name + aliases onto the canonical.
-            // A1: through THE projection writer — one implementation for
-            // every merge fold (this was a verbatim copy of the one in
-            // finalizeMergeCompletion), provenance 'merge_fold' recorded,
-            // carried rows keep their own locale. The writer marks the
-            // dense doc stale when the projection actually changes.
-            await foldSurfacesFromMerge(
-              tx,
-              merge.canonicalEntityId,
-              merge.mergedEntityId,
-            );
-            counts.refsRepointed += await this.repointMergeRefs(
-              tx,
-              plan.type,
-              merge.mergedEntityId,
-              merge.canonicalEntityId,
-            );
-            // ARCHIVE, never delete: a live extraction may hold this id in
-            // memory (event/ref writes land after adjudication) — a hard
-            // delete turns that into an FK crash. The tombstone keeps the FK
-            // world closed; read surfaces exclude non-active, and future
-            // mentions forward to the canonical via the banked alias because
-            // resolution tiers skip archived rows.
-            counts.merges += await tx.$executeRawUnsafe(
-              `UPDATE core_entities SET status = 'archived'
-               WHERE entity_id = $1::uuid`,
-              merge.mergedEntityId,
             );
           }
 
@@ -941,18 +940,6 @@ export class AttributeOntologyService {
         `Inconsistent canonicalization plan — refusing to apply:\n${conflicts.join('\n')}`,
       );
     }
-  }
-
-  /** Re-point a merged attribute id at EVERY registered reference site —
-   *  delegated to THE one implementation (attribute-reference-registry.ts),
-   *  shared with the active-vocabulary dedupe lane. */
-  private async repointMergeRefs(
-    tx: Prisma.TransactionClient,
-    type: AttributeEntityType,
-    mergedId: string,
-    canonicalId: string,
-  ): Promise<number> {
-    return repointAttributeIdRefs(tx, type, mergedId, canonicalId);
   }
 
   /** Strip a rejected attribute id at EVERY registered reference site —

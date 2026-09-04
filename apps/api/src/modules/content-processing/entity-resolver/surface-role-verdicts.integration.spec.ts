@@ -336,4 +336,86 @@ describe('surface role verdicts — proven against a live database', () => {
     );
     expect(grounds.map((r) => r.form)).not.toContain(word);
   });
+
+  /**
+   * Red team 2026-09-04 ID-2. A sweep label the guard already refused sits
+   * at role='display', status='active'. When the judge then REFUSES the
+   * newcomer's claim on that word, the refusal used to go through the
+   * addSurfaces upsert, whose ON CONFLICT role expression widened the live
+   * display row to 'both' — the "no" granted the word. RED against the old
+   * refuse(): the row read role='both'.
+   */
+  it('D: a judged refusal never widens the claimant’s own display row into a recall claim', async () => {
+    const word = `zzq negado ${randomUUID().slice(0, 8)}`;
+    const incumbent = await mintItem(`zzq dueño ${randomUUID().slice(0, 8)}`);
+    const newcomer = await mintItem(
+      `zzq aspirante ${randomUUID().slice(0, 8)}`,
+    );
+
+    // The incumbent OWNS the word as testimony (observed): unevictable.
+    await prisma.$transaction((tx) =>
+      addSurfaces(tx, incumbent, [
+        {
+          form: word,
+          locale: 'es',
+          source: 'extraction',
+          role: 'recall',
+          claimGrade: 'observed',
+        },
+      ]),
+    );
+    // The sweep offers the newcomer the same word as a label ('both'); the
+    // guard refuses the recall half and lands it as a bare, active label.
+    await prisma.$transaction((tx) =>
+      addSurfaces(tx, newcomer, [
+        { form: word, locale: 'es', source: 'sweep', role: 'both' },
+      ]),
+    );
+    const before = (await surfacesOf(newcomer)).find((r) => r.form === word);
+    expect(before).toMatchObject({ role: 'display', status: 'active' });
+
+    const judge = {
+      generateForCaller: jest.fn().mockResolvedValue(
+        JSON.stringify({
+          items: [
+            {
+              n: 1,
+              a_owns_word: false,
+              incumbents_own_word: [true],
+              reason: 'the newcomer is a different concept',
+            },
+          ],
+        }),
+      ),
+    };
+    const adjudicator = new WordClaimAdjudicatorService(
+      prisma as never,
+      judge as never,
+      {
+        setContext: jest.fn().mockReturnThis(),
+        info: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+      } as never,
+      new ClaimVerdictLedgerService(prisma as never),
+      new UnspentWindowBudget(
+        prisma as never,
+        new ClaimVerdictLedgerService(prisma as never),
+      ),
+    );
+    const summary = await adjudicator.adjudicate([
+      { form: word, locale: 'es', entityId: newcomer, source: 'sweep' },
+    ]);
+    expect(summary.newcomerRefused).toBe(1);
+
+    // THE LABEL LIVES, THE WORD STAYS REFUSED: still a bare display row.
+    const after = (await surfacesOf(newcomer)).find((r) => r.form === word);
+    expect(after).toMatchObject({ role: 'display', status: 'active' });
+    const grounds = await prisma.$queryRawUnsafe<Array<{ form: string }>>(
+      `SELECT form FROM entity_surface
+        WHERE entity_id = $1::uuid AND status = 'active' AND role <> 'display'`,
+      newcomer,
+    );
+    expect(grounds.map((r) => r.form)).not.toContain(word);
+  });
 });

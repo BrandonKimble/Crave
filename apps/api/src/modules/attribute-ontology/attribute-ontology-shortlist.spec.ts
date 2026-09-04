@@ -29,6 +29,7 @@ const service = new AttributeOntologyService(
   {} as never,
   {} as never,
   logger,
+  {} as never, // merge door — unused by this spec
 );
 
 const trigram = (a: string, b: string): number =>

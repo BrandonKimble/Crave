@@ -563,6 +563,22 @@ export class WordClaimAdjudicatorService {
           // now, and the same encoding eviction uses takes it back — the word
           // dies, the label lives.
           if (!dryRun) {
+            // A REFUSAL IS AN ABSOLUTE WRITE TOO (red team 2026-09-04
+            // ID-2). The refused claim usually already has a row — the
+            // sweep's label landed at role='display' when the guard first
+            // refused it, or a 'candidate' recall row awaits judgment —
+            // and routing the refusal through addSurfaces' upsert let the
+            // ON CONFLICT role expression WIDEN an active display row to
+            // 'both': the judge's "no" granted the word. So the target
+            // state is frozen here, at decision time, by the same rule
+            // eviction uses (a 'both' row keeps its label and loses the
+            // word; a recall row is deprecated; a bare label is already
+            // wordless and stays). `refuse` is left true only when NO row
+            // exists, so the deprecated memory is INSERTED, never upserted
+            // onto a live row.
+            const refusedRows = p.held
+              ? []
+              : await this.claimRowTargets(p.claim);
             await this.settle(
               p.claim,
               p.held ? 'claimRetracted' : 'newcomerRefused',
@@ -573,7 +589,11 @@ export class WordClaimAdjudicatorService {
                     bank: false,
                     refuse: false,
                   }
-                : { takeWord: [], bank: false, refuse: true },
+                : {
+                    takeWord: refusedRows,
+                    bank: false,
+                    refuse: refusedRows.length === 0,
+                  },
             );
           }
           if (p.held) {
@@ -1116,8 +1136,11 @@ export class WordClaimAdjudicatorService {
     return true;
   }
 
-  /** A losing newcomer is REMEMBERED as wrong (status 'deprecated'), so no
-   *  future sweep re-proposes it — R5-6b applied to claims. */
+  /** A losing newcomer with NO row yet is REMEMBERED as wrong (status
+   *  'deprecated'), so no future sweep re-proposes it — R5-6b applied to
+   *  claims. When a row already exists the refusal was frozen into
+   *  `takeWord` at decision time (ID-2) and this inserts nothing: the
+   *  upsert path is what let a refusal widen a live display row. */
   private async refuse(claim: WordClaimIdentityFields): Promise<void> {
     await this.prisma.$transaction((tx) =>
       addSurfaces(tx, claim.entityId, [
@@ -1130,6 +1153,33 @@ export class WordClaimAdjudicatorService {
         },
       ]),
     );
+  }
+
+  /**
+   * The claim's OWN row(s) on the claimant, frozen into the state a refusal
+   * orders: 'both' → 'display' (label lives, word dies); 'recall' →
+   * deprecated (remembered wrong); 'display' → unchanged (it claims no
+   * word, so there is nothing to refuse — and deprecating it would take the
+   * user's label, the P0 the eviction test protects).
+   */
+  private async claimRowTargets(
+    claim: WordClaimIdentityFields,
+  ): Promise<SurfaceTargetState[]> {
+    const rows = await this.prisma.$queryRaw<
+      Array<{ surface_id: string; role: string; status: string }>
+    >`SELECT surface_id::text, role::text, status::text
+        FROM entity_surface
+       WHERE entity_id = ${claim.entityId}::uuid
+         AND locale = ${claim.locale}
+         AND form = ${claim.form}`;
+    return rows.map((row) => ({
+      surfaceId: row.surface_id,
+      role: row.role === 'both' ? 'display' : row.role,
+      status:
+        row.role === 'both' || row.role === 'display'
+          ? row.status
+          : 'deprecated',
+    }));
   }
 
   /**

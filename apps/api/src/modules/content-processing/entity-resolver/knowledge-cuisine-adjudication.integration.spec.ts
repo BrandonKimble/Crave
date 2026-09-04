@@ -15,6 +15,9 @@
  * Run: yarn test:db (needs DATABASE_URL — a dev database, never prod).
  */
 import { PrismaClient } from '@prisma/client';
+import { AttributeDedupeMergeService } from '../../attribute-ontology/attribute-dedupe-merge.service';
+import { EntityAnchorRehomeService } from './entity-anchor-rehome.service';
+import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
 import { AttributeOntologyService } from '../../attribute-ontology/attribute-ontology.service';
 import { DishKnowledgeSynthesisService } from './dish-knowledge-synthesis.service';
 import { derivePlaceAttributes } from '../reddit-collector/place-attribute-projection';
@@ -42,6 +45,20 @@ const ontology = new AttributeOntologyService(
   } as never,
   {} as never,
   logger,
+  // THE merge door (red team 2026-09-04 ID-3): applyPlan's merges are
+  // ledgered and executed here — a real one, against the same database.
+  new AttributeDedupeMergeService(
+    prisma as never,
+    {
+      judgeAttributeMergesBatch: () => {
+        throw new Error('a decided merge is never re-judged');
+      },
+    } as never,
+    {} as never,
+    new EntityAnchorRehomeService(logger),
+    new ClaimVerdictLedgerService(prisma as never),
+    logger,
+  ),
 );
 
 const dishKnowledge = new DishKnowledgeSynthesisService(
@@ -146,6 +163,7 @@ describe('K2: adjudication reaches knowledge_cuisines + evidence; the grain brid
             canonicalName: 'texmex',
             mergedEntityId: merged,
             mergedName: 'tex-mex-dup',
+            reason: 'itest: same concept',
           },
         ],
         rejections: [],

@@ -52,7 +52,7 @@ export interface AttributeMergeCandidate {
   bId: string;
   bName: string;
   cosine: number;
-  via: 'embedding' | 'token' | 'trigram';
+  via: 'embedding' | 'token' | 'trigram' | 'ontology';
 }
 
 /** The FULL merge plan, computed BEFORE the verdict commits and stored as
@@ -530,6 +530,55 @@ export class AttributeDedupeMergeService {
       total += Number(rows[0]?.n ?? 0);
     }
     return total;
+  }
+
+  /**
+   * THE ONE MERGE DOOR FOR ATTRIBUTES (red team 2026-09-04 ID-3). The
+   * ontology canonicalization pass reaches its merge decisions through its
+   * own placement judge, but it used to EXECUTE them privately: a bare
+   * `foldSurfacesFromMerge` with no verdict (so the loser's name landed at
+   * 'recall' — powerless under the grade law), the loser archived with NO
+   * entity_redirects row and NO ledger row. Since the grade law that meant
+   * every later mention of a merged-away attribute name was sunk into the
+   * redirect-less tombstone and DROPPED instead of routed to the canonical
+   * (114 such losers on the local corpus). A merge decided anywhere is
+   * still a merge: it is recorded in the attribute_merge lane (the reason
+   * tripwire applies — a banned-class reason becomes a hold), executed by
+   * the same plan executor (refs repointed, anchors rehomed, events rekeyed,
+   * redirect written, loser's name folded at 'judged'), and marked executed.
+   */
+  async mergeDecidedElsewhere(params: {
+    type: AttributeEntityType;
+    winnerId: string;
+    winnerName: string;
+    loserId: string;
+    loserName: string;
+    reason: string;
+    source?: HearingSource;
+  }): Promise<'merge' | 'hold'> {
+    const plan: AttributeMergePlan = {
+      type: params.type,
+      winnerId: params.winnerId,
+      winnerName: params.winnerName,
+      loserId: params.loserId,
+      loserName: params.loserName,
+    };
+    const pair: AttributeMergeCandidate = {
+      aId: params.winnerId,
+      aName: params.winnerName,
+      bId: params.loserId,
+      bName: params.loserName,
+      cosine: 1,
+      via: 'ontology',
+    };
+    return this.settleVerdict(
+      params.type,
+      pair,
+      'merge',
+      params.reason,
+      plan,
+      params.source ?? 'steady',
+    );
   }
 
   /** Commit the verdict, THEN obey it (the ledger's amendment (c)).
