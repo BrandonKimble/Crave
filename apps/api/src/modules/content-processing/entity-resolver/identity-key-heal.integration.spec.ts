@@ -18,6 +18,7 @@
  * Run: yarn test:db (needs DATABASE_URL — a dev database, never prod).
  */
 import { PrismaClient } from '@prisma/client';
+import { ClaimRehearingBudgetService } from './claim-rehearing-budget.service';
 import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
 import { ItemDedupeMergeService } from './food-dedupe-merge.service';
 import {
@@ -25,6 +26,14 @@ import {
   entityIdentityKey,
   FOLD_ALGORITHM_VERSION,
 } from './entity-identity';
+
+/** G2: the dedupe lane drains through the allowance; these proofs are about
+ *  the effect, and this machine's window may be spent. */
+class UnspentWindowBudget extends ClaimRehearingBudgetService {
+  hearingsSpentInWindow(): Promise<number> {
+    return Promise.resolve(0);
+  }
+}
 
 const TEST_TAG = 'itest-identity-heal';
 
@@ -50,6 +59,10 @@ const service = new ItemDedupeMergeService(
   {} as never,
   new ClaimVerdictLedgerService(prisma as never),
   logger,
+  new UnspentWindowBudget(
+    prisma as never,
+    new ClaimVerdictLedgerService(prisma as never),
+  ),
 );
 
 const DRIFT_KEY = 'itest-drifted-key';

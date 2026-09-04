@@ -161,27 +161,6 @@ export class ExtractionScopeService {
     return rows.map((row) => row.run_id);
   }
 
-  /**
-   * Entities with support in the ACTIVE extraction — the predicate the
-   * nightly merge sweeps were missing (D5).
-   *
-   * Note there is no new column: the projection rebuild only writes
-   * `core_restaurant_items` from events whose run IS the document's active
-   * run. CAVEAT (round-six regression #3): the converse is NOT exact —
-   * STARVED ANCHORS (user-anchored entities whose evidence lost active
-   * support) deliberately KEEP their connection rows, so this predicate
-   * reads them as "supported". That is the safe direction for the merge
-   * sweeps (an anchored entity must never be treated as garbage), but do
-   * not reuse this predicate where "has live evidence" must be literal —
-   * use the event-ledger counts for that.
-   */
-  activeSupportFilter(alias = 'e'): Prisma.Sql {
-    return Prisma.raw(`EXISTS (
-      SELECT 1 FROM core_restaurant_items c
-      WHERE ${alias}.entity_id IN (c.restaurant_id, c.food_id)
-    )`);
-  }
-
   async entityIdsWithActiveSupport(candidateIds: string[]): Promise<string[]> {
     if (candidateIds.length === 0) return [];
     const rows = await this.prisma.$queryRaw<Array<{ entity_id: string }>>(

@@ -84,6 +84,10 @@ function buildService(options: { holdLedgered: boolean }) {
     {} as never,
     {} as never,
     noopLogger(),
+    {
+      authorizeDrain: ({ dueCount }: { dueCount: number }) =>
+        Promise.resolve({ allowed: dueCount, estimate: null }),
+    } as never,
   );
   // Embedding recall is DB-shaped; not this spec's lane.
   (service as never as Record<string, unknown>).embeddingCandidatePairs =

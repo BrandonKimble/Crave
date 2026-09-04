@@ -156,6 +156,18 @@ const HEARING_METERS: ReadonlyMap<string, HearingMeter> = new Map([
       lanes: ['concept_satisfies'],
     },
   ],
+  // The dedupe judge lane (red team 2026-08-19 G2, landed 2026-09-04): its
+  // nightly sweep dispatched judge batches with no budget at all — the
+  // moment DEDUPE_JUDGE_LANES_ENABLED flips, spend outside every envelope.
+  // Metered by the batch matcher's caller tag; the sweep authorizes its
+  // drain here like every other court.
+  [
+    'entity_dedupe',
+    {
+      callers: ['entity-resolution.match_batch'],
+      lanes: ['entity_dedupe'],
+    },
+  ],
 ]);
 
 /** The lane this service was born for, and the meter every legacy call site

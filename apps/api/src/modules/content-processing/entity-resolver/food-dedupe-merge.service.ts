@@ -22,6 +22,7 @@ import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
 import { LLMService } from '../../external-integrations/llm/llm.service';
 import { EntityAnchorRehomeService } from './entity-anchor-rehome.service';
 import { activeSupportExistsSql } from '../reddit-collector/extraction-scope.service';
+import { ClaimRehearingBudgetService } from './claim-rehearing-budget.service';
 import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
 import {
   ENTITY_DEDUPE_LANE,
@@ -168,6 +169,8 @@ export class ItemDedupeMergeService {
     private readonly anchorRehome: EntityAnchorRehomeService,
     private readonly ledger: ClaimVerdictLedgerService,
     loggerService: LoggerService,
+    /** THE budget chokepoint every court drains through (G2). */
+    private readonly budget: ClaimRehearingBudgetService,
   ) {
     this.logger = loggerService.setContext('FoodDedupeMergeService');
   }
@@ -1118,6 +1121,23 @@ export class ItemDedupeMergeService {
       }
       return true;
     });
+    if (!due.length) return;
+    // AUTHORIZED, LIKE EVERY OTHER COURT (red team 2026-08-19 G2, landed
+    // 2026-09-04): the judge batch below used to go straight to the LLM —
+    // the one lane whose drain no allowance bounded. The allowance decides
+    // how many of the due pairs this run may buy; the rest wait.
+    const authorized = await this.budget.authorizeDrain({
+      lane: 'entity_dedupe',
+      ruleVersion: ENTITY_DEDUPE_RULE_VERSION,
+      dueCount: due.length,
+    });
+    if (authorized.allowed < due.length) {
+      this.logger.warn('Dedupe judge drain capped by the hearing allowance', {
+        due: due.length,
+        allowed: authorized.allowed,
+      });
+      due.splice(authorized.allowed);
+    }
     if (!due.length) return;
 
     // D2 context standard: the sweep judge used to see two bare names.

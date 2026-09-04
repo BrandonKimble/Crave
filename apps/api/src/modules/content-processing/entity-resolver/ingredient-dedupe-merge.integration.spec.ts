@@ -11,12 +11,21 @@
  * Run: yarn test:db   (needs DATABASE_URL — a dev/mirror database, never prod)
  */
 import { PrismaClient } from '@prisma/client';
+import { ClaimRehearingBudgetService } from './claim-rehearing-budget.service';
 import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
 import { ItemDedupeMergeService } from './food-dedupe-merge.service';
 import { EntityAnchorRehomeService } from './entity-anchor-rehome.service';
 import { canonicalFold } from './entity-identity';
 import { LLMService } from '../../external-integrations/llm/llm.service';
 import { LoggerService } from '../../../shared';
+
+/** G2: the dedupe lane drains through the allowance; these proofs are about
+ *  the effect, and this machine's window may be spent. */
+class UnspentWindowBudget extends ClaimRehearingBudgetService {
+  hearingsSpentInWindow(): Promise<number> {
+    return Promise.resolve(0);
+  }
+}
 
 const TEST_TAG = 'itest-ingredient-merge';
 const prisma = new PrismaClient();
@@ -132,6 +141,10 @@ describe('ItemDedupeMergeService — ingredient merge re-points array references
       new EntityAnchorRehomeService(noopLogger()),
       new ClaimVerdictLedgerService(prisma as never),
       noopLogger(),
+      new UnspentWindowBudget(
+        prisma as never,
+        new ClaimVerdictLedgerService(prisma as never),
+      ),
     );
 
     const testable = service as unknown as {

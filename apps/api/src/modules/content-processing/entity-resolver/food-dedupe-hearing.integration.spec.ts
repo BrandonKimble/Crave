@@ -32,6 +32,7 @@
  * Run: yarn test:db   (needs DATABASE_URL — a dev/mirror database, never prod)
  */
 import { PrismaClient } from '@prisma/client';
+import { ClaimRehearingBudgetService } from './claim-rehearing-budget.service';
 import { randomUUID } from 'crypto';
 import { ClaimVerdictLedgerService } from './claim-verdict-ledger.service';
 import {
@@ -48,6 +49,15 @@ import { ENTITY_DEDUPE_RULE_VERSION } from './entity-dedupe-rule';
 import { canonicalFold } from './entity-identity';
 import { LLMService } from '../../external-integrations/llm/llm.service';
 import { LoggerService } from '../../../shared';
+
+/** The dedupe judge lane drains through the hearing allowance (G2); these
+ *  proofs are about the hearing itself, not the allowance, and this
+ *  machine's window may already be spent. */
+class UnspentWindowBudget extends ClaimRehearingBudgetService {
+  hearingsSpentInWindow(): Promise<number> {
+    return Promise.resolve(0);
+  }
+}
 
 const prisma = new PrismaClient();
 const madeEntities: string[] = [];
@@ -96,6 +106,10 @@ const serviceWith = (llm: LLMService): ItemDedupeMergeService =>
     new EntityAnchorRehomeService(noopLogger()),
     ledger,
     noopLogger(),
+    new UnspentWindowBudget(
+      prisma as never,
+      new ClaimVerdictLedgerService(prisma as never),
+    ),
   );
 
 /** The same service with the EFFECT step killed — the crash seam. */
@@ -282,6 +296,10 @@ describe('the dedupe lane on the hearing ledger — live database', () => {
       new EntityAnchorRehomeService(noopLogger()),
       ledger,
       noopLogger(),
+      new UnspentWindowBudget(
+        prisma as never,
+        new ClaimVerdictLedgerService(prisma as never),
+      ),
     );
     await expect(drive(crashing, [pair], emptySummary())).rejects.toThrow(
       'process died before the merge ran',

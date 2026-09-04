@@ -53,6 +53,10 @@ function buildService() {
     {} as never,
     ledger as never,
     noopLogger(),
+    {
+      authorizeDrain: ({ dueCount }: { dueCount: number }) =>
+        Promise.resolve({ allowed: dueCount, estimate: null }),
+    } as never,
   );
   (service as never as Record<string, unknown>).executeItemMergePlan = (
     plan: unknown,
