@@ -7610,5 +7610,26 @@
     "expect": {
       "emitsNothing": true
     }
+  },
+  {
+    "id": "V23-host-venue-unnamed-truck",
+    "why": "v22 audit leak: Oskar Blues credited for its unnamed taco truck — a host venue is never the vendor's stand-in. UNPARKED 2026-09-03: the MAKER TEST unification (B.2) broke the four-corner seesaw — all four pass 3/3.",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Best late night tacos?",
+        "body": "",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "The taco truck at Oskar Blues is incredible, get the barbacoa."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "notRestaurants": ["oskar blues", "oskar blues brewery"]
+    }
   }
 ]

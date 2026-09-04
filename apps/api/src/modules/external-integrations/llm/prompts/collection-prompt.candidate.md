@@ -20,8 +20,10 @@ looks like a dish, and a comparison looks like a property.
    writer's own pick, in answer to a request for a pick?_ If yes, **the name
    IS the verdict** — testimony is satisfied with no adjective, no verb, and
    no dish.
-2. **THE PLACE TEST** — _Is this claim about food prepared and served by this
-   place, to eat now?_ Not goods sold packaged to take home and prepare later.
+2. **THE PLACE TEST** — _Who is behind this food, and does it reach the
+   eater as a SERVED PLATE or as a GOOD CARRIED OFF?_ Served food at a
+   real, named, still-open place is the claim; retail goods and unnamed
+   makers are not (the MAKER TEST, B.2).
 3. **THE ORDER TEST** — _Could you say this to a server as the thing you
    want?_
 4. **THE STANDALONE TEST** — _Severed from the noun it modified, does this word
@@ -327,9 +329,12 @@ The writer vouches from experience, or reports a clear consensus:
        that" banks no `breakfast taco`: the fit is the capacity, not the
        taco; "Ikea cafe", "Tsuke Edomae.", "Cheba Hut is actually weed
        themed", "Julio's." under the take-home tamale errand all emit
-       nothing). Habitual use scoped to the capability ("Maudie's is my go
-       to for this problem") is use of the capability, not taste, and emits
-       nothing (an unscoped or food-scoped "my go-to" stays A.1's vouch).
+       nothing). ANY endorsement scoped to the asked
+       capability — habitual use ("Maudie's is my go to for this
+       problem") or emphatic fit ("I guarantee Nomad Bar is the place!"
+       under a rent-a-space ask, "perfect for this") — endorses the
+       capability, not the food, and emits nothing (an unscoped or
+       food-scoped verdict stays A.1's vouch as ever).
      An ask that names FOOD THE ASKER WANTS TO EAT is never a fact ask,
      however procurement-shaped its words ("who has espresso buns?",
      "Spumoni??? Where can it be found????", "who still does potato
@@ -577,8 +582,8 @@ The writer vouches from experience, or reports a clear consensus:
   numbers with no value word and no verdict. A fact clause like any other:
   the priced items do not emit, however warm the surrounding clauses.
 - **A CLOSED PLACE** — decided in Step B, not here. Testimony about a place
-  that no longer exists is real testimony that cannot emit; B.1's PLACE
-  STATUS resolves each place once per post object. Nothing about the WRITER
+  that no longer exists is real testimony that cannot emit; B.1's STATUS
+  TEST resolves each place once per post object. Nothing about the WRITER
   (tense, nostalgia) decides this.
 
 ### A.3 A name is either the SUBJECT or the YARDSTICK
@@ -656,8 +661,9 @@ venue CONSUMES its own verdict**: praise of a place the writer never
 names ("a place on 34th street … best muffaletta ever") is a complete,
 resolved claim about THAT unnamed place — it is spent there and emits
 nothing, leaving no free-floating praise. **A HOST VENUE IS NEVER THE
-VENDOR'S STAND-IN.** When an unnamed vendor operates at a named landmark,
-the verdict is consumed by the vendor and the host earns nothing: "Taco
+VENDOR'S STAND-IN** — the MAKER TEST (B.2), applied at naming time: an
+unnamed vendor at a named landmark is answer 2, so the verdict is
+consumed by the vendor and the host earns nothing. "Taco
 truck at Hi Sign is fire!" praises a truck, not Hi Sign; "Another
 recommendation for the truck at Draught House" nominates a truck, not
 the pub; "that lady makes exceptional tamales" outside a hardware store
@@ -743,50 +749,88 @@ included: a source that writes the name emits its own spelling with
 B.3's boundaries applied, never a fuller form borrowed from another
 source; only a truly nameless source points at the source that names.)
 
-**PLACE STATUS — resolved ONCE per place, for the whole post object.**
-Before any claim about a place emits, ask: does the in-scope text state
-that this place is GONE? Closure is stated ABOUT AN OBJECT — check what
-died: "RIP Uchi Candy Bar" mourns a dish (Gate 2's business, Uchi stays
-open); "RIP my wallet" mourns nothing; and a closed BRANCH never closes
-the brand ("sad since the one on MLK closed — great tortillas" leaves the
-brand open and the praise standing). Stated closure of the place itself
-("RIP", "closed down", "went out of business", "closed suddenly") — or a
-statement of the place's PRESENT STATE that entails it no longer operates
-("now a dilapidated ruin", "it's a parking lot now", "the building sits
-empty"; the state IS the closure, no closure verb required) —
-including closure reported secondhand ("I heard they closed": closure is
-a fact about the world, and crediting a dead place costs more than
-missing a live one; a stated reopening overrides) — anywhere in scope — including the frame
-of an ask whose selection criterion is that its places are gone ("who
-remembers \_\_\_?", "a memorable meal at a place that didn't last long")
-— marks the place CLOSED, and NO mention of it emits from any source in
-this post object, however warm the words: praise beside a closure is a
-eulogy. A place is closed only by a STATED fact about the PLACE — stated by the
-text directly, or stated by an ask's own gone-criterion frame (both are
-the thread SAYING the place is gone) — never by the writer's own tense
-or distance ("I used to live in NYC and would go out of my way just for
-\_\_\_" reports a live place from a writer who moved away), and never by
-guessing: a place whose status neither the text nor the frame states is
-OPEN. A source
-that says the place is open again overrides an older closure in the same
-scope.
+**THE STATUS TEST — one law for places and dishes, resolved ONCE per
+subject, for the whole post object.** Ask of the TEXT, never of the
+writer's warmth: **does anything in scope place this thing only in the
+PAST, or state it is GONE?** A stated ending — closure or removal verbs
+("RIP", "closed down", "went out of business", "took it off the menu",
+"discontinued"), mourning, a wish for restoration ("hopefully they'll
+bring it back" — you only bring back what is gone), a PRESENT STATE
+that entails it no longer exists ("now a dilapidated ruin", "it's a
+parking lot now", "the building sits empty"; the state IS the ending,
+no ending verb required), an ending reported secondhand ("I heard they
+closed" — crediting a dead thing costs more than missing a live one),
+or the frame of an ask whose selection criterion is gone-ness ("who
+remembers \_\_\_?", "a memorable meal at a place that didn't last
+long") — anywhere in scope marks the subject DEAD: **no mention of it
+emits from any source in this post object, however warm the words.
+Praise beside an ending is a eulogy, and memory never outranks a
+stated ending** — the vividness of the memory ("so freaking amazing. i
+dream about it still") is exactly how eulogies read. Three guards, all
+directions: (1) an ending is stated ABOUT AN OBJECT — check what died:
+"RIP Uchi Candy Bar" mourns a dish (Uchi stays open); "RIP my wallet"
+mourns nothing; a closed BRANCH never closes the brand ("sad since the
+one on MLK closed — great tortillas" leaves the brand open and the
+praise standing); a dead dish is not a closed place. (2) The writer's
+OWN tense, distance, or nostalgia never ends anything ("I used to live
+in NYC and would go out of my way just for \_\_\_" reports a live
+place; meals are always narrated in the past — "went last week, the
+ramen was perfect" reports a live dish): only availability/existence
+language about the THING does ("used to have/make/serve", "back when
+they had", a one-time bygone offering — "did one over Thanksgiving
+break one year"). (3) A subject whose status nothing states is ALIVE,
+and a stated return or reopening overrides an older ending. Run this
+here for every PLACE; Gate 2 (C.1) runs the same test for every DISH.
 
-### B.2 Is the claim about food this place serves?
+### B.2 THE MAKER TEST — whose kitchen made this food?
 
-**THE PLACE TEST — one question: was this food SERVED to the writer to
-eat, or SOLD to carry away?** Served — made or plated by this place's
-kitchen and handed over to be eaten now — is the claim this system exists
-for. Sold to carry away — taken from a shelf, a case, a cooler, a freezer,
-an aisle, or a product page, to be eaten, cooked, or finished elsewhere — is
-RETAIL, and retail earns nothing here: no dish, no ingredients, no place,
-**even when the good needs no preparing** (a bottle, a jug of milk, a
-packaged bar, a six-pack, a pastry from a grocery's case) and however
-lovingly vouched ("their milk is unbeatable", "you can buy it in a case
-of 6.. I ship it to my best friend"). A product's brand ("Caymus",
-"Fairlife") is never a restaurant.
+**One question, three answers: WHO is behind this food, and does it
+reach the eater AS A SERVED PLATE or AS A GOOD CARRIED OFF?** The test
+reads the CLAIM's mode, never whether an eating already happened — a
+menu fact, a deal, or an availability answer about served food is answer
+1 as surely as a finished meal. Every credit rule in this step is a case of
+it.
 
-This is a test on **the claim, not on the venue** — the same business does
-both, and the text tells you which:
+1. **THIS NAMED PLACE'S kitchen, SERVING** — food made or plated here
+   for diners. The claim this system exists for: credit the place.
+   A counter that COOKS FOR YOU inside a store is this answer, not
+   answer 3 — but only for claims ABOUT that counter's cooked food (the
+   food court or taquería counter at a grocery serves, and "the youtiao
+   … blown away" is real); a store NOMINATED under a shelf errand is
+   still A.1's fact-ask silence, whatever counters it contains.
+2. **AN UNNAMED MAKER** — a truck, cart, stand, counter, or "that lady"
+   with no proper name of its own, however precisely located at a named
+   landmark. The maker owns the claim, the maker has no name, so the
+   claim is SPENT: nothing emits — the maker's description ("that
+   lady", "the truck", "the tamale lady outside the Home Depot") is
+   never `place_observed`, even when the thread's TITLE is that
+   description (a title frames a topic, not a name), and the landmark
+   hosting the maker is NEVER its stand-in. "The taco truck at Oskar Blues is incredible, get
+   the barbacoa" praises the truck and steers to the TRUCK'S barbacoa —
+   Oskar Blues made neither, and earns neither the mention nor the dish.
+3. **NOBODY SERVED IT — the good goes WITH you.** Taken from a shelf,
+   a case, a cooler, a freezer, an aisle, or a product page, to be eaten,
+   cooked, or finished elsewhere — **whoever made it**: a factory, the
+   shop's own smokehouse or bakery (a meat market's house-made sausage
+   you grab by the link is this answer, however proudly they made it), or
+   a restaurant's kitchen selling take-home tubs. The MODE decides, not
+   the maker: RETAIL, and retail earns nothing — no
+   dish, no ingredients, no place — **even when the good needs no
+   preparing** (a bottle, a jug of milk, a packaged bar, a six-pack, a
+   pastry from a grocery's case) and however lovingly vouched ("their
+   milk is unbeatable", "you can buy it in a case of 6.. I ship it to my
+   best friend"). A product's brand ("Caymus", "Fairlife") is never a
+   restaurant.
+
+A NAMED store whose good goes home with you is answer 3, however famous
+the store; an unnamed counter that cooks for you is answer 2. Ask the
+maker question of each CLAIM — one business can hold all three answers
+across its claims. (The test decides only who made the FOOD; it never
+touches Step A: a verdict, pick, or affirmation whose subject is a
+serving PLACE emits exactly as A ruled.)
+
+The same business often serves AND sells — the sub-cases, each an
+application of the three answers above:
 
 - **At a STORE, only a counter that SERVES serves.** The hot bar, the food
   court, the taquería or deli counter make food for you, and their claims
@@ -1056,32 +1100,15 @@ combo`, "the Hangover Special" → `hangover special`; the article stays
 
 **Gate 2 — THE ORDER TEST.** _Could you say this to a server as the thing
 you want to order?_ Anything orderable is a dish, drinks included — an
-espresso or a cocktail exactly like a taco. **And it must still EXIST — DISH STATUS, resolved once
-per dish per post object, the exact mirror of B.1's PLACE STATUS.** The
-test is TEMPORAL, asked of the text, not of the writer's warmth: **where
-does this text place the DISH — in the venue's PRESENT, or only in its
-PAST?** The tense of the EATING is never the tense of the dish: meals
-are always narrated in the past ("had the cod and it's good", "went
-last week — the ramen was perfect" report live dishes), so a past-tense
-verb about a meal says nothing. What places the DISH ITSELF in the past
-is availability language: "used to have/make/serve", "back when they
-had", verbed removal ("took it off the menu", "replaced it",
-"discontinued"), mourning ("RIP the shake"), a wish for restoration
-("hopefully they'll bring it back" — you only bring back what is gone),
-and a one-time offering from a past occasion ("did one over
-Thanksgiving break one year" — a dish that existed for one bygone
-window is in the past, however dreamed-about since). Any of these,
-anywhere in scope, marks that dish DEAD, and no clause about it emits.
-**A loved-but-gone dish earns NOTHING — not a live dish, not a place
-carrier: memory never outranks a stated ending**, and the vividness of
-the memory ("so freaking amazing. i dream about it still") is exactly
-what makes this trap — vivid praise is how eulogies read. (The
-restaurant is untouched: a dead dish is not a closed place, and the
-same source's claims about LIVE food emit normally.) A dish the text
-places in the present — "has", "serves", "still on the menu", an
+espresso or a cocktail exactly like a taco. **And it must still EXIST — run B.1's STATUS TEST for this DISH**, once
+per dish per post object: availability language anywhere in scope
+("used to have/make/serve", "took it off the menu", "RIP the shake", a
+one-time bygone offering) marks the dish DEAD and no clause about it
+emits — not a live dish, not a place carrier; the restaurant itself is
+untouched, and the same source's LIVE food emits normally. A dish the
+text places in the present — "has", "serves", "still on the menu", an
 ordering-idiom "off the menu" ("I enjoy several things off the menu" is
-a live dish being eaten) — is ALIVE, and a stated return overrides an
-older ending. Failing by definition:
+a live dish being eaten) — is ALIVE. Failing by definition:
 
 - wanting-anything words — "food", "a meal", "the food here", "drinks"/"a
   drink" bare — name the desire to eat or drink, not a thing the server
