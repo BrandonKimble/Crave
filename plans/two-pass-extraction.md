@@ -76,6 +76,17 @@ sample precision check at K=20 (windowed mention counts ran HIGHER —
 445 vs 373 at K=5 — which is either recall gain or noise, unmeasured),
 ideally validated by running the v23 shadow replay itself at K=20.
 
+## K=25 run (2026-09-03 late — CURRENT v23 text) — the picture inverts
+
+single (K=30): **0 leaks**. windowed K=25: 2 (both the mil-ask marker,
+previously determined to be instrumentation noise). Castle-hill — 8-10
+leaks/run at K=30 under the OLD text — is gone AT K=30 under v23-final:
+the four doctrine unifications (maker, status, capability,
+label-vs-thing + plurality) consumed the attention signal this suite
+could measure. Windowing may have nothing left to buy. Decision
+consequence: run the v23 shadow at the DEFAULT K=30; the K knob stays
+in the pocket for the corpus audit to justify.
+
 ## Verdict + the real next design question
 
 The worksheet two-pass is dead (2x cost, noise-level gain). WINDOWING
