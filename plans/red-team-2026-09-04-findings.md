@@ -197,3 +197,9 @@ focus camera 256px, M3 1,705 active surfaces on archived entities
 partial-collapse prior, raw-SQL row-shape guard, rising/thread-share,
 stopword hand lists, C3 synergy gate, C2 curation runbook, dead mobile
 residency chain + hook + modules.
+- CI's first DB-integration pass exposed a real writer defect: the
+  default-label election's retry never fired (Prisma's 23505 message has
+  no constraint name) and would have died in the aborted transaction —
+  fixed by shape detection + savepoint, with a deterministic
+  two-transaction race proof (b898f11cd). Root scripts/ containment gate
+  now also declares the invariants-lock fence.
