@@ -767,6 +767,20 @@ export class PlaceEntityMergeService {
         AND ${Prisma.raw(nonAggregatorDomainSql('lower(a.canonical_domain)'))}
         AND ${Prisma.raw(activeSupportExistsSql('a.entity_id'))}
         AND ${Prisma.raw(activeSupportExistsSql('b.entity_id'))}
+        -- A PAIR THE LEDGER ALREADY DECIDED AT THIS RULE NEVER RE-ENTERS THE
+        -- DOCKET (red team 2026-09-04 E-2): remembered 'distinct' pairs stay
+        -- active on the same domain forever, so an un-ordered LIMIT 50 kept
+        -- refilling with the same fifty and a new pair behind them was never
+        -- fetched, let alone heard. Decided pairs are excluded at fetch and
+        -- the rest come in a stable order.
+        AND NOT EXISTS (
+          SELECT 1 FROM claim_verdicts cv
+           WHERE cv.lane = ${SAME_BUSINESS_LANE}
+             AND cv.rule_version = ${SAME_BUSINESS_RULE_VERSION}
+             AND cv.claim_key = 'pair|' || least(a.entity_id::text, b.entity_id::text)
+                                 || '|' || greatest(a.entity_id::text, b.entity_id::text)
+        )
+      ORDER BY a.entity_id, b.entity_id
       LIMIT 50
     `;
 
@@ -799,6 +813,15 @@ export class PlaceEntityMergeService {
         SELECT count(DISTINCT b2.key) FROM stripped b2
         WHERE b2.key <> a.key AND b2.key LIKE a.key || ' %'
       ) = 1
+      -- decided pairs never re-enter the docket (E-2; same law as the domain lane)
+      AND NOT EXISTS (
+        SELECT 1 FROM claim_verdicts cv
+         WHERE cv.lane = ${SAME_BUSINESS_LANE}
+           AND cv.rule_version = ${SAME_BUSINESS_RULE_VERSION}
+           AND cv.claim_key = 'pair|' || least(a.entity_id::text, b.entity_id::text)
+                               || '|' || greatest(a.entity_id::text, b.entity_id::text)
+      )
+      ORDER BY a.entity_id, b.entity_id
       LIMIT ${PREFIX_LANE_PER_RUN_CEILING}
     `;
 
