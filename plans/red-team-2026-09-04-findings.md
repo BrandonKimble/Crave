@@ -208,15 +208,18 @@ residency chain + hook + modules.
 Every lane (static guards, unit, DB-integration, track-sheet/native, invariant
 mutation proofs) executed and passed. The staging deploy gate now reads green.
 
-## CORRECTION (2026-09-04, owner question): chunking truth
-There is NO document-count cap in the chunker. The only knob is
-LLM_CHUNK_TARGET_TOKENS=35000, and it has never bound: v21–v23 chunks are
-whole threads, avg ~1,300 tokens, max ~8,600. "K=30 / LLM_CHUNK_MAX_DOCS"
-existed only in the A/B harness's windowed variant. 552 of 1,762 shadow
-chunks carry ≥30 comments (max 143 in ~4,500 tokens) — the attention shape
-the K-sweep flagged. If the diff shows chunk-context leaks: add a real
-doc-count window (whole top-level subtrees, post carried) and re-replay
-those chunks (~31% of the run).
+## CORRECTION OF THE CORRECTION (2026-09-04, evening): chunking truth
+My earlier note here (and commit e1072c4a7) said "there is NO document-count
+cap". WRONG — read the file, not the grep: `llm-chunking.service.ts` has had
+`DEFAULT_MAX_DOCS_PER_CHUNK = 30` (env `LLM_CHUNK_MAX_DOCS`) since dd663ec29
+(2026-08-27, v17-loop2 "docs-per-chunk attention cap"). Live collection has
+packed at most 30 comments per chunk since then; a single top-level thread
+larger than 30 still stays whole (thread coherence is never split). What IS
+true: REPLAYS reuse the STORED input chunks, so v21–v23 ran on chunks built
+before the cap. Measured on the v23 shadow: 1,223 chunks ≤30 docs (avg 13),
+539 chunks >30 docs and EVERY one of them is a single unsplittable thread
+(avg 60, max 143). So the cap is live for new posts and the remaining
+exposure is mega-threads, which only a subtree split can bound.
 
 ## v23 diff triage (2026-09-04, review file logs/reextract-review-20260904-113149.txt)
 
