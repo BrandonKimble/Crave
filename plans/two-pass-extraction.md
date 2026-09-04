@@ -53,15 +53,37 @@ thread's 30+ comments (castle-hill leaks 3-5 mentions per run from its
 own thread even with the closure edit in force — the model fails to apply
 the post-object-wide PLACE STATUS closure).
 
+## The K-sweep (owner-ordered; leak chunks, pre-maker-test prompt)
+
+| K (comments/window) | leaks (single → windowed) | raw cost | est. REAL cost* |
+|---|---|---|---|
+| 30 (today) | baseline | 1.0x | 1.0x |
+| 20 | 10 → 4 | 2.65x | ~1.2x |
+| 10 | 12 → 4 | 4.5x | ~1.4x |
+| 5 | 6 → 0 | 8.0x | ~1.8x |
+
+*with the production batch path's explicit prompt cache (~10x cheaper
+prompt re-reads), which the raw probe didn't use.
+
+Castle-hill — the thread-context killer, 8-10 leaks/run at K=30 — dies
+at EVERY K <= 20. The residual leaks at K=10/20 (nomad rent-a-room,
+mil-ask) were DOCTRINE gaps fixed separately in v23-final (the
+capability-endorsement law; the mil marker was instrumentation noise).
+So K=20 + v23-final plausibly reaches ~zero measured leaks at ~1.2x
+real cost. Deployment is one env var: LLM_CHUNK_MAX_DOCS (the chunker
+already packs whole subtrees). Before flipping production: a random-
+sample precision check at K=20 (windowed mention counts ran HIGHER —
+445 vs 373 at K=5 — which is either recall gain or noise, unmeasured),
+ideally validated by running the v23 shadow replay itself at K=20.
+
 ## Verdict + the real next design question
 
-Neither the worksheet (2x cost, noise-level gain) nor post isolation
-(a no-op) moves the floor. The only isolation regime left is
-PER-COMMENT (comment + its ancestor chain — the exact regime where every
-pin certifies 3/3): ~30 calls per thread, viable only with prompt caching
-on the shared ~27k-token system prompt. That is the experiment that
-decides the two-pass question, and it needs a caching-aware harness —
-queued, not run.
+The worksheet two-pass is dead (2x cost, noise-level gain). WINDOWING
+is the winner: K<=20 kills the attention class outright, doctrine
+unifications (maker test, status test, capability law) kill the stated-
+rule classes, and per-comment isolation is unnecessary. Owner decision
+pending: run the v23 shadow at LLM_CHUNK_MAX_DOCS=20 as the at-scale
+validation.
 
 ## Position analysis (owner theory, tested 2026-09-03)
 

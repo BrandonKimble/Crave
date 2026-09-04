@@ -172,7 +172,15 @@ async function main(): Promise<void> {
       // chunk context is the whole disease: per-post is the regime where
       // pinned shapes certify 3/3.
       perPost: { inTok: 0, outTok: 0, leaks: [] as string[], mentions: 0 },
+      // Variant D — WINDOWED: the owner's lower-chunk-cap experiment. The
+      // thread's TOP-LEVEL SUBTREES (a parent comment + all its replies)
+      // are greedily packed into windows of <= windowK comments; a subtree
+      // is never split, and every window carries the post. Measures the
+      // attention-vs-cross-window-context trade (PLACE STATUS closure in a
+      // sibling subtree is invisible to other windows — the honest cost).
+      windowed: { inTok: 0, outTok: 0, leaks: [] as string[], mentions: 0 },
     };
+    const windowK = Number(arg('windowK', '10'));
     for (const chunk of payloads) {
       const payload = chunk.input_payload as Record<string, unknown>;
       const markers = LEAK_CHUNKS.filter((c) => c.inputId === chunk.input_id);
@@ -237,6 +245,66 @@ async function main(): Promise<void> {
             const hit = c.forbidden(m);
             if (hit) totals.two.leaks.push(`[${c.label} r${run}] ${hit}`);
           }
+        // ── Variant D: windowed sub-chunks.
+        const post0 = (payload as { posts?: Array<Record<string, unknown>> })
+          .posts?.[0];
+        if (post0) {
+          const comments = Array.isArray(post0.comments)
+            ? (post0.comments as Array<Record<string, unknown>>)
+            : [];
+          const byId = new Map(comments.map((c) => [String(c.id), c]));
+          const topOf = (c: Record<string, unknown>): string => {
+            let cur = c;
+            const seen = new Set<string>();
+            while (str(cur.parent_id) && byId.has(str(cur.parent_id))) {
+              const id = String(cur.id);
+              if (seen.has(id)) break;
+              seen.add(id);
+              cur = byId.get(str(cur.parent_id))!;
+            }
+            return String(cur.id);
+          };
+          const subtrees = new Map<string, Array<Record<string, unknown>>>();
+          for (const c of comments) {
+            const top = topOf(c);
+            subtrees.set(top, [...(subtrees.get(top) ?? []), c]);
+          }
+          const windows: Array<Array<Record<string, unknown>>> = [];
+          let cur: Array<Record<string, unknown>> = [];
+          for (const tree of subtrees.values()) {
+            if (cur.length && cur.length + tree.length > windowK) {
+              windows.push(cur);
+              cur = [];
+            }
+            cur.push(...tree);
+          }
+          if (cur.length) windows.push(cur);
+          for (const win of windows) {
+            const sub = {
+              ...payload,
+              posts: [{ ...post0, comments: win }],
+            };
+            const dResult = await llm.processContent(
+              sub as never,
+              candidatePrompt,
+            );
+            const dMentions = Array.isArray(dResult?.mentions)
+              ? (dResult.mentions as unknown as Array<Record<string, unknown>>)
+              : [];
+            totals.windowed.inTok += approxTokens(
+              candidatePrompt + JSON.stringify(sub),
+            );
+            totals.windowed.outTok += approxTokens(JSON.stringify(dMentions));
+            totals.windowed.mentions += dMentions.length;
+            for (const c of markers)
+              for (const m of dMentions) {
+                const hit = c.forbidden(m);
+                if (hit)
+                  totals.windowed.leaks.push(`[${c.label} r${run}] ${hit}`);
+              }
+          }
+        }
+
         // ── Variant C: per-post isolation.
         const posts = Array.isArray((payload as { posts?: unknown[] }).posts)
           ? ((payload as { posts: unknown[] }).posts as Array<
