@@ -671,7 +671,20 @@ export class SearchQueryInterpretationService {
           .split(' ')
           .every((tok) => winnerTokens.has(singularish(tok)));
       for (const sub of group.subGroups ?? []) {
-        const contained = sub.entities.filter(isContainedPart);
+        // COMPOUND-ONLY GROUNDING (owner lock 2026-08-09; landed red team
+        // 2026-09-04 L1/C4c — probe was RED: "arroz con pollo" emitted two
+        // rival dish asks `arroz` + `pollo`, and "tacos veganos" filed
+        // `tacos` as a PLACE attribute). A part of a dish name is only ever
+        // a CONSTRAINT on the compound — a dish-side attribute or an
+        // ingredient, what the word does INSIDE the dish. It is never a
+        // rival dish (`items`) and never a venue property; a part with no
+        // modifier reading simply rides the compound.
+        const contained = sub.entities.filter(
+          (e) =>
+            isContainedPart(e) &&
+            (e.type === EntityType.item_attribute ||
+              e.type === EntityType.ingredient),
+        );
         if (!contained.length) continue;
         // MODIFIER-FIRST PLACEMENT (owner ruling 2026-08-06): a PART of a
         // dish name reads as what it does INSIDE the dish — an attribute
@@ -1191,8 +1204,10 @@ export class SearchQueryInterpretationService {
 
   /** Placement order for DECOMPOSED parts only: a fragment of a dish name
    *  reads as a modifier of the dish (attribute/ingredient conjunct), not
-   *  as a rival dish. Food is the fallback when no modifier reading
-   *  exists (`taco` in "tacos vegetarianos"). */
+   *  as a rival dish. Since the compound-only lock (2026-09-04) only
+   *  item_attribute and ingredient readings reach this order — there is
+   *  no food or venue fallback for a part (`taco` in "tacos vegetarianos"
+   *  rides the compound; it is never a second dish ask). */
   private static readonly DECOMPOSED_PLACEMENT_ORDER: EntityType[] = [
     'item_attribute',
     'place_attribute',
