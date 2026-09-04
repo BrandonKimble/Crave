@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * @script-class: gate
- * @runs-from: lefthook pre-commit (invariants-lock)
+ * @run-by: lefthook pre-commit (invariants-lock) — see lefthook.yml
  *
  * THE INVARIANTS-HARNESS COMMIT FENCE (red team 2026-09-04).
  *
