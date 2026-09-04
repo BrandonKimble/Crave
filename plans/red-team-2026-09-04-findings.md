@@ -158,3 +158,5 @@ docket drain + Wave 4 coverage census not started.
   floor $20.61, envelope $32.67, hash d51e596e… — OWNER approval needed.
 - G-5 (typed caller tag) not yet done; E-2/S-4 specs owed; invariants
   cross-session lock not yet done.
+- G-5 f3b089a21 (caller tag is a type; grader profiled + contracted);
+  invariants commit fence (lefthook) landed.
