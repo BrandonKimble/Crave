@@ -95,3 +95,19 @@ ops alert, not a log line (silence class).
 - ID-1 41e3dbbbd — carried merge-fold rows capped at the merge's grade.
 - ID-2, ID-3 576dd87a0 — refusal is an absolute write; ontology merges
   through the one ledgered merge door.
+
+## Territory 3 — restaurant-enrichment (agent read; verified by me)
+
+| # | Verdict | Claim | My proof |
+|---|---|---|---|
+| E-1 | **FINDING — FIXED** | `wipe-city-derived.sql`'s orphan sweep was corpus-wide: a community matching nothing → 746 deletes. | Re-ran the dry run myself before/after: 746 → 0. |
+| E-2 | **FINDING — FIXED (spec owed)** | Court ceiling charged before the ledger lookup; remembered pairs starve new ones forever. | Read `:944-972`; memory now consulted first. No sweep harness exists — spec docketed. |
+| E-5 | **FINDING — FIXED** | Janitor closed arm archived user-anchored places. | Read `:153-172`; guard added; spec RED→GREEN. |
+| E-3 | FINDING (agent-read; docket) | Moved-arm is a weekly Places spend loop (re-grounded moved row never cleared, enrichment mints a second row). | Staging today: 0 moved rows, so no live spend; structural. Ideal: Google's redirect is Google's verdict — one lean details call, rewrite in place. OWNER: worth its own pass. |
+| E-4 | FINDING (agent-read; docket) | Resurrection loop: active entity whose chooser picks a place owned by an archived, un-redirected entity re-buys autocomplete+details on every mention, no strike, no alarm. | Staging: 230 archived places without redirects (0 currently hold place ids). Ideal: revive-and-merge as a ledgered place_merge. |
+| E-6 | FINDING (agent-read; docket) | Batch sweep ignores the worker-lane hold; tripwire can't arm under 20 attempts. | Ideal: one hold at the `enrichPlace` chokepoint. |
+| E-7 | FINDING (agent-read; docket) | Enrichment-time domain merge and the sweep answer "is this domain owned?" with two predicates (status filter differs). | Ideal: one `ownedDomainCluster`. |
+| E-8/E-9 | FINDING — dead code | `handleEntityNameConflict` unreachable (no name/type unique); `mergeLocations` shared-place branch unreachable (global unique). | Delete in the cleanup pass. |
+| E-10..12 | LEAD | cross-metro merge via "no community evidence"; 259 multi-primary rows; 17 stranded redirects on staging with no alarm. | Docketed. |
+
+Places (TomTom) module: one LEAD (promotion attempts uncapped/unread).
