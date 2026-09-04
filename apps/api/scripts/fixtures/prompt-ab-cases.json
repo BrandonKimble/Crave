@@ -4205,7 +4205,7 @@
   },
   {
     "id": "N58-deal-answer-inherits-no-dish",
-    "why": "FLIPPED 2026-09-01 (Ruling 1): same text answering a deal-seeking ask — a volunteered deal is recommended; oysters bank plus affordable.",
+    "why": "FLIPPED 2026-09-01 (Ruling 1): same text answering a deal-seeking ask — a volunteered deal is recommended; oysters bank plus affordable. EXPANDED 2026-09-03 (owner): per-word fit — the category pushback blocks nothing about the ask's happy hour, so the handing answer carries it.",
     "contract": "v17",
     "posts": [
       {
@@ -4228,7 +4228,7 @@
           "source": "t1_n58",
           "places": ["higher ground"],
           "items": ["oyster"],
-          "attributes": ["affordable"]
+          "attributes": ["affordable", "happy hour"]
         }
       ]
     }

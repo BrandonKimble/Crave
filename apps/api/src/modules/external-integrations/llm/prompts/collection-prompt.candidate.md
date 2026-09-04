@@ -259,11 +259,25 @@ The writer vouches from experience, or reports a clear consensus:
   The principle needs a CHOSEN answer to SOMEONE ELSE's want: the asker
   cannot volunteer to themselves ("I've only been to Cuba512 — but wondering
   if anywhere else makes them" is the ask's own attendance clause and banks
-  nothing), and the business's own voice (SELF-PROMOTION), a correction
-  that WITHDRAWS the thing ("they have it but I wouldn't bother"), and terms
-  dropped into unrelated chatter volunteer nothing — while a correction that still hands you the thing ("Higher
-  Ground isn't an oyster bar, but they have $1 raw East Coast Oysters every
-  Tuesday") volunteers it. **It only PROMOTES a clause that would otherwise
+  nothing), and the business's own voice (SELF-PROMOTION), a withdrawing
+  correction, and terms dropped into unrelated chatter volunteer
+  nothing. **Judge every correction by what it does to the THING the
+  asker wants — never to the LABEL around it (THE LABEL-VS-THING
+  TEST).** A correction that takes the thing away — quality ("they have
+  it but I wouldn't bother"), existence, availability — WITHDRAWS, and
+  the withdrawn thing banks nothing. **A withdrawal silences ONLY the
+  withdrawn thing**: every other clause of the reply is its own subject,
+  judged by A.0 as ever ("They don't. But plenty of great fake meat
+  noodle dishes" withdraws the sought dish and still vouches the place
+  high on its second clause). A correction that touches only the CATEGORY or LABEL
+  while handing over exactly the wanted thing — "Higher Ground isn't an
+  oyster bar — it's a cocktail lounge & kitchen — they have $1 raw East
+  Coast Oysters every Tuesday" hands the asker their raw oysters at
+  happy-hour prices — volunteers as fully as a plain yes: the label was
+  wrong, the thing survives, and the answer banks EVERYTHING its clauses
+  earn — the oysters, the `affordable` its volunteered $1 deal is owed
+  (a deal handed to a value-seeking ask is recommended, A.2), and the
+  ask's uncontested fit words (Step D). **It only PROMOTES a clause that would otherwise
   be silent for lacking a vouch; it never demotes, revives, or re-types.**
   B.2 outranks it — a store, and every shelf good, stays retail-silent: a
   thing the asker would buy and carry off is a shelf errand whoever
@@ -421,7 +435,10 @@ The writer vouches from experience, or reports a clear consensus:
   writer's name, SHAPE included: the parent's dish claims adopt as dish
   mentions, and a pick's place-level endorsement adopts as this source's own
   place carrier at `general_praise: true` — an affirmation under a pick
-  always emits its own carrier. **Judging another diner's ORDER is dish
+  always emits its own carrier, dish or no dish beside it ("fave!!"
+  under "Salty Sow — the crispy pork belly is unreal" emits the adopted
+  dish AND its own Salty Sow carrier at `true`, both from the
+  affirmation's id). **Judging another diner's ORDER is dish
   testimony of the same family**: "I see you've ordered the Tio Chon
   enchiladas. Excellent call." certifies THAT DISH from the writer's own
   knowledge ("excellent call", "great choice" are verdicts on the plate).
@@ -519,7 +536,9 @@ The writer vouches from experience, or reports a clear consensus:
   Trompo tacos on Tuesdays", offered to a taco-deals ask). Reporting looks
   like terms dropped unprompted into unrelated chatter ("set lunch is
   ¥1,100, weekdays only" mid-story), a complaint's pricing, the business's
-  own promotion, or a correction that WITHDRAWS the thing. **Nobody
+  own promotion, or a correction that WITHDRAWS the thing (the
+  label-vs-thing test, A.1 — a category correction that still hands the
+  thing over is VOLUNTEERING, never reporting). **Nobody
   recommends a deal whose food is bad**: a RECOMMENDED deal is food
   testimony with value testimony riding along — its identified offering
   extracts as a dish, as the writer spoke it (`steak frites`, `lunch
@@ -1350,10 +1369,18 @@ places" writes no `family-friendly`, and a pick under it carries none;
 "my sister is vegan" writes `vegan`, and a pick under it carries it. **A
 deal answered to a value-seeking ask is A.2's posture rule, not a fit
 assertion**: recommended → its identified dish plus `affordable`; reported
-→ nothing. A re-scoping annotation blocks the word it re-scopes ("great
-but pricey" blocks "cheap"), an off-axis answer that pushes back on the
-ask's frame asserts nothing from it, and the ask itself still emits
-nothing. Fit-asserted words land on the PLACE side —
+→ nothing. **Blocking is PER WORD**: a re-scoping annotation or a pushback
+blocks exactly the constraint words it contests, and no others — "great
+but pricey" blocks "cheap"; "isn't an oyster bar" contests the CATEGORY
+and blocks nothing about the ask's "happy hour", so the answer that
+hands the asked-for thing still carries `happy hour` — BESIDE, never
+instead of, whatever its own clauses earn (the volunteered $1 deal
+still adds `affordable`; a fit word displaces nothing). A.1's
+label-vs-thing test decides whether anything was handed at all. An
+answer off the ask's axis entirely asserts none of its words, and the
+ask itself still emits nothing. The carry belongs to any answer that
+HANDS the asked-for thing — a bare pick or a volunteered source alike:
+the answerer chose that place because it fits. Fit-asserted words land on the PLACE side —
 "Best Indian around?" → "Ravi Kabab, hands down" carries `indian` in
 `place_attributes`, never in a food slot — the ask constrained the
 venue, and its dish words are SUBJECTS handled by C.1 Gate 3, never
