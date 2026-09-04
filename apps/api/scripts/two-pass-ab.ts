@@ -25,6 +25,7 @@ process.env.PROCESS_ROLE ||= 'api';
 import { readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { NestFactory } from '@nestjs/core';
+import { dateStamp, runTaggedScript } from './lib/script-run-key';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 import { LLMService } from '../src/modules/external-integrations/llm/llm.service';
@@ -357,7 +358,15 @@ async function main(): Promise<void> {
   }
 }
 
-void main().catch((e: unknown) => {
+void runTaggedScript(
+  `two-pass-ab:${
+    process.argv
+      .slice(2)
+      .join(',')
+      .replace(/[^a-z0-9=,]/gi, '') || 'default'
+  }:${dateStamp()}`,
+  main,
+).catch((e: unknown) => {
   console.error(e instanceof Error ? e.stack : String(e));
   process.exit(1);
 });

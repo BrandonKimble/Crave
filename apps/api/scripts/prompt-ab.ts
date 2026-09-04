@@ -35,6 +35,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
 import { LLMService } from '../src/modules/external-integrations/llm/llm.service';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
+import { dateStamp, runTaggedScript, shortHash } from './lib/script-run-key';
 import { canonicalizeObservedPlaceName } from '../src/modules/content-processing/reddit-collector/place-name-contract';
 
 const PROMPT_DIR = join(
@@ -455,134 +456,147 @@ async function main(): Promise<void> {
   const llm = app.get(LLMService);
   const results: Array<Record<string, unknown>> = [];
 
-  console.log(
-    `\nPROMPT A/B — ${cases.length} cases x ${repeat} runs x 2 prompts = ${cases.length * repeat * 2} calls`,
-  );
-  console.log(`live=${livePath}\ncandidate=${candidatePath}\n`);
+  // Every vendor call below lands in api_usage_ledger under this run_key
+  // (see scripts/lib/script-run-key.ts). Candidate hash + deck size so a
+  // full cert, an ablation and a solo-verify are distinguishable in SQL.
+  const runKey = `prompt-ab:${shortHash(prompts.candidate)}:${cases.length}x${repeat}:${dateStamp()}`;
+  console.log(`ledger run_key=${runKey}`);
+  await runTaggedScript(runKey, () => runDeck());
 
-  // One unit of work per (case, variant, run). Sequential execution made a
-  // 96-call round exceed ten minutes; the vendor happily takes these in
-  // parallel and the harness is worthless if it is too slow to iterate with.
-  type Unit = { testCase: Case; variant: 'live' | 'candidate'; index: number };
-  const units: Unit[] = [];
-  for (const testCase of cases) {
-    for (const variant of ['live', 'candidate'] as const) {
-      for (let i = 0; i < repeat; i += 1)
-        units.push({ testCase, variant, index: i });
-    }
-  }
-  const outcomes = new Map<
-    string,
-    { mentions?: Mention[]; error?: string }[]
-  >();
-  const key = (c: string, v: string) => `${c}::${v}`;
-  units.forEach((u) => {
-    const k = key(u.testCase.id, u.variant);
-    if (!outcomes.has(k)) outcomes.set(k, []);
-  });
+  async function runDeck(): Promise<void> {
+    console.log(
+      `\nPROMPT A/B — ${cases.length} cases x ${repeat} runs x 2 prompts = ${cases.length * repeat * 2} calls`,
+    );
+    console.log(`live=${livePath}\ncandidate=${candidatePath}\n`);
 
-  const CONCURRENCY = 6;
-  let cursor = 0;
-  await Promise.all(
-    Array.from({ length: CONCURRENCY }, async () => {
-      for (;;) {
-        const unit = units[cursor++];
-        if (!unit) return;
-        const k = key(unit.testCase.id, unit.variant);
-        try {
-          const mentions = await runOnce(
-            llm,
-            prompts[unit.variant],
-            unit.testCase,
-          );
-          outcomes.get(k)!.push({ mentions });
-        } catch (error) {
-          outcomes.get(k)!.push({
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-    }),
-  );
-
-  for (const testCase of cases) {
-    const row: Record<string, unknown> = {
-      id: testCase.id,
-      why: testCase.why,
-      contract: testCase.contract ?? 'v16',
-      ...(testCase.pending ? { pending: testCase.pending } : {}),
+    // One unit of work per (case, variant, run). Sequential execution made a
+    // 96-call round exceed ten minutes; the vendor happily takes these in
+    // parallel and the harness is worthless if it is too slow to iterate with.
+    type Unit = {
+      testCase: Case;
+      variant: 'live' | 'candidate';
+      index: number;
     };
-    for (const variant of ['live', 'candidate'] as const) {
-      let passes = 0;
-      const allFailures: string[] = [];
-      const samples: Mention[][] = [];
-      for (const outcome of outcomes.get(key(testCase.id, variant)) ?? []) {
-        if (outcome.error) {
-          allFailures.push(`ERROR: ${outcome.error}`);
-          continue;
-        }
-        samples.push(outcome.mentions ?? []);
-        const graded = grade(testCase, outcome.mentions ?? []);
-        if (graded.pass) passes += 1;
-        else allFailures.push(...graded.failures);
+    const units: Unit[] = [];
+    for (const testCase of cases) {
+      for (const variant of ['live', 'candidate'] as const) {
+        for (let i = 0; i < repeat; i += 1)
+          units.push({ testCase, variant, index: i });
       }
-      row[variant] = {
-        passes,
-        of: repeat,
-        verdict: passes === repeat ? 'PASS' : passes === 0 ? 'FAIL' : 'FLAKY',
-        failures: Array.from(new Set(allFailures)).slice(0, 8),
-        sample: samples[0] ?? [],
-      };
     }
-    const liveVerdict = (row.live as { verdict: string }).verdict;
-    const candVerdict = (row.candidate as { verdict: string }).verdict;
-    const arrow =
-      liveVerdict === candVerdict
-        ? '  ='
-        : candVerdict === 'PASS'
-          ? ' ✅'
-          : liveVerdict === 'PASS'
-            ? ' ❌REGRESSION'
-            : '  ~';
-    console.log(
-      `${testCase.id.padEnd(30)} live=${liveVerdict.padEnd(6)} candidate=${candVerdict.padEnd(6)}${arrow}${testCase.pending ? `  [PENDING: ${testCase.pending}]` : ''}`,
-    );
-    const candFailures = (row.candidate as { failures: string[] }).failures;
-    if (candFailures.length) {
-      candFailures.forEach((f) => console.log(`      candidate: ${f}`));
-    }
-    results.push(row);
-  }
-
-  const summary = (variant: 'live' | 'candidate') => {
-    const counts = { PASS: 0, FLAKY: 0, FAIL: 0, PENDING: 0 } as Record<
+    const outcomes = new Map<
       string,
-      number
-    >;
-    results.forEach((r) => {
-      if (r.pending) counts.PENDING += 1;
-      else counts[(r[variant] as { verdict: string }).verdict] += 1;
+      { mentions?: Mention[]; error?: string }[]
+    >();
+    const key = (c: string, v: string) => `${c}::${v}`;
+    units.forEach((u) => {
+      const k = key(u.testCase.id, u.variant);
+      if (!outcomes.has(k)) outcomes.set(k, []);
     });
-    return counts;
-  };
-  console.log('\n--- SUMMARY ---');
-  console.log('live     ', JSON.stringify(summary('live')));
-  console.log('candidate', JSON.stringify(summary('candidate')));
-  const regressions = results.filter(
-    (r) =>
-      !r.pending &&
-      (r.live as { verdict: string }).verdict === 'PASS' &&
-      (r.candidate as { verdict: string }).verdict !== 'PASS',
-  );
-  if (regressions.length) {
-    console.log(
-      `\n❌ ${regressions.length} REGRESSION(S): ${regressions.map((r) => r.id).join(', ')}`,
-    );
-  }
 
-  if (outFile) {
-    writeFileSync(outFile, JSON.stringify(results, null, 2));
-    console.log(`\nwrote ${outFile}`);
+    const CONCURRENCY = 6;
+    let cursor = 0;
+    await Promise.all(
+      Array.from({ length: CONCURRENCY }, async () => {
+        for (;;) {
+          const unit = units[cursor++];
+          if (!unit) return;
+          const k = key(unit.testCase.id, unit.variant);
+          try {
+            const mentions = await runOnce(
+              llm,
+              prompts[unit.variant],
+              unit.testCase,
+            );
+            outcomes.get(k)!.push({ mentions });
+          } catch (error) {
+            outcomes.get(k)!.push({
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+      }),
+    );
+
+    for (const testCase of cases) {
+      const row: Record<string, unknown> = {
+        id: testCase.id,
+        why: testCase.why,
+        contract: testCase.contract ?? 'v16',
+        ...(testCase.pending ? { pending: testCase.pending } : {}),
+      };
+      for (const variant of ['live', 'candidate'] as const) {
+        let passes = 0;
+        const allFailures: string[] = [];
+        const samples: Mention[][] = [];
+        for (const outcome of outcomes.get(key(testCase.id, variant)) ?? []) {
+          if (outcome.error) {
+            allFailures.push(`ERROR: ${outcome.error}`);
+            continue;
+          }
+          samples.push(outcome.mentions ?? []);
+          const graded = grade(testCase, outcome.mentions ?? []);
+          if (graded.pass) passes += 1;
+          else allFailures.push(...graded.failures);
+        }
+        row[variant] = {
+          passes,
+          of: repeat,
+          verdict: passes === repeat ? 'PASS' : passes === 0 ? 'FAIL' : 'FLAKY',
+          failures: Array.from(new Set(allFailures)).slice(0, 8),
+          sample: samples[0] ?? [],
+        };
+      }
+      const liveVerdict = (row.live as { verdict: string }).verdict;
+      const candVerdict = (row.candidate as { verdict: string }).verdict;
+      const arrow =
+        liveVerdict === candVerdict
+          ? '  ='
+          : candVerdict === 'PASS'
+            ? ' ✅'
+            : liveVerdict === 'PASS'
+              ? ' ❌REGRESSION'
+              : '  ~';
+      console.log(
+        `${testCase.id.padEnd(30)} live=${liveVerdict.padEnd(6)} candidate=${candVerdict.padEnd(6)}${arrow}${testCase.pending ? `  [PENDING: ${testCase.pending}]` : ''}`,
+      );
+      const candFailures = (row.candidate as { failures: string[] }).failures;
+      if (candFailures.length) {
+        candFailures.forEach((f) => console.log(`      candidate: ${f}`));
+      }
+      results.push(row);
+    }
+
+    const summary = (variant: 'live' | 'candidate') => {
+      const counts = { PASS: 0, FLAKY: 0, FAIL: 0, PENDING: 0 } as Record<
+        string,
+        number
+      >;
+      results.forEach((r) => {
+        if (r.pending) counts.PENDING += 1;
+        else counts[(r[variant] as { verdict: string }).verdict] += 1;
+      });
+      return counts;
+    };
+    console.log('\n--- SUMMARY ---');
+    console.log('live     ', JSON.stringify(summary('live')));
+    console.log('candidate', JSON.stringify(summary('candidate')));
+    const regressions = results.filter(
+      (r) =>
+        !r.pending &&
+        (r.live as { verdict: string }).verdict === 'PASS' &&
+        (r.candidate as { verdict: string }).verdict !== 'PASS',
+    );
+    if (regressions.length) {
+      console.log(
+        `\n❌ ${regressions.length} REGRESSION(S): ${regressions.map((r) => r.id).join(', ')}`,
+      );
+    }
+
+    if (outFile) {
+      writeFileSync(outFile, JSON.stringify(results, null, 2));
+      console.log(`\nwrote ${outFile}`);
+    }
   }
 
   await app.close();
