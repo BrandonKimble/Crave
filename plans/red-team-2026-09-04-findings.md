@@ -150,3 +150,11 @@ docket drain + Wave 4 coverage census not started.
 - S-1/S-2/S-3/S-6 (Include-similar seam, user-visible) — landed: server
   stamps the ring tier 2 and serves it under the toggle; containment chip
   from the admission arm; app's local flip + dead wire fields deleted.
+- G-2 c7e8854e9 (one resume quote, spent floor); G-7 + census-fixture
+  (CI-only finding: three DB-census invariants were vacuous on an empty
+  database — 'NOT ENFORCED' in CI, green locally; scanners now self-seed).
+- v23 shadow BREACHED at $20.61 vs $20.43 envelope (estimate $12.89 —
+  ~55% under); last job held 'succeeded'. Refined resume quote printed:
+  floor $20.61, envelope $32.67, hash d51e596e… — OWNER approval needed.
+- G-5 (typed caller tag) not yet done; E-2/S-4 specs owed; invariants
+  cross-session lock not yet done.
