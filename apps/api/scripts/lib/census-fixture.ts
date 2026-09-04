@@ -25,7 +25,10 @@ import {
 export const CENSUS_FIXTURE_TAG = 'census-fixture:';
 
 /** Names chosen to exercise the fold: diacritics, apostrophes, case,
- *  a non-Latin script — the shapes a fold mutation is most likely to move. */
+ *  a non-Latin script — the shapes a fold mutation is most likely to move.
+ *  The stored Google types are exactly the ones the classification
+ *  invariant's mutations delete (taco_restaurant, establishment) — a census
+ *  fixture must hold what the proof removes, or the proof stays vacuous. */
 const FIXTURE_NAMES = [
   `${CENSUS_FIXTURE_TAG}Phở Lệ`,
   `${CENSUS_FIXTURE_TAG}Café Crème`,
@@ -59,7 +62,7 @@ async function seedFixturePlaces(prisma: PrismaClient): Promise<string[]> {
       `INSERT INTO core_entities
          (entity_id, name, type, status, identity_key, identity_key_sorted, fold_version, restaurant_metadata)
        VALUES ($1::uuid, $2, 'place'::entity_type, 'active'::entity_status, $3, $4, $5,
-               '{"googlePlaces":{"types":["restaurant","cafe","meal_takeaway"]}}'::jsonb)`,
+               '{"googlePlaces":{"types":["restaurant","taco_restaurant","establishment","point_of_interest"]}}'::jsonb)`,
       id,
       name,
       identity.identityKey,
