@@ -63,6 +63,27 @@ describe('bannedMergeReasonClass', () => {
     expect(bannedMergeReasonClass(reason)).toBeNull();
   });
 
+  it('a DEGENERATE reason — the bare decision word, a placeholder, or too short to audit — is refused', () => {
+    for (const reason of [
+      'match',
+      'Match.',
+      '(same)',
+      'merge',
+      '(audit reasons off)',
+      '',
+      '   ',
+      'yes',
+      'identical',
+    ]) {
+      expect(bannedMergeReasonClass(reason)).toBe('degenerate-reason');
+    }
+    expect(
+      bannedMergeReasonClass(
+        'the same operating business: one owned domain, one menu, one address',
+      ),
+    ).toBeNull();
+  });
+
   it('composes a hold reason that keeps the original ground legible', () => {
     const hold = refusedMergeHoldReason(
       'category-fold',

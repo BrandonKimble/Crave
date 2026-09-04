@@ -48,6 +48,16 @@ const BANNED_CLASSES: readonly BannedClass[] = [
   // the merge court (they belong to extraction pro-forms / emit-as-spoken):
   { name: 'narration-decoration', pattern: /\bnarration\b/i },
   { name: 'channel-wording', pattern: /\bchannel\b/i },
+  // DEGENERATE (judge-ledger audit rec 6, landed red team 2026-09-04): a
+  // reason that is only the decision word, a placeholder, or too short to
+  // audit ("match", "same", "(audit reasons off)") records nothing a later
+  // reader can check — 58% of one sample was unauditable this way. The
+  // contracts require a reason; the tripwire is where "required" bites.
+  {
+    name: 'degenerate-reason',
+    pattern:
+      /^\s*(?:\(?\s*(?:match|merge|same|new|reject|keep|hold|distinct|yes|no|ok|true)\s*\)?\s*[.!]?|\(audit reasons off\)|.{0,11})\s*$/i,
+  },
 ];
 
 /**
