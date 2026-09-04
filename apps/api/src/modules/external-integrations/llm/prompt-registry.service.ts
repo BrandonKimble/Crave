@@ -244,6 +244,33 @@ export class PromptRegistryService implements OnModuleInit {
       where: { kind, status: 'active' },
     });
     if (active) {
+      // THE FINGERPRINT IS ENFORCED ON THE ROW WE SERVE (red team 2026-09-04
+      // G-4). The stored hash is the contract fingerprint every run's
+      // coverage keys on; served un-checked, a schema edit shipped while
+      // coverage still read "covered". A pre-fold row (content-only sha256)
+      // is recognised and tolerated — its schema drift is unobservable by
+      // construction and the next push re-fingerprints — but any OTHER
+      // mismatch is refused, which for the collection kind means the
+      // fail-closed door in onModuleInit.
+      const expected = promptFingerprint(kind, active.content);
+      if (active.contentHash !== expected) {
+        const legacy = createHash('sha256')
+          .update(active.content)
+          .digest('hex');
+        if (active.contentHash === legacy) {
+          this.logger.warn(
+            'Active prompt row carries a pre-fold content-only hash — response-schema drift is not observable for this version; the next push re-fingerprints',
+            { kind, version: active.version },
+          );
+        } else {
+          throw new Error(
+            `active ${kind} v${active.version} row hash ${active.contentHash.slice(0, 12)} ` +
+              `matches neither its content+schema fingerprint (${expected.slice(0, 12)}) ` +
+              `nor a legacy content-only hash — refusing to serve a prompt whose ` +
+              `stored contract does not describe it`,
+          );
+        }
+      }
       const row = {
         version: active.version,
         content: active.content,
