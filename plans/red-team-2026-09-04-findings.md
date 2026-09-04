@@ -203,3 +203,7 @@ residency chain + hook + modules.
   fixed by shape detection + savepoint, with a deterministic
   two-transaction race proof (b898f11cd). Root scripts/ containment gate
   now also declares the invariants-lock fence.
+
+## CI GREEN — 2026-09-04, run for 8350754c6: the first fully green run since 2026-08-09.
+Every lane (static guards, unit, DB-integration, track-sheet/native, invariant
+mutation proofs) executed and passed. The staging deploy gate now reads green.
