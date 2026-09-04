@@ -7,6 +7,12 @@ pre-commit:
     # Runs FIRST-ish (parallel, but cheap) so a sweep dies before lint spends.
     lane-pathspec:
       run: bash scripts/check-lane-pathspec.sh
+    # THE INVARIANTS-HARNESS FENCE (2026-09-04): `yarn invariants` mutates
+    # source in place; a commit taken while it runs can snapshot a mutation
+    # (it did — main was unbootable for ~40 minutes). Refuses only while the
+    # harness's own lock is held by a LIVE pid.
+    invariants-lock:
+      run: node scripts/check-invariants-lock.mjs
     # Package-specific linting - only runs when files in that package change
     api-lint:
       glob: 'apps/api/**/*.{ts,tsx}'
