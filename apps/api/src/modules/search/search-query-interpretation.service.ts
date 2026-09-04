@@ -222,28 +222,22 @@ export class SearchQueryInterpretationService {
     // engine and scope the scan's restaurant arm to its territory.
     let scanEngineId: string | null = null;
     if (request.bounds) {
-      try {
-        const coverage = await this.engineCoverage.resolveViewportCoverage(
-          request.bounds,
-        );
-        scanEngineId = coverage.engines[0]?.engineId ?? null;
-      } catch (error) {
+      const coverage = await this.engineCoverage.resolveViewportCoverage(
+        request.bounds,
+      );
+      scanEngineId = coverage.engines[0]?.engineId ?? null;
+      if (coverage.degraded) {
         // Fail-open BY POLICY (F3104, D73: instrumentation only): a coverage
         // outage must not kill search, so the search continues with the
         // gazetteer's restaurant arm UNSCOPED — exactly the multi-city
         // mis-grounding territory scoping (red team ⑧) exists to prevent,
         // now countable instead of silent. Whether this should instead fail
-        // the search is escalated with F2601.
-        scanEngineId = null;
+        // the search is escalated with F2601. The resolver NEVER throws (it
+        // answers a degraded EMPTY), so this reads the degrade flag — the
+        // former try/catch here could not fire (red team 2026-09-04 S-5).
         this.logger.warn(
           'Viewport coverage resolve failed; territory scoping disabled — gazetteer restaurant arm scanning unscoped (failing open)',
-          {
-            policy: 'territory-scoping-fail-open',
-            error:
-              error instanceof Error
-                ? { message: error.message }
-                : { message: String(error) },
-          },
+          { policy: 'territory-scoping-fail-open' },
         );
       }
     }

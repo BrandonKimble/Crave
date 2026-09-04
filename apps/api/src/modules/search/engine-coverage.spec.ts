@@ -105,6 +105,9 @@ describe('EngineCoverageService.resolveViewportCoverage', () => {
     await expect(service.resolveViewportCoverage(BOUNDS)).resolves.toEqual({
       share: 0,
       engines: [],
+      // The degrade is a FACT the consumer can count (red team 2026-09-04
+      // S-5) — the interpretation service reads this flag for its policy warn.
+      degraded: true,
     });
   });
 

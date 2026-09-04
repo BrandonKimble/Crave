@@ -1641,8 +1641,8 @@ export class SearchService {
     // DoS bound (red team R4-P5; F6): each soft concept adds a window
     // count column + gate arm to the count query (+~85ms each,
     // attacker-controlled by attribute word count). 8 covers every real
-    // query shape; beyond it the extra words still filter via provenance
-    // of the first 8. The cap is applied ONCE, to the ASSEMBLED list —
+    // query shape; beyond it the extra words are IGNORED (neither soft nor
+    // wall — see softOverflow below). The cap is applied ONCE, to the ASSEMBLED list —
     // the bound belongs to the QUERY, not the bucket (the old per-bucket
     // slice let three buckets stack to 24 while this comment said 8).
     const SOFT_CONCEPT_CAP = 8;
@@ -1680,7 +1680,7 @@ export class SearchService {
     // carries BOTH homes and is satisfied by either (OR within a concept,
     // AND across concepts) — and it is counted ONCE in the starvation
     // report (the duplicate-JSON-key trap).
-    const softConcepts: ConceptConstraint[] = hasPrimarySubject
+    const assembledSoftConcepts: ConceptConstraint[] = hasPrimarySubject
       ? [
           ...constraints.ids.itemAttributeIds
             .filter((id) => !dietary.has(id) && !cuisineSet.has(id))
@@ -1701,8 +1701,30 @@ export class SearchService {
           ...cuisineConceptIds.map((id) =>
             cuisineConceptConstraint(id, 'soft'),
           ),
-        ].slice(0, SOFT_CONCEPT_CAP)
+        ]
       : [];
+    const softConcepts = assembledSoftConcepts.slice(0, SOFT_CONCEPT_CAP);
+    // THE CAP DROPS, IT NEVER HARDENS (red team 2026-09-04 S-4). A word
+    // past the cap used to fall out of `softSet` and back into plain
+    // membership — the 9th attribute word became a HARD WALL and the 9th
+    // cuisine word vanished, so hardness depended on list position while
+    // the comment above claimed "the extra words still filter". Overflow
+    // is now excluded from membership too: neither soft nor wall, reported
+    // once, so a long query degrades to its first 8 soft words and nothing
+    // else silently changes meaning.
+    const softOverflow = new Set(
+      assembledSoftConcepts
+        .slice(SOFT_CONCEPT_CAP)
+        .map((concept) => concept.id),
+    );
+    if (softOverflow.size) {
+      this.logger.warn('Soft-concept cap exceeded — overflow words ignored', {
+        policy: 'soft-concept-cap-overflow',
+        cap: SOFT_CONCEPT_CAP,
+        assembled: assembledSoftConcepts.length,
+        ignored: softOverflow.size,
+      });
+    }
     // DIETARY WALLS (owner semantics 2026-08-04): a dietary requirement is
     // per-projection — dish shows only with the DISH-side attribute; a
     // restaurant shows with the VENUE-side attribute OR any dish carrying
@@ -1754,13 +1776,21 @@ export class SearchService {
         ...constraints.ids,
         itemAttributeIds: widenHardIds(
           constraints.ids.itemAttributeIds.filter(
-            (id) => !softSet.has(id) && !dietary.has(id) && !cuisineSet.has(id),
+            (id) =>
+              !softSet.has(id) &&
+              !softOverflow.has(id) &&
+              !dietary.has(id) &&
+              !cuisineSet.has(id),
           ),
           'food_attributes',
         ),
         placeAttributeIds: widenHardIds(
           constraints.ids.placeAttributeIds.filter(
-            (id) => !softSet.has(id) && !dietary.has(id) && !cuisineSet.has(id),
+            (id) =>
+              !softSet.has(id) &&
+              !softOverflow.has(id) &&
+              !dietary.has(id) &&
+              !cuisineSet.has(id),
           ),
           'restaurant_attributes',
         ),

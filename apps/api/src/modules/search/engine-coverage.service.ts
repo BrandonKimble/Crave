@@ -36,9 +36,19 @@ export type EngineViewportCoverage = {
   /** area(union of ALL engine territories ∩ viewport) / area(viewport). */
   share: number;
   engines: EngineViewportCoverageEngine[];
+  /** ONE degrade contract (red team 2026-09-04 S-5): the resolver never
+   *  throws — it answers EMPTY on failure — so consumers that want to count
+   *  a coverage outage read THIS flag. The interpretation service used to
+   *  wrap the call in a catch that could never fire. */
+  degraded?: true;
 };
 
 const EMPTY_COVERAGE: EngineViewportCoverage = { share: 0, engines: [] };
+const DEGRADED_COVERAGE: EngineViewportCoverage = {
+  share: 0,
+  engines: [],
+  degraded: true,
+};
 
 @Injectable()
 export class EngineCoverageService {
@@ -99,7 +109,7 @@ export class EngineCoverageService {
             message: error instanceof Error ? error.message : String(error),
           },
         });
-        return EMPTY_COVERAGE;
+        return DEGRADED_COVERAGE;
       },
     );
     this.coverageMemo.set(key, {

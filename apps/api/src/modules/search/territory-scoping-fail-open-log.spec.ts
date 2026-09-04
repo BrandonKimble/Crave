@@ -73,9 +73,14 @@ function makeService(coverage: { resolveViewportCoverage: jest.Mock }) {
 
 describe('territory scoping fail-open is logged (F3104)', () => {
   it('coverage failure: search continues unscoped AND the policy warn fires', async () => {
+    // THE REAL CONTRACT (red team 2026-09-04 S-5): EngineCoverageService
+    // never rejects — it answers a DEGRADED empty coverage. This spec used
+    // to mock a rejection the real service cannot produce, so the catch it
+    // exercised was unreachable in production and the policy warn could
+    // never fire (an always-green spec).
     const coverage = {
       resolveViewportCoverage: jest.fn(() =>
-        Promise.reject(new Error('coverage outage')),
+        Promise.resolve({ share: 0, engines: [], degraded: true as const }),
       ),
     };
     const { svc, logger, entityTextSearch } = makeService(coverage);
@@ -95,10 +100,7 @@ describe('territory scoping fail-open is logged (F3104)', () => {
     // 3. the degradation is countable, under its named policy.
     expect(logger.warn).toHaveBeenCalledWith(
       expect.stringContaining('territory scoping disabled'),
-      expect.objectContaining({
-        policy: 'territory-scoping-fail-open',
-        error: { message: 'coverage outage' },
-      }),
+      expect.objectContaining({ policy: 'territory-scoping-fail-open' }),
     );
   });
 
