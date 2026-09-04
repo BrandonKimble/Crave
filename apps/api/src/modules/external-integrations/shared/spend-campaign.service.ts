@@ -1,3 +1,4 @@
+import { NON_TERMINAL_BATCH_STATUSES } from '../llm/batch-job-status';
 import type { MeteredService } from './spend-currency';
 import {
   scaleBilled,
@@ -164,6 +165,22 @@ export class CampaignBreachedError extends Error {
         `resumeAfterBreach re-approves a refined estimate`,
     );
     this.name = 'CampaignBreachedError';
+  }
+}
+
+/** complete() refused: paid batch work for this campaign is still open —
+ *  let it drain (or reap it) first, or its output is discarded. */
+export class CampaignHasOpenWorkError extends Error {
+  constructor(
+    public readonly campaignId: string,
+    public readonly openJobs: number,
+  ) {
+    super(
+      `Campaign ${campaignId} still has ${openJobs} non-terminal batch job(s) ` +
+        `carrying its id — completing now would make their paid output ` +
+        `undispatchable and discard it. Let the queue drain first.`,
+    );
+    this.name = 'CampaignHasOpenWorkError';
   }
 }
 
@@ -1254,6 +1271,22 @@ export class SpendCampaignService implements OnModuleInit, OnModuleDestroy {
         campaignId,
         `cannot complete from state '${row.state}'`,
       );
+    }
+    // A CAMPAIGN WITH PAID WORK STILL OPEN CANNOT COMPLETE (red team
+    // 2026-09-04 G-3). 'completed' is not dispatchable, so a straggler
+    // batch job's ingest tail hit CampaignStateError — not transient —
+    // burned its three attempts and DISCARDED paid output, while
+    // recordSpend logged "FAILED TO RECORD". The runner waits for the
+    // queue; the script did not. Now nothing can: the mirror of
+    // refuseDuplicateLiveCampaign, at the other end of the lifecycle.
+    const openJobs = await this.prisma.llmBatchJob.count({
+      where: {
+        status: { in: [...NON_TERMINAL_BATCH_STATUSES] },
+        resumeContext: { path: ['campaignId'], equals: campaignId },
+      },
+    });
+    if (openJobs > 0) {
+      throw new CampaignHasOpenWorkError(campaignId, openJobs);
     }
     const done = await this.transition(
       'completed',

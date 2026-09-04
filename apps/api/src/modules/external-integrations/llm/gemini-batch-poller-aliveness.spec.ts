@@ -32,6 +32,9 @@ interface JobFixture {
   status: string;
   updatedAt: Date;
   purpose: string;
+  completedAt?: Date | null;
+  submittedAt?: Date | null;
+  createdAt: Date;
 }
 
 /** Prisma stub whose findMany APPLIES the where clause to a fixture set —
@@ -47,12 +50,25 @@ function buildService(jobs: JobFixture[] = []) {
       };
     }) => {
       const statuses = args.where.status?.in;
-      const cutoff = args.where.updatedAt?.lt;
+      // The service asks by OWED-SINCE (completedAt ?? submittedAt ??
+      // createdAt), never by updatedAt (G-1): mirror that here.
+      const or = args.where.OR as
+        | Array<{
+            completedAt?: { lt?: Date } | null;
+            submittedAt?: { lt?: Date } | null;
+            createdAt?: { lt?: Date };
+          }>
+        | undefined;
+      const cutoff =
+        or?.[0]?.completedAt && 'lt' in or[0].completedAt
+          ? or[0].completedAt.lt
+          : undefined;
       if (!statuses || !cutoff) return Promise.resolve([]);
       return Promise.resolve(
-        jobs.filter(
-          (job) => statuses.includes(job.status) && job.updatedAt < cutoff,
-        ),
+        jobs.filter((job) => {
+          const owedSince = job.completedAt ?? job.submittedAt ?? job.createdAt;
+          return statuses.includes(job.status) && owedSince < cutoff;
+        }),
       );
     },
   );
@@ -152,10 +168,15 @@ describe('(b) stall alarm — aged non-terminal jobs scream; fresh and terminal 
     const now = Date.now();
     const jobs: JobFixture[] = [
       // The incident shape: submitted, untouched for 13.7h.
+      // The incident shape: submitted 13.7h ago. And the G-1 shape on top:
+      // a transient re-queue touched it 2 MINUTES ago — keyed on updatedAt
+      // this job could never alarm.
       {
         jobId: 'job-stalled',
         status: 'submitted',
-        updatedAt: new Date(now - 13.7 * HOUR_MS),
+        updatedAt: new Date(now - 2 * 60 * 1000),
+        submittedAt: new Date(now - 13.7 * HOUR_MS),
+        createdAt: new Date(now - 14 * HOUR_MS),
         purpose: 'collection',
       },
       // Fresh non-terminal: inside the 2h threshold — must NOT alarm.
@@ -163,6 +184,7 @@ describe('(b) stall alarm — aged non-terminal jobs scream; fresh and terminal 
         jobId: 'job-fresh',
         status: 'submitted',
         updatedAt: new Date(now - 30 * 60 * 1000),
+        createdAt: new Date(now - 30 * 60 * 1000),
         purpose: 'collection',
       },
       // Terminal jobs, however old: done work never alarms.
@@ -170,12 +192,14 @@ describe('(b) stall alarm — aged non-terminal jobs scream; fresh and terminal 
         jobId: 'job-ingested',
         status: 'ingested',
         updatedAt: new Date(now - 100 * HOUR_MS),
+        createdAt: new Date(now - 100 * HOUR_MS),
         purpose: 'collection',
       },
       {
         jobId: 'job-failed',
         status: 'failed',
         updatedAt: new Date(now - 100 * HOUR_MS),
+        createdAt: new Date(now - 100 * HOUR_MS),
         purpose: 'collection',
       },
     ];

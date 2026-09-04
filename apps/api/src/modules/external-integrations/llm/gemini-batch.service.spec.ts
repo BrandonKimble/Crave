@@ -244,9 +244,27 @@ describe('isTransientFailure — typed errors classify by type, not message', ()
 
   it('the message regex remains the fallback for untyped vendor strings', () => {
     expect(isTransientFailure(new Error('429 RESOURCE_EXHAUSTED'))).toBe(true);
+    expect(isTransientFailure(new Error('HTTP 503 Service Unavailable'))).toBe(
+      true,
+    );
+    expect(isTransientFailure(new Error('fetch failed: ECONNRESET'))).toBe(
+      true,
+    );
     expect(isTransientFailure(new Error('cannot parse response JSON'))).toBe(
       false,
     );
+  });
+
+  it('deterministic ingest prose that merely CONTAINS a status-shaped number is not transient (G-1: it cycled forever, no attempt spent)', () => {
+    for (const message of [
+      'chunk 503 has no source_map entry',
+      'Invalid source ref SRC-429 in mention',
+      'network-attached storage path missing',
+      'Duplicate key: temp_id 502 already used',
+      'entity name exceeds 500 chars',
+    ]) {
+      expect(isTransientFailure(new Error(message))).toBe(false);
+    }
   });
 });
 

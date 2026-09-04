@@ -1,4 +1,5 @@
 import { isEnvFlagExplicitlyDisabled } from '../../../shared/config/env-flag';
+import { NON_TERMINAL_BATCH_STATUSES } from './batch-job-status';
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 
 import { isWorkerRuntime } from '../../../shared/utils/process-role';
@@ -68,14 +69,7 @@ const POLL_INTERVAL_MS = 5 * 60 * 1000;
 
 /** Job statuses that still owe work — anything here for too long is stalled.
  *  Terminal ('ingested'/'failed') rows are done and never alarm. */
-const NON_TERMINAL_STATUSES = [
-  'pending',
-  'persisting',
-  'submitting',
-  'submitted',
-  'succeeded',
-  'ingesting',
-] as const;
+const NON_TERMINAL_STATUSES = NON_TERMINAL_BATCH_STATUSES;
 
 /** STALL ALARM THRESHOLD. Evidence (no invented numbers): the 2026-08-31
  *  incident's 45 jobs were submitted at 03:18 UTC and the vendor had them
@@ -124,7 +118,13 @@ export function isTransientFailure(error: unknown): boolean {
     return true;
   }
   const chain = buildCauseChain(error);
-  return /\b429\b|RESOURCE_EXHAUSTED|UNAVAILABLE|DEADLINE_EXCEEDED|\b50[0-4]\b|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|EAI_AGAIN|fetch failed|socket hang up|network|timed? ?out|Connection is closed|Can't reach database|P1001|P1002|P1008|P1017|too many connections/i.test(
+  // NARROWED (red team 2026-09-04 G-1): bare `\b50[0-4]\b`, `\b429\b` and
+  // `network` matched ordinary deterministic ingest prose — "chunk 503
+  // has no source_map entry", "Invalid source ref SRC-429", "network-
+  // attached storage path missing" — and re-queued those jobs forever
+  // with no attempt spent. A status number counts only in an HTTP-status
+  // shape; `network` only as a failure phrase.
+  return /(?:status|HTTP|code)[ :=]*(?:429|50[0-4])\b|\[(?:429|50[0-4])\]|\b(?:429|50[0-4]) (?:Too Many|Service Unavailable|Bad Gateway|Gateway Timeout|Internal Server)|RESOURCE_EXHAUSTED|UNAVAILABLE|DEADLINE_EXCEEDED|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|EAI_AGAIN|ENETUNREACH|fetch failed|socket hang up|network (?:error|failure|request failed)|timed? ?out|Connection is closed|Can't reach database|P1001|P1002|P1008|P1017|too many connections/i.test(
     chain,
   );
 }
@@ -884,18 +884,38 @@ export class GeminiBatchService implements OnModuleInit, OnModuleDestroy {
   async checkForStalledJobs(): Promise<void> {
     try {
       const cutoff = new Date(Date.now() - STALL_ALARM_AFTER_MS);
+      // STALL IS MEASURED FROM WHEN THE JOB BECAME OWED, never from its
+      // last touch (red team 2026-09-04 G-1). `updatedAt` is bumped by
+      // every transient re-queue, so a job cycling through a
+      // misclassified deterministic failure every 5 minutes refreshed
+      // itself out of this sweep forever. The owing clock is the phase
+      // entry: completed_at once the provider finished (output waiting
+      // for ingest), submitted_at while the provider works, created_at
+      // before submission.
       const stalled = await this.prisma.llmBatchJob.findMany({
         where: {
           status: { in: [...NON_TERMINAL_STATUSES] },
-          updatedAt: { lt: cutoff },
+          OR: [
+            { completedAt: { lt: cutoff } },
+            { completedAt: null, submittedAt: { lt: cutoff } },
+            { completedAt: null, submittedAt: null, createdAt: { lt: cutoff } },
+          ],
         },
-        select: { jobId: true, status: true, updatedAt: true, purpose: true },
+        select: {
+          jobId: true,
+          status: true,
+          updatedAt: true,
+          completedAt: true,
+          submittedAt: true,
+          createdAt: true,
+          purpose: true,
+        },
         take: 200,
       });
       const utcDay = new Date().toISOString().slice(0, 10);
       for (const job of stalled) {
-        const ageHours =
-          (Date.now() - job.updatedAt.getTime()) / (60 * 60 * 1000);
+        const owedSince = job.completedAt ?? job.submittedAt ?? job.createdAt;
+        const ageHours = (Date.now() - owedSince.getTime()) / (60 * 60 * 1000);
         this.logger.error('Gemini batch job STALLED — paid work uncollected', {
           jobId: job.jobId,
           status: job.status,
@@ -908,7 +928,8 @@ export class GeminiBatchService implements OnModuleInit, OnModuleDestroy {
           title: `Gemini batch job stalled at '${job.status}' for ${ageHours.toFixed(1)}h`,
           body:
             `Job ${job.jobId} (purpose ${job.purpose}) has sat in ` +
-            `non-terminal status '${job.status}' since ${job.updatedAt.toISOString()} ` +
+            `non-terminal status '${job.status}', owed since ${owedSince.toISOString()} ` +
+            `(last touched ${job.updatedAt.toISOString()}) ` +
             `(${ageHours.toFixed(1)}h; threshold ${STALL_ALARM_AFTER_MS / 3_600_000}h). ` +
             `This is PAID vendor work not being collected. Check: ` +
             `(a) nothing is polling this runtime (poller dead / wrong PROCESS_ROLE / ` +

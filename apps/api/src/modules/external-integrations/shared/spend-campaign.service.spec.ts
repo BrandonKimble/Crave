@@ -5,6 +5,7 @@ import {
   StaleEstimateHashError,
   CampaignBreachedError,
   CampaignStateError,
+  CampaignHasOpenWorkError,
   DuplicateLiveCampaignError,
   CAMPAIGN_STATE_TRANSITIONS,
   statesThatMayBecome,
@@ -37,9 +38,14 @@ function buildPrisma() {
   const campaigns = new Map<string, Record<string, unknown>>();
   const unitCosts = new Map<string, { microUsdPerUnit: number }>();
   let seq = 0;
+  const openBatchJobs = { count: 0 };
   return {
     _campaigns: campaigns,
     _unitCosts: unitCosts,
+    _openBatchJobs: openBatchJobs,
+    llmBatchJob: {
+      count: jest.fn(() => Promise.resolve(openBatchJobs.count)),
+    },
     spendUnitCost: {
       findUnique: jest.fn(
         ({
@@ -796,6 +802,24 @@ describe('SpendCampaignService lifecycle chokepoint (2026-08-12)', () => {
       CampaignStateError,
     );
     expect(prisma._campaigns.get(campaignId)!.state).toBe('breached');
+  });
+
+  it('complete() refuses while the campaign still carries non-terminal batch jobs — paid output must drain first (G-3)', async () => {
+    const { prisma, service } = build();
+    const { campaignId } = await service.preparePilot({
+      name: 'pilot:open-work',
+      workClass: 'gemini.reddit_extraction',
+      unit: 'document',
+      unitCount: 10,
+    });
+    prisma._openBatchJobs.count = 2;
+    await expect(service.complete(campaignId)).rejects.toBeInstanceOf(
+      CampaignHasOpenWorkError,
+    );
+    expect(prisma._campaigns.get(campaignId)!.state).toBe('approved');
+    prisma._openBatchJobs.count = 0;
+    await service.complete(campaignId);
+    expect(prisma._campaigns.get(campaignId)!.state).toBe('completed');
   });
 
   it('prepare refuses while a LIVE campaign of the same name exists (typed)', async () => {
