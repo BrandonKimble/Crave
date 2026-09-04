@@ -12,7 +12,10 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
-import { foldRecoveryRunIntoShadow } from './extraction-scope.service';
+import {
+  foldRecoveryRunIntoShadow,
+  writePlaceEvents,
+} from './extraction-scope.service';
 
 const TEST_TAG = 'itest-recovery-fold';
 const prisma = new PrismaClient();
@@ -83,15 +86,19 @@ async function placeEvent(
   docId: string,
   placeId: string,
 ): Promise<void> {
-  await prisma.$executeRawUnsafe(
-    `INSERT INTO core_restaurant_events
-       (event_id, extraction_run_id, input_id, source_document_id, restaurant_id, mention_key, evidence_type, mentioned_at)
-     VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, 'general_praise', now())`,
-    runId,
-    inputIdByRun.get(runId),
-    docId,
-    placeId,
-    `${TEST_TAG}:${docId.slice(0, 8)}:${placeId.slice(0, 8)}`,
+  // Through THE write door (writePlaceEvents) — the ledger has one.
+  await prisma.$transaction((tx) =>
+    writePlaceEvents(tx, [
+      {
+        extractionRunId: runId,
+        inputId: inputIdByRun.get(runId)!,
+        sourceDocumentId: docId,
+        placeId,
+        mentionKey: `${TEST_TAG}:${docId.slice(0, 8)}:${placeId.slice(0, 8)}`,
+        evidenceType: 'general_praise',
+        mentionedAt: new Date(),
+      },
+    ]),
   );
 }
 
