@@ -160,3 +160,20 @@ docket drain + Wave 4 coverage census not started.
   cross-session lock not yet done.
 - G-5 f3b089a21 (caller tag is a type; grader profiled + contracted);
   invariants commit fence (lefthook) landed.
+
+## Wave 2 — docket drain (agents B + C reported; A pending)
+
+Dormant-systems + judge-ledger audits: 20 items, 13 FIXED/MOOT (cited),
+LIVE: janitor/census/demand-vocab flags OFF everywhere (launch-gated —
+OWNER at flip: raise LOCATION_REFRESH_LIMIT ~1,000/wk); alias-management
+18-word blacklist silently drops cuisines (delete post-reload, ~1 day);
+degenerate-reason guard on the tripwire (small); entity_match bench
+prober (~1 day); four doc rewrites. Omakase swarm: identity-only doctrine
+stands → solve at display (OWNER).
+Merge-batch + entity-type + normalization audits: 30 items, 21 FIXED/MOOT.
+LIVE: merge reversibility snapshot (a wrong merge is data loss until a
+reload — highest value); re-audit 34 DEFENSIBLE pairs + dry-run diff
+before judge lanes re-arm; pro-form rule waits on v23 activation; F-8
+demand-vocab judges attributes with dish doctrine; F-12 probers; F-4
+ingredient lexical arm. ATTRIBUTE_MERGE_JUDGE_ENABLED arming → OWNER.
+E-2 docket anti-join + proof landed (this commit).
