@@ -99,3 +99,21 @@ the lock is held. Cheap, and it closes the class. "Yes" is enough.
   class).
 Options: (A) rule now and I fix under the perf harness; (B) park until
 after Austin launch. My recommendation: A for the P0 only, B for the rest.
+
+## RULINGS (2026-09-04 evening, owner): all recommendations accepted
+
+- Items 1–7: the recommended option in each (1A, 2A, 3 yes, 4 yes, 5A landed,
+  6 landed, 7A for the P0 only; the rest of the mobile docket parked).
+- Google spend law for every enrichment change: never a lesser Places call
+  when the rewritten row or a consumer needs the full details fields; optimize
+  only where a cheaper SKU covers every consumed field, and say which.
+- The wholesale/shelf law (B.2) stays exactly as written.
+- The resolution rederivation is approved in full: roster recall + write-time
+  embeddings + recallability invariant; ledgered rejects + parked names;
+  grounding inside the shadow; subtree chunking + re-chunk on replay; then
+  the four prompt principles with gold cases (v24).
+- After the non-prompt work lands: a 1,000-mention audit from raw source →
+  model output → resolution → entity/event, categorised by cause, with the
+  model's own reasoning captured for every wrong decision, to rederive the
+  prompt's principles from the full set of classes rather than the cases
+  found today.
