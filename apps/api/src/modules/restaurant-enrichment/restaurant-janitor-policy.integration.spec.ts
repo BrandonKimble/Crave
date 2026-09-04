@@ -208,6 +208,13 @@ beforeAll(async () => {
     locations: [{ businessStatus: null, grounded: false }],
     userAnchored: true,
   });
+  // Every location closed AND user-anchored: the anchor law outranks the
+  // closed arm too (red team 2026-09-04 E-5) — the saved place stays.
+  await seedPlace({
+    label: 'all-closed-anchored',
+    locations: [{ businessStatus: 'CLOSED_PERMANENTLY', grounded: true }],
+    userAnchored: true,
+  });
   await seedPlace({
     label: 'open',
     locations: [{ businessStatus: 'OPERATIONAL', grounded: true }],

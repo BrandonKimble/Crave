@@ -301,6 +301,24 @@ export class PlaceEntityMergeService {
     return result;
   }
 
+  /** The ledger's memory of this pair at the rule in force — free, and
+   *  consulted BEFORE the hearing ceiling is charged (E-2). */
+  private async rememberedSameBusinessVerdict(
+    a: { entity_id: string },
+    b: { entity_id: string },
+  ): Promise<'same_business' | 'distinct' | null> {
+    const claimKey = sameBusinessClaimKey(a.entity_id, b.entity_id);
+    const remembered = await this.claimLedger.decidedVerdicts(
+      SAME_BUSINESS_LANE,
+      SAME_BUSINESS_RULE_VERSION,
+      0,
+      [claimKey],
+    );
+    const prior = remembered.get(claimKey);
+    if (!prior) return null;
+    return prior.outcome === 'same_business' ? 'same_business' : 'distinct';
+  }
+
   /**
    * THE SAME-BUSINESS HEARING (owner-ordered 2026-09-03). The deterministic
    * owned-domain test decides the clear cases for free; a shared-domain pair
@@ -328,16 +346,8 @@ export class PlaceEntityMergeService {
     domain: string,
   ): Promise<'same_business' | 'distinct' | 'unheard'> {
     const claimKey = sameBusinessClaimKey(a.entity_id, b.entity_id);
-    const remembered = await this.claimLedger.decidedVerdicts(
-      SAME_BUSINESS_LANE,
-      SAME_BUSINESS_RULE_VERSION,
-      0,
-      [claimKey],
-    );
-    const prior = remembered.get(claimKey);
-    if (prior) {
-      return prior.outcome === 'same_business' ? 'same_business' : 'distinct';
-    }
+    const prior = await this.rememberedSameBusinessVerdict(a, b);
+    if (prior) return prior;
 
     const locations = await this.prisma.$queryRaw<
       Array<{
@@ -946,9 +956,15 @@ export class PlaceEntityMergeService {
         // never turn one nightly pass into an unbounded bill. Dry runs
         // stay free and report the pair as held (the preview understates
         // merges the court may later join — by design, never the reverse).
+        // MEMORY IS FREE; ONLY A BOUGHT HEARING SPENDS THE CEILING (red
+        // team 2026-09-04 E-2). The ceiling used to be charged BEFORE the
+        // ledger lookup, so remembered 'distinct' pairs — which never leave
+        // the candidate set (both stay active on the same domain) — refilled
+        // the 50 every night and a new pair behind them was never heard.
+        const remembered = await this.rememberedSameBusinessVerdict(a, b);
         if (
-          !options.apply ||
-          hearingsThisRun >= SAME_BUSINESS_HEARING_CEILING
+          remembered === null &&
+          (!options.apply || hearingsThisRun >= SAME_BUSINESS_HEARING_CEILING)
         ) {
           held += 1;
           decisions.push({ name: group.name, verdict: 'hold' });
@@ -961,12 +977,14 @@ export class PlaceEntityMergeService {
           }
           continue;
         }
-        hearingsThisRun += 1;
-        const hearing = await this.hearSameBusinessPair(
-          a,
-          b,
-          sharedIdentityDomain ?? '(none shared)',
-        );
+        if (remembered === null) hearingsThisRun += 1;
+        const hearing =
+          remembered ??
+          (await this.hearSameBusinessPair(
+            a,
+            b,
+            sharedIdentityDomain ?? '(none shared)',
+          ));
         if (hearing !== 'same_business') {
           held += 1;
           decisions.push({ name: group.name, verdict: 'hold' });

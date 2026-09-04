@@ -163,6 +163,13 @@ export class PlaceJanitorService {
             AND (l.business_status IS NULL
                  OR l.business_status <> 'CLOSED_PERMANENTLY')
         )
+        -- USER ANCHORS ARE INVIOLABLE on THIS arm too (red team 2026-09-04
+        -- E-5): the header states the anchor law and the ungroundable arm
+        -- below applies it, but the closed arm archived a saved place the
+        -- moment Google marked every location closed — the user's list
+        -- entry went dark. A closed-but-saved place stays active and shows
+        -- its business status; the same predicate governs both arms.
+        AND NOT ${Prisma.raw(userAnchoredEntitySql('e'))}
     `;
     if (!dryRun && closed.length) {
       await this.prisma.entity.updateMany({

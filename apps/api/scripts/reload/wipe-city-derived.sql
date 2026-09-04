@@ -58,6 +58,35 @@ SELECT DISTINCT restaurant_id FROM (
 -- --------------------- user-anchor set (shared with anchor-audit.sql)
 \ir preserved-anchors.sql
 
+-- ------------------------------------------------- BLAST RADIUS SNAPSHOT
+-- COMMUNITY-SCOPED, ALWAYS (red team 2026-09-04 E-1). The orphan sweep
+-- below used to doom EVERY unreferenced entity in the corpus, not the ones
+-- THIS wipe orphaned: `-v communities=no_such_community -v dryrun=1`
+-- reported target_docs 0, affected_restaurants 0 — and entities_deleted
+-- 746. A pre-existing orphan is GC's business (gc-unsupported-entities.sql
+-- and its budget), never a city wipe's. So the entities the dying rows
+-- reference are snapshotted HERE, before any delete, and only an entity in
+-- this snapshot can be doomed.
+CREATE TEMP TABLE wiped_refs AS
+SELECT DISTINCT entity_id FROM (
+  SELECT e.entity_id FROM core_restaurant_entity_events e
+    JOIN target_docs t ON t.document_id = e.source_document_id
+  UNION SELECT e.restaurant_id FROM core_restaurant_entity_events e
+    JOIN target_docs t ON t.document_id = e.source_document_id
+  UNION SELECT e.restaurant_id FROM core_restaurant_events e
+    JOIN target_docs t ON t.document_id = e.source_document_id
+  UNION SELECT c.food_id FROM core_restaurant_items c
+    WHERE c.restaurant_id IN (SELECT restaurant_id FROM affected_restaurants)
+  UNION SELECT unnest(c.categories) FROM core_restaurant_items c
+    WHERE c.restaurant_id IN (SELECT restaurant_id FROM affected_restaurants)
+  UNION SELECT unnest(c.food_attributes) FROM core_restaurant_items c
+    WHERE c.restaurant_id IN (SELECT restaurant_id FROM affected_restaurants)
+  UNION SELECT unnest(c.ingredients) FROM core_restaurant_items c
+    WHERE c.restaurant_id IN (SELECT restaurant_id FROM affected_restaurants)
+  UNION SELECT unnest(x.restaurant_attributes) FROM core_entities x
+    WHERE x.entity_id IN (SELECT restaurant_id FROM affected_restaurants)
+) r WHERE entity_id IS NOT NULL;
+
 -- --------------------------------------- city-scoped evidence deletion
 DELETE FROM core_restaurant_item_mentions m
 USING target_docs t WHERE m.source_document_id = t.document_id;
@@ -115,7 +144,8 @@ SELECT DISTINCT entity_id FROM (
 
 CREATE TEMP TABLE doomed_entities AS
 SELECT entity_id FROM core_entities
-WHERE entity_id NOT IN (SELECT entity_id FROM preserved_entities)
+WHERE entity_id IN (SELECT entity_id FROM wiped_refs)          -- THIS wipe orphaned it
+  AND entity_id NOT IN (SELECT entity_id FROM preserved_entities)
   AND entity_id NOT IN (SELECT entity_id FROM referenced_ids);
 
 -- redirects whose TARGET dies are garbage; every other redirect is kept
