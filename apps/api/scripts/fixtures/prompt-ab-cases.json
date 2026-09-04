@@ -7631,5 +7631,32 @@
     "expect": {
       "notRestaurants": ["oskar blues", "oskar blues brewery"]
     }
+  },
+  {
+    "id": "V23-multi-constraint-fit-carries-all",
+    "why": "Singularity audit (owner, 2026-09-03): a multi-constraint ask must load EVERY venue-level constraint word onto an unqualified pick — not the most salient one (the happy-hour/affordable substitution class, at the fit assertion).",
+    "posts": [
+      {
+        "id": "SRC001",
+        "title": "Cheap romantic spot with a patio?",
+        "body": "Anniversary dinner but we're broke — somewhere cheap and romantic with a patio?",
+        "extract_from_post": false,
+        "comments": [
+          {
+            "id": "SRC002",
+            "body": "Justine's."
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "perSource": [
+        {
+          "source": "SRC002",
+          "places": ["justine's"],
+          "attributes": ["affordable", "romantic", "patio"]
+        }
+      ]
+    }
   }
 ]

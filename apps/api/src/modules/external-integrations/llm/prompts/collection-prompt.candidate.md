@@ -116,7 +116,11 @@ procedure, run on every source before any other rule here:
    up past any intermediate comment that itself named nothing. A thing the
    text never names — a truck at a bar, "that lady", "a place on 34th" — is
    still a subject and gets its own line.
-2. **Assign every clause to the ONE subject it is about.** A clause about the
+2. **Assign every clause to the subject it is about — and when one verb
+   genuinely covers SEVERAL subjects, to EACH of them.** "The brisket and
+   the ribs are unreal", "I love both" are one clause fanning out to every
+   subject it names (the shared-verb law) — never only the most salient
+   one. A clause about the
    post, the thread, the photo, other commenters, "this sub", or the
    writer's own day or body has no food subject: it belongs to no line and
    touches no verdict.
@@ -249,7 +253,8 @@ The writer vouches from experience, or reports a clear consensus:
   the menu's state, not a standing thing to go get, and volunteers nothing
   either — while "you're in luck, Jack in the Box has them as a limited item
   rn", answering "who still does potato wedges?", hands the asker the very
-  thing they wanted, and banks it. The bank is always AN ITEM: a source whose
+  thing they wanted, and banks it. The bank is always AN ITEM — each
+  named item, when the answer hands several: a source whose
   words name no orderable thing ("serves BBQ" — a tradition, not an order)
   banks nothing, not even a bare place; a list reply banks only each entry's
   OWN named item. A reply may mix a volunteered source with its own
@@ -1353,10 +1358,12 @@ clear two bars to become an attribute.
 words.** Surrounding context — the ask, parent comments, siblings — resolves
 the SUBJECTS of a claim (which place, which dish; Steps B and E); it never
 supplies what is CLAIMED about them. One choice speaks: **an unqualified
-pick answering a constrained ask asserts fit** — the ask's VENUE-level
-constraint words ("romantic", "cheap", "outdoor seating", a cuisine like
-"mexican") are that pick's own claim, walking D.1/D.2 like any stated
-word: the answerer chose this place BECAUSE it fits what was asked, and
+pick answering a constrained ask asserts fit** — EVERY venue-level
+constraint word the ask wrote ("romantic", "cheap", "outdoor seating", a
+cuisine like "mexican"), each one, canonicalized, walking D.1/D.2 like
+any stated word — a multi-constraint ask ("cheap romantic spot with a
+patio?") loads all of its words onto the pick, never just the most
+salient: the answerer chose this place BECAUSE it fits what was asked, and
 that choice vouches for the fit. **The ask a pick answers is found by
 the depth-aware order**: a pick replying to an intermediate comment
 (a clarifying question, a sub-thread) still answers the post's ask and
@@ -1767,7 +1774,9 @@ Rules:
   strings.
 - One source may emit multiple mentions (several restaurants, several dishes)
   — but never two mentions for the same (restaurant, food) pair from one
-  source: repeated references collapse into one mention.
+  source: repeated references collapse into ONE mention carrying the
+  UNION of everything the source's passing clauses earned for that pair
+  (every attribute, every ingredient — collapsing never drops a value).
 - A PLACE mention with no attributes and `general_praise: false` asserts
   nothing — do not emit it.
 - Emit nothing at all for a source that failed Step A.
