@@ -25,6 +25,7 @@
  */
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
+import { ensureSurfaceCensusFixture } from './lib/census-fixture';
 import {
   canonicalFold,
   FOLD_ALGORITHM_VERSION,
@@ -33,6 +34,7 @@ import {
 async function main(): Promise<void> {
   const prisma = new PrismaClient();
   try {
+    await ensureSurfaceCensusFixture(prisma);
     const rows = await prisma.$queryRawUnsafe<
       Array<{ surface_id: string; form: string; form_folded: string }>
     >(

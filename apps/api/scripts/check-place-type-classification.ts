@@ -16,11 +16,13 @@
  */
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
+import { ensurePlaceTypeCensusFixture } from './lib/census-fixture';
 import { isClassifiedGooglePlaceType } from '../src/modules/restaurant-enrichment/google-place-type-attributes';
 
 async function main(): Promise<void> {
   const prisma = new PrismaClient();
   try {
+    await ensurePlaceTypeCensusFixture(prisma);
     const rows = await prisma.$queryRawUnsafe<
       Array<{ type: string; places: number }>
     >(

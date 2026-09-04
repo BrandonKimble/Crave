@@ -20,6 +20,7 @@
  */
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
+import { ensureFoldCensusFixture } from './lib/census-fixture';
 import {
   canonicalFold,
   FOLD_ALGORITHM_VERSION,
@@ -30,6 +31,7 @@ async function main(): Promise<void> {
   const sample = sampleArg ? Number(sampleArg.split('=')[1]) : 2000;
   const prisma = new PrismaClient();
   try {
+    await ensureFoldCensusFixture(prisma);
     const rows = await prisma.$queryRawUnsafe<
       Array<{ entity_id: string; name: string; identity_key: string | null }>
     >(
