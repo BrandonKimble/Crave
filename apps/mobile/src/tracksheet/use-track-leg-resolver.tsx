@@ -57,8 +57,7 @@ import { DmSessionPanelBody, MessagesInboxPanelBody } from '../overlays/panels/M
 import { PostPhotosPanelBody } from '../overlays/panels/PostPhotosPanel';
 import { ProfileMountedSceneBody } from '../overlays/panels/ProfilePanel';
 import { SaveListMountedSceneBody } from '../overlays/panels/SaveListPanel';
-import { useHomePanelListSceneParts } from '../overlays/panels/HomePanel';
-import { usePollsPanelListSceneParts } from '../overlays/panels/PollsPanel';
+import { useFeedSceneParts } from '../overlays/panels/runtime/feed-scene-parts-registry';
 import type { OverlayKey } from '../overlays/types';
 import type {
   MountedSceneBodyProps,
@@ -224,14 +223,17 @@ export const useTrackLegResolver = ({
    * a second live ref mirroring the same fact. */
   presentedLatch: TrackPresentedEntryLatch;
 }) => {
-  // THE PARTS LANE, MEASURED. These two hooks run on EVERY host render whichever
-  // scene is presented — so a switch cost that lives here is NOT explained by
-  // "the destination's hook woke up", and a cost that does not live here rules
-  // the parts lane out. No pair of phase marks brackets them (they run inside
-  // the host render), so the cost is read straight off the clock.
+  // THE PARTS LANE, READ NOT RUN (P0 2026-08-19, ruled 2026-09-04). The polls
+  // and home feed runtimes are owned by the app-shell scene-input writer host —
+  // the one mounted owner whose effects commit once — and this resolver reads
+  // that instance's list parts through the feed-scene-parts registry, keyed by
+  // scene identity. It used to call the parts hooks itself, which instantiated
+  // a SECOND feed runtime per scene (2x sockets, fetches, toggle consequences).
+  // Still measured: the read runs on EVERY host render whichever scene is
+  // presented, so a switch cost that lives here is NOT the destination waking.
   const partsStartedAtMs = __DEV__ ? Date.now() : 0;
-  const pollsParts = usePollsPanelListSceneParts();
-  const homeParts = useHomePanelListSceneParts();
+  const pollsParts = useFeedSceneParts('polls');
+  const homeParts = useFeedSceneParts('home');
   if (__DEV__) {
     noteTrackPressPartsCost(scene, Date.now() - partsStartedAtMs);
     noteTrackPressPhase(scene, 'parts', Date.now());
@@ -954,7 +956,7 @@ export const useTrackLegResolver = ({
           ) : null,
         rowSurfaceStyle: ROW_SURFACE_STYLE_BY_KIND[rowSurfaceKind],
         onUserListScrollActivity: sceneReportsUserScrollActivity(legScene)
-          ? pollsParts.sceneBodyTransport.onUserListScrollActivity
+          ? pollsParts?.sceneBodyTransport.onUserListScrollActivity
           : undefined,
       };
     });

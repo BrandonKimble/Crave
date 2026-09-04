@@ -3,7 +3,9 @@
 // Every `overlays/panels/*` module maps here. Mounted bodies are marker
 // elements that also RECORD the activity contexts the host actually delivered
 // (the activation-bridge falsifier reads those records — delivered values,
-// never re-derived). The list-parts hooks read the harness parts store so
+// never re-derived). The feed-scene-parts registry reader (the resolver's ONE
+// way to the polls/home list parts — the runtimes themselves are owned by the
+// app-shell writer host, outside this lane) reads the harness parts store so
 // tests can flip a scene between cold/placeholder and real rows.
 
 import React from 'react';
@@ -63,5 +65,4 @@ const usePartsFor = (scene: 'polls' | 'home') =>
     () => harness.world.partsStore.get()[scene]
   );
 
-export const usePollsPanelListSceneParts = (): unknown => usePartsFor('polls');
-export const useHomePanelListSceneParts = (): unknown => usePartsFor('home');
+export const useFeedSceneParts = (scene: 'polls' | 'home'): unknown => usePartsFor(scene);
