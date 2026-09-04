@@ -77,3 +77,21 @@ a required `onFailure`; seven callers route to their logger; proof added.
 | S-7..11 | LEAD | structured `/search/run` + see-locations never resolve redirects / no servable check; attribute merge leaves signals tally on the loser until rebuild; intake budget counts retrievals not judge calls; per-search hearing shares the nightly allowance (denial-of-hearing); client "Similar match" fallback contradicts server silence. | Docketed. |
 
 Spend doors on the user path: none found ungated (embedding cached, hearings budgeted, intake cron-batched).
+
+## Wave 0c — CI, the third gate (commit 51c2fefaa)
+
+The unit lane went green in CI; the DB-integration lane then failed five
+janitor-policy tests: the shared user-anchor predicate cast the entity id
+to `::text` against two UUID signal columns (`operator does not exist:
+uuid = text`). Every consumer of the predicate — the janitor's
+ungroundable gate first — has thrown since it was shared (2026-08-31);
+the weekly lifecycle pass caught it and only logged "failed", so
+closed-place archival and moved-place re-enrichment have not run. Casts
+dropped; spec RED→GREEN. FOLLOW-UP (docketed): that catch must emit an
+ops alert, not a log line (silence class).
+
+## Fixes landed this wave (identity territory)
+
+- ID-1 41e3dbbbd — carried merge-fold rows capped at the merge's grade.
+- ID-2, ID-3 576dd87a0 — refusal is an absolute write; ontology merges
+  through the one ledgered merge door.
