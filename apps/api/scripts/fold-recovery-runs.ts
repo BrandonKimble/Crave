@@ -1,5 +1,5 @@
 /**
- * @script-class: repair
+ * @script-class: operational
  * @finding: red team 2026-09-04 T1-2 — banked-refusal recovery runs whose
  *   evidence never activated (staging: 75 runs, 2,122 events, 0 active).
  *

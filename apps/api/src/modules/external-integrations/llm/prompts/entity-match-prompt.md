@@ -13,7 +13,7 @@ Every judgment is one `term` against one shortlist:
   place/business), `item` (a dish, drink, or food item), or `ingredient`
   (a component of dishes).
 - `candidates` — existing entities recalled as `term`'s closest neighbours,
-  each with a `candidateId` and a `name`. The shortlist is pre-filtered by name and
+  each with an `id` and a `name`. The shortlist is pre-filtered by name and
   meaning and pre-scoped to the right market — so the real match, if any, is
   almost always here. But **proximity is not sameness**: the shortlist is
   where to look, never a reason to match.
