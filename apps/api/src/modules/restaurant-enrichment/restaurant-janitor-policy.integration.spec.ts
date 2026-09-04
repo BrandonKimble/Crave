@@ -66,6 +66,7 @@ const janitor = new PlaceJanitorService(
   enrichment,
   config,
   logger,
+  { emit: jest.fn() } as never, // ops alerts — the failed-pass scream
 );
 
 type SeedOpts = {

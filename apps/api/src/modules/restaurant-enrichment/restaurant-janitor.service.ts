@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { EntityStatus, Prisma } from '@prisma/client';
+import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { PlaceLocationEnrichmentService } from './restaurant-location-enrichment.service';
@@ -66,6 +67,7 @@ export class PlaceJanitorService {
     private readonly enrichmentService: PlaceLocationEnrichmentService,
     private readonly config: ConfigService,
     loggerService: LoggerService,
+    private readonly opsAlerts: OpsAlertsService,
   ) {
     this.logger = loggerService.setContext('RestaurantJanitorService');
   }
@@ -122,11 +124,23 @@ export class PlaceJanitorService {
         janitor: janitor as unknown as Record<string, unknown>,
       });
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.error('Weekly location lifecycle pass failed', {
-        error:
-          error instanceof Error
-            ? { message: error.message }
-            : { message: String(error) },
+        error: { message },
+      });
+      // A FAILED LIFECYCLE PASS SCREAMS (red team 2026-09-04, CI wave 0c):
+      // this catch only logged while the ungroundable gate threw on every
+      // run for days — closed-place archival and moved re-enrichment
+      // silently stopped. A refusal that only logs is the silence class.
+      this.opsAlerts.emit({
+        severity: 'critical',
+        kind: 'lifecycle-pass-failed',
+        title: 'Weekly location lifecycle pass FAILED',
+        body:
+          `The janitor/refresh pass threw and did no work: ${message}. ` +
+          `Closed-place archival, ungroundable archival and moved-place ` +
+          `re-enrichment are not running until this is fixed.`,
+        dedupeKey: `lifecycle-pass-failed:${new Date().toISOString().slice(0, 10)}`,
       });
     } finally {
       this.lifecycleCronInFlight = false;

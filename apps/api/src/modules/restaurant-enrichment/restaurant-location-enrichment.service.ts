@@ -1577,23 +1577,9 @@ export class PlaceLocationEnrichmentService {
           );
           return collision;
         }
-        if (this.isEntityNameConflict(error) && combinedUpdateData) {
-          const conflict = await this.handleEntityNameConflict({
-            entity,
-            canonicalName: targetNameForUpdate,
-            details: latestDetails, // F2, same rebind as the collision arm
-            matchMetadata,
-            score: best.score,
-            googlePlaceAttributeIds,
-          });
-          // Same argument as the place-collision arm above: the merge is the
-          // effect, and it has run.
-          await this.markGroundingExecuted(
-            entity.entityId,
-            resolvedPlaceDetails.id!,
-          );
-          return conflict;
-        }
+        // (A name/type P2002 arm lived here for a unique that does not exist
+        // on core_entities — dead since the identity-key indexes; deleted
+        // red team 2026-09-04 E-8.)
         throw error;
       }
       // THE EFFECT RAN — only now is the hearing finished.
@@ -1958,25 +1944,6 @@ export class PlaceLocationEnrichmentService {
     );
   }
 
-  private isEntityNameConflict(error: unknown): boolean {
-    if (!(error instanceof PrismaClientKnownRequestError)) {
-      return false;
-    }
-    if (error.code !== 'P2002') {
-      return false;
-    }
-    const metaTarget = error.meta?.target;
-    const targets: string[] = Array.isArray(metaTarget)
-      ? (metaTarget as string[])
-      : typeof metaTarget === 'string'
-        ? [metaTarget]
-        : [];
-    const normalizedTargets = targets.map((value) => value.toLowerCase());
-    return (
-      normalizedTargets.includes('name') && normalizedTargets.includes('type')
-    );
-  }
-
   private async handleGooglePlaceCollision(params: {
     entity: PlaceEntity;
     details: GooglePlacesV1PlaceDetailsResponse;
@@ -2126,169 +2093,6 @@ export class PlaceLocationEnrichmentService {
       mergedInto,
       status: 'updated',
       placeId,
-      score,
-      updatedFields: mergedFields,
-    };
-  }
-
-  private async handleEntityNameConflict(params: {
-    entity: PlaceEntity;
-    canonicalName: string | null;
-    details: GooglePlacesV1PlaceDetailsResponse;
-    matchMetadata: MatchMetadata;
-    score?: number;
-    googlePlaceAttributeIds?: string[];
-  }): Promise<PlaceEnrichmentResult> {
-    const {
-      entity,
-      canonicalName,
-      details,
-      matchMetadata,
-      score,
-      googlePlaceAttributeIds,
-    } = params;
-
-    const resolvedName = canonicalName?.trim().length
-      ? canonicalName.trim()
-      : null;
-
-    if (!details.place) {
-      throw new Error('Google Place details missing for name conflict');
-    }
-
-    const placeDetails = details.place;
-    const trustedCanonicalDomain =
-      this.trustedIdentityDomain(placeDetails.websiteUri) ??
-      this.trustedIdentityDomain(entity.canonicalDomain);
-    const canonical: PlaceEntityWithLocations | null = trustedCanonicalDomain
-      ? await this.prisma.entity.findFirst({
-          where: {
-            entityId: { not: entity.entityId },
-            type: EntityType.place,
-            canonicalDomain: {
-              equals: trustedCanonicalDomain,
-              mode: 'insensitive',
-            },
-          },
-          include: { primaryLocation: true, locations: true },
-        })
-      : await this.prisma.entity.findFirst({
-          where: {
-            entityId: { not: entity.entityId },
-            type: EntityType.place,
-            // §13: identity is GLOBAL — name conflict is judged globally,
-            // never through a market-presence lane.
-            name:
-              resolvedName ??
-              this.getPlaceDisplayName(placeDetails) ??
-              undefined,
-          },
-          include: { primaryLocation: true, locations: true },
-        });
-
-    if (!canonical) {
-      this.logger.error(
-        'Name conflict encountered but canonical restaurant missing',
-        {
-          entityId: entity.entityId,
-          canonicalDomain: trustedCanonicalDomain,
-          targetName: resolvedName ?? this.getPlaceDisplayName(placeDetails),
-        },
-      );
-      throw new Error('Canonical restaurant not found for name conflict');
-    }
-
-    const canonicalUpdate = this.buildEntityUpdate(
-      canonical,
-      placeDetails,
-      details.metadata?.fieldMask ?? '',
-      matchMetadata,
-    );
-    const canonicalLocations = canonical.locations ?? [];
-    const targetLocation =
-      canonicalLocations.find(
-        (location) => location.googlePlaceId === placeDetails.id,
-      ) ??
-      canonical.primaryLocation ??
-      null;
-    const locationUpsert = this.buildLocationUpsertData(
-      canonical.entityId,
-      targetLocation,
-      placeDetails,
-    );
-    const canonicalAliasUpdate = this.computeNameAndAliasUpdate(
-      canonical,
-      this.getPlaceDisplayName(placeDetails),
-      this.collectAliasCandidates(entity),
-      this.getPlaceDisplayLocale(placeDetails),
-    );
-    const mergeAugmentations = this.buildCanonicalMergeAugmentations(
-      canonical,
-      entity,
-      googlePlaceAttributeIds,
-    );
-
-    const mergedUpdate = this.mergeEntityUpdates(
-      canonicalUpdate.updateData,
-      canonicalAliasUpdate.updateData,
-      mergeAugmentations.updateData,
-    );
-    const mergedFields = this.mergeUpdatedFieldLists(
-      canonicalUpdate.updatedFields,
-      canonicalAliasUpdate.updatedFields,
-      mergeAugmentations.updatedFields,
-    );
-
-    // The merge service owns the transaction and the post-commit rebuild
-    // (F9966); the primary-location upsert rides its `prepare` hook.
-    const updatedCanonical =
-      await this.placeEntityMergeService.mergeDuplicatePlace({
-        canonical,
-        duplicate: entity,
-        canonicalUpdate: mergedUpdate,
-        reason:
-          'place-id collision: enrichment selected a google place already grounded on the canonical entity (shared place_id)',
-        prepare: async (tx) => {
-          const location = await this.upsertPrimaryLocation({
-            tx,
-            placeId: canonical.entityId,
-            placeDetails,
-            locationUpsert,
-            targetLocation,
-            // The duplicate's own row re-points to the canonical instead of
-            // aborting the whole merge with a P2002 (F1 follow-through).
-            reassignFrom: entity.entityId,
-          });
-          return {
-            primaryLocation: { connect: { locationId: location.locationId } },
-          };
-        },
-      });
-
-    await this.rescoreCoordinator.markDirty('location-enrichment');
-
-    // A1: alias forms bank through THE projection writer, after the
-    // merge has committed the canonical row.
-    await this.bankPlacesAliases(
-      updatedCanonical.entityId,
-      canonicalAliasUpdate.aliasForms,
-    );
-    this.logger.info('Merged restaurant into existing canonical by name', {
-      duplicateId: entity.entityId,
-      canonicalId: updatedCanonical.entityId,
-      targetName: resolvedName ?? this.getPlaceDisplayName(placeDetails),
-    });
-
-    const mergedInto = updatedCanonical.entityId;
-    await this.cuisineExtractionQueue.queueExtraction(mergedInto, {
-      source: 'google_places_name_collision',
-    });
-
-    return {
-      entityId: entity.entityId,
-      mergedInto,
-      status: 'updated',
-      placeId: placeDetails?.id,
       score,
       updatedFields: mergedFields,
     };

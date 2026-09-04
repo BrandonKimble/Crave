@@ -534,27 +534,12 @@ export class PlaceEntityMergeService {
       return;
     }
 
-    const canonicalLocations = await tx.placeLocation.findMany({
-      where: { placeId: canonicalId },
-    });
-    const canonicalByPlaceId = new Map(
-      canonicalLocations
-        .filter((loc) => loc.googlePlaceId)
-        .map((loc) => [loc.googlePlaceId as string, loc]),
-    );
-
+    // (A "drop the duplicate's row when the canonical already holds the
+    // same google_place_id" branch lived here. google_place_id is a
+    // table-wide UNIQUE, so the two rows can never coexist — shared-place
+    // merges only ever arrive through the P2002 collision lane. Deleted
+    // red team 2026-09-04 E-9.)
     for (const location of duplicateLocations) {
-      if (
-        location.googlePlaceId &&
-        canonicalByPlaceId.has(location.googlePlaceId)
-      ) {
-        // Drop duplicate location row; prefer canonical's
-        await tx.placeLocation.delete({
-          where: { locationId: location.locationId },
-        });
-        continue;
-      }
-
       // A MOVED ROW IS NEVER BORN PRIMARY (F355). This read
       // `location.isPrimary || canonicalLocations.length === 0` against a
       // snapshot taken BEFORE the loop — so when the canonical started with
