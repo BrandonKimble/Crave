@@ -6,6 +6,7 @@ import {
   CampaignBreachedError,
   CampaignStateError,
   CampaignHasOpenWorkError,
+  StaleRateError,
   DuplicateLiveCampaignError,
   CAMPAIGN_STATE_TRANSITIONS,
   statesThatMayBecome,
@@ -36,7 +37,10 @@ function stubLogger() {
  *  service's create/findUnique/update calls. */
 function buildPrisma() {
   const campaigns = new Map<string, Record<string, unknown>>();
-  const unitCosts = new Map<string, { microUsdPerUnit: number }>();
+  const unitCosts = new Map<
+    string,
+    { microUsdPerUnit: number; refreshedAt?: Date }
+  >();
   let seq = 0;
   const openBatchJobs = { count: 0 };
   return {
@@ -54,7 +58,12 @@ function buildPrisma() {
           where: { workClass_unit: { workClass: string; unit: string } };
         }) => {
           const key = `${workClass_unit.workClass}::${workClass_unit.unit}`;
-          return Promise.resolve(unitCosts.get(key) ?? null);
+          const row = unitCosts.get(key);
+          // A published rate carries its refresh time (G-7); fixtures that
+          // omit it read as refreshed now.
+          return Promise.resolve(
+            row ? { refreshedAt: new Date(), ...row } : null,
+          );
         },
       ),
     },
@@ -835,6 +844,22 @@ describe('SpendCampaignService lifecycle chokepoint (2026-08-12)', () => {
     expect(prisma._campaigns.get(estimate.campaignId)?.state).toBe('approved');
     await service.recordSpend(estimate.campaignId, 'gemini', ledgerMicros(100));
     expect(prisma._campaigns.get(estimate.campaignId)?.state).toBe('running');
+  });
+
+  it('a stale published rate is a typed refusal, never a quoted envelope (G-7)', async () => {
+    const { prisma, service } = build();
+    prisma._unitCosts.set('gemini.reddit_extraction::document', {
+      microUsdPerUnit: 10,
+      refreshedAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000),
+    });
+    await expect(
+      service.prepareEstimate({
+        name: 'archive:stale-rate',
+        workClass: 'gemini.reddit_extraction',
+        unit: 'document',
+        unitCount: 10,
+      }),
+    ).rejects.toBeInstanceOf(StaleRateError);
   });
 
   it('complete() refuses while the campaign still carries non-terminal batch jobs — paid output must drain first (G-3)', async () => {

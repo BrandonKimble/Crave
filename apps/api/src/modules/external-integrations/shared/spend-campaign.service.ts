@@ -184,6 +184,28 @@ export class CampaignHasOpenWorkError extends Error {
   }
 }
 
+/** The unit-cost row is older than its measurement window — the refresher
+ *  is not running, and an envelope priced from it would be a guess. */
+export class StaleRateError extends Error {
+  constructor(
+    public readonly workClass: string,
+    public readonly unit: string,
+    public readonly refreshedAt: Date,
+  ) {
+    super(
+      `Rate for ${workClass}::${unit} was last refreshed ${refreshedAt.toISOString()} — ` +
+        `older than ${Math.round(MAX_RATE_AGE_MS / 86_400_000)} days; the unit-cost ` +
+        `refresher is not running. Run the refresh (scripts/refresh-unit-costs or the ` +
+        `worker's timer) before quoting a campaign.`,
+    );
+    this.name = 'StaleRateError';
+  }
+}
+
+/** A published rate is a measurement over UNIT_COST_WINDOW_DAYS; past
+ *  1.5 windows it describes a market that has moved. */
+export const MAX_RATE_AGE_MS = 45 * 24 * 60 * 60 * 1000;
+
 export class CampaignStateError extends Error {
   constructor(
     public readonly campaignId: string,
@@ -516,6 +538,9 @@ export class SpendCampaignService implements OnModuleInit, OnModuleDestroy {
     if (!rate) {
       throw new NoPublishedRateError(params.workClass, params.unit);
     }
+    if (Date.now() - new Date(rate.refreshedAt).getTime() > MAX_RATE_AGE_MS) {
+      throw new StaleRateError(params.workClass, params.unit, rate.refreshedAt);
+    }
     const estimateMicros = Math.round(params.unitCount * rate.microUsdPerUnit);
     const toleranceFraction = await this.deriveTolerance(params.workClass);
     const estimateHash = hashEstimate({
@@ -597,6 +622,16 @@ export class SpendCampaignService implements OnModuleInit, OnModuleDestroy {
       });
       if (!rate) {
         throw new NoPublishedRateError(spec.workClass, spec.unit);
+      }
+      // A RATE HAS AN AGE (red team 2026-09-04 G-7): the quote used to read
+      // microUsdPerUnit alone, so a rate the nightly refresher stopped
+      // updating (it was an @Cron, dead on staging) priced envelopes
+      // forever. A rate older than its own measurement window is not a
+      // measurement of anything current — typed refusal, never a stale
+      // envelope.
+      const ageMs = Date.now() - new Date(rate.refreshedAt).getTime();
+      if (ageMs > MAX_RATE_AGE_MS) {
+        throw new StaleRateError(spec.workClass, spec.unit, rate.refreshedAt);
       }
       return rate.microUsdPerUnit;
     };

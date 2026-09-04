@@ -1,6 +1,14 @@
 import { ledgerMicros, type LedgerMicros } from './spend-currency';
-import { Injectable, Optional } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
+import {
+  OnModuleDestroy,
+  OnModuleInit,
+  Injectable,
+  Optional,
+} from '@nestjs/common';
+import {
+  CompletionWorkTimerHandle,
+  startCompletionWorkTimer,
+} from '../../../shared/completion-work-timer';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
@@ -144,7 +152,7 @@ export function median(values: number[]): number {
 }
 
 @Injectable()
-export class SpendAnalyticsService {
+export class SpendAnalyticsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger: LoggerService;
 
   constructor(
@@ -170,7 +178,33 @@ export class SpendAnalyticsService {
    * @Cron is inert outside worker processes — the same mechanism every
    * other worker cron in this codebase relies on.
    */
-  @Cron('40 3 * * *')
+  private refreshTimer: CompletionWorkTimerHandle | null = null;
+
+  /** THE REFRESHER OWNS ITS INTERVAL (red team 2026-09-04 G-7): as an
+   *  @Cron it was inert wherever ScheduleModule is not registered — every
+   *  staging worker — so the unit-cost rows quietly aged while campaign
+   *  quotes kept reading them (local rows dated 2026-08-16 at the time).
+   *  Deriving a rate from the ledger spends nothing; it is bookkeeping,
+   *  and bookkeeping runs on the completion-work timer with its own
+   *  off-switch. The quote side refuses a rate older than its window
+   *  (StaleRateError), so a dead refresher is loud, not silent. */
+  onModuleInit(): void {
+    this.refreshTimer = startCompletionWorkTimer({
+      intervalMs: 24 * 60 * 60 * 1000,
+      offSwitchEnv: 'SPEND_UNIT_COST_REFRESH_ENABLED',
+      run: () => this.nightlyRefresh(),
+      onFailure: (error) =>
+        this.logger.error('Unit-cost refresh tick failed', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+    });
+  }
+
+  onModuleDestroy(): void {
+    this.refreshTimer?.stop();
+    this.refreshTimer = null;
+  }
+
   async nightlyRefresh(now: Date = new Date()): Promise<void> {
     try {
       await this.refreshUnitCosts(now);

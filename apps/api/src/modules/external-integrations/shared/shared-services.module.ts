@@ -32,7 +32,7 @@ import { ProdLlmPostureService } from './prod-llm-posture.service';
     DecisionLedgerService,
     SpendCampaignService,
     OpsAlertsService,
-    // D149: the two WATCHERS that replaced the refusals. Both are @Cron-only
+    // D149: the two WATCHERS that replaced the refusals. Both own their intervals (completion-work timers since 2026-09-03/04)
     // and inert outside a scheduler runtime.
     SpendExpectationMonitorService,
     VendorQuotaWatcherService,
