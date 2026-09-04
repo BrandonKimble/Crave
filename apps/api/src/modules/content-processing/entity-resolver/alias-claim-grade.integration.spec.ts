@@ -16,10 +16,15 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import {
   addSurfaces,
+  foldSurfacesFromMerge,
   identityGradeSql,
   JudgedClaimWithoutVerdictError,
 } from './entity-surface.service';
 import { ENTITY_DEDUPE_RULE_VERSION } from './entity-dedupe-rule';
+import {
+  PLACE_MERGE_LANE,
+  PLACE_MERGE_RULE_VERSION,
+} from '../../restaurant-enrichment/business-identity-rules';
 
 const TEST_TAG = 'itest-claim-grade';
 const prisma = new PrismaClient();
@@ -112,6 +117,77 @@ describe('the claim-grade law', () => {
     expect(routable.map((r) => r.form)).toEqual([
       `${TEST_TAG} judged in force`,
       `${TEST_TAG} observed form`,
+    ]);
+  });
+
+  /**
+   * Red team 2026-09-04 ID-1. The loser's OWN name is banked 'observed' at
+   * birth; carried onto the winner uncapped it out-ranked the merge's
+   * 'judged' row for the same form and became permanent identity with a
+   * NULL origin — a wrong merge could never be un-routed. A carried row's
+   * grade is capped at the merge's: judged under the verdict's coordinates
+   * when ledgered, recall when not. RED against the pre-fix fold: the
+   * winner's row read observed/NULL and stayed routable after a rule bump.
+   */
+  it('caps a carried row at the MERGE grade — a ledgered merge routes only under its verdict, an unledgered one never', async () => {
+    const mint = async (
+      suffix: string,
+    ): Promise<{ entityId: string; name: string }> => {
+      const name = `${TEST_TAG}:${suffix}`;
+      const row = await prisma.entity.create({
+        data: { name, type: 'place', status: 'active', identityKey: name },
+        select: { entityId: true },
+      });
+      // Birth testimony: the entity's own name, observed.
+      await prisma.$transaction((tx) =>
+        addSurfaces(tx, row.entityId, [
+          { form: name, source: 'extraction', claimGrade: 'observed' },
+        ]),
+      );
+      return { entityId: row.entityId, name };
+    };
+    const winner = await mint('fold-winner');
+    const ledgeredLoser = await mint('fold-loser-ledgered');
+    const bareLoser = await mint('fold-loser-unledgered');
+
+    await prisma.$transaction(async (tx) => {
+      await foldSurfacesFromMerge(tx, winner.entityId, ledgeredLoser.entityId, {
+        mergeVerdict: {
+          lane: PLACE_MERGE_LANE,
+          claimKey: `${TEST_TAG}|ledgered-merge`,
+          ruleVersion: PLACE_MERGE_RULE_VERSION,
+          foldVersion: 1,
+        },
+      });
+      await foldSurfacesFromMerge(tx, winner.entityId, bareLoser.entityId);
+    });
+
+    const rows = await prisma.$queryRaw<
+      Array<{
+        form: string;
+        claim_grade: string;
+        origin_lane: string | null;
+        routes: boolean;
+      }>
+    >(Prisma.sql`SELECT s.form, s.claim_grade::text, s.origin_lane,
+                        ${identityGradeSql('s')} AS routes
+                   FROM entity_surface s
+                  WHERE s.entity_id = ${winner.entityId}::uuid
+                    AND s.form IN (${ledgeredLoser.name}, ${bareLoser.name})
+                  ORDER BY s.form`);
+    expect(rows).toEqual([
+      {
+        form: ledgeredLoser.name,
+        claim_grade: 'judged',
+        origin_lane: PLACE_MERGE_LANE,
+        routes: true,
+      },
+      {
+        form: bareLoser.name,
+        claim_grade: 'recall',
+        origin_lane: null,
+        routes: false,
+      },
     ]);
   });
 });

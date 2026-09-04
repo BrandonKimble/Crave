@@ -1064,11 +1064,34 @@ export async function foldSurfacesFromMerge(
            -- entity-D4): a loser's in-flight rehearsal row without its run
            -- id could never be flipped or rejected — permanently invisible.
            a.born_extraction_run_id,
-           -- A carried row keeps ITS OWN grade and origin: it earned exactly
-           -- what it earned, and moving houses in a merge changes nothing
-           -- about the evidence behind it.
-           a.claim_grade, a.origin_lane, a.origin_claim_key,
-           a.origin_rule_version, a.origin_fold_version
+           -- A CARRIED ROW'S AUTHORITY IS CAPPED BY THE MERGE'S (red team
+           -- 2026-09-04 ID-1). What the loser's row testified is that this
+           -- string names THE LOSER; its association with the WINNER is
+           -- the merge's inference, so on the winner it can hold at most
+           -- the merge's own grade — 'judged' under the merge verdict's
+           -- coordinates, 'recall' when the merge was unledgered. Left
+           -- uncapped, the loser's own name (banked 'observed' at birth by
+           -- every extraction-born entity) collided with statement 1's
+           -- judged row and GRADE-ONLY-RISES lifted it to observed with a
+           -- NULL origin: every merge alias became permanent identity on
+           -- the winner, un-revocable by any rule bump — the alias
+           -- ratchet, re-entered through the merge door.
+           CASE WHEN ${gradeRankSql(Prisma.sql`a.claim_grade`)}
+                   > ${gradeRankSql(Prisma.sql`${v ? 'judged' : 'recall'}`)}
+                THEN ${v ? 'judged' : 'recall'}
+                ELSE a.claim_grade END,
+           CASE WHEN ${gradeRankSql(Prisma.sql`a.claim_grade`)}
+                   > ${gradeRankSql(Prisma.sql`${v ? 'judged' : 'recall'}`)}
+                THEN ${v?.lane ?? null} ELSE a.origin_lane END,
+           CASE WHEN ${gradeRankSql(Prisma.sql`a.claim_grade`)}
+                   > ${gradeRankSql(Prisma.sql`${v ? 'judged' : 'recall'}`)}
+                THEN ${v?.claimKey ?? null} ELSE a.origin_claim_key END,
+           CASE WHEN ${gradeRankSql(Prisma.sql`a.claim_grade`)}
+                   > ${gradeRankSql(Prisma.sql`${v ? 'judged' : 'recall'}`)}
+                THEN ${v?.ruleVersion ?? null} ELSE a.origin_rule_version END,
+           CASE WHEN ${gradeRankSql(Prisma.sql`a.claim_grade`)}
+                   > ${gradeRankSql(Prisma.sql`${v ? 'judged' : 'recall'}`)}
+                THEN ${v?.foldVersion ?? null} ELSE a.origin_fold_version END
     FROM entity_surface a
     WHERE a.entity_id = ${duplicateId}::uuid
     ON CONFLICT (entity_id, locale, form) DO UPDATE SET
@@ -1101,15 +1124,16 @@ export async function foldSurfacesFromMerge(
            > ${gradeRankSql(Prisma.sql`entity_surface.claim_grade`)}
         THEN EXCLUDED.origin_fold_version ELSE entity_surface.origin_fold_version END`;
 
-  // Merge-fold carries OBSERVED surfaces (testimony), which the collision
-  // guard exempts, so there is nothing to report refusing — the fold returns
-  // nothing and no caller has ever wanted more.
+  // The fold bypasses the collision guard by design (a merge decides
+  // nothing about word ownership; carried rows keep their role/status), so
+  // there is nothing to report refusing — the fold returns nothing and no
+  // caller has ever wanted more.
   //
   // The winner's dense doc must be re-embedded: it just gained the loser's
-  // names. `touched` is 1 unconditionally rather than a row count because the
-  // two statements above are `ON CONFLICT DO NOTHING` bulk inserts whose
-  // affected-row counts already tell us nothing useful about whether the doc
-  // changed (a re-run of an idempotent merge legitimately inserts zero), and
-  // an unnecessary re-embed is cheap while a missed one is silent staleness.
+  // names. `touched` is 1 unconditionally rather than a row count because
+  // the two upserts above are grade-monotone merges whose affected-row
+  // counts tell us nothing useful about whether the doc changed (a re-run
+  // of an idempotent merge legitimately changes zero rows), and an
+  // unnecessary re-embed is cheap while a missed one is silent staleness.
   await markEntityTouched(tx, canonicalId, 1, options);
 }
