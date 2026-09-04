@@ -111,3 +111,15 @@ ops alert, not a log line (silence class).
 | E-10..12 | LEAD | cross-metro merge via "no community evidence"; 259 multi-primary rows; 17 stranded redirects on staging with no alarm. | Docketed. |
 
 Places (TomTom) module: one LEAD (promotion attempts uncapped/unread).
+
+## Fixes landed (continued)
+
+- T1-2/T1-5 b065247de — recovery evidence folded onto its shadow; service
+  owns campaign context. STAGING BACKFILL EXECUTED: 75 runs / 2,450 events
+  folded, 0 stranded (all shadows superseded → no rebuilds needed).
+- E-1/E-2/E-5 5dd5b7f60 — wipe blast-radius scoping (746→0 in the
+  no-match dry run); court memory before ceiling (spec owed); janitor
+  closed-arm anchor guard.
+- G-1/G-3 1a9aa5eee — stall alarm keyed on owed-since; transient regex
+  narrowed; complete() refuses with open batch work; one non-terminal
+  status list.
