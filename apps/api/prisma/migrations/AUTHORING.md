@@ -95,6 +95,10 @@ read it and delete any drop of the following.**
   and is fully Prisma-modeled, so no Class 1 entry remains for `places`'
   provider identity — do not re-add this bullet;
 - the `curated_lists` NULLS-NOT-DISTINCT unique;
+- `uq_place_locations_one_primary` — PARTIAL unique on
+  `core_restaurant_locations(restaurant_id) WHERE is_primary` (2026-09-04): the
+  boolean is single-valued per restaurant; dropping it lets multi-primary rows
+  return (259 existed before the repair).
 - `ops_alerts_open_dedupe_key` — the PARTIAL unique on `ops_alerts.dedupe_key`
   `WHERE acknowledged_at IS NULL` (G-6, 2026-09-04): dedupe among OPEN alerts
   only, so an ack re-arms a static key. Dropping it restores the permanent
