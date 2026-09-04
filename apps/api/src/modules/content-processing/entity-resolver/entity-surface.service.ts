@@ -876,6 +876,17 @@ async function insertSurfaceRows(
                                 THEN 'deprecated' ELSE EXCLUDED.status END
                       WHEN EXCLUDED.role = 'recall'
                       THEN entity_surface.status ELSE EXCLUDED.status END`;
+  // THE RETRY MUST SURVIVE THE ABORTED TRANSACTION (CI 2026-09-04, the
+  // first green-path DB run in 25 days): a unique violation inside a
+  // transaction aborts it, so the forceNonDefault retry below used to run
+  // into "current transaction is aborted" — locally the two racers never
+  // collided at the database, on CI's slower Postgres they did every time.
+  // A savepoint scopes the violation; ROLLBACK TO it and retry. When the
+  // caller handed us a bare client (no open transaction) Postgres refuses
+  // the savepoint (25P01) and the plain path is the correct one.
+  const savepoint = await tx.$executeRaw`SAVEPOINT surface_insert`
+    .then(() => true)
+    .catch(() => false);
   try {
     // Prisma.sql, not a bare tagged template: `roleExpr`/`statusExpr` are SQL
     // FRAGMENTS chosen by the authority above, and they must arrive as
@@ -944,12 +955,22 @@ async function insertSurfaceRows(
                                        EXCLUDED.claim_judge_version),
         updated_at = now()
       RETURNING form, role`);
+    if (savepoint) await tx.$executeRaw`RELEASE SAVEPOINT surface_insert`;
   } catch (error) {
+    // THE VIOLATION IS RECOGNISED BY ITS SHAPE, NOT ITS NAME (CI 2026-09-04):
+    // Prisma reports a raw unique violation as "Code: 23505 … Key (entity_id,
+    // locale)=(…) already exists" — the constraint NAME this catch used to
+    // look for never appears, so the retry never fired and the losing racer
+    // died on the election it was built to survive.
     if (
       !forceNonDefault &&
       error instanceof Error &&
-      error.message.includes('uq_entity_surface_one_default')
+      /\b23505\b/.test(error.message) &&
+      error.message.includes('(entity_id, locale)')
     ) {
+      if (savepoint) {
+        await tx.$executeRaw`ROLLBACK TO SAVEPOINT surface_insert`;
+      }
       return insertSurfaceRows(tx, entityId, rows, true, authority);
     }
     throw error;
