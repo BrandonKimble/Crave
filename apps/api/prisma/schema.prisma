@@ -782,10 +782,13 @@ model OpsAlert {
   kind           String    @db.VarChar(64)
   title          String    @db.VarChar(200)
   body           String
-  dedupeKey      String?   @unique @map("dedupe_key") @db.VarChar(128)
+  /// Unique only among OPEN alerts (partial index ops_alerts_open_dedupe_key,
+  /// raw SQL — migrate dev will offer to drop it; refuse). Ack re-arms.
+  dedupeKey      String?   @map("dedupe_key") @db.VarChar(128)
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   acknowledgedAt DateTime? @map("acknowledged_at") @db.Timestamptz(3)
 
+  @@index([dedupeKey], map: "idx_ops_alerts_dedupe_key")
   @@map("ops_alerts")
 }
 

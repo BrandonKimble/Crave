@@ -95,6 +95,10 @@ read it and delete any drop of the following.**
   and is fully Prisma-modeled, so no Class 1 entry remains for `places`'
   provider identity — do not re-add this bullet;
 - the `curated_lists` NULLS-NOT-DISTINCT unique;
+- `ops_alerts_open_dedupe_key` — the PARTIAL unique on `ops_alerts.dedupe_key`
+  `WHERE acknowledged_at IS NULL` (G-6, 2026-09-04): dedupe among OPEN alerts
+  only, so an ack re-arms a static key. Dropping it restores the permanent
+  silencer.
 - `idx_claim_verdicts_unexecuted` on `claim_verdicts` — the PARTIAL index
   (`WHERE executed_at IS NULL`) that IS the resume queue for
   decided-but-unexecuted verdicts. Prisma cannot express the predicate, so it
