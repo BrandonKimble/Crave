@@ -6,10 +6,9 @@
 //   the optimistic first paint, marked PROVISIONAL so the resolver settles it with the
 //   honest server slice fetch as a version update. The OFF direction never derives (the
 //   open slice lacks the closed rows) — it is a warm slice hit by construction.
-// - IDENTITY derivation (page-1 includeSimilar flip): includeSimilar is retrieval-
-//   semantic, so the sibling here is a genuinely different WORLD (different worldKey);
-//   the page-1 response carries both the exact and similar sets, so the flip is a local
-//   recomposition of the sibling world's value.
+// - (RETIRED 2026-09-04, red team S-1) IDENTITY derivation for the includeSimilar
+//   flip: the API no longer ships a page-1 union, and the toggle is retrieval
+//   identity on the server — the flip keys a different worldKey and fetches.
 //
 // Tab-only changes never reach here (slice keys are tab-agnostic — cache hits by
 // construction).
@@ -19,7 +18,6 @@ import {
   buildSearchWorldSliceKey,
   type SearchDesiredTuple,
 } from '../shared/search-desired-state-contract';
-import { buildIncludeSimilarVariantResponse } from '../shared/search-include-similar-variant';
 import {
   projectOpenNowCoverageEntry,
   projectOpenNowResponseSlice,
@@ -79,41 +77,14 @@ export const createSearchWorldDerivation =
         }
       }
     }
-    // IDENTITY derivation — page-1 includeSimilar flip from the sibling WORLD (the
-    // inverted-similar tuple keys a different worldKey; same lens).
-    const siblingSliceKey = buildSearchWorldSliceKey({
-      ...tuple,
-      filterVariant: {
-        ...tuple.filterVariant,
-        includeSimilar: !tuple.filterVariant.includeSimilar,
-      },
-    });
-    const sibling = cache.get(siblingSliceKey);
-    if (sibling == null || sibling.status.kind !== 'ready') {
-      return null;
-    }
-    if (sibling.value.paginationMeta.page !== 1) {
-      // Mid-pagination flips re-resolve over the network (charter rule).
-      return null;
-    }
-    const variantResponse = buildIncludeSimilarVariantResponse(
-      sibling.value.committedResponse,
-      tuple.filterVariant.includeSimilar
-    );
-    if (variantResponse == null) {
-      return null;
-    }
-    const value = constructSearchWorldValue({
-      response: variantResponse,
-      queryIdentity: tuple.queryIdentity,
-      activeTab: tuple.tab,
-      bounds: tuple.committedBounds?.bounds ?? null,
-      userLocation: env.userLocationRef.current,
-      preserveRouteIdentity: tuple.queryIdentity.kind !== 'shortcut',
-    });
-    // includeSimilar never enters the coverage variant (coverage varies by LENS, and
-    // similar is identity) — the sibling world's coverage IS this world's coverage.
-    value.coverageByTab = sibling.value.coverageByTab;
-    value.singleRestaurantCandidate = sibling.value.singleRestaurantCandidate;
-    return { value, dataReadyFrom: 'cache', searchInputKey: null };
+    // NO LOCAL Include-similar derivation (red team 2026-09-04 S-1). The
+    // page-1 flip used to be composed here from the sibling world's rows
+    // marked exactMatch=false plus `similarDishes`/`similarPlaces` arrays —
+    // arrays the API stopped emitting, on a flag the pooled gate now also
+    // sets for tier-1 PARTIAL rows. Result: the "N similar" chip did nothing
+    // and flipping OFF hid rows the server had served. includeSimilar is
+    // retrieval identity on the SERVER (the ring is stamped tier 2 and
+    // served under the toggle), and the flip keys a different worldKey, so
+    // it resolves over the network like any other identity change.
+    return null;
   };

@@ -105,5 +105,11 @@ export interface SearchExecutionDirectives {
      *  Include-similar chip flips membership (ring becomes tier-1 members)
      *  instead of re-running the pipeline. Dish axis only. */
     similarItemIds?: string[];
+    /** Include-similar is ON: the ring is served as members — tier 2 stays
+     *  the row's provenance (labels + toggle), and the gate WHERE admits it
+     *  unconditionally instead of only as auto-fill (red team 2026-09-04
+     *  S-3: without this, dense siblings arrived match_tier NULL and shipped
+     *  unlabeled). */
+    serveRing?: boolean;
   };
 }

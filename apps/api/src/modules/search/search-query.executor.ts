@@ -113,6 +113,7 @@ interface DishQueryRow {
    *  (c.ingredients — a human wrote it) matched; selected only when the
    *  query grounded ingredients. */
   ingredient_evidence_match?: boolean | null;
+  admitted_via_containment?: boolean | null;
   is_category_item?: boolean;
   mention_count: number;
   total_upvotes: number;
@@ -1307,6 +1308,7 @@ LIMIT 3
                 foodAttributeIds: row.food_attributes ?? [],
                 placeAttributeIds: row.place_attributes_arr ?? [],
                 ingredientEvidenceMatch: row.ingredient_evidence_match,
+                admittedViaContainment: row.admitted_via_containment,
               },
               explainContext,
             )

@@ -128,6 +128,11 @@ export function deriveDishMatchExplain(
      *  a human wrote the ingredient on this dish (c.ingredients matched);
      *  false/absent = the row rode a derived arm and copy must hedge. */
     ingredientEvidenceMatch?: boolean | null;
+    /** The ADMISSION fact (red team 2026-09-04 S-2): this row entered the
+     *  page through the containment arm. Absent/false = it was admitted by
+     *  food id (a category member, a twin dish, a served sibling) and no
+     *  "may have X in it" chip is owed however its name reads. */
+    admittedViaContainment?: boolean | null;
   },
   ctx: MatchExplainContext,
 ): MatchExplain | undefined {
@@ -160,8 +165,9 @@ export function deriveDishMatchExplain(
     return { kind: 'similar', terms: widenedOnlyTerms };
   }
 
-  // Ingredient containment where the dish name doesn't say so itself.
-  if (ctx.ingredient) {
+  // Ingredient containment where the dish name doesn't say so itself —
+  // and ONLY for rows the containment arm admitted.
+  if (ctx.ingredient && row.admittedViaContainment === true) {
     const name = row.itemName.toLowerCase();
     const namedInDish = ctx.ingredient.terms.some((term) =>
       name.includes(term.toLowerCase()),

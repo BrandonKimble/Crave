@@ -1823,8 +1823,15 @@ export class SearchService {
     // rides the SAME dish scan as provenance tier 2 — counted, never
     // served. The Include-similar chip re-queries with the ring as tier-1
     // MEMBERS (the siblingsWanted path), so no second execution exists.
+    // THE RING IS A ROW PROPERTY, TOGGLE OR NOT (red team 2026-09-04 S-3).
+    // With Include-similar ON the ring rides membership, and it used to be
+    // left out of the gate entirely — no tier CTE, match_tier NULL, the
+    // siblings shipped unlabeled and outside the toggle's reach. The ring
+    // is computed either way; under the toggle it is NOT filtered to
+    // non-members (it IS the membership) and the gate serves it outright.
+    const serveRing = params.request.includeSimilar === true;
     let similarItemIds: string[] = [];
-    if (params.request.includeSimilar !== true) {
+    {
       const anchorIds = this.collectEntityIds(params.request.entities.items);
       if (anchorIds.length) {
         const memberIds = new Set(constraints.ids.itemIds);
@@ -1835,12 +1842,15 @@ export class SearchService {
           // and the ring is what the auto-fill gate and the chip both read.
           params.widening.getSatisfiesItemIds(anchorIds),
         ]);
-        similarItemIds = Array.from(
+        const ring = Array.from(
           new Set([
             ...siblings.map((sibling) => sibling.siblingId),
             ...judged.cousin,
           ]),
-        ).filter((id) => !memberIds.has(id));
+        );
+        similarItemIds = serveRing
+          ? ring
+          : ring.filter((id) => !memberIds.has(id));
       }
     }
 
@@ -1879,6 +1889,7 @@ export class SearchService {
                 params.placePagination.take,
               ),
               ...(similarItemIds.length ? { similarItemIds } : {}),
+              ...(serveRing ? { serveRing: true } : {}),
             },
           }
         : {}),

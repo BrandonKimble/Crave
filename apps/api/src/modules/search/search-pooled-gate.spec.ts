@@ -257,6 +257,23 @@ describe('step-3 pooled richness gate (SQL shape)', () => {
     ).not.toThrow();
   });
 
+  it('serveRing (Include-similar ON): the ring is stamped tier 2 AND served outright; OFF: auto-fill only (S-3)', () => {
+    const ring = ['66666666-6666-6666-6666-666666666666'];
+    const on = dishData(directives({ similarItemIds: ring, serveRing: true }));
+    const onSql = on.sql.replace(/\s+/g, ' ');
+    expect(onSql).toContain('THEN 2');
+    expect(onSql).toMatch(
+      /fc\.pooled_tier = 2 AND \(\? OR fc\.pooled_eligible_count/,
+    );
+    expect(on.values).toContain(true);
+    const off = dishData(directives({ similarItemIds: ring }));
+    expect(off.sql.replace(/\s+/g, ' ')).toMatch(
+      /fc\.pooled_tier = 2 AND \(\? OR fc\.pooled_eligible_count/,
+    );
+    expect(off.values).toContain(false);
+    expect(off.values).not.toContain(true);
+  });
+
   it('no pooledGate ⇒ byte-stable legacy shape (no pooled artifacts)', () => {
     const sql = dishSqlText({});
     expect(sql).not.toContain('pooled');

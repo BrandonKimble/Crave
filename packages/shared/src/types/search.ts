@@ -401,15 +401,6 @@ export interface SearchResponseMetadata {
 }
 
 export interface SearchResponse {
-  /**
-   * "Include similar" page-1 union prefetch: when the request ran WITHOUT
-   * includeSimilar, these are the pooled-page-1 rows NOT already in
-   * dishes/restaurants (tagged exactMatch=false, relevance attached). The
-   * client composes the toggle-ON view from one payload — page-1 flips are
-   * zero-network and the map gets its extra pins from the same union.
-   */
-  similarDishes?: ItemResult[];
-  similarPlaces?: PlaceResult[];
   format: QueryFormat;
   plan: QueryPlan;
   dishes: ItemResult[];

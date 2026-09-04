@@ -715,9 +715,21 @@ WITH
     const evidenceIngredientIds = Array.from(
       new Set([...filters.ingredientIds, ...filters.twinIngredientIds]),
     );
+    // ADMISSION ARM AS A FACT (red team 2026-09-04 S-2): a twin-ingredient
+    // ask admits a row EITHER by food id (a burrata dish, a category member)
+    // OR by containment; the "may have X in it" chip must derive only from
+    // the containment arm, not from the dish name lacking the word. A plain
+    // ingredient ask ANDs containment, so every admitted row rode it.
+    const admittedViaContainmentSelectSql = filters.twinIngredientIds.length
+      ? Prisma.sql`,
+    (${this.buildEffectiveIngredientsClause(filters.twinIngredientIds).sql}) AS admitted_via_containment`
+      : filters.ingredientIds.length
+        ? Prisma.sql`,
+    TRUE AS admitted_via_containment`
+        : Prisma.sql``;
     const ingredientEvidenceSelectSql = evidenceIngredientIds.length
       ? Prisma.sql`,
-    (${this.buildArrayOverlapClause('c.ingredients', evidenceIngredientIds)}) AS ingredient_evidence_match`
+    (${this.buildArrayOverlapClause('c.ingredients', evidenceIngredientIds)}) AS ingredient_evidence_match${admittedViaContainmentSelectSql}`
       : Prisma.sql``;
 
     // Build connection conditions (food entity search)
@@ -871,7 +883,9 @@ filtered_connections AS (
         // discipline as partials themselves; one list, Crave Score order.
         // The Include-similar chip stays as the *intent* door (ring joins
         // membership outright), independent of fill.
-        Prisma.sql`WHERE fc.pooled_tier = 0 OR (fc.pooled_tier = 1 AND fc.pooled_full_count < ${pooledGate.threshold}) OR (fc.pooled_tier = 2 AND fc.pooled_eligible_count < ${pooledGate.threshold})`
+        // Under Include-similar (serveRing) the ring is membership and is
+        // served outright — tier 2 stays on the row as its label (S-3).
+        Prisma.sql`WHERE fc.pooled_tier = 0 OR (fc.pooled_tier = 1 AND fc.pooled_full_count < ${pooledGate.threshold}) OR (fc.pooled_tier = 2 AND (${pooledGate.serveRing === true} OR fc.pooled_eligible_count < ${pooledGate.threshold}))`
       : Prisma.sql``;
 
     // Build WITH clause

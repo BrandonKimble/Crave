@@ -201,6 +201,23 @@ describe('deriveDishMatchExplain', () => {
         hasIngredientAsk: true,
       });
 
+    it('a row NOT admitted through the containment arm gets no chip, whatever its name (S-2: twin dishes, category members, served siblings)', () => {
+      for (const admitted of [undefined, null, false] as const) {
+        const explain = deriveDishMatchExplain(
+          {
+            matchTier: null,
+            itemName: 'Stracciatella',
+            foodAttributeIds: [],
+            placeAttributeIds: [],
+            ingredientEvidenceMatch: false,
+            admittedViaContainment: admitted,
+          },
+          ingredientCtx(false),
+        );
+        expect(explain).toBeUndefined();
+      }
+    });
+
     it('TESTIMONY arm matched → contains with basis evidence (may assert)', () => {
       const explain = deriveDishMatchExplain(
         {
@@ -209,6 +226,7 @@ describe('deriveDishMatchExplain', () => {
           foodAttributeIds: [],
           placeAttributeIds: [],
           ingredientEvidenceMatch: true,
+          admittedViaContainment: true,
         },
         ingredientCtx(false),
       );
@@ -227,6 +245,7 @@ describe('deriveDishMatchExplain', () => {
           foodAttributeIds: [],
           placeAttributeIds: [],
           ingredientEvidenceMatch: false,
+          admittedViaContainment: true,
         },
         ingredientCtx(false),
       );
@@ -244,6 +263,7 @@ describe('deriveDishMatchExplain', () => {
           itemName: 'Carbonara',
           foodAttributeIds: [],
           placeAttributeIds: [],
+          admittedViaContainment: true,
         },
         ingredientCtx(false),
       );
@@ -275,6 +295,7 @@ describe('deriveDishMatchExplain', () => {
           foodAttributeIds: [],
           placeAttributeIds: [],
           ingredientEvidenceMatch: true,
+          admittedViaContainment: true,
         },
         ingredientCtx(true),
       );
@@ -317,6 +338,7 @@ describe('deriveDishMatchExplain', () => {
         itemName: 'Carbonara',
         foodAttributeIds: [],
         placeAttributeIds: [PATIO],
+        admittedViaContainment: true,
       },
       ctx,
     );

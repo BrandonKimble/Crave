@@ -61,9 +61,7 @@ export class SearchController {
     response: SearchResponseDto,
     locale: SupportedLocale,
   ): Promise<SearchResponseDto> {
-    const buckets = [response.places, response.similarPlaces ?? []].filter(
-      (bucket) => bucket?.length,
-    );
+    const buckets = [response.places].filter((bucket) => bucket?.length);
     if (!buckets.length) {
       return response;
     }
@@ -94,7 +92,6 @@ export class SearchController {
       }
     };
     apply(response.places);
-    apply(response.similarPlaces);
     return response;
   }
 
