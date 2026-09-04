@@ -131,3 +131,19 @@ Places (TomTom) module: one LEAD (promotion attempts uncapped/unread).
   cross-SESSION guard, not just a same-session one — docketed as a
   finding against the harness (it should take a repo-level lock file and
   refuse when another runner holds it).
+- T1-1/T1-6 1131ad2bb; E-8/E-9 + janitor scream e9117e171; G-6 7366a5fb6
+  (partial unique on open alerts; migration applied locally).
+- HOTFIX 5731b7aaa: my governance commit used a directory-wide `git add`
+  and swept in another session's uncommitted entity-match-prompt.md edit;
+  its fingerprint was unreleased so entity-dedupe-rule threw at import
+  and the API could not boot on main for ~40 minutes. LAW for this
+  campaign: `git add` explicit paths only; never a directory while
+  another session may be dirtying the tree.
+
+## Remaining queue (as of 2026-09-04 04:10)
+FIX: S-1/S-2/S-3 app "include similar" seam (user-visible; mobile+API);
+G-2 resume quote; G-5 caller-tag type; G-7 rate freshness; E-2 + S-4
+specs owed; invariants harness cross-session lock. OWNER BATCH: E-3
+moved-arm spend loop, E-4 resurrection loop, E-6 sweep ignores hold,
+E-7 two domain-ownership predicates; mobile docket (Wave 3). Wave 2
+docket drain + Wave 4 coverage census not started.
