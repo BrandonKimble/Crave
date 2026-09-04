@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 /**
+ * @script-class: gate
+ * @runs-from: lefthook pre-commit (invariants-lock)
+ *
  * THE INVARIANTS-HARNESS COMMIT FENCE (red team 2026-09-04).
  *
  * `yarn invariants` MUTATES source files in place and restores them when it
