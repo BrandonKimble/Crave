@@ -129,3 +129,19 @@ key treats mention identity as provenance, so a shared attribute across
 TWO DIFFERENT dishes at one place in one document yields one event —
 the second dish's edge waits for another document. Rare,
 volume-self-healing; noted, not changed.
+
+## The expedition lesson (2026-09-04) — a method law
+
+The one 'ambient flaky' pin, expedition-ordered by the owner, was three
+stacked doctrine gaps (hearsay-never-lands, ask-doubt-never-un-says,
+scale/ownership-non-evaluative). Then same-hour ablation against the
+committed baseline attributed three MORE 'ambient' flakies to real edit
+side-effects (fit sweeping dish words; probe zero eating cravings; a
+'stays short' example teaching name truncation). Method law going
+forward: a full-deck flaky is 'ambient' only after it passes on the
+committed baseline AND fails on the candidate in the SAME hour; the deck
+alone cannot distinguish variance from a regression. Result: the first
+284/284 x3 all-pass deck of the campaign.
+
+Wave-1..3 hoists (quotation / passing-clause / deal-law / seven-laws
+header) remain queued as v24; the choice-law consolidation last.
