@@ -147,3 +147,6 @@ specs owed; invariants harness cross-session lock. OWNER BATCH: E-3
 moved-arm spend loop, E-4 resurrection loop, E-6 sweep ignores hold,
 E-7 two domain-ownership predicates; mobile docket (Wave 3). Wave 2
 docket drain + Wave 4 coverage census not started.
+- S-1/S-2/S-3/S-6 (Include-similar seam, user-visible) — landed: server
+  stamps the ring tier 2 and serves it under the toggle; containment chip
+  from the admission arm; app's local flip + dead wire fields deleted.
