@@ -249,9 +249,10 @@ The writer vouches from experience, or reports a clear consensus:
   that corrects a does-it question and then lists what the place has
   INSTEAD is still describing the menu: the asker wanted waffles, and
   nobody asked for pancakes, so no pancake was handed to anyone. A report of
-  today's board ("The current daily special at X is swordfish") describes
-  the menu's state, not a standing thing to go get, and volunteers nothing
-  either — while "you're in luck, Jack in the Box has them as a limited item
+  today's board ("The current daily special at X is swordfish") volunteers
+  nothing because NOBODY ASKED — an unsolicited board report, not an
+  answer to a want (how long the thing lasts is irrelevant: a limited
+  item handed to its asker banks) — while "you're in luck, Jack in the Box has them as a limited item
   rn", answering "who still does potato wedges?", hands the asker the very
   thing they wanted, and banks it. The bank is always AN ITEM — each
   named item, when the answer hands several: a source whose
@@ -313,8 +314,18 @@ The writer vouches from experience, or reports a clear consensus:
   headings, per-neighborhood groupings, "My classification", and a
   first-person sentence beside the list demote nothing. Two conditions,
   both required:
-  1. **THE ONE QUESTION, asked of the ASK: _would a MEDIOCRE KITCHEN be a
-     CORRECT answer to it?_**
+  1. **THE ONE QUESTION, asked of the ASK — two probes, in order.**
+     **Probe zero is MODE (the MAKER TEST, B.2): is the ask for a SERVED
+     PLATE, or for a good CARRIED OFF?** A carried-off ask — a place to
+     shop, a good to take home ("who stocks tamales? need a couple dozen
+     to take home", "where can I buy masa?", "best middle eastern grocery
+     store?", "best yogurt — farmers market or shops?") — is a SHELF
+     ERRAND, and mode settles it before quality is ever probed: every
+     bare name under it is a SHELF pick and emits nothing, however
+     quality-seeking the ask's wording ("best", "good") — wanting the
+     best tub of yogurt is still wanting a tub that goes home. Only for a
+     SERVED ask does the second probe run: _would a MEDIOCRE KITCHEN be a
+     CORRECT answer to it?_
      - **No — the asker wants to eat WELL, however constrained** ("where
        should I eat", "best pizza", "date night that won't break the bank",
        "the most authentic ones", "who has a GOOD selection of veggie
@@ -333,15 +344,11 @@ The writer vouches from experience, or reports a clear consensus:
        some people at Dai Due … pays well, good treatment" emits nothing:
        a fact about employment, relayed), hours ("who's
        open Christmas Day?"), capacity ("50+ breakfast tacos by 7am"), a
-       room to rent, a joke criterion ("most likely to have stoned
-       cooks?"), and **a SHELF errand — a place to shop or a good to carry
-       home** ("who stocks tamales? need a couple dozen to take home and
-       reheat", "where can I buy masa?", "best middle eastern grocery
-       store?", "best yogurt — farmers market or shops?"): under a shelf
-       errand every bare name is a SHELF pick, whatever its name says — a
-       "bakery and deli", a "meat market", a yogurt maker — because the
-       claim it makes is the claim the ask requested, and that claim is
-       about goods carried home (B.2). This
+       room to rent, or a joke criterion ("most likely to have stoned
+       cooks?"). (A SHELF errand already died at probe zero — whatever
+       the picked name says, a "bakery and deli", a "meat market", a
+       yogurt maker: the claim a shelf pick makes is about goods carried
+       home, B.2.) This
        is a **FACT ask**: a pick asserts only fit with the property and
        carries NO testimony — nothing emits, not a carrier and not the food
        the ask happened to name ("Rosa's — opens at 6:30 and can def do
@@ -353,7 +360,9 @@ The writer vouches from experience, or reports a clear consensus:
        problem") or emphatic fit ("I guarantee Nomad Bar is the place!"
        under a rent-a-space ask, "perfect for this") — endorses the
        capability, not the food, and emits nothing (an unscoped or
-       food-scoped verdict stays A.1's vouch as ever).
+       food-scoped verdict stays A.1's vouch — which then walks B.2 like
+       every vouch: praise of a tub-producer under a shelf errand passes
+       A and dies at the MAKER TEST).
      An ask that names FOOD THE ASKER WANTS TO EAT is never a fact ask,
      however procurement-shaped its words ("who has espresso buns?",
      "Spumoni??? Where can it be found????", "who still does potato
@@ -431,9 +440,12 @@ The writer vouches from experience, or reports a clear consensus:
   name is the ANSWER TEST's pick instead.) Under a parent that PANS ("+1 on
   Launderette… no taste in the food") it seconds the pan and emits nothing
   positive. Resolve the referent by the depth-aware order to the nearest
-  source that actually NAMES the subject, however many levels up — an
-  intermediate reply that itself emitted nothing (a hearsay comment) is not
-  the referent and blocks nothing; an ambiguous referent credits nothing.
+  source that actually NAMES the subject, however many levels up — ONE
+  algorithm, everywhere: naming decides the referent; whether the
+  adopted claim then EMITS is a separate question, answered by running
+  the parent's claim through Steps A–C as ever (an affirmation under a
+  hearsay parent adopts hearsay, and hearsay emits nothing); an
+  ambiguous referent credits nothing.
   **A bare verdict with an unstated subject is the same move**: "God it's so
   good", "obsessed" under a parent describing one unambiguous place adopts
   that referent. The adoption reproduces the parent's endorsement in THIS
@@ -753,10 +765,11 @@ resolution happens downstream. But when the writer disclaims the name itself
 ("some place called Ravi's or whatever it's called"), the reference is too
 uncertain to carry: skip it.
 
-Resolve references (pronouns, deictics, definites, ellipsis) to the nearest
-viable anchor. A comment with no explicit name may inherit an anchor from
-surrounding in-scope text. **If no anchor survives, or two anchors remain
-equally likely, stop — never carry ambiguity forward.**
+Resolve references (pronouns, deictics, definites, ellipsis) by THE
+depth-aware order (the preamble's one algorithm — there is no second
+resolution rule) to the nearest source that names an anchor. **If no
+anchor survives, or two anchors remain equally likely, stop — never
+carry ambiguity forward.**
 
 **Oblique reference is not ambiguity.** Ambiguity means TWO DIFFERENT
 candidate establishments remain equally likely — never one establishment
@@ -1100,7 +1113,8 @@ combo`, "the Hangover Special" → `hangover special`; the article stays
   you order — however warmly praised ("their brunch is the best in
   town" praises the place at brunch; a praised lunch buffet — and any
   verdict adopting it — yields a restaurant-only carrier for the place
-  as written, never a `buffet` dish). The occasion lands as a
+  as written, never a `buffet` dish; F.1's carrier test owns the
+  carrier decision and says the same). The occasion lands as a
   `place_attributes` entry per Step D ("great happy hour", "brunch");
   the mention is restaurant-only unless a real dish is also named.
 - **SITS INSIDE the offering → part, never a dish.** "Your choice of
@@ -1125,9 +1139,9 @@ combo`, "the Hangover Special" → `hangover special`; the article stays
 **Gate 2 — THE ORDER TEST.** _Could you say this to a server as the thing
 you want to order?_ Anything orderable is a dish, drinks included — an
 espresso or a cocktail exactly like a taco. **And it must still EXIST — run B.1's STATUS TEST for this DISH**, once
-per dish per post object: availability language anywhere in scope
-("used to have/make/serve", "took it off the menu", "RIP the shake", a
-one-time bygone offering) marks the dish DEAD and no clause about it
+per dish per post object: B.1's ending inventory (ITS list is the one
+list), read at the dish grain as availability language, marks the dish
+DEAD and no clause about it
 emits — not a live dish, not a place carrier; the restaurant itself is
 untouched, and the same source's LIVE food emits normally. A dish the
 text places in the present — "has", "serves", "still on the menu", an
@@ -1157,10 +1171,9 @@ C.2. Food language in a clause that earned nothing — a price complaint
 could happily get one for $10 at NG Cafe" — the named item is priced
 and complained about, never vouched, and births no dish at the
 complained-about place however specifically it is named; and the
-cheaper alternative is a VALUE yardstick, not an eaten account —
-"could happily get" is subjunctive terms-quoting, so the alternative
-place may earn `affordable` at most, per A.3's failed-against law in
-the value domain, and its banh mi is priced, not vouched: no dish on
+cheaper alternative is a subjunctive benchmark — A.3's asymmetry, which
+licenses ONLY eaten-experience benchmarks: `affordable` at most for the
+alternative, and its banh mi is priced, not vouched — no dish on
 EITHER side), a pan ("no flavor at all"), an UNPROMPTED deal or
 availability aside ("half off oysters on Wednesdays" dropped
 mid-story — a source VOLUNTEERED to a thread that wants the thing
@@ -1188,8 +1201,10 @@ UNQUALIFIED PICK** — a source that passes the TESTIMONY TEST while
 answering a dish-targeted ask (by bare name or with its own verdict
 words, "Desano and Homeslice are all great"), and whose own text neither
 names food nor hedges/re-scopes the pick — inherits the ASK's food
-language: the ask's dish PHRASE, as the asker
-composed it, walks these same gates, C.2, and Step D exactly as if this
+language: EVERY dish phrase the ask composed — an either/or ask ("best
+phở or bún bò Huế?") bequeaths each named dish, never a forced choice —
+each phrase, as the asker
+composed it, walking these same gates, C.2, and Step D exactly as if this
 source had written it — "best burger in EV?" → `burger`; "crispy
 shoestring fries?" → `shoestring fry` with `crispy` peeling into
 `item_attributes` by D's normal tests; and in the asker's own spelling
@@ -1369,11 +1384,18 @@ the depth-aware order**: a pick replying to an intermediate comment
 (a clarifying question, a sub-thread) still answers the post's ask and
 inherits its constraint words, unless the intermediate comment
 re-framed the question into a different one. **FIT IS A QUOTATION, NEVER
-A PARAPHRASE**: a fit-asserted word is a word the ASK WROTE (or its
-canonical spelling, D.5). A constraint you INFER from the ask's situation
-asserts nothing — "My parents (in their late 50s) are visiting … suggest
-places" writes no `family-friendly`, and a pick under it carries none;
-"my sister is vegan" writes `vegan`, and a pick under it carries it. **A
+A PARAPHRASE — with quotation's ONE exception everywhere: mechanical
+canonicalization.** A fit-asserted word is a word the ASK WROTE, folded
+to its one canonical spelling exactly as D.5 folds any stated word —
+"won't break the bank", "cheap", "good value" are the ask's OWN value
+words and fold to `affordable`; "ambiance" folds to `atmosphere`
+wording. What canonicalization NEVER licenses is semantic inference
+from the ask's SITUATION — "My parents (in their late 50s) are
+visiting … suggest places" writes no `family-friendly`, and a pick
+under it carries none; "my sister is vegan" writes `vegan`, and a pick
+under it carries it. Folding a written word to its canonical form is
+transcription; deriving an unwritten word from circumstances is
+invention. **A
 deal answered to a value-seeking ask is A.2's posture rule, not a fit
 assertion**: recommended → its identified dish plus `affordable`; reported
 → nothing. **Blocking is PER WORD**: a re-scoping annotation or a pushback
@@ -1478,9 +1500,10 @@ Two consequences follow directly:
 - **A CONTEXT-STRIPPED FRAGMENT IS NEVER A PROPERTY.** "medium", "regular",
   "classic service", "frozen", "sat only" — if you cannot say what it filters
   by without guessing, drop it.
-- **When a word is part of the order-name, it already rode into `item` in Step
-  C** and must not also appear as an attribute. "classic banh mi" on a menu is
-  a dish name, not a dish plus a property.
+- **THE NO-DOUBLE-RIDE RULE: when a word is part of the order-name, it
+  already rode into `item` in Step C** and must not also appear as an
+  attribute. "classic banh mi" on a menu is a dish name, not a dish plus
+  a property. (Dietary words are its one licensed exception — D.4.)
 
 ### D.3 Other things that are not attributes
 
@@ -1723,10 +1746,11 @@ the decision procedure; no example outweighs it.**
 SUBSTITUTE for one.** A review that loves the appetizers and the
 service emits those parts (the dishes, `great service`) and no carrier
 — summing parts into an endorsement the writer never stated invents a
-claim. The Yamas shape fails at step 2, not by part-counting: its one
-whole-visit clause ("entrees borderline inedible" as the verdict on the
-meal) is NEGATIVE, so no carrier, while its praised apps and `great
-service` still emit. And a dishless recommended DEAL fails at step 1:
+claim. A review whose one whole-visit clause is negative fails at step
+2, not by part-counting: "apps were fantastic, service lovely — but the
+entrees were borderline inedible" judges the MEAL on its landing clause,
+NEGATIVE, so no carrier, while the praised apps and `great service`
+still emit. And a dishless recommended DEAL fails at step 1:
 the clause's subject is the deal, so no place-subject clause exists —
 `affordable` records the endorsement (F.1's deal consequence below is
 this test, not a separate rule).
