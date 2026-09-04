@@ -538,18 +538,15 @@ const getLocalTimeContext = (
     }
   }
 
-  const offset = extractUtcOffset(metadata);
-  if (offset !== null) {
-    const adjusted = new Date(referenceDate.getTime() + offset * 60 * 1000);
-    const dayKey = DAY_KEYS[adjusted.getUTCDay()];
-    const minutes = adjusted.getUTCHours() * 60 + adjusted.getUTCMinutes();
-    return {
-      dayKey,
-      minutes,
-      timezoneApplied: false,
-    };
-  }
-
+  // ONE TIME CONTEXT, SHARED WITH SQL (open-now parity, 2026-09-04). The
+  // filter predicate judges openness as `now() AT TIME ZONE time_zone`, so a
+  // location with no IANA zone has NO openness there — its interval rows are
+  // never built (deriveOpenIntervalRows). This evaluator used to fall back
+  // to the DST-naive utc_offset_minutes and say "open", so 27 local-corpus
+  // locations with coordinates but no stored zone read OPEN on the panel and
+  // CLOSED to the filter at the same instant. The offset is data the
+  // normalizer still carries (utcOffsetMinutes below); it is not a context
+  // either reader may judge in. No zone → no claim, in both languages.
   return null;
 };
 

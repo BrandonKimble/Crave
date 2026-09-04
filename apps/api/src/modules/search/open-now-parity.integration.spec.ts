@@ -1,9 +1,9 @@
 import { PrismaClient } from '@prisma/client';
 import {
   buildOperatingMetadataFromLocation,
-  buildStructuredWeeklyHours,
   evaluateOperatingStatus,
 } from './utils/restaurant-status';
+import { deriveOpenIntervalRows } from './open-intervals-builder.service';
 
 /**
  * H8 — OPEN-NOW TWO-MECHANISM PARITY, AS A CHECKED PROPERTY.
@@ -69,42 +69,32 @@ beforeAll(async () => {
       timeZone: 'America/Chicago',
     },
   });
-  const metadata = buildOperatingMetadataFromLocation(
-    SEED_HOURS,
-    null,
-    'America/Chicago',
-  );
-  const weekly = buildStructuredWeeklyHours(metadata, null);
-  if (!weekly) {
+  const rows = deriveOpenIntervalRows({
+    location_id: location.locationId,
+    hours: SEED_HOURS,
+    utc_offset_minutes: null,
+    time_zone: 'America/Chicago',
+  });
+  if (!rows || rows.length === 0) {
     throw new Error('seed hours failed to parse — the witness cannot exist');
   }
-  const rows: Array<{ dow: number; startMin: number; endMin: number }> = [];
-  weekly.days.forEach((day, dayIndex) => {
-    for (const interval of day.intervals) {
-      if (interval.end <= interval.start) continue;
-      if (interval.end <= 1440) {
-        rows.push({
-          dow: dayIndex,
-          startMin: interval.start,
-          endMin: interval.end,
-        });
-      } else {
-        rows.push({ dow: dayIndex, startMin: interval.start, endMin: 1440 });
-        rows.push({
-          dow: (dayIndex + 1) % 7,
-          startMin: 0,
-          endMin: interval.end - 1440,
-        });
-      }
-    }
-  });
   for (const row of rows) {
     await prisma.$executeRaw`
       INSERT INTO derived_location_open_intervals (location_id, dow, start_min, end_min)
-      VALUES (${location.locationId}::uuid, ${row.dow}, ${row.startMin}, ${row.endMin})
+      VALUES (${row.locationId}::uuid, ${row.dow}, ${row.startMin}, ${row.endMin})
       ON CONFLICT DO NOTHING
     `;
   }
+  // THE ZONE-LESS WITNESS: hours and a DST-naive offset, no IANA zone, no
+  // coordinates the backfill could place. Under the one law it earns no
+  // interval rows and no evaluator status — both readers say nothing.
+  await prisma.placeLocation.create({
+    data: {
+      placeId: SEED_ENTITY_ID,
+      hours: SEED_HOURS,
+      utcOffsetMinutes: -300,
+    },
+  });
 });
 
 afterAll(async () => {
@@ -203,5 +193,36 @@ describe('open-now SQL predicate ↔ JS evaluator parity (H8)', () => {
         ),
     );
     expect(unevaluable.map((l) => l.location_id)).toEqual([]);
+  });
+
+  it('a location with no IANA zone earns no interval rows and no evaluator status (one law, both readers)', async () => {
+    // MUTATIONS this pins: let deriveOpenIntervalRows build rows from the
+    // offset (first assertion REDs); restore the evaluator's utc-offset
+    // fallback (second assertion REDs). Either mutation alone recreates the
+    // "open on the panel, closed to the filter" split.
+    const witness = await prisma.placeLocation.findFirstOrThrow({
+      where: { placeId: SEED_ENTITY_ID, timeZone: null },
+    });
+    expect(
+      deriveOpenIntervalRows({
+        location_id: witness.locationId,
+        hours: witness.hours,
+        utc_offset_minutes: -300,
+        time_zone: null,
+      }),
+    ).toBeNull();
+    const metadata = buildOperatingMetadataFromLocation(
+      witness.hours,
+      -300,
+      null,
+    );
+    expect(metadata).not.toBeNull();
+    for (const h of [0, 6, 12, 18]) {
+      const status = evaluateOperatingStatus(
+        metadata,
+        new Date(Date.now() + h * 3600_000),
+      );
+      expect(status).toBeNull();
+    }
   });
 });

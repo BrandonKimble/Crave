@@ -25,6 +25,77 @@ import {
  * the IANA zone (backfilled from lat/lng; utc_offset_minutes was
  * DST-naive by construction).
  */
+export type OpenIntervalRow = {
+  locationId: string;
+  dow: number;
+  startMin: number;
+  endMin: number;
+};
+
+/**
+ * THE ONE OPEN-NOW LAW, as data (parity rederivation, 2026-09-04).
+ *
+ * The filter predicate judges openness as `now() AT TIME ZONE time_zone`;
+ * the JS evaluator judges it in the same IANA zone and nothing else. So a
+ * location earns interval rows ONLY when it has a zone: no zone → null
+ * (no rows, and the evaluator returns no status either — the two readers
+ * cannot diverge because neither claims anything). The zone is resolved
+ * from coordinates by the rebuild's backfill BEFORE this runs; a location
+ * with hours, coordinates the backfill could not place, or no coordinates
+ * at all, stays claimless rather than "open" on the panel and "closed" to
+ * the filter (the 27-location local-corpus split this replaced).
+ *
+ * Returns null for "no zone", [] for "zone but no parseable hours". Both
+ * readers and the parity spec derive through this one function.
+ */
+export function deriveOpenIntervalRows(location: {
+  location_id: string;
+  hours: unknown;
+  utc_offset_minutes: number | null;
+  time_zone: string | null;
+}): OpenIntervalRow[] | null {
+  if (typeof location.time_zone !== 'string' || !location.time_zone.trim()) {
+    return null;
+  }
+  const metadata = buildOperatingMetadataFromLocation(
+    location.hours,
+    location.utc_offset_minutes,
+    location.time_zone,
+  );
+  if (!metadata) return [];
+  const weekly = buildStructuredWeeklyHours(metadata, null);
+  if (!weekly) return [];
+  const rows: OpenIntervalRow[] = [];
+  weekly.days.forEach((day, dayIndex) => {
+    for (const interval of day.intervals) {
+      if (interval.end <= interval.start) continue;
+      if (interval.end <= 1440) {
+        rows.push({
+          locationId: location.location_id,
+          dow: dayIndex,
+          startMin: interval.start,
+          endMin: interval.end,
+        });
+      } else {
+        // Midnight-crossing: split across the day boundary.
+        rows.push({
+          locationId: location.location_id,
+          dow: dayIndex,
+          startMin: interval.start,
+          endMin: 1440,
+        });
+        rows.push({
+          locationId: location.location_id,
+          dow: (dayIndex + 1) % 7,
+          startMin: 0,
+          endMin: interval.end - 1440,
+        });
+      }
+    }
+  });
+  return rows;
+}
+
 @Injectable()
 export class OpenIntervalsBuilderService extends DerivedIndexJob {
   protected readonly logger: LoggerService;
@@ -98,54 +169,26 @@ export class OpenIntervalsBuilderService extends DerivedIndexJob {
       >`SELECT location_id, hours, utc_offset_minutes, time_zone
         FROM core_restaurant_locations WHERE hours IS NOT NULL`;
 
-      type Row = {
-        locationId: string;
-        dow: number;
-        startMin: number;
-        endMin: number;
-      };
-      const rows: Row[] = [];
+      const rows: OpenIntervalRow[] = [];
+      let skippedWithoutZone = 0;
       for (const location of locations) {
-        const metadata = buildOperatingMetadataFromLocation(
-          location.hours,
-          location.utc_offset_minutes,
-          location.time_zone,
+        const derived = deriveOpenIntervalRows(location);
+        if (derived === null) {
+          skippedWithoutZone += 1;
+          continue;
+        }
+        rows.push(...derived);
+      }
+      if (skippedWithoutZone) {
+        this.logger.warn(
+          'Locations with hours but no resolvable IANA zone carry no open-now rows',
+          { locations: skippedWithoutZone },
         );
-        if (!metadata) continue;
-        const weekly = buildStructuredWeeklyHours(metadata, null);
-        if (!weekly) continue;
-        weekly.days.forEach((day, dayIndex) => {
-          for (const interval of day.intervals) {
-            if (interval.end <= interval.start) continue;
-            if (interval.end <= 1440) {
-              rows.push({
-                locationId: location.location_id,
-                dow: dayIndex,
-                startMin: interval.start,
-                endMin: interval.end,
-              });
-            } else {
-              // Midnight-crossing: split across the day boundary.
-              rows.push({
-                locationId: location.location_id,
-                dow: dayIndex,
-                startMin: interval.start,
-                endMin: 1440,
-              });
-              rows.push({
-                locationId: location.location_id,
-                dow: (dayIndex + 1) % 7,
-                startMin: 0,
-                endMin: interval.end - 1440,
-              });
-            }
-          }
-        });
       }
 
       // Same (location, dow, start) can arise from a split colliding with a
       // real early interval — keep the wider end.
-      const byKey = new Map<string, Row>();
+      const byKey = new Map<string, OpenIntervalRow>();
       for (const row of rows) {
         const key = `${row.locationId}:${row.dow}:${row.startMin}`;
         const existing = byKey.get(key);

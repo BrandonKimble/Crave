@@ -117,19 +117,24 @@ describe('the iteration bench state machine', () => {
     expect(sheetHash).toBeDefined();
     await bench.approve(runId, sheetHash as string);
     // Fixture: the meter claims real month spend the priced ledger cannot
-    // back (granted=424242 marks the row as this spec's).
+    // back (granted=424242 marks the row as this spec's). The poison is
+    // $100,000 (1e11 micros), not $350: the gate's signature is RELATIVE
+    // (|meter − ledger| > half the larger), and a dev corpus whose real
+    // ledger this month already prices near $350 made the old absolute
+    // poison land INSIDE the tolerance — the spec went red on the laptop
+    // for data-state, not for a regression (found 2026-09-04).
     await prisma.$executeRawUnsafe(
       `INSERT INTO pool_window_consumption (pool_name, window_key, consumed, granted, updated_at)
-       VALUES ('gemini.monthlySpend', to_char(now(), 'YYYY-MM'), 350000000, 424242, now())
+       VALUES ('gemini.monthlySpend', to_char(now(), 'YYYY-MM'), 100000000000, 424242, now())
        ON CONFLICT (pool_name, window_key)
-       DO UPDATE SET consumed = pool_window_consumption.consumed + 350000000, granted = 424242`,
+       DO UPDATE SET consumed = pool_window_consumption.consumed + 100000000000, granted = 424242`,
     );
     const red = await bench.preflight(runId);
     expect(red.green).toBe(false);
     expect(red.refusals.join(' ')).toMatch(/meter disagrees/);
     // Remove the poison → the meter gate clears.
     await prisma.$executeRawUnsafe(
-      `UPDATE pool_window_consumption SET consumed = consumed - 350000000
+      `UPDATE pool_window_consumption SET consumed = consumed - 100000000000
        WHERE pool_name='gemini.monthlySpend' AND window_key=to_char(now(),'YYYY-MM') AND granted=424242`,
     );
     const after = await bench.preflight(runId);
