@@ -1,5 +1,7 @@
 import { Injectable, Inject, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { foldRecoveryRunIntoShadow } from './extraction-scope.service';
+import { runInWorkContext } from '../../external-integrations/shared/work-context';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import {
@@ -303,6 +305,32 @@ export class ReplayService implements OnModuleInit {
     stillRefusedRows: number;
     recoveryRunIds: string[];
   }> {
+    // THE SERVICE OWNS ITS ATTRIBUTION (red team 2026-09-04 T1-5). The two
+    // scripts that call this ran it bare, so every judge/embedding call the
+    // rehearsal resolver made inside the recovery landed in the ledger with
+    // no campaign — never breaching the envelope the owner approved. The
+    // one entry point that knows the campaign establishes the context; no
+    // caller can forget it.
+    return runInWorkContext(
+      {
+        campaignId: params.campaignId,
+        label: `replay:banked-refusals:${params.campaignId}`,
+      },
+      () => this.recoverBankedRefusalsInner(params),
+    );
+  }
+
+  private async recoverBankedRefusalsInner(params: {
+    campaignId: string;
+  }): Promise<{
+    campaignId: string;
+    bankedRows: number;
+    runsProcessed: number;
+    runsSkipped: number;
+    recoveredRows: number;
+    stillRefusedRows: number;
+    recoveryRunIds: string[];
+  }> {
     const bankedRows =
       await this.prismaService.extractionContractRefusal.findMany({
         where: {
@@ -547,12 +575,22 @@ export class ReplayService implements OnModuleInit {
       summary.recoveredRows += recoveredIds.length;
       summary.runsProcessed += 1;
 
+      // RECOVERED EVIDENCE IS THE SHADOW'S EVIDENCE (red team 2026-09-04
+      // T1-2): fold R's products onto S so activation — which plans by
+      // document ownership and flips by born run — carries them. Left
+      // keyed to R they were dark forever (75 runs / 2,122 events on
+      // staging) while the diff still counted them.
+      const folded = await this.prismaService.$transaction((tx) =>
+        foldRecoveryRunIntoShadow(tx, sourceRunId, recoveryRunId),
+      );
+
       this.logger.info('Banked-refusal recovery run reconciled', {
         sourceRunId,
         recoveryRunId,
         banked: runRows.length,
         recovered: recoveredIds.length,
         stillRefused: runRows.length - recoveredIds.length,
+        foldedIntoShadow: folded,
       });
     }
 

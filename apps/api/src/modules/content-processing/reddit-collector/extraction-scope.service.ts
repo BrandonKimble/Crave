@@ -74,6 +74,17 @@ export class ExtractionScopeService {
    * after a pointer flip, this IS the projection-rebuild set (both event
    * ledgers, same D7 reasoning as affectedPlacesForDocuments).
    */
+  /** How many documents currently point at this run — "is the shadow live
+   *  anywhere yet" for callers that must rebuild projections after folding
+   *  evidence onto it (fold-recovery-runs). The pointer has one owner. */
+  async activeDocumentCountForRun(runId: string): Promise<number> {
+    const rows = await this.prisma.$queryRaw<Array<{ n: bigint }>>(
+      Prisma.sql`SELECT count(*) AS n FROM collection_source_documents d
+                  WHERE d.active_extraction_run_id = ${runId}::uuid`,
+    );
+    return Number(rows[0]?.n ?? 0);
+  }
+
   async activePlacesForPromptHash(
     promptHash: string,
     communities: string[],
@@ -398,6 +409,97 @@ export async function supersedeAndActivate(
   });
   await flip();
   return losingIds;
+}
+
+/**
+ * FOLD A RECOVERY RUN INTO THE SHADOW IT RECOVERS FOR (red team
+ * 2026-09-04 T1-2).
+ *
+ * Banked-refusal recovery re-ingests a shadow run S's refused mentions
+ * under a NEW run R (`replayOfExtractionRunId = S`, rehearsal). Activation
+ * plans by document ownership, and `documentsOwnedByRun(R)` requires the
+ * document to be ACTIVE ON `replayOf` — i.e. on S — which is never true
+ * before activation (docs point at the original run) and after activation
+ * the document points at S while R's events are keyed to R. So R owned
+ * zero documents in every plan, its entities never flipped out of
+ * rehearsal, and every reader's `active_extraction_run_id =
+ * ev.extraction_run_id` predicate hid its events forever — measured on
+ * staging: 75 recovery runs, 2,122 events, 0 active. Meanwhile
+ * `shadowRunsFor` counted them in the diff the owner approved.
+ *
+ * ONE ACTIVE RUN PER DOCUMENT is the invariant, and recovered evidence is
+ * S's evidence: it was S's contract, S's inputs, S's refusals. So the
+ * recovery run's products are re-keyed onto S the moment R completes —
+ * events, minted entities and surfaces (born run), and the rehearsal-scoped
+ * verdicts R bought — and R stays as the governance record (its inputs and
+ * its own refusal rows). A recovered mention that duplicates an event S
+ * already holds (the same document/restaurant/entity/type — e.g. a second
+ * recovery pass) is redundant and dropped, never a unique-key crash.
+ */
+export async function foldRecoveryRunIntoShadow(
+  tx: Prisma.TransactionClient,
+  shadowRunId: string,
+  recoveryRunId: string,
+): Promise<{
+  entityEvents: number;
+  placeEvents: number;
+  duplicatesDropped: number;
+  entities: number;
+  surfaces: number;
+  verdicts: number;
+}> {
+  const shadow = shadowRunId;
+  const recovery = recoveryRunId;
+  const dupEntity = await tx.$executeRaw`
+    DELETE FROM core_restaurant_entity_events r
+     USING core_restaurant_entity_events s
+     WHERE r.extraction_run_id = ${recovery}::uuid
+       AND s.extraction_run_id = ${shadow}::uuid
+       AND s.source_document_id = r.source_document_id
+       AND s.restaurant_id = r.restaurant_id
+       AND s.entity_id = r.entity_id
+       AND s.evidence_type = r.evidence_type`;
+  const dupPlace = await tx.$executeRaw`
+    DELETE FROM core_restaurant_events r
+     USING core_restaurant_events s
+     WHERE r.extraction_run_id = ${recovery}::uuid
+       AND s.extraction_run_id = ${shadow}::uuid
+       AND s.source_document_id = r.source_document_id
+       AND s.restaurant_id = r.restaurant_id
+       AND s.evidence_type = r.evidence_type`;
+  const entityEvents = await tx.$executeRaw`
+    UPDATE core_restaurant_entity_events
+       SET extraction_run_id = ${shadow}::uuid
+     WHERE extraction_run_id = ${recovery}::uuid`;
+  const placeEvents = await tx.$executeRaw`
+    UPDATE core_restaurant_events
+       SET extraction_run_id = ${shadow}::uuid
+     WHERE extraction_run_id = ${recovery}::uuid`;
+  const entities = await tx.$executeRaw`
+    UPDATE core_entities
+       SET born_extraction_run_id = ${shadow}::uuid
+     WHERE born_extraction_run_id = ${recovery}::uuid`;
+  const surfaces = await tx.$executeRaw`
+    UPDATE entity_surface
+       SET born_extraction_run_id = ${shadow}::uuid
+     WHERE born_extraction_run_id = ${recovery}::uuid`;
+  const verdicts = await tx.$executeRaw`
+    UPDATE claim_verdicts
+       SET source = ${`rehearsal:${shadow}`}
+     WHERE source = ${`rehearsal:${recovery}`}`;
+  await tx.$executeRaw`
+    UPDATE collection_extraction_runs
+       SET metadata = coalesce(metadata, '{}'::jsonb)
+                      || jsonb_build_object('foldedIntoExtractionRunId', ${shadow}::text)
+     WHERE extraction_run_id = ${recovery}::uuid`;
+  return {
+    entityEvents,
+    placeEvents,
+    duplicatesDropped: dupEntity + dupPlace,
+    entities,
+    surfaces,
+    verdicts,
+  };
 }
 
 /**
