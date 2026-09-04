@@ -1089,10 +1089,29 @@ export class SpendCampaignService implements OnModuleInit, OnModuleDestroy {
    * expressed by the caller choosing to invoke this at all (mirrors the
    * operator-script gate's "explicit flag carrying the estimate's hash").
    */
-  async resumeAfterBreach(
-    campaignId: string,
-    newEstimateHash: string,
-  ): Promise<PreparedEstimate> {
+  /**
+   * THE ONE RESUME QUOTE (red team 2026-09-04 G-2). The service and
+   * scripts/resume-campaign.ts each re-derived the refined estimate — the
+   * service from the extraction-only class rate with the row-derived
+   * tolerance, the script from an in-memory drift that is null in a fresh
+   * process — so for a MANIFEST campaign (all-in estimate stored on an
+   * extraction-class row) the script's hash never matched the service's
+   * and resume always failed StaleEstimateHash; had it matched, the
+   * refined envelope (extraction-only) sat below spent_micros and the first
+   * recordSpend re-breached instantly. Now: one function, and a resumed
+   * envelope is FLOORED at what has already been spent — a resume can
+   * never re-breach on money already gone.
+   */
+  async quoteResume(campaignId: string): Promise<{
+    campaignId: string;
+    unitCount: number;
+    microUsdPerUnit: number;
+    estimateMicros: number;
+    spentMicros: number;
+    toleranceFraction: number;
+    envelopeMicros: number;
+    estimateHash: string;
+  }> {
     const row = await this.prisma.spendCampaign.findUnique({
       where: { campaignId },
     });
@@ -1105,22 +1124,67 @@ export class SpendCampaignService implements OnModuleInit, OnModuleDestroy {
         `cannot resume from state '${row.state}' (expected 'breached')`,
       );
     }
-    const rate = await this.prisma.spendUnitCost.findUnique({
-      where: { workClass_unit: { workClass: row.workClass, unit: row.unit } },
-    });
-    if (!rate) {
-      throw new NoPublishedRateError(row.workClass, row.unit);
+    // The per-unit rate the campaign was APPROVED at (for a manifest row
+    // this is the all-in per-document rate) — never the bare class rate,
+    // which for a manifest quotes only the extraction line.
+    let microUsdPerUnit = row.microUsdPerUnit ?? null;
+    if (microUsdPerUnit === null) {
+      const rate = await this.prisma.spendUnitCost.findUnique({
+        where: {
+          workClass_unit: { workClass: row.workClass, unit: row.unit },
+        },
+      });
+      if (!rate) {
+        throw new NoPublishedRateError(row.workClass, row.unit);
+      }
+      microUsdPerUnit = rate.microUsdPerUnit;
     }
-    const estimateMicros = Math.round(row.unitCount * rate.microUsdPerUnit);
+    const spentMicros = Number(row.spentMicros ?? 0);
+    const estimateMicros = Math.max(
+      Math.round(row.unitCount * microUsdPerUnit),
+      spentMicros,
+    );
     const toleranceFraction = await this.deriveTolerance(row.workClass);
     const estimateHash = hashEstimate({
       workClass: row.workClass,
       unit: row.unit,
       unitCount: row.unitCount,
-      microUsdPerUnit: rate.microUsdPerUnit,
+      microUsdPerUnit,
       estimateMicros,
       toleranceFraction,
     });
+    return {
+      campaignId,
+      unitCount: row.unitCount,
+      microUsdPerUnit,
+      estimateMicros,
+      spentMicros,
+      toleranceFraction,
+      envelopeMicros: Math.round(estimateMicros * (1 + toleranceFraction)),
+      estimateHash,
+    };
+  }
+
+  /**
+   * §24.1(e): resumable after owner re-approval WITH the refined estimate.
+   * The CALLER's newEstimateHash must match quoteResume()'s freshly
+   * recomputed hash (never a stale one); the campaign grant is topped up
+   * to the refined envelope and the campaign reopened. Owner intent is
+   * expressed by the caller choosing to invoke this at all.
+   */
+  async resumeAfterBreach(
+    campaignId: string,
+    newEstimateHash: string,
+  ): Promise<PreparedEstimate> {
+    const quote = await this.quoteResume(campaignId);
+    const { estimateMicros, toleranceFraction, estimateHash } = quote;
+    const rate = { microUsdPerUnit: quote.microUsdPerUnit };
+    const row = await this.prisma.spendCampaign.findUnique({
+      where: { campaignId },
+    });
+    if (!row) {
+      throw new CampaignNotFoundError(campaignId);
+    }
     if (estimateHash !== newEstimateHash) {
       throw new StaleEstimateHashError(campaignId);
     }

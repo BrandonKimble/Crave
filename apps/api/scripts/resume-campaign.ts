@@ -35,12 +35,7 @@ dotenv.config({ path: path.join(__dirname, '..', '.env') });
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
-import { GovernanceService } from '../src/modules/external-integrations/governance/governance.service';
-import {
-  ENVELOPE_BOOTSTRAP_TOLERANCE,
-  hashEstimate,
-  SpendCampaignService,
-} from '../src/modules/external-integrations/shared/spend-campaign.service';
+import { SpendCampaignService } from '../src/modules/external-integrations/shared/spend-campaign.service';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 function argValue(flag: string): string | undefined {
@@ -70,7 +65,6 @@ async function resumeCampaign() {
 
     const prisma = app.get(PrismaService);
     const spendCampaigns = app.get(SpendCampaignService);
-    const governance = app.get(GovernanceService);
 
     const row = await prisma.spendCampaign.findUnique({
       where: { campaignId },
@@ -88,44 +82,23 @@ async function resumeCampaign() {
     });
 
     if (!providedHash) {
-      // Step 1: print the refined estimate + hash (same recomputation
-      // resumeAfterBreach performs — rate lookup + drift-derived tolerance).
-      const rate = await prisma.spendUnitCost.findUnique({
-        where: {
-          workClass_unit: { workClass: row.workClass, unit: row.unit },
-        },
-      });
-      if (!rate) {
-        throw new Error(
-          `No published rate for ${row.workClass}::${row.unit} — run the ` +
-            'pilot/rate publication first',
-        );
-      }
-      const estimateMicros = Math.round(row.unitCount * rate.microUsdPerUnit);
-      const drift = governance.pools.measureDrift(row.workClass);
-      const toleranceFraction =
-        drift === null
-          ? ENVELOPE_BOOTSTRAP_TOLERANCE
-          : Math.max(Math.abs(drift - 1), ENVELOPE_BOOTSTRAP_TOLERANCE);
-      const estimateHash = hashEstimate({
-        workClass: row.workClass,
-        unit: row.unit,
-        unitCount: row.unitCount,
-        microUsdPerUnit: rate.microUsdPerUnit,
-        estimateMicros,
-        toleranceFraction,
-      });
+      // Step 1: print the refined estimate + hash. ONE quote — the service's
+      // own (red team 2026-09-04 G-2): this script used to re-derive it
+      // with an in-memory drift that is null in a fresh process, so its
+      // hash never matched what resumeAfterBreach verified.
+      const quote = await spendCampaigns.quoteResume(campaignId);
       console.log('\n📄 Refined estimate (campaign stays breached):', {
-        unitCount: row.unitCount,
-        microUsdPerUnit: rate.microUsdPerUnit,
-        estimateUsd: (estimateMicros / 1_000_000).toFixed(2),
-        toleranceFraction,
-        envelopeUsd: (
-          Math.round(estimateMicros * (1 + toleranceFraction)) / 1_000_000
-        ).toFixed(2),
-        estimateHash,
+        unitCount: quote.unitCount,
+        microUsdPerUnit: quote.microUsdPerUnit,
+        spentUsd: (quote.spentMicros / 1_000_000).toFixed(2),
+        estimateUsd: (quote.estimateMicros / 1_000_000).toFixed(2),
+        toleranceFraction: quote.toleranceFraction,
+        envelopeUsd: (quote.envelopeMicros / 1_000_000).toFixed(2),
+        estimateHash: quote.estimateHash,
       });
-      console.log('\nTo approve, re-run with: --estimate-hash ' + estimateHash);
+      console.log(
+        '\nTo approve, re-run with: --estimate-hash ' + quote.estimateHash,
+      );
       return;
     }
 

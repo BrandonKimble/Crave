@@ -731,22 +731,14 @@ describe('SpendCampaignService.prepareManifestEstimate (§24.3 v2 all-in manifes
       buildOpsAlerts().mock,
       buildGovernance(),
     );
-    const rate = 10;
-    const estimateMicros = Math.round(100 * rate);
+    // ONE quote (G-2): the hash the fresh service verifies is the one it
+    // computes — and it is floored at the 5000 already spent, not the 1000
+    // the class rate alone would re-quote.
+    const quote = await freshService.quoteResume(estimate.campaignId);
+    expect(quote.estimateMicros).toBe(5000);
     const resumed = await freshService.resumeAfterBreach(
       estimate.campaignId,
-      // hash the fresh service will recompute (bootstrap tolerance 0.25)
-      await (async () => {
-        const { hashEstimate } = await import('./spend-campaign.service');
-        return hashEstimate({
-          workClass: 'gemini.reddit_extraction',
-          unit: 'document',
-          unitCount: 100,
-          microUsdPerUnit: rate,
-          estimateMicros,
-          toleranceFraction: 0.25,
-        });
-      })(),
+      quote.estimateHash,
     );
     expect(resumed.campaignId).toBe(estimate.campaignId);
     expect(prisma._campaigns.get(estimate.campaignId)?.state).toBe('approved');
@@ -802,6 +794,47 @@ describe('SpendCampaignService lifecycle chokepoint (2026-08-12)', () => {
       CampaignStateError,
     );
     expect(prisma._campaigns.get(campaignId)!.state).toBe('breached');
+  });
+
+  it('quoteResume floors the refined estimate at what was already spent, and resume with its hash reopens without re-breaching (G-2)', async () => {
+    const prisma = buildPrisma();
+    prisma._unitCosts.set('gemini.reddit_extraction::document', {
+      microUsdPerUnit: 10,
+    });
+    const service = new SpendCampaignService(
+      prisma as never,
+      stubLogger() as never,
+      buildOpsAlerts().mock,
+      buildGovernance(),
+    );
+    const estimate = await service.prepareEstimate({
+      name: 'archive:resume',
+      workClass: 'gemini.reddit_extraction',
+      unit: 'document',
+      unitCount: 100, // estimate 1000; envelope 1250
+    });
+    await service.approve(estimate.campaignId, estimate.estimateHash);
+    await service.recordSpend(
+      estimate.campaignId,
+      'gemini',
+      ledgerMicros(1300),
+    );
+    expect(prisma._campaigns.get(estimate.campaignId)?.state).toBe('breached');
+
+    const quote = await service.quoteResume(estimate.campaignId);
+    // The class rate alone re-quotes 1000 — below the 1300 already spent;
+    // a resume at that envelope re-breached on the first recordSpend.
+    expect(quote.estimateMicros).toBe(1300);
+    expect(quote.envelopeMicros).toBeGreaterThan(1300);
+
+    const resumed = await service.resumeAfterBreach(
+      estimate.campaignId,
+      quote.estimateHash,
+    );
+    expect(resumed.estimateMicros).toBe(1300);
+    expect(prisma._campaigns.get(estimate.campaignId)?.state).toBe('approved');
+    await service.recordSpend(estimate.campaignId, 'gemini', ledgerMicros(100));
+    expect(prisma._campaigns.get(estimate.campaignId)?.state).toBe('running');
   });
 
   it('complete() refuses while the campaign still carries non-terminal batch jobs — paid output must drain first (G-3)', async () => {
