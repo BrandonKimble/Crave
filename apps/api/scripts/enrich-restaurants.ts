@@ -46,8 +46,9 @@ function parseArgs(argv: string[]): CliOptions {
         // silently clamped a runbook sweep to the head of the backlog, and
         // combined with createdAt-ordering it re-bought the same ~100
         // declined entities forever. The runbook sweep may pass the FULL
-        // backlog size; the default stays a sane 25, and the per-run
-        // decline-rate tripwire in enrichMissingPlaces remains the halt.
+        // backlog size; the default stays a sane 25, and the shared
+        // grounding decline hold (evaluated at enrichPlace, read from the
+        // durable window) halts the sweep when the judge is broken.
         options.limit = Math.trunc(value);
       }
     } else if (arg.startsWith('--entity=')) {

@@ -29,16 +29,29 @@ function toVectorLiteral(v: number[]): string {
 
 /**
  * Keeps `core_entities.name_embedding` (the dense recall lane) current. It is the
- * SINGLE writer of that column — both the scheduled sweep below and the manual
- * `scripts/backfill-entity-embeddings.ts` call `reconcilePending`.
+ * SINGLE writer of that column: every writer's post-commit `embedEntities`,
+ * the scheduled repair sweep below, and the manual
+ * `scripts/backfill-entity-embeddings.ts` all land here.
  *
- * Two gaps it closes, both OUTSIDE the ingestion transaction (an embed is an
- * external API call and must never block a write):
- *  - CREATE: new entities are born with a NULL vector (creation writes no
- *    embedding) — caught by `name_embedding IS NULL`.
- *  - RENAME / alias change: leaves a NON-null vector reflecting the OLD doc —
- *    the mutation paths flag `name_embedding_stale = true` in their own tx, and
- *    this sweep re-embeds and clears the flag.
+ * THE LAW IS WRITE-TIME (recall-scope rederivation, 2026-09-04): an entity
+ * is embedded by the WRITER that created or renamed it, immediately after
+ * its transaction commits and before the batch that created it reports
+ * done — never inside the transaction (an embed is an external call), and
+ * never left to a cron. The 5-minute sweep used to be the ONLY path, and it
+ * does not run where crons are off: on staging every one of 1,375
+ * rehearsal places and 794 rehearsal items had a NULL vector, 3,699 of
+ * 8,448 active places were stale, and the judge's dense lane was blind to
+ * all of them. Worse, the sweep embedded `status = 'active'` only, so a
+ * shadow run's own mints could never be recalled by it even with crons on.
+ *
+ * The sweep remains as a REPAIR backstop (a crash between commit and
+ * embed) and now covers every recallable status: active, pending, and
+ * rehearsal — the exact set the adoption-scoped recall reads.
+ *
+ * Two markers name the work, both set by the writers in their own tx:
+ *  - CREATE: a new row is born with a NULL vector — `name_embedding IS NULL`.
+ *  - RENAME / surface change: a NON-null vector reflecting the OLD doc —
+ *    `name_embedding_stale = true`.
  *
  * Idempotent: the vector is deterministic for a fixed doc + model, so re-embedding
  * is harmless — no doc-hash/skip bookkeeping needed (an embed costs ~1 microdollar).
@@ -111,7 +124,7 @@ export class EntityEmbeddingReconcilerService
       const [{ n }] = await this.prisma.$queryRawUnsafe<{ n: bigint }[]>(
         `SELECT count(*) AS n FROM core_entities
          WHERE type IN ('place','item','item_attribute','place_attribute','ingredient')
-           AND status = 'active'
+           AND status IN ('active','pending','rehearsal')
            AND (name_embedding IS NULL OR name_embedding_stale = true)`,
       );
       const pending = Number(n);
@@ -139,9 +152,33 @@ export class EntityEmbeddingReconcilerService
   }
 
   /**
-   * Embed every active searchable entity whose vector is missing or stale, then
-   * clear the stale flag. `reembedAll` re-embeds all active searchable entities
-   * (use after the entity-doc format changes). `maxRows` caps a single invocation.
+   * WRITE-TIME EMBEDDING — the writer's half of the law. Called by every
+   * creator/renamer right after its transaction commits, with the ids it
+   * touched; embeds those that are recallable (active/pending/rehearsal)
+   * and missing or stale, and clears the flag. Unknown, archived, or
+   * already-fresh ids are simply not work. Returns how many were embedded.
+   */
+  async embedEntities(entityIds: readonly string[]): Promise<number> {
+    const ids = Array.from(new Set(entityIds)).filter(Boolean);
+    if (!ids.length) return 0;
+    const rows = await this.prisma.$queryRaw<EntityEmbedRow[]>(Prisma.sql`
+      ${this.embedRowsSelect()}
+       WHERE e.entity_id = ANY(${ids}::uuid[])
+         AND ${EntityEmbeddingReconcilerService.recallableSql}
+         AND (e.name_embedding IS NULL OR e.name_embedding_stale = true)
+       ORDER BY e.entity_id`);
+    return this.embedRows(rows);
+  }
+
+  /** The recallable statuses — the adoption-scoped recall's status law. */
+  private static readonly recallableSql = Prisma.sql`e.type IN ('place','item','item_attribute','place_attribute','ingredient')
+         AND e.status IN ('active','pending','rehearsal')`;
+
+  /**
+   * Embed every recallable entity whose vector is missing or stale, then
+   * clear the stale flag — the REPAIR backstop. `reembedAll` re-embeds all
+   * recallable entities (use after the entity-doc format changes).
+   * `maxRows` caps a single invocation.
    */
   async reconcilePending(
     opts: { reembedAll?: boolean; maxRows?: number } = {},
@@ -170,19 +207,36 @@ export class EntityEmbeddingReconcilerService
     // cost on the live corpus: 1 row of 36,227, on 1 entity — there is not a
     // single `en` display row, and the `und` slice holds exactly one.
     const rows = await this.prisma.$queryRaw<EntityEmbedRow[]>(Prisma.sql`
+      ${this.embedRowsSelect()}
+       WHERE ${EntityEmbeddingReconcilerService.recallableSql}
+         ${Prisma.raw(reembedAll ? '' : 'AND (e.name_embedding IS NULL OR e.name_embedding_stale = true)')}
+       ORDER BY e.entity_id
+       ${Prisma.raw(limitClause)}`);
+
+    const embedded = await this.embedRows(rows);
+
+    const [{ n }] = await this.prisma.$queryRawUnsafe<{ n: bigint }[]>(
+      `SELECT count(*) AS n FROM core_entities
+       WHERE type IN ('place','item','item_attribute','place_attribute','ingredient')
+         AND status IN ('active','pending','rehearsal')
+         AND (name_embedding IS NULL OR name_embedding_stale = true)`,
+    );
+    return { embedded, remaining: Number(n) };
+  }
+
+  private embedRowsSelect(): Prisma.Sql {
+    return Prisma.sql`
       SELECT e.entity_id, e.name, e.type,
               (SELECT array_agg(s.form ORDER BY s.seq)
                  FROM entity_surface s
                 WHERE s.entity_id = e.entity_id
                   AND ${recallScope('en', 's')}
                ) AS surfaces
-         FROM core_entities e
-       WHERE type IN ('place','item','item_attribute','place_attribute','ingredient')
-         AND status = 'active'
-         ${Prisma.raw(reembedAll ? '' : 'AND (name_embedding IS NULL OR name_embedding_stale = true)')}
-       ORDER BY entity_id
-       ${Prisma.raw(limitClause)}`);
+         FROM core_entities e`;
+  }
 
+  /** Embed in provider-sized batches; each batch's vectors land in one tx. */
+  private async embedRows(rows: EntityEmbedRow[]): Promise<number> {
     let embedded = 0;
     for (let i = 0; i < rows.length; i += EMBED_BATCH) {
       const batch = rows.slice(i, i + EMBED_BATCH);
@@ -202,14 +256,7 @@ export class EntityEmbeddingReconcilerService
       );
       embedded += batch.length;
     }
-
-    const [{ n }] = await this.prisma.$queryRawUnsafe<{ n: bigint }[]>(
-      `SELECT count(*) AS n FROM core_entities
-       WHERE type IN ('place','item','item_attribute','place_attribute','ingredient')
-         AND status = 'active'
-         AND (name_embedding IS NULL OR name_embedding_stale = true)`,
-    );
-    return { embedded, remaining: Number(n) };
+    return embedded;
   }
 
   @Cron(CronExpression.EVERY_5_MINUTES)

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { identityScope } from '../../../shared/locale';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { canonicalFold } from './entity-identity';
@@ -23,6 +24,64 @@ import { LoggerService } from '../../../shared';
  * r/FoodNYC is real testimony about the single global Franklin and must
  * keep adopting remotely.
  */
+/** A metro anchor: the community's centroid. */
+export interface MetroAnchor {
+  lat: number;
+  lng: number;
+}
+
+/**
+ * THE ONE METRO-DISTANCE LAW. Great-circle km (haversine) from a location
+ * row's lat/lng columns to the anchor. Every place-geography question the
+ * adoption ladder asks — the gate's verdict, the local re-resolve, and the
+ * judge's candidate recall (recall-scope rederivation, 2026-09-04) — is
+ * spelled with THIS fragment, so "local" cannot mean two different radii in
+ * two different tiers. The judge's recall used to hard-filter places by the
+ * engine's place-DAG polygon (Austin proper) while the gate that ADOPTS
+ * measured 80 km from the anchor: Round Rock's "Cuba Bakery & Café" was
+ * adoptable but unrecallable, and the judge minted its twin.
+ */
+export function metroDistanceKmSql(
+  latColumn: Prisma.Sql,
+  lngColumn: Prisma.Sql,
+  anchor: MetroAnchor,
+): Prisma.Sql {
+  return Prisma.sql`2 * 6371 * asin(sqrt(
+    pow(sin(radians(${latColumn}::float - ${anchor.lat}) / 2), 2)
+    + cos(radians(${anchor.lat})) * cos(radians(${latColumn}::float))
+    * pow(sin(radians(${lngColumn}::float - ${anchor.lng}) / 2), 2)
+  ))`;
+}
+
+/**
+ * The gate's admissibility, as a WHERE fragment over `core_entities` alias
+ * `e`: a place is within the metro when one geocoded location sits inside
+ * METRO_RADIUS_KM of the anchor — OR when it has no geocoded location at
+ * all (verdict 'unknown' stands the gate down; round-13 F5). Non-place
+ * entities are never geo-scoped.
+ */
+export function metroAdmissiblePlaceSql(
+  entityAlias: string,
+  anchor: MetroAnchor,
+): Prisma.Sql {
+  const e = Prisma.raw(entityAlias);
+  return Prisma.sql`(
+    ${e}.type <> 'place'::entity_type
+    OR NOT EXISTS (
+      SELECT 1 FROM core_restaurant_locations rl
+       WHERE rl.restaurant_id = ${e}.entity_id
+         AND rl.latitude IS NOT NULL AND rl.longitude IS NOT NULL
+    )
+    OR EXISTS (
+      SELECT 1 FROM core_restaurant_locations rl
+       WHERE rl.restaurant_id = ${e}.entity_id
+         AND rl.latitude IS NOT NULL AND rl.longitude IS NOT NULL
+         AND ${metroDistanceKmSql(Prisma.sql`rl.latitude`, Prisma.sql`rl.longitude`, anchor)}
+             < ${MetroAdoptionService.METRO_RADIUS_KM}
+    )
+  )`;
+}
+
 @Injectable()
 export class MetroAdoptionService {
   /** Metro radius around a community's anchor centroid. Structural
@@ -47,9 +106,7 @@ export class MetroAdoptionService {
    *  centroid. Null = no geo anchor (the gate then stands down — a
    *  mention with no metro cannot be metro-gated). Cached: a handful of
    *  engines exist. */
-  async anchorForEngine(
-    engineId: string,
-  ): Promise<{ lat: number; lng: number } | null> {
+  async anchorForEngine(engineId: string): Promise<MetroAnchor | null> {
     const cached = this.anchorCache.get(engineId);
     if (
       cached &&
@@ -90,11 +147,8 @@ export class MetroAdoptionService {
     >`
       SELECT l.restaurant_id::text AS id,
              bool_or(
-               2 * 6371 * asin(sqrt(
-                 pow(sin(radians(l.latitude::float - ${anchor.lat}) / 2), 2)
-                 + cos(radians(${anchor.lat})) * cos(radians(l.latitude::float))
-                 * pow(sin(radians(l.longitude::float - ${anchor.lng}) / 2), 2)
-               )) < ${MetroAdoptionService.METRO_RADIUS_KM}
+               ${metroDistanceKmSql(Prisma.sql`l.latitude`, Prisma.sql`l.longitude`, anchor)}
+               < ${MetroAdoptionService.METRO_RADIUS_KM}
              ) AS local
       FROM core_restaurant_locations l
       WHERE l.restaurant_id = ANY(${placeIds}::uuid[])
@@ -142,11 +196,8 @@ export class MetroAdoptionService {
           SELECT 1 FROM core_restaurant_locations l
           WHERE l.restaurant_id = e.entity_id
             AND l.latitude IS NOT NULL
-            AND 2 * 6371 * asin(sqrt(
-                  pow(sin(radians(l.latitude::float - ${anchor.lat}) / 2), 2)
-                  + cos(radians(${anchor.lat})) * cos(radians(l.latitude::float))
-                  * pow(sin(radians(l.longitude::float - ${anchor.lng}) / 2), 2)
-                )) < ${MetroAdoptionService.METRO_RADIUS_KM}
+            AND ${metroDistanceKmSql(Prisma.sql`l.latitude`, Prisma.sql`l.longitude`, anchor)}
+                < ${MetroAdoptionService.METRO_RADIUS_KM}
         )
       ORDER BY e.created_at
       LIMIT 1

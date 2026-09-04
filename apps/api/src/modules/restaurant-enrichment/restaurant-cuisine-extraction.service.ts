@@ -16,6 +16,7 @@ import { mintCuisineFacetRow } from '../content-processing/entity-resolver/cuisi
 import { derivePlaceAttributes } from '../content-processing/reddit-collector/place-attribute-projection';
 import { createHash } from 'crypto';
 import { VENUE_CUISINE_RULE } from './venue-cuisine-rule';
+import { EntityEmbeddingReconcilerService } from '../entity-text-search/entity-embedding-reconciler.service';
 
 /**
  * INPUT-FINGERPRINT (S4): the hash that keys one completed venue-facts
@@ -88,6 +89,7 @@ export class PlaceCuisineExtractionService {
     private readonly aliasManagement: AliasManagementService,
     private readonly attributeOntologyQueue: AttributeOntologyQueueService,
     @Inject(LoggerService) loggerService: LoggerService,
+    private readonly entityEmbeddings: EntityEmbeddingReconcilerService,
   ) {
     this.logger = loggerService.setContext('RestaurantCuisineExtraction');
   }
@@ -392,6 +394,7 @@ export class PlaceCuisineExtractionService {
             { markEmbeddingStale: false },
           ),
         );
+        await this.entityEmbeddings.embedEntities([created.entityId]);
         ids.push(created.entityId);
         mintedPending = true;
       } catch (error) {
@@ -612,6 +615,7 @@ export class PlaceCuisineExtractionService {
         this.logger.warn('Cuisine attribute mint failed', { cuisine });
         continue;
       }
+      await this.entityEmbeddings.embedEntities([minted.entityId]);
       ids.push(minted.entityId);
     }
 

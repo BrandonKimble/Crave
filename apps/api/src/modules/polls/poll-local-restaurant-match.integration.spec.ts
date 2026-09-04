@@ -70,6 +70,7 @@ const seed = new PollEntitySeedService(
       isDeniedName: () => Promise.resolve(false),
     } as never,
   ),
+  { embedEntities: () => Promise.resolve(0) } as never,
 );
 
 const UNKNOWN_NAME = 'Qqxwv Nonexistent Pollseed F3501';

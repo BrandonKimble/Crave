@@ -10,6 +10,52 @@ import {
 } from '../content-processing/entity-resolver/entity-identity';
 import { EmbeddingService } from '../external-integrations/llm/embedding.service';
 import { DeniedNameRegistryService } from './denied-name-registry.service';
+import {
+  metroAdmissiblePlaceSql,
+  type MetroAnchor,
+} from '../content-processing/entity-resolver/metro-adoption.service';
+
+/**
+ * THE COURT SEES THE WHOLE ROSTER (recall-scope rederivation, 2026-09-04).
+ *
+ * Resolution's identity tiers (exact / surface / joined) and its metro
+ * adoption gate define WHAT A MENTION MAY ADOPT: every active or pending
+ * entity, this run's own rehearsal mints, and — for places — anything with
+ * a location inside the metro or no geocode at all. The judge's candidate
+ * recall used to see a NARROWER world on both axes: `status = 'active'`
+ * only (so the same shadow run minted "Salt Lick" and "Salt Lick Bbq" —
+ * the second mention's judge was never shown the first mint) and the
+ * engine's place-DAG polygon (Austin proper — so Round Rock's "Cuba Bakery
+ * & Café", 80 km-adoptable by the gate, was unrecallable, and the judge,
+ * shown "Cafe Java, Asia Cafe, NG Cafe", correctly said "new" and minted
+ * a twin; 48 anchored places lost support that way in the v23 shadow).
+ *
+ * An AdoptionScope makes the recall's world exactly the adoptable world.
+ * Callers that are NOT adopting (search, autocomplete, the gazetteer) pass
+ * none and keep the reader-facing scope: active rows, engine territory.
+ */
+export interface AdoptionScope {
+  /** This run's own rehearsal mints are recallable; foreign shadows never. */
+  rehearsalRunId: string | null;
+  /**
+   * The community's metro anchor (MetroAdoptionService.anchorForEngine).
+   * null = the gate stands down (no anchor) and so does the geo-scope:
+   * places recall globally, exactly as they adopt.
+   */
+  metro: MetroAnchor | null;
+}
+
+/**
+ * The two scope axes every recall arm applies, resolved ONCE per call so no
+ * arm can drift from another. `placeSql` yields a fragment that begins with
+ * `AND` (or nothing) — the shape the territory filter always had.
+ */
+export interface RecallScope {
+  /** Cache fingerprint: two scopes with different keys never share results. */
+  readonly key: string;
+  statusSql(entityAlias: string): Prisma.Sql;
+  placeSql(entityAlias: string): Promise<Prisma.Sql>;
+}
 
 interface EntitySearchRow {
   term?: string;
@@ -173,6 +219,51 @@ export class EntityTextSearchService {
   }
 
   /**
+   * Resolve the scope every lane will apply. Default (no adoption scope):
+   * the READER's world — active rows, engine territory as a hard place
+   * filter (the search/autocomplete/gazetteer contract, unchanged).
+   * Adoption scope: the ADOPTABLE world — see AdoptionScope.
+   */
+  recallScope(
+    engineId: string | null | undefined,
+    adoption: AdoptionScope | null | undefined,
+  ): RecallScope {
+    if (!adoption) {
+      return {
+        key: `active|territory:${engineId ?? ''}`,
+        statusSql: (alias) =>
+          Prisma.sql`${Prisma.raw(alias)}.status = 'active'::entity_status`,
+        placeSql: (alias) =>
+          this.buildPlaceEngineTerritoryFilter(alias, engineId ?? null),
+      };
+    }
+    const run = adoption.rehearsalRunId;
+    const metro = adoption.metro;
+    return {
+      key: `adoptable|run:${run ?? ''}|metro:${
+        metro ? `${metro.lat},${metro.lng}` : ''
+      }`,
+      // THE SAME LAW THE TIERS APPLY (entity-resolution.service.ts, the
+      // rehearsal predicates): live rows, plus rehearsal rows born in THIS
+      // run. Archived rows are tombstones and never candidates.
+      statusSql: (alias) => {
+        const e = Prisma.raw(alias);
+        return run
+          ? Prisma.sql`(${e}.status IN ('active'::entity_status, 'pending'::entity_status)
+               OR (${e}.status = 'rehearsal'::entity_status
+                   AND ${e}.born_extraction_run_id = ${run}::uuid))`
+          : Prisma.sql`${e}.status IN ('active'::entity_status, 'pending'::entity_status)`;
+      },
+      placeSql: (alias) =>
+        Promise.resolve(
+          metro
+            ? Prisma.sql`AND ${metroAdmissiblePlaceSql(alias, metro)}`
+            : Prisma.empty,
+        ),
+    };
+  }
+
+  /**
    * THE COURT'S DENIALS REACH THE NAME ARMS (R15 defect 2, 2026-08-16).
    *
    * A `notAName` verdict deprecates the form's `entity_surface` rows, but the
@@ -225,10 +316,16 @@ export class EntityTextSearchService {
     term: string,
     entityTypes: EntityType[],
     limit: number,
-    options: { engineId?: string | null; locale?: string | null } = {},
+    options: {
+      engineId?: string | null;
+      locale?: string | null;
+      scope?: RecallScope;
+    } = {},
   ): Promise<TextSearchMatch[]> {
     const normalizedTerm = term?.trim();
     if (!normalizedTerm || entityTypes.length === 0) return [];
+    const scope =
+      options.scope ?? this.recallScope(options.engineId ?? null, null);
 
     const queryVec = await this.embeddingService.embedQuery(
       denseQueryInput(normalizedTerm, options.locale ?? null),
@@ -240,10 +337,7 @@ export class EntityTextSearchService {
     const typeArray = Prisma.sql`ARRAY[${Prisma.join(
       entityTypes.map((t) => Prisma.sql`${t}::entity_type`),
     )}]`;
-    const territoryFilter = await this.buildPlaceEngineTerritoryFilter(
-      'e',
-      options.engineId ?? null,
-    );
+    const placeFilter = await scope.placeSql('e');
 
     const rows = await this.prisma.$queryRaw<
       { entityId: string; name: string; type: EntityType; cosine: number }[]
@@ -252,9 +346,9 @@ export class EntityTextSearchService {
              1 - (e.name_embedding <=> ${literal}::vector) AS cosine
       FROM core_entities e
       WHERE e.type = ANY(${typeArray})
-        AND e.status = 'active'::entity_status
+        AND ${scope.statusSql('e')}
         AND e.name_embedding IS NOT NULL
-        ${territoryFilter}
+        ${placeFilter}
       ORDER BY e.name_embedding <=> ${literal}::vector
       LIMIT ${safeLimit}
     `);
@@ -287,9 +381,11 @@ export class EntityTextSearchService {
     entityTypes: EntityType[],
     limit: number,
     requestLocale: string,
+    scope: RecallScope = this.recallScope(null, null),
   ): Promise<TextSearchMatch[]> {
     const folded = canonicalFold(term ?? '');
     if (!folded || entityTypes.length === 0) return [];
+    const placeFilter = await scope.placeSql('e');
     const chain = localeLookupChain(requestLocale);
     // 'und' alone means "no locale was asked for" — the sparse lane already
     // covers untagged forms, so there is nothing for this lane to add.
@@ -363,8 +459,9 @@ export class EntityTextSearchService {
                 -- Same banded threshold as the sparse lane; the GIN trgm
                 -- index on form_folded makes it a probe.
                          OR (${folded.length >= 4} AND similarity(ea.form_folded, ${folded}) >= ${this.resolveSimilarityThreshold(folded)}))))
-           AND e.status = 'active'::entity_status
+           AND ${scope.statusSql('e')}
            AND e.type = ANY(${typeArray})
+           ${placeFilter}
          ORDER BY e.entity_id, (ea.form_folded = ${folded}) DESC, similarity(ea.form_folded, ${folded}) DESC
       ) deduped
        ORDER BY deduped."exact" DESC, deduped."sim" DESC, deduped.name ASC, deduped."entityId" ASC
@@ -463,6 +560,13 @@ export class EntityTextSearchService {
        * with no locale (ingestion, poll seeding) behave exactly as before.
        */
       requestLocale?: string | null;
+      /**
+       * THE ADOPTABLE WORLD (see AdoptionScope): resolution passes it so the
+       * judge is shown every entity a mention could actually adopt. Absent
+       * for readers (search, autocomplete, gazetteer), whose scope is the
+       * active catalogue inside the engine territory.
+       */
+      adoption?: AdoptionScope | null;
     } = {},
   ): Promise<RecallCandidate[]> {
     if (
@@ -475,11 +579,13 @@ export class EntityTextSearchService {
     if (!normalizedTerm || entityTypes.length === 0) return [];
 
     const pool = Math.max(limit, options.poolSize ?? 50);
+    const scope = this.recallScope(options.engineId, options.adoption);
     const sparseOpts = {
       engineId: options.engineId,
       requestLocale: options.requestLocale ?? null,
+      scope,
     };
-    const denseOpts = { engineId: options.engineId };
+    const denseOpts = { engineId: options.engineId, scope };
 
     const denseMode = options.denseMode ?? 'always';
     // The localized-surface lane runs whenever a caller supplies a locale.
@@ -489,6 +595,7 @@ export class EntityTextSearchService {
           entityTypes,
           pool,
           options.requestLocale,
+          scope,
         )
       : Promise.resolve([] as TextSearchMatch[]);
     let sparse: TextSearchMatch[];
@@ -572,6 +679,7 @@ export class EntityTextSearchService {
     options: {
       engineId?: string | null;
       requestLocale?: string | null;
+      scope?: RecallScope;
     } = {},
   ): Promise<TextSearchMatch[]> {
     const normalizedTerm = this.normalizeTerm(term);
@@ -592,6 +700,7 @@ export class EntityTextSearchService {
       {
         engineId: options.engineId,
         requestLocale: options.requestLocale ?? null,
+        scope: options.scope,
       },
     );
     return resultsByTerm.get(normalizedTerm) ?? [];
@@ -669,6 +778,7 @@ export class EntityTextSearchService {
     options: {
       engineId?: string | null;
       requestLocale?: string | null;
+      scope?: RecallScope;
     } = {},
   ): Promise<Map<string, TextSearchMatch[]>> {
     const normalizedTerms = terms
@@ -693,6 +803,7 @@ export class EntityTextSearchService {
 
     const safePerTermLimit = Math.max(1, Math.min(perTermLimit, this.maxLimit));
     const engineId = options.engineId ?? null;
+    const scope = options.scope ?? this.recallScope(engineId, null);
 
     const missingTerms: string[] = [];
     uniqueTerms.forEach((term) => {
@@ -700,7 +811,7 @@ export class EntityTextSearchService {
         requestLocale: options.requestLocale ?? null,
         term,
         entityTypes,
-        engineId,
+        scopeKey: scope.key,
         limit: safePerTermLimit,
       });
       if (cached) {
@@ -728,7 +839,7 @@ export class EntityTextSearchService {
           terms: shortTerms,
           entityTypes,
           perTermLimit: safePerTermLimit,
-          engineId,
+          scope,
         });
         rows.forEach((row) => {
           const term = row.term ?? '';
@@ -745,13 +856,13 @@ export class EntityTextSearchService {
             terms: longTerms,
             entityTypes,
             perTermLimit: safePerTermLimit,
-            engineId,
+            scope,
             thresholdsByTerm,
           }),
           this.fetchLexiconEditRows({
             terms: longTerms,
             entityTypes,
-            engineId: engineId ?? null,
+            scope,
           }),
         ]);
         rows.forEach((row) => {
@@ -833,7 +944,7 @@ export class EntityTextSearchService {
           requestLocale: options.requestLocale ?? null,
           term,
           entityTypes,
-          engineId,
+          scopeKey: scope.key,
           limit: safePerTermLimit,
           results: matches,
         });
@@ -938,15 +1049,18 @@ export class EntityTextSearchService {
   private buildCacheKey(options: {
     term: string;
     entityTypes: EntityType[];
-    engineId?: string | null;
+    scopeKey: string;
     requestLocale?: string | null;
   }): string {
     const entityTypesKey = [...options.entityTypes].sort().join(',');
     // Locale is part of RECALL now (the registry arms are chain-filtered),
     // so it must be part of the key — a locale-less key would serve one
     // language's candidates to another (the AC-P2a class, term-cache side).
+    // The SCOPE is part of recall too: an adoption-scoped result set
+    // (pending + this run's rehearsal rows, metro geography) must never be
+    // served to a reader, nor a reader's active-only set to the judge.
     return [
-      options.engineId ?? '',
+      options.scopeKey,
       entityTypesKey,
       localeLookupChain(options.requestLocale ?? null).join(','),
       options.term,
@@ -956,7 +1070,7 @@ export class EntityTextSearchService {
   private getCachedTermResults(options: {
     term: string;
     entityTypes: EntityType[];
-    engineId?: string | null;
+    scopeKey: string;
     limit: number;
     requestLocale?: string | null;
   }): TextSearchMatch[] | null {
@@ -976,7 +1090,7 @@ export class EntityTextSearchService {
   private setCachedTermResults(options: {
     term: string;
     entityTypes: EntityType[];
-    engineId?: string | null;
+    scopeKey: string;
     limit: number;
     requestLocale?: string | null;
     results: TextSearchMatch[];
@@ -1000,7 +1114,7 @@ export class EntityTextSearchService {
     terms: string[];
     entityTypes: EntityType[];
     perTermLimit: number;
-    engineId: string | null;
+    scope: RecallScope;
   }): Promise<EntitySearchRow[]> {
     const values = Prisma.join(
       options.terms.map((term, idx) => {
@@ -1011,10 +1125,7 @@ export class EntityTextSearchService {
     const entityTypeArray = Prisma.sql`ARRAY[${Prisma.join(
       options.entityTypes.map((type) => Prisma.sql`${type}::entity_type`),
     )}]`;
-    const territoryFilter = await this.buildPlaceEngineTerritoryFilter(
-      'e',
-      options.engineId,
-    );
+    const placeFilter = await options.scope.placeSql('e');
     // This lane's ONLY match basis is the entity's name, so a denied name
     // excludes the row outright (see deniedNameJoinSql).
     const deniedJoin = await this.deniedNameJoinSql('e');
@@ -1085,8 +1196,8 @@ export class EntityTextSearchService {
           FROM core_entities e
           ${deniedJoin}
           WHERE e.type = ANY(${entityTypeArray})
-            AND e.status = 'active'::entity_status
-            ${territoryFilter}
+            AND ${options.scope.statusSql('e')}
+            ${placeFilter}
             AND lower(e.name) LIKE v.prefix_pattern
             -- The court's notAName verdicts: a denied name cannot match here.
             AND dn.entity_id IS NULL
@@ -1115,7 +1226,7 @@ export class EntityTextSearchService {
   private async fetchLexiconEditRows(options: {
     terms: string[];
     entityTypes: EntityType[];
-    engineId: string | null;
+    scope: RecallScope;
   }): Promise<Map<string, EntitySearchRow[]>> {
     const out = new Map<string, EntitySearchRow[]>();
     const probes = options.terms
@@ -1144,10 +1255,7 @@ export class EntityTextSearchService {
     const typeArray = Prisma.sql`ARRAY[${Prisma.join(
       options.entityTypes.map((t) => Prisma.sql`${t}::entity_type`),
     )}]`;
-    const territoryFilter = await this.buildPlaceEngineTerritoryFilter(
-      'e',
-      options.engineId,
-    );
+    const placeFilter = await options.scope.placeSql('e');
     const rows = await this.prisma.$queryRaw<
       {
         deleteKey: string;
@@ -1163,8 +1271,8 @@ export class EntityTextSearchService {
       JOIN core_entities e ON e.entity_id = d.entity_id
       WHERE d.delete_key = ANY(${Array.from(allVariants)}::text[])
         AND d.entity_type = ANY(${typeArray})
-        AND e.status = 'active'::entity_status
-        ${territoryFilter}
+        AND ${options.scope.statusSql('e')}
+        ${placeFilter}
     `);
 
     for (const probe of probes) {
@@ -1207,7 +1315,7 @@ export class EntityTextSearchService {
     terms: string[];
     entityTypes: EntityType[];
     perTermLimit: number;
-    engineId: string | null;
+    scope: RecallScope;
     thresholdsByTerm: Map<string, number>;
     requestLocale?: string | null;
   }): Promise<EntitySearchRow[]> {
@@ -1229,10 +1337,7 @@ export class EntityTextSearchService {
     const entityTypeArray = Prisma.sql`ARRAY[${Prisma.join(
       options.entityTypes.map((type) => Prisma.sql`${type}::entity_type`),
     )}]`;
-    const territoryFilter = await this.buildPlaceEngineTerritoryFilter(
-      'e',
-      options.engineId,
-    );
+    const placeFilter = await options.scope.placeSql('e');
     // The court's notAName verdicts gate every NAME-derived signal below —
     // and ONLY those: an entity whose name is denied but which holds another
     // active adjudicated surface stays reachable through the registry arms
@@ -1401,8 +1506,8 @@ export class EntityTextSearchService {
               AND LOWER(a.locale) = ANY(${chain}::text[])
           ) al ON true
           WHERE e.type = ANY(${entityTypeArray})
-            AND e.status = 'active'::entity_status
-            ${territoryFilter}
+            AND ${options.scope.statusSql('e')}
+            ${placeFilter}
             AND (
               -- Name arms admit only while the name is not DENIED (dn join —
               -- the court's notAName verdicts). Registry arms are untouched.

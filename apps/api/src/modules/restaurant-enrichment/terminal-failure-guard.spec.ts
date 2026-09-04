@@ -70,6 +70,7 @@ function makeService(entity: Record<string, unknown>) {
     } as never,
     { reconcile: () => Promise.resolve(0) } as never,
     logger as never,
+    { embedEntities: () => Promise.resolve(0) } as never,
   );
   return service;
 }

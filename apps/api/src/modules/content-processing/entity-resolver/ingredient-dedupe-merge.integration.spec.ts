@@ -145,6 +145,7 @@ describe('ItemDedupeMergeService — ingredient merge re-points array references
         prisma as never,
         new ClaimVerdictLedgerService(prisma as never),
       ),
+      { embedEntities: () => Promise.resolve(0) } as never,
     );
 
     const testable = service as unknown as {

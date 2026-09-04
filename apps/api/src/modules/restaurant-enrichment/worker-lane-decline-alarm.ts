@@ -1,17 +1,23 @@
 /**
- * THE WORKER-LANE DECLINE ALARM (waves 3-4 red team, W1 — the sweep
- * tripwire's sibling for the lane the load actually uses).
+ * THE GROUNDING DECLINE HOLD — ONE hold, evaluated at the `enrichPlace`
+ * chokepoint, fed by the durable decline window (red team 2026-09-04 E-6;
+ * born as the waves 3-4 W1 worker-lane alarm, the sweep tripwire's sibling).
  *
- * `GroundingSweepTripwire` reads the decline rate of ONE batch run — but the
- * reload's dominant grounding lane is mention-driven: unified-processing
- * enqueues per place mention → BullMQ → `enrichPlaceById` → `enrichPlace`,
- * and each job is its own "run", so a chooser misbehaving at scale would
- * spend definitive strikes job-by-job with zero alarm — the exact 08-20
- * disease (716/716 declines, 716 permanent strikes) one lane over.
+ * On 2026-08-20 a single grounding sweep ran 716 entities end to end and the
+ * chooser declined EVERY one — Rudys (1,315 mentions), Easy Tiger, Shake
+ * Shack — and every decline spent a permanent strike toward janitor archive.
+ * A decline rate that high over that many famous places is a broken judge or
+ * broken candidate retrieval, not that many correct rejections, and nothing
+ * read the rate.
  *
- * The rate is a property of the LANE, not the loop, so this alarm reads it
- * from the DURABLE breadcrumbs the lane already writes, not from any one
- * caller's in-memory accumulator:
+ * The rate is a property of the CHOOSER, whichever driver invoked it — the
+ * mention-driven worker (one BullMQ job per mention, each its own "run"),
+ * the operator sweep (`enrich-restaurants.ts`), the ghost re-grounding
+ * script, a `--entity=` run. So the verdict is read from the DURABLE
+ * breadcrumbs the lane already writes, never from any one caller's
+ * in-memory accumulator (E-6: the sweep used to keep a private counter that
+ * could not arm under 20 judged attempts, so a `--limit=10` sweep spent
+ * freely while the worker lane was held):
  *
  *   - declines: `restaurant_metadata->'lastEnrichmentAttempt'` rows with
  *     status 'no_match' whose `failureAt` falls inside the rolling window
@@ -21,21 +27,21 @@
  *     the window (a successful grounding stamps fetchedAt and DELETES the
  *     failure breadcrumb — mergePlaceMetadata's `extras === null` arm).
  *
- * Because the evidence is durable, the verdict survives worker restarts: a
- * rebooted worker re-reads the same window and re-trips immediately —
- * unlike an in-memory latch, which a crash would silently reset.
+ * Because the evidence is durable, the verdict survives worker restarts and
+ * is shared by every process: a freshly booted sweep script reads the same
+ * window the held worker read and refuses on its first entity.
  *
- * On trip: the caller HOLDS the lane fail-closed (jobs return 'skipped' —
- * no Places spend, no strike spend, the cohort keeps its retries) and emits
- * a critical ops alert. The hold is also latched in-process so the DB is
- * not re-queried while held. Recovery is operator-shaped, as with the
- * sweep: fix the root cause, void the strikes, restart the worker after
- * the window has aged out (or clear the breadcrumbs via retryTerminal).
+ * On trip: `enrichPlace` returns 'skipped' with GROUNDING_HOLD_SKIP_REASON
+ * (no Places spend, no strike spend, the cohort keeps its retries) and emits
+ * a critical ops alert. Batch drivers are the SECOND READER of the same
+ * window: the sweep loop watches for that reason and HALTS by throwing
+ * GroundingSweepHaltError, so a held lane stops a run loudly instead of
+ * skipping hundreds of entities in silence. The hold is latched in-process
+ * so the DB is not re-queried while held. Recovery is operator-shaped: fix
+ * the root cause, void the strikes, restart after the window has aged out
+ * (or clear the breadcrumbs via retryTerminal).
  *
- * Transient errors and skips count as neither (an outage is not a ruling) —
- * same taxonomy as the sweep tripwire. Sweep-written breadcrumbs land in
- * the same window; that is deliberate: the rate belongs to the CHOOSER,
- * whichever driver invoked it.
+ * Transient errors and skips count as neither (an outage is not a ruling).
  */
 
 export const WORKER_LANE_MIN_ATTEMPTS = 20;
@@ -44,6 +50,10 @@ export const WORKER_LANE_WINDOW_MINUTES = 120;
 /** Re-read the window at most this often — one cheap aggregate per interval,
  *  not one per job at concurrency 5. */
 export const WORKER_LANE_RECHECK_MS = 30_000;
+
+/** The `reason` every hold-skipped enrichment result carries — the one
+ *  string batch drivers read to turn a held lane into a halted run. */
+export const GROUNDING_HOLD_SKIP_REASON = 'grounding_decline_hold';
 
 export interface WorkerLaneWindowCounts {
   declines: number;
@@ -58,18 +68,37 @@ export interface WorkerLaneVerdict {
 
 export function workerLaneHoldMessage(v: WorkerLaneVerdict): string {
   return (
-    `GROUNDING WORKER LANE HELD: ${v.declines}/${v.attempts} completed ` +
+    `GROUNDING LANE HELD: ${v.declines}/${v.attempts} completed ` +
     `attempts (${((100 * v.declines) / Math.max(v.attempts, 1)).toFixed(1)}%) ` +
     `in the trailing ${WORKER_LANE_WINDOW_MINUTES}-minute window came back ` +
     `no_match — above the ${(WORKER_LANE_MAX_DECLINE_RATE * 100).toFixed(0)}% ` +
     `bound. A decline rate this high across this many entities is a broken ` +
     `judge or broken candidate retrieval, not that many correct rejections ` +
     `(the 2026-08-20 sweep declined 716/716 including Rudys and Shake Shack ` +
-    `and spent a permanent strike on each). Mention-driven enrichment jobs ` +
-    `are being skipped — no further strikes or Places dollars are being ` +
+    `and spent a permanent strike on each). Every grounding entry — worker ` +
+    `jobs, the operator sweep, --entity= runs — is being skipped at the ` +
+    `enrichPlace chokepoint; no further strikes or Places dollars are being ` +
     `spent. Fix the root cause, void this window's strikes, then restart ` +
-    `the worker after the window ages out (or clear via retryTerminal).`
+    `after the window ages out (or clear via retryTerminal).`
   );
+}
+
+/**
+ * What a batch driver throws when the shared hold trips mid-run: the run
+ * stops, the operator is told loudly, and the remaining cohort keeps its
+ * retries for after the root cause is fixed.
+ */
+export class GroundingSweepHaltError extends Error {
+  constructor(
+    public readonly attempts: number,
+    public readonly declines: number,
+  ) {
+    super(
+      `GROUNDING SWEEP HALTED: the shared grounding decline hold tripped — ` +
+        workerLaneHoldMessage({ held: true, attempts, declines }),
+    );
+    this.name = 'GroundingSweepHaltError';
+  }
 }
 
 /**

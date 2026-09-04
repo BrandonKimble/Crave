@@ -1,15 +1,14 @@
 import { countEnrichmentFailure } from './enrichment-failure-counter';
 import { selectSweepCandidates } from './grounding-sweep-selection';
 import {
+  GROUNDING_HOLD_SKIP_REASON,
   GroundingSweepHaltError,
-  GroundingSweepTripwire,
-} from './grounding-sweep-tripwire';
-import {
   WorkerLaneDeclineAlarm,
   WORKER_LANE_WINDOW_MINUTES,
   workerLaneHoldMessage,
   type WorkerLaneWindowCounts,
 } from './worker-lane-decline-alarm';
+import { activeWinnerRedirectMap } from '../content-processing/reddit-collector/extraction-scope.service';
 import {
   classifyEnrichmentError,
   classifyNoMatchReason,
@@ -56,11 +55,7 @@ import { MarketMembershipService } from './market-membership.service';
 import { PlaceCuisineExtractionQueueService } from './restaurant-cuisine-extraction-queue.service';
 import { PlaceSecondaryLocationExpansionQueueService } from './restaurant-secondary-location-expansion-queue.service';
 import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
-import {
-  brandClusterPurity,
-  identityDomain,
-  placeNamesAgree,
-} from './business-identity-rules';
+import { identityDomain, placeNamesAgree } from './business-identity-rules';
 import { ClaimVerdictLedgerService } from '../content-processing/entity-resolver/claim-verdict-ledger.service';
 import {
   PLACE_GROUNDING_LANE,
@@ -78,6 +73,7 @@ import {
   PLACE_ATTRIBUTE_ALIASES_BY_NAME,
   type PlaceAttributeVocabEntry,
 } from './google-place-type-attributes';
+import { EntityEmbeddingReconcilerService } from '../entity-text-search/entity-embedding-reconciler.service';
 
 const GOOGLE_DAY_NAMES = [
   'sunday',
@@ -352,6 +348,7 @@ export class PlaceLocationEnrichmentService {
     private readonly claimLedger: ClaimVerdictLedgerService,
     private readonly marketMembership: MarketMembershipService,
     @Inject(LoggerService) loggerService: LoggerService,
+    private readonly entityEmbeddings: EntityEmbeddingReconcilerService,
   ) {
     this.logger = loggerService.setContext(
       'RestaurantLocationEnrichmentService',
@@ -460,27 +457,35 @@ export class PlaceLocationEnrichmentService {
       results: [],
     };
 
-    // R1's alarm (campaign red-team v3): a batch whose decline rate crosses
-    // the bound after a meaningful window HALTS instead of spending
-    // definitive strikes on every remaining entity — the 08-20 sweep wrote
-    // 716 strikes at a 100% decline rate and nothing read the rate.
-    const tripwire = new GroundingSweepTripwire();
+    // THE SECOND READER OF THE ONE HOLD (red team 2026-09-04 E-6). The hold
+    // itself is evaluated inside enrichPlace — the chokepoint every entry
+    // shares — from the durable decline window; this loop only turns a
+    // held lane into a HALTED run. It used to keep a private in-memory
+    // tripwire that could not arm under 20 judged attempts, so a
+    // `--limit=10` operator sweep spent Places dollars and strikes while
+    // the worker lane was already held on the same evidence.
     for (const entity of places) {
       const result = await this.enrichPlace(entity, options);
       summary.results.push(result);
-      try {
-        tripwire.record(result.status);
-      } catch (error) {
-        if (error instanceof GroundingSweepHaltError) {
-          this.opsAlerts.emit({
-            severity: 'critical',
-            kind: 'grounding_sweep_halted',
-            title: 'Grounding sweep halted: decline rate over the bound',
-            body: error.message,
-            dedupeKey: 'grounding_sweep_halted',
-          });
-        }
-        throw error;
+      if (
+        result.status === 'skipped' &&
+        result.reason === GROUNDING_HOLD_SKIP_REASON
+      ) {
+        const verdict = await this.workerLaneAlarm.evaluate(() =>
+          this.readWorkerLaneWindowCounts(),
+        );
+        const halt = new GroundingSweepHaltError(
+          verdict.attempts,
+          verdict.declines,
+        );
+        this.opsAlerts.emit({
+          severity: 'critical',
+          kind: 'grounding_sweep_halted',
+          title: 'Grounding sweep halted: the grounding decline hold tripped',
+          body: halt.message,
+          dedupeKey: 'grounding_sweep_halted',
+        });
+        throw halt;
       }
 
       if (result.status === 'updated') {
@@ -513,10 +518,12 @@ export class PlaceLocationEnrichmentService {
   }
 
   /**
-   * W1's lane alarm (waves 3-4 red team): the mention-driven worker lane's
-   * decline rate, read from the durable attempt breadcrumbs. One aggregate
-   * over core_entities per recheck interval; both timestamps are ISO
-   * strings this service itself writes.
+   * THE ONE GROUNDING HOLD (E-6): the chooser's decline rate, read from the
+   * durable attempt breadcrumbs — one aggregate over core_entities per
+   * recheck interval; both timestamps are ISO strings this service itself
+   * writes. Evaluated at the enrichPlace chokepoint, so every entry — the
+   * worker, the operator sweep, --entity= runs, the ghost script — is held
+   * by the same evidence.
    */
   private readonly workerLaneAlarm = new WorkerLaneDeclineAlarm();
 
@@ -555,30 +562,6 @@ export class PlaceLocationEnrichmentService {
     // isolated inside resumePendingGroundingEffects (never charged to THIS
     // entity's enrichment — grounding red team 2026-08-31).
     await this.resumePendingGroundingEffects();
-
-    // FAIL-CLOSED LANE HOLD (W1): when the trailing window's decline rate is
-    // over the bound, judging is broken — skip WITHOUT spending a Places call
-    // or a strike, and tell the operator loudly. The verdict comes from
-    // durable breadcrumbs, so a restarted worker re-trips while the evidence
-    // stands; jobs resolve as 'skipped' (no Bull retry churn) and the
-    // entities keep their retries for after the root cause is fixed.
-    const laneVerdict = await this.workerLaneAlarm.evaluate(() =>
-      this.readWorkerLaneWindowCounts(),
-    );
-    if (laneVerdict.held) {
-      this.opsAlerts.emit({
-        severity: 'critical',
-        kind: 'grounding_worker_lane_held',
-        title: 'Grounding worker lane held: decline rate over the bound',
-        body: workerLaneHoldMessage(laneVerdict),
-        dedupeKey: 'grounding_worker_lane_held',
-      });
-      return {
-        entityId,
-        status: 'skipped',
-        reason: 'worker_lane_decline_alarm_held',
-      };
-    }
 
     const entity = await this.prisma.entity.findUnique({
       where: { entityId },
@@ -1093,6 +1076,32 @@ export class PlaceLocationEnrichmentService {
     entity: PlaceEntity,
     options: PlaceEnrichmentOptions,
   ): Promise<PlaceEnrichmentResult> {
+    // FAIL-CLOSED HOLD AT THE CHOKEPOINT (red team 2026-09-04 E-6): when the
+    // trailing window's decline rate is over the bound, judging is broken —
+    // skip WITHOUT spending a Places call or a strike, and tell the operator
+    // loudly. The verdict comes from durable breadcrumbs, so a restarted
+    // worker or a freshly booted sweep script re-trips while the evidence
+    // stands; results resolve as 'skipped' (no Bull retry churn) and the
+    // entities keep their retries for after the root cause is fixed. This
+    // used to live one level up, in enrichPlaceById only, so the operator
+    // sweep (enrichMissingPlaces → enrichPlace) never saw it.
+    const laneVerdict = await this.workerLaneAlarm.evaluate(() =>
+      this.readWorkerLaneWindowCounts(),
+    );
+    if (laneVerdict.held) {
+      this.opsAlerts.emit({
+        severity: 'critical',
+        kind: 'grounding_worker_lane_held',
+        title: 'Grounding lane held: decline rate over the bound',
+        body: workerLaneHoldMessage(laneVerdict),
+        dedupeKey: 'grounding_worker_lane_held',
+      });
+      return {
+        entityId: entity.entityId,
+        status: 'skipped',
+        reason: GROUNDING_HOLD_SKIP_REASON,
+      };
+    }
     const alreadyGrounded =
       Boolean(entity.primaryLocation?.googlePlaceId) ||
       Boolean(entity.locations?.some((loc) => loc.googlePlaceId));
@@ -1285,29 +1294,42 @@ export class PlaceLocationEnrichmentService {
       // expensive SKU to learn what one indexed lookup knows. Merge straight
       // into the owner instead. Same-entity ownership falls through to the
       // normal refresh path unchanged.
-      const preOwned = await this.prisma.placeLocation.findUnique({
-        where: { googlePlaceId: best.entry.candidate.placeId },
-        select: { placeId: true },
-      });
-      if (preOwned && preOwned.placeId !== entity.entityId) {
-        const canonical = await this.prisma.entity.findUnique({
-          where: { entityId: preOwned.placeId },
-        });
-        if (canonical && canonical.status === 'active') {
-          this.logger.info(
-            'Place already owned by another entity — merging without a details call',
-            {
-              entityId: entity.entityId,
-              canonicalId: canonical.entityId,
-              placeId: best.entry.candidate.placeId,
-            },
-          );
+      const owner = await this.resolvePlaceOwnerForMerge(
+        best.entry.candidate.placeId,
+        entity,
+      );
+      if (owner.kind === 'held') {
+        return {
+          entityId: entity.entityId,
+          status: 'skipped',
+          reason: owner.reason,
+        };
+      }
+      if (owner.kind === 'merge_into_owner') {
+        const canonical = owner.owner;
+        this.logger.info(
+          'Place already owned by another entity — merging without a details call',
+          {
+            entityId: entity.entityId,
+            canonicalId: canonical.entityId,
+            placeId: best.entry.candidate.placeId,
+            revived: owner.revived,
+            redirected: owner.redirected,
+          },
+        );
+        {
           const merged = await this.placeEntityMergeService.mergeDuplicatePlace(
             {
               canonical: canonical as never,
               duplicate: entity,
               canonicalUpdate: {},
-              reason: `grounding collision: chooser selected google place ${best.entry.candidate.placeId}, already owned by the canonical entity`,
+              reason:
+                `grounding collision: chooser selected google place ${best.entry.candidate.placeId}, ` +
+                (owner.revived
+                  ? 'owned by an archived, redirect-free entity — the same business coming back; revived and absorbing the newcomer (E-4)'
+                  : owner.redirected
+                    ? 'owned by a merged-away entity — following its redirect to the live winner'
+                    : 'already owned by the canonical entity'),
             },
           );
           // The chooser's select IS a grounding verdict even when the effect
@@ -1598,6 +1620,9 @@ export class PlaceLocationEnrichmentService {
           pendingPlacesAliases.forms,
         );
       }
+      // Write-time embedding law: a grounding that renamed the entity or
+      // banked Google's display forms re-embeds it now, after the commit.
+      await this.entityEmbeddings.embedEntities([entity.entityId]);
 
       // POST-GROUNDING TAIL SPEAKS THE RESOLVED PLACE (red team 2026-08-19
       // D2): the 2026-08-02 redirect fix stopped at the location/entity
@@ -1809,6 +1834,9 @@ export class PlaceLocationEnrichmentService {
       const identity = identityInsertData(canonicalTrimmed, EntityType.place);
       updateData.identityKey = identity.identityKey;
       updateData.identityKeySorted = identity.identityKeySorted;
+      // THE VECTOR FOLLOWS THE NAME TOO: a rename with no new alias used to
+      // leave the old doc's embedding marked fresh.
+      updateData.nameEmbeddingStale = true;
       updatedFields.push('name');
       aliasSources.add(entity.name);
     }
@@ -1974,16 +2002,11 @@ export class PlaceLocationEnrichmentService {
       throw new Error('Canonical location not found for Google Place ID');
     }
 
-    const canonical = await this.prisma.entity.findUnique({
-      where: { entityId: canonicalLocation.placeId },
-      include: { primaryLocation: true, locations: true },
-    });
-
     // SELF-MERGE GUARD (round-11 fuzz D1): if the colliding place id is
     // held by another location row of the SAME entity, this is not a
     // duplicate pair — merging an entity into itself annihilated the
     // ledger before the re-key guards existed. Refuse here too.
-    if (canonical && canonical.entityId === entity.entityId) {
+    if (canonicalLocation.placeId === entity.entityId) {
       this.logger.warn('Place-id collision resolves to self — skipping merge', {
         entityId: entity.entityId,
         placeId,
@@ -1991,7 +2014,20 @@ export class PlaceLocationEnrichmentService {
       return { entityId: entity.entityId, status: 'skipped', reason: 'self' };
     }
 
-    if (!canonical) {
+    // ONE owner law for both collision doors (E-4): archived owners are
+    // revived (or followed through their redirect) and absorb the newcomer;
+    // a REHEARSAL owner — a shadow mint the shadow grounded first — is
+    // absorbed by the live newcomer instead, so a live entity can never be
+    // merged into a row no reader can see.
+    const owner = await this.resolvePlaceOwnerForMerge(placeId, entity);
+    if (owner.kind === 'held') {
+      return {
+        entityId: entity.entityId,
+        status: 'skipped',
+        reason: owner.reason,
+      };
+    }
+    if (owner.kind === 'none') {
       this.logger.error(
         'Google Place ID conflict encountered but canonical entity missing',
         {
@@ -2003,6 +2039,20 @@ export class PlaceLocationEnrichmentService {
     }
 
     const placeDetails = details.place;
+
+    if (owner.kind === 'absorb_owner') {
+      return this.absorbRehearsalPlaceOwner({
+        entity,
+        owner: owner.owner,
+        ownerLocation: canonicalLocation,
+        placeDetails,
+        details,
+        matchMetadata,
+        score,
+        googlePlaceAttributeIds,
+      });
+    }
+    const canonical = owner.owner;
 
     const canonicalUpdate = this.buildEntityUpdate(
       canonical,
@@ -2049,7 +2099,12 @@ export class PlaceLocationEnrichmentService {
         duplicate: entity,
         canonicalUpdate: mergedUpdate,
         reason:
-          'place-id collision: enrichment grounded this entity to a google place whose location row already belongs to the canonical entity',
+          'place-id collision: enrichment grounded this entity to a google place whose location row already belongs to the canonical entity' +
+          (owner.revived
+            ? ' — an archived, redirect-free owner: the same business coming back, revived to absorb the newcomer (E-4)'
+            : owner.redirected
+              ? ' — a merged-away owner, followed through its redirect to the live winner'
+              : ''),
         prepare: async (tx) => {
           const location = await tx.placeLocation.update({
             where: { locationId: canonicalLocation.locationId },
@@ -2095,6 +2150,501 @@ export class PlaceLocationEnrichmentService {
       placeId,
       score,
       updatedFields: mergedFields,
+    };
+  }
+
+  /**
+   * WHO OWNS THIS GOOGLE PLACE, AND WHICH WAY DOES THE MERGE GO — the one
+   * owner law both collision doors read (red team 2026-09-04 E-4, plus the
+   * shadow-grounding rederivation of the same day).
+   *
+   *   - unowned, or owned by THIS entity → 'none' (the caller grounds or
+   *     refreshes as usual);
+   *   - owned by an ACTIVE entity → merge into it (the free pre-details
+   *     merge, or the P2002 collision merge);
+   *   - owned by an ARCHIVED entity WITH an active redirect → merge into the
+   *     redirect's winner (the evidence already lives there);
+   *   - owned by an ARCHIVED entity with NO redirect → the same business
+   *     coming back (a janitor-closed place someone is talking about again,
+   *     a rejected shadow's grounded mint, a GC'd shell that still holds its
+   *     paid place row). It is REVIVED here and absorbs the newcomer as a
+   *     ledgered place merge — user anchors survive, one entity, and the
+   *     paid Places knowledge on the archived row is never re-bought. This
+   *     used to fall through to a paid details call and a merge the lock
+   *     refused (archived canonical), so every future mention paid
+   *     autocomplete + details again, never struck, never alarmed. It is
+   *     the grounding-time form of the resolver's "parked names revive on
+   *     mention" law (see the report: the two should share one revival
+   *     helper once the resolver's lands);
+   *   - owned by a REHEARSAL entity (a shadow mint the shadow grounded
+   *     first) while THIS entity is live → 'absorb_owner': the live entity
+   *     wins and the rehearsal row becomes its merge loser (archived with a
+   *     redirect, so the activation flip leaves it archived). Merging a
+   *     live entity INTO a rehearsal row would make it vanish from every
+   *     reader;
+   *   - owned by a REHEARSAL entity while THIS entity is ALSO rehearsal
+   *     (two un-activated shadows minting the same business) → 'held':
+   *     rehearsal generations never share state; no spend, no strike, the
+   *     mention-driven retry grounds the survivor after activation.
+   */
+  private async resolvePlaceOwnerForMerge(
+    googlePlaceId: string,
+    entity: PlaceEntity,
+  ): Promise<
+    | { kind: 'none' }
+    | {
+        kind: 'merge_into_owner';
+        owner: PlaceEntityWithLocations;
+        revived: boolean;
+        redirected: boolean;
+      }
+    | { kind: 'absorb_owner'; owner: PlaceEntityWithLocations }
+    | { kind: 'held'; reason: string }
+  > {
+    const ownerLocation = await this.prisma.placeLocation.findUnique({
+      where: { googlePlaceId },
+      select: { placeId: true },
+    });
+    if (!ownerLocation || ownerLocation.placeId === entity.entityId) {
+      return { kind: 'none' };
+    }
+    const load = (entityId: string) =>
+      this.prisma.entity.findUnique({
+        where: { entityId },
+        include: { primaryLocation: true, locations: true },
+      });
+    const owner = await load(ownerLocation.placeId);
+    if (!owner) {
+      return { kind: 'none' };
+    }
+    if (owner.status === EntityStatus.rehearsal) {
+      if (entity.status === EntityStatus.rehearsal) {
+        this.logger.warn(
+          'Place owned by another rehearsal generation — holding (no spend)',
+          {
+            entityId: entity.entityId,
+            ownerId: owner.entityId,
+            googlePlaceId,
+          },
+        );
+        return {
+          kind: 'held',
+          reason: 'place owned by another rehearsal generation',
+        };
+      }
+      return { kind: 'absorb_owner', owner };
+    }
+    if (owner.status !== EntityStatus.archived) {
+      return {
+        kind: 'merge_into_owner',
+        owner,
+        revived: false,
+        redirected: false,
+      };
+    }
+    const redirects = await activeWinnerRedirectMap(this.prisma, [
+      owner.entityId,
+    ]);
+    const winnerId = redirects.get(owner.entityId);
+    if (winnerId) {
+      const winner = await load(winnerId);
+      if (winner) {
+        return {
+          kind: 'merge_into_owner',
+          owner: winner,
+          revived: false,
+          redirected: true,
+        };
+      }
+    }
+    const revived = await this.prisma.entity.update({
+      where: { entityId: owner.entityId },
+      data: { status: EntityStatus.active, lastUpdated: new Date() },
+      include: { primaryLocation: true, locations: true },
+    });
+    this.logger.info(
+      'Revived an archived, redirect-free place owner — the same business coming back',
+      {
+        entityId: entity.entityId,
+        revivedId: revived.entityId,
+        googlePlaceId,
+      },
+    );
+    return {
+      kind: 'merge_into_owner',
+      owner: revived,
+      revived: true,
+      redirected: false,
+    };
+  }
+
+  /**
+   * THE LIVE ENTITY ABSORBS A REHEARSAL OWNER (shadow-grounding
+   * rederivation, 2026-09-04): the shadow grounded its mint first, then a
+   * live mention of the same business grounded onto the same Google place.
+   * Same computation as the canonical-side collision merge — the FRESH
+   * details build the winner's entity update, aliases and attributes — with
+   * the roles swapped: the live entity is canonical, the rehearsal row is
+   * the duplicate, and its location row re-points to the winner inside the
+   * merge's own transaction.
+   */
+  private async absorbRehearsalPlaceOwner(params: {
+    entity: PlaceEntity;
+    owner: PlaceEntityWithLocations;
+    ownerLocation: PlaceLocation;
+    placeDetails: GooglePlacesV1Place;
+    details: GooglePlacesV1PlaceDetailsResponse;
+    matchMetadata: MatchMetadata;
+    score?: number;
+    googlePlaceAttributeIds?: string[];
+  }): Promise<PlaceEnrichmentResult> {
+    const { entity, owner, ownerLocation, placeDetails, details } = params;
+    const placeId = placeDetails.id!;
+    const winnerUpdate = this.buildEntityUpdate(
+      entity,
+      placeDetails,
+      details.metadata?.fieldMask ?? '',
+      params.matchMetadata,
+    );
+    const locationUpsert = this.buildLocationUpsertData(
+      entity.entityId,
+      ownerLocation,
+      placeDetails,
+    );
+    const winnerAliasUpdate = this.computeNameAndAliasUpdate(
+      entity,
+      this.getPlaceDisplayName(placeDetails),
+      this.collectAliasCandidates(owner),
+      this.getPlaceDisplayLocale(placeDetails),
+    );
+    const mergeAugmentations = this.buildCanonicalMergeAugmentations(
+      entity,
+      owner,
+      params.googlePlaceAttributeIds,
+    );
+    const mergedUpdate = this.mergeEntityUpdates(
+      winnerUpdate.updateData,
+      winnerAliasUpdate.updateData,
+      mergeAugmentations.updateData,
+    );
+    const mergedFields = this.mergeUpdatedFieldLists(
+      winnerUpdate.updatedFields,
+      winnerAliasUpdate.updatedFields,
+      mergeAugmentations.updatedFields,
+    );
+    const updatedWinner =
+      await this.placeEntityMergeService.mergeDuplicatePlace({
+        canonical: entity,
+        duplicate: owner,
+        canonicalUpdate: mergedUpdate,
+        reason:
+          'place-id collision: a live entity grounded to a google place whose location row belongs to a REHEARSAL mint — the live entity absorbs the shadow row (shadow grounding law, 2026-09-04)',
+        prepare: async (tx) => {
+          const location = await tx.placeLocation.update({
+            where: { locationId: ownerLocation.locationId },
+            data: {
+              ...locationUpsert.update,
+              placeId: entity.entityId,
+              isPrimary: true,
+              updatedAt: new Date(),
+            } as Prisma.PlaceLocationUncheckedUpdateInput,
+          });
+          return {
+            primaryLocation: { connect: { locationId: location.locationId } },
+          };
+        },
+      });
+    await this.rescoreCoordinator.markDirty('location-enrichment');
+    await this.bankPlacesAliases(
+      updatedWinner.entityId,
+      winnerAliasUpdate.aliasForms,
+    );
+    this.logger.info('Live entity absorbed a rehearsal place owner', {
+      entityId: entity.entityId,
+      absorbedRehearsalId: owner.entityId,
+      placeId,
+      updatedFields: mergedFields,
+    });
+    await this.cuisineExtractionQueue.queueExtraction(updatedWinner.entityId, {
+      source: 'google_places_collision',
+    });
+    return {
+      entityId: entity.entityId,
+      status: 'updated',
+      placeId,
+      score: params.score,
+      updatedFields: mergedFields,
+    };
+  }
+
+  /**
+   * A GOOGLE REDIRECT IS GOOGLE'S OWN VERDICT (red team 2026-09-04 E-3,
+   * option A). A location row whose refresh poll found `movedPlaceId` is
+   * followed HERE: one details call on the NEW place id, the row rewritten
+   * IN PLACE (same locationId, new google id, moved flag cleared), the
+   * entity's Google snapshot re-stated when the row is its primary, the
+   * verdict ledgered on the grounding lane. No judge, no autocomplete, once.
+   * The old moved arm forced a full re-enrichment — name search + chooser +
+   * details — that CREATED a second location row and left the moved one
+   * standing, so the janitor re-bought the same redirect weekly, forever.
+   *
+   * FULL SKU, by the spend law: the rewritten row is not only the location
+   * columns (the lean refresh mask would cover those) — when the row is the
+   * entity's primary, the entity's `placeMetadata.googlePlaces` snapshot,
+   * `placeAttributes` (Google's atmosphere booleans the app renders as
+   * place attributes), `priceLevel`/`priceRange`, and `editorialSummary`
+   * (the cuisine fingerprint's input) are all PER-LISTING facts and the new
+   * place id is a new listing. A lean fetch would leave the entity carrying
+   * the dead listing's atmosphere, price and editorial text indefinitely,
+   * and the snapshot semantics (mergePlaceMetadata) require a full fetch to
+   * re-state the blob. One Enterprise+Atmosphere call, once, replaces a
+   * weekly autocomplete + chooser + full-SKU loop.
+   */
+  async followMovedPlace(
+    location: PlaceLocation,
+  ): Promise<PlaceEnrichmentResult> {
+    const movedPlaceId =
+      typeof location.movedPlaceId === 'string'
+        ? location.movedPlaceId.trim()
+        : '';
+    if (!movedPlaceId) {
+      return {
+        entityId: location.placeId,
+        status: 'skipped',
+        reason: 'location carries no moved place id',
+      };
+    }
+    const entity = await this.prisma.entity.findUnique({
+      where: { entityId: location.placeId },
+      include: { primaryLocation: true, locations: true },
+    });
+    if (!entity) {
+      return {
+        entityId: location.placeId,
+        status: 'not_found',
+        reason: 'entity not found',
+      };
+    }
+    if (entity.status === EntityStatus.archived) {
+      return {
+        entityId: entity.entityId,
+        status: 'skipped',
+        reason: 'archived',
+      };
+    }
+    return runInWorkContext(
+      { ...(currentWorkContext() ?? {}), attribution: 'grounding.moved' },
+      () => this.followMovedPlaceInner(entity, location, movedPlaceId),
+    );
+  }
+
+  private async followMovedPlaceInner(
+    entity: PlaceEntityWithLocations,
+    location: PlaceLocation,
+    movedPlaceId: string,
+  ): Promise<PlaceEnrichmentResult> {
+    const fromPlaceId = location.googlePlaceId ?? null;
+    const details = await this.googlePlacesService.getPlaceDetails(
+      movedPlaceId,
+      { includeRaw: true },
+    );
+    const place = details.place;
+    if (!place) {
+      return {
+        entityId: entity.entityId,
+        status: 'error',
+        reason: 'moved place details missing',
+      };
+    }
+    if (typeof place.id !== 'string' || !place.id.trim()) {
+      place.id = movedPlaceId;
+    }
+    const toPlaceId = place.id;
+    const matchMetadata: MatchMetadata = {
+      query: entity.name,
+      predictionsConsidered: 1,
+      timestamp: new Date().toISOString(),
+      source: 'find_place',
+      redirectedFromPlaceId: fromPlaceId ?? undefined,
+      redirectedToPlaceId: toPlaceId,
+      redirectedFromBusinessStatus: location.businessStatus ?? undefined,
+    };
+
+    // The redirect target may already be a row of ours (a crash between an
+    // earlier follow's row write and its ledger entry, or a branch we
+    // already expanded into) or another entity's — the same owner law as
+    // every collision door. In every owned case the dead listing's row is
+    // superseded by the row that already holds the new id.
+    const owner = await this.resolvePlaceOwnerForMerge(toPlaceId, entity);
+    const selfOwned = entity.locations.find(
+      (row) =>
+        row.googlePlaceId === toPlaceId &&
+        row.locationId !== location.locationId,
+    );
+    if (owner.kind === 'held') {
+      return {
+        entityId: entity.entityId,
+        status: 'skipped',
+        reason: owner.reason,
+      };
+    }
+    if (owner.kind !== 'none' || selfOwned) {
+      if (owner.kind === 'merge_into_owner') {
+        await this.placeEntityMergeService.mergeDuplicatePlace({
+          canonical: owner.owner,
+          duplicate: entity,
+          canonicalUpdate: {},
+          reason: `moved-place redirect: google redirected ${fromPlaceId ?? '?'} to ${toPlaceId}, whose location row already belongs to the canonical entity${owner.revived ? ' (revived — the same business coming back, E-4)' : ''}`,
+        });
+      } else if (owner.kind === 'absorb_owner') {
+        await this.placeEntityMergeService.mergeDuplicatePlace({
+          canonical: entity,
+          duplicate: owner.owner,
+          canonicalUpdate: {},
+          reason: `moved-place redirect: google redirected ${fromPlaceId ?? '?'} to ${toPlaceId}, whose location row belongs to a REHEARSAL mint — the live entity absorbs it`,
+        });
+      }
+      await this.prisma.placeLocation.delete({
+        where: { locationId: location.locationId },
+      });
+      this.logger.info(
+        'Moved-place redirect resolved to an existing row — dead listing row removed',
+        {
+          entityId: entity.entityId,
+          fromPlaceId,
+          toPlaceId,
+          owner: owner.kind === 'none' ? 'self' : owner.kind,
+        },
+      );
+      return {
+        entityId: entity.entityId,
+        status: 'updated',
+        placeId: toPlaceId,
+        reason: 'moved place already held',
+      };
+    }
+
+    const locationUpsert = this.buildLocationUpsertData(
+      entity.entityId,
+      location,
+      place,
+    );
+    const isPrimary =
+      location.isPrimary || entity.primaryLocationId === location.locationId;
+    let updatedFields = [...locationUpsert.updatedFields, 'movedPlaceId'];
+    let pendingAliases: SurfaceInput[] = [];
+    let entityUpdate: Prisma.EntityUpdateInput | null = null;
+    if (isPrimary) {
+      const { updateData, updatedFields: entityFields } =
+        this.buildEntityUpdate(
+          entity,
+          place,
+          details.metadata?.fieldMask ?? '',
+          matchMetadata,
+        );
+      const aliasUpdate = this.computeNameAndAliasUpdate(
+        entity,
+        this.getPlaceDisplayName(place),
+        [],
+        this.getPlaceDisplayLocale(place),
+      );
+      pendingAliases = aliasUpdate.aliasForms;
+      const googleAttributeIds = this.unionStringArrays(
+        await this.resolvePlaceAttributeIdsForDefinitions(
+          this.extractGooglePlaceAttributeDefinitions(place),
+        ),
+        await this.resolvePlaceAttributeIdsForNames(
+          this.mapPlaceTypesToPlaceAttributeNames(place),
+        ),
+      );
+      const mergedAttributes = this.unionStringArrays(
+        entity.placeAttributes,
+        googleAttributeIds,
+      );
+      entityUpdate = this.mergeEntityUpdates(
+        updateData,
+        aliasUpdate.updateData,
+      );
+      updatedFields = this.mergeUpdatedFieldLists(
+        updatedFields,
+        entityFields,
+        aliasUpdate.updatedFields,
+      );
+      if (
+        !this.setsEqual(
+          new Set(entity.placeAttributes),
+          new Set(mergedAttributes),
+        )
+      ) {
+        entityUpdate.placeAttributes = mergedAttributes;
+        updatedFields = this.mergeUpdatedFieldLists(updatedFields, [
+          'restaurantAttributes',
+        ]);
+      }
+      await this.recordAttributeEvidence(
+        entity.entityId,
+        googleAttributeIds,
+        'places_api',
+      );
+    }
+
+    await this.prisma.$transaction(
+      async (tx) => {
+        await tx.placeLocation.update({
+          where: { locationId: location.locationId },
+          data: {
+            ...locationUpsert.update,
+            placeId: entity.entityId,
+            isPrimary: location.isPrimary,
+            updatedAt: new Date(),
+          } as Prisma.PlaceLocationUncheckedUpdateInput,
+        });
+        if (entityUpdate) {
+          await tx.entity.update({
+            where: { entityId: entity.entityId },
+            data: {
+              ...entityUpdate,
+              primaryLocation: { connect: { locationId: location.locationId } },
+            },
+          });
+        }
+      },
+      {
+        timeout: this.transactionTimeoutMs,
+        maxWait: this.transactionMaxWaitMs,
+      },
+    );
+    // Google's redirect is the verdict; the ledger records it with the
+    // ABSOLUTE row state so the lane's memory says this entity IS the new
+    // place — executed in the same breath, like the pre-details merge.
+    await this.recordGroundingSelection({
+      entity,
+      placeId: toPlaceId,
+      reason: `google moved-place redirect: ${fromPlaceId ?? '?'} → ${toPlaceId} (Google's own verdict; no chooser)`,
+      location: this.groundingLocationTarget(locationUpsert.create),
+      executed: true,
+    });
+    if (pendingAliases.length) {
+      await this.bankPlacesAliases(entity.entityId, pendingAliases);
+    }
+    if (isPrimary) {
+      await this.cuisineExtractionQueue.queueExtraction(entity.entityId, {
+        source: 'google_places_moved',
+      });
+    }
+    this.logger.info('Followed moved-place redirect in place', {
+      entityId: entity.entityId,
+      locationId: location.locationId,
+      fromPlaceId,
+      toPlaceId,
+      isPrimary,
+      updatedFields,
+    });
+    return {
+      entityId: entity.entityId,
+      status: 'updated',
+      placeId: toPlaceId,
+      updatedFields,
     };
   }
 
@@ -2161,36 +2711,33 @@ export class PlaceLocationEnrichmentService {
       return null;
     }
 
-    const candidates = await this.prisma.entity.findMany({
-      where: {
-        type: EntityType.place,
-        canonicalDomain,
-        entityId: { not: params.entity.entityId },
-      },
-      include: { primaryLocation: true, locations: true },
-      orderBy: [{ createdAt: 'asc' }, { entityId: 'asc' }],
-      take: 50,
-    });
+    // ONE ANSWER TO "IS THIS DOMAIN OWNED?" (red team 2026-09-04 E-7): the
+    // cluster comes from the merge service's ownedDomainCluster — ACTIVE
+    // carriers of the domain, redirect-resolved — the same reading the
+    // nightly sweep's domain lane takes. This door used to run its own
+    // status-free findMany, so an ARCHIVED, redirect-free oldest twin was
+    // picked as canonical and the merge refused under its lock AFTER the
+    // grounding had committed: the restaurant was grounded but reported as
+    // an error, and never got secondary expansion or cuisine extraction.
+    // BRAND PURITY is the cluster's own verdict (list-free): a domain is a
+    // chain key only when every carrier — including the incoming one —
+    // folds to one brand root; generic hosts accumulate many brands and so
+    // never merge, even when two names coincide.
+    const incomingName =
+      this.getPlaceDisplayName(params.placeDetails) ?? params.entity.name;
+    const cluster = await this.placeEntityMergeService.ownedDomainCluster(
+      canonicalDomain,
+      [incomingName],
+    );
+    const candidates = cluster.members.filter(
+      (member) => member.entityId !== params.entity.entityId,
+    );
 
     if (!candidates.length) {
       return null;
     }
 
-    // BRAND-PURITY GATE (list-free): a domain is trusted as a chain key only when ALL
-    // restaurants sharing it — including the incoming one — form a single brand cluster.
-    // Real chains are brand-pure (every "7-Eleven" is named 7-Eleven, branches may add
-    // suffixes); generic hosts (facebook.com, doordash.com, ...) accumulate many distinct
-    // brands and therefore self-evidently carry no ownership signal — so they never merge,
-    // even when two names coincide. Purity = every member agrees with the cluster's brand
-    // root (the shortest brand name, so branch suffixes don't break a real chain).
-    const incomingName =
-      this.getPlaceDisplayName(params.placeDetails) ?? params.entity.name;
-    const memberNames = [incomingName, ...candidates.map((c) => c.name)];
-    // ONE brand-purity rule (business-identity-rules.ts), shared with the
-    // sweep's judgment.
-    const { pure: brandPure } = brandClusterPurity(memberNames);
-
-    if (!brandPure) {
+    if (!cluster.owned) {
       this.logger.info(
         'Skipping canonical-domain merge: domain is not brand-pure',
         {
@@ -2203,7 +2750,13 @@ export class PlaceLocationEnrichmentService {
       return null;
     }
 
-    const canonical = candidates[0];
+    const canonical = await this.prisma.entity.findUnique({
+      where: { entityId: candidates[0].entityId },
+      include: { primaryLocation: true, locations: true },
+    });
+    if (!canonical) {
+      return null;
+    }
 
     const canonicalUpdate = this.buildEntityUpdate(
       canonical,
@@ -2235,13 +2788,42 @@ export class PlaceLocationEnrichmentService {
       ['canonicalDomain'],
     );
 
-    const mergedCanonical =
-      await this.placeEntityMergeService.mergeDuplicatePlace({
+    // THE GROUNDING STANDS WHATEVER THE MERGE COURT SAYS (E-7): the place id
+    // is committed; a domain-merge refusal (a concurrent merge archived the
+    // canonical under the lock, a stale loser) is that hearing's outcome,
+    // not a grounding failure. Log it, tell the operator, and let the
+    // post-grounding tail run on the entity as grounded.
+    let mergedCanonical: PlaceEntity;
+    try {
+      mergedCanonical = await this.placeEntityMergeService.mergeDuplicatePlace({
         canonical,
         duplicate: params.entity,
         canonicalUpdate: mergedUpdate,
         reason: `shared owned canonical domain ${canonicalDomain ?? '(unknown)'} — one operating business (domain identity lane)`,
       });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        'Canonical-domain merge refused after grounding — grounding stands, tail continues',
+        {
+          entityId: params.entity.entityId,
+          canonicalId: canonical.entityId,
+          canonicalDomain,
+          error: message,
+        },
+      );
+      this.opsAlerts.emit({
+        severity: 'warn',
+        kind: 'domain_merge_refused_after_grounding',
+        title: 'Domain merge refused after a committed grounding',
+        body: [
+          `Entity ${params.entity.entityId} grounded to ${params.placeDetails.id ?? '?'} and shares owned domain ${canonicalDomain} with ${canonical.entityId}, but the merge was refused: ${message}`,
+          'The grounding is intact and the post-grounding tail (secondary expansion, cuisine extraction) ran on the grounded entity. The nightly same-business sweep will re-judge the pair on the healed graph.',
+        ].join('\n\n'),
+        dedupeKey: `domain_merge_refused_after_grounding:${params.entity.entityId}`,
+      });
+      return null;
+    }
 
     const refreshedCanonical = await this.prisma.entity.findUnique({
       where: { entityId: mergedCanonical.entityId },
@@ -2895,6 +3477,7 @@ export class PlaceLocationEnrichmentService {
         ),
       );
     }
+    await this.entityEmbeddings.embedEntities([created.entityId]);
     idsByName.set(canonicalName, created.entityId);
     this.logger.info('Created place_attribute entity on demand', {
       canonicalName,

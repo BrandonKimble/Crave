@@ -38,10 +38,7 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { PlaceLocationEnrichmentService } from '../src/modules/restaurant-enrichment';
 import { UnifiedProcessingService } from '../src/modules/content-processing/reddit-collector/unified-processing.service';
-import {
-  GroundingSweepHaltError,
-  GroundingSweepTripwire,
-} from '../src/modules/restaurant-enrichment/grounding-sweep-tripwire';
+import { GROUNDING_HOLD_SKIP_REASON } from '../src/modules/restaurant-enrichment/worker-lane-decline-alarm';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 interface GhostRow {
@@ -142,9 +139,9 @@ async function main(): Promise<void> {
     string,
     number
   >;
-  // R1's alarm: a run declining >90% after 20+ judged attempts is a broken
-  // judge, not that many correct rejections — halt before spending strikes.
-  const tripwire = new GroundingSweepTripwire();
+  // THE ONE GROUNDING HOLD (E-6) is evaluated inside enrichPlace from the
+  // durable decline window; this loop is its second reader — a held lane
+  // halts the run instead of skipping the rest of the cohort in silence.
   const contextCache = new Map<
     string,
     Awaited<
@@ -186,16 +183,16 @@ async function main(): Promise<void> {
     console.log(
       `  ${result.status.padEnd(8)} ${ghost.name}${result.status !== 'updated' ? ` (${result.reason ?? ''})` : ''}`,
     );
-    try {
-      tripwire.record(result.status);
-    } catch (error) {
-      if (error instanceof GroundingSweepHaltError) {
-        console.error(`\n!!! ${error.message}`);
-        console.error(`tally so far: ${JSON.stringify(tally)}`);
-        await app.close();
-        process.exit(2);
-      }
-      throw error;
+    if (
+      result.status === 'skipped' &&
+      result.reason === GROUNDING_HOLD_SKIP_REASON
+    ) {
+      console.error(
+        '\n!!! GROUNDING HOLD TRIPPED — the shared decline window says the judge is broken; halting (see the ops alert for the numbers).',
+      );
+      console.error(`tally so far: ${JSON.stringify(tally)}`);
+      await app.close();
+      process.exit(2);
     }
   }
 

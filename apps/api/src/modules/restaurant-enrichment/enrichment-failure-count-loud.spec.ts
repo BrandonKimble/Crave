@@ -63,6 +63,7 @@ describe('the enrichment attempt counters are not silent (F4907 + F5100)', () =>
       } as never,
       { reconcile: () => Promise.resolve(0) } as never,
       logger as never,
+      { embedEntities: () => Promise.resolve(0) } as never,
     );
     // The method is private by design (it is bookkeeping, not API), so the
     // spec reaches it through a narrow structural view rather than widening

@@ -44,7 +44,8 @@ describe('buildPlan tuning knobs are refused non-positive at the boundary (F4946
     {} as never,
     {} as never,
     logger,
-    {} as never, // merge door — unused by this spec
+    {} as never, // merge door — unused by this spec,
+    { embedEntities: () => Promise.resolve(0) } as never,
   );
 
   it.each([
@@ -77,7 +78,8 @@ describe('applyPlan rename derives identity from plan.type (F4947)', () => {
       {} as never,
       {} as never,
       logger,
-      {} as never, // merge door — unused by this spec
+      {} as never, // merge door — unused by this spec,
+      { embedEntities: () => Promise.resolve(0) } as never,
     );
 
     const rename = { entityId: 'e-1', from: 'old label', to: 'new label' };
@@ -114,7 +116,8 @@ describe('applyPlan rename derives identity from plan.type (F4947)', () => {
       {} as never,
       {} as never,
       logger,
-      {} as never, // merge door — unused by this spec
+      {} as never, // merge door — unused by this spec,
+      { embedEntities: () => Promise.resolve(0) } as never,
     );
 
     const rename = { entityId: 'e-1', from: 'old label', to: 'new label' };

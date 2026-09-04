@@ -140,6 +140,7 @@ function serviceWith(opts: {
     ledger,
     { reconcile: () => Promise.resolve(0) } as never,
     noopLogger() as never,
+    { embedEntities: () => Promise.resolve(0) } as never,
   );
 }
 

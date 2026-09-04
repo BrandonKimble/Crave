@@ -1,33 +1,39 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { LoggerService, CorrelationUtils } from '../../../shared';
-import { LLMModelInput, LLMComment } from './llm.types';
+import { LLMModelInput, LLMComment, LLMPost } from './llm.types';
 
-const DEFAULT_MAX_CHUNK_COMMENTS = 80;
 const DEFAULT_MAX_CHUNK_TOKEN_ESTIMATE = 35000;
 /**
- * DOCS-PER-CHUNK CAP (miss-population RC4, 2026-08-27 — structural).
+ * DOCS-PER-WINDOW CAP (miss-population RC4, 2026-08-27 — structural).
  * Packing was governed by the token budget ALONE, which produced chunks
  * averaging ~57 documents (max 143) — and emission decayed monotonically
  * with position inside the chunk: 43.2% of first-quintile doc-slots carried
  * evidence vs 35.5% in the last (−18% relative). A single call asked to run
  * the full extraction loop for 100+ sources gives the later ones measurably
  * less attention; no prompt sentence closes that gap. The honest lever is a
- * doc-count cap ALONGSIDE the token budget: stop adding a thread when the
- * chunk already holds this many comments (a single larger thread stays
- * whole — thread coherence is never split).
+ * doc-count cap ALONGSIDE the token budget: stop adding to a window when it
+ * already holds this many EMITTING comments.
  *
- * Default 30 targets a ~25–30-doc average (threads pack greedily under the
- * cap; only unsplittable mega-threads exceed it).
+ * REPLY CHAINS, NOT WHOLE THREADS (rederivation 2026-09-04). The first cap
+ * kept whole top-level threads unsplittable ("thread coherence"), and on the
+ * v23 Austin shadow 539 of 1,762 chunks — every one a single mega-thread —
+ * still ran 60 docs on average (max 143): the cap was a rule with a hole the
+ * size of the problem. The unit the prompt actually needs coherent is the
+ * REPLY CHAIN: its depth-aware resolution order reads the current comment,
+ * then its parent, then earlier lines, then the post — never a sibling
+ * subtree. So a thread larger than the cap splits at the next level: each
+ * child subtree becomes its own packable unit, recursively, and every
+ * window carries the full ancestor chain (post → … → the window's roots) as
+ * CONTEXT-ONLY documents (`context_only: true`; the post under
+ * `extract_from_post: false`), so "+1", "their brisket", "the one on Burnet"
+ * still resolve exactly as before. A context-only comment never emits and
+ * is never a `source_id`; it may be a `place_source_id` (the prompt's
+ * "point at the source that NAMES the place"). The only irreducible unit
+ * left is a LINEAR chain (each comment with exactly one reply): splitting
+ * it would make the ancestor context grow quadratically for no attention
+ * gain, so a chain ships whole even past the cap.
  *
- * COST MULTIPLIER (computed, not guessed): halving docs/chunk roughly
- * doubles the call count, but the per-call overhead is the SYSTEM prompt,
- * which is batch-cached (~19k tokens for the v17 candidate: 76KB / 4 —
- * read at 0.1x input price ≈ 1.9k token-equivalents per call) plus the
- * repeated post
- * context. Payload runs up to the 35k-token target per chunk, so the
- * marginal cost of one extra call is ~2k token-equivalents against a
- * ~15–35k payload — total input cost multiplier ≈ 1.1–1.3x for 2x calls,
- * not 2x. Output tokens are unchanged (same mentions, split across calls).
+ * Default 30 targets a ~25–30-doc average.
  */
 const DEFAULT_MAX_DOCS_PER_CHUNK = 30;
 
@@ -71,15 +77,50 @@ export function resolveChunkTargetTokens(raw: string | undefined): number {
   return parsed;
 }
 
+/** THE PAYLOAD CONTRACT'S ONE QUESTION PER DOCUMENT: does this window emit
+ *  for it? A comment emits unless flagged `context_only`; a post body emits
+ *  only under `extract_from_post: true`. Every coverage/activation/link
+ *  writer derives its document set from THIS, so a context-only appearance
+ *  can never satisfy coverage and a document's one emitting window is the
+ *  one that claims it. */
+export function isContextOnlyComment(
+  comment: Pick<LLMComment, 'context_only'>,
+): boolean {
+  return comment.context_only === true;
+}
+
+export function emittingSourceIdsOf(input: LLMModelInput): {
+  postIds: string[];
+  commentIds: string[];
+} {
+  const postIds: string[] = [];
+  const commentIds: string[] = [];
+  for (const post of input.posts ?? []) {
+    if (post.extract_from_post !== false) {
+      postIds.push(post.id);
+    }
+    for (const comment of post.comments ?? []) {
+      if (!isContextOnlyComment(comment)) {
+        commentIds.push(comment.id);
+      }
+    }
+  }
+  return { postIds, commentIds };
+}
+
 /**
  * Chunk metadata for tracking processing information
  */
 export interface ChunkMetadata {
   chunkId: string;
+  /** EMITTING comments in the window (the attention-cap quantity). */
   commentCount: number;
+  /** Ancestor comments riding along as context only (never emit). */
+  contextCommentCount?: number;
   rootCommentScore: number;
   estimatedProcessingTime: number;
   threadRootId: string;
+  /** Top-level thread roots that EMIT (fully or partly) in this window. */
   rootCommentIds?: string[];
   rootCommentScores?: number[];
   postId?: string;
@@ -95,14 +136,45 @@ export interface ChunkResult<TInput extends LLMModelInput = LLMModelInput> {
   metadata: ChunkMetadata[];
 }
 
+type CommentNode = {
+  comment: LLMComment;
+  children: CommentNode[];
+  /** Top-level thread root this node descends from (itself for a root). */
+  root: LLMComment;
+  /** Position in the post's depth-first reading order. */
+  order: number;
+};
+
+/** One packable unit: comments that EMIT together (a whole subtree, or a
+ *  linear chain prefix of a split subtree) plus the ancestor chain they
+ *  need as context. */
+type PackItem = {
+  chain: LLMComment[];
+  docs: LLMComment[];
+  emitting: number;
+  charLength: number;
+};
+
+type Window = {
+  emittingIds: Set<string>;
+  contextIds: Set<string>;
+  emitting: number;
+  charLength: number;
+};
+
 /**
  * LLM Chunking Service
  *
- * Implements context-aware chunking strategy for Reddit post data:
- * - Each chunk = 1 top-level comment + all its replies + post context
- * - Maintains "top" sorting order (most valuable content first)
- * - Preserves referential context completely
- * - Handles variable chunk sizes gracefully (1 to 50+ comments per chunk)
+ * Reply-chain windows (see the cap note above):
+ * - Each window = post context + the ancestor chain (context-only) + up to
+ *   maxDocsPerChunk EMITTING comments, packed greedily in "top" order for
+ *   top-level threads and reply order inside a thread.
+ * - The token target is a ceiling, never the packing rule.
+ * - SAME-POST PACKING ONLY (contamination A/B verdict 2026-07-11):
+ *   cross-post packing resolved anaphora against co-packed sibling posts
+ *   ("their sandwich joint" -> a restaurant from another post) and lost
+ *   21-31% of mentions at every pack size. Windows never span posts;
+ *   prompt-overhead economics are carried by the batch system-prompt cache.
  */
 @Injectable()
 export class LLMChunkingService implements OnModuleInit {
@@ -126,29 +198,6 @@ export class LLMChunkingService implements OnModuleInit {
     this.maxDocsPerChunk = resolveChunkMaxDocs(process.env.LLM_CHUNK_MAX_DOCS);
   }
 
-  private getChunkingLimits(): {
-    maxCommentsPerChunk: number;
-    maxCharsPerChunk: number;
-    maxTokensPerChunk: number;
-    maxDocsPerChunk: number;
-  } {
-    const maxTokensPerChunk = this.maxTokensPerChunk;
-    return {
-      // Thread-coherence bound only (a single degenerate mega-thread), not a
-      // packing knob — packing is governed by the token target plus the
-      // docs-per-chunk attention cap (miss RC4).
-      maxCommentsPerChunk: DEFAULT_MAX_CHUNK_COMMENTS,
-      maxDocsPerChunk: this.maxDocsPerChunk,
-      // DERIVED from the token target (4 chars/token estimate). The old
-      // independent LLM_MAX_CHUNK_CHARS=12000 knob silently capped every
-      // chunk at ~3k tokens, making the token target unreachable — the
-      // packing audit (2026-07-11) measured ~2k content tokens/request
-      // against a 35k target, with the system prompt at ~90% of all input.
-      maxCharsPerChunk: maxTokensPerChunk * 4,
-      maxTokensPerChunk,
-    };
-  }
-
   private estimateTokensFromChars(charCount: number): number {
     if (!Number.isFinite(charCount) || charCount <= 0) {
       return 0;
@@ -157,11 +206,7 @@ export class LLMChunkingService implements OnModuleInit {
   }
 
   /**
-   * Create context-preserving chunks from Reddit post data
-   * Maintains "top" sorting order to process most valuable content first
-   *
-   * OPTIMIZATION: Uses lightweight post objects in chunks 2+ to save ~1,000 tokens per batch.
-   * First chunk includes full post for extraction, subsequent chunks exclude unnecessary metadata.
+   * Create reply-chain windows from Reddit post data.
    *
    * @param llmInput - Multiple posts with all comments (processes all posts)
    * @returns ChunkResult with chunks and metadata
@@ -189,499 +234,355 @@ export class LLMChunkingService implements OnModuleInit {
       ),
     });
 
-    // Process each post individually
-    for (let postIndex = 0; postIndex < llmInput.posts.length; postIndex++) {
-      const post = llmInput.posts[postIndex];
-
-      this.logger.debug(
-        `Processing post ${postIndex + 1}/${llmInput.posts.length}`,
-        {
-          correlationId: CorrelationUtils.getCorrelationId(),
-          postId: post.id,
-          postTitle: post.title,
-          commentCount: post.comments?.length || 0,
-        },
-      );
-
-      if (!post.comments || post.comments.length === 0) {
-        const postContextCharLength =
-          (post.title?.length || 0) + (post.content?.length || 0);
-        const postTokens = this.estimateTokensFromChars(postContextCharLength);
-        this.logger.debug(
-          'No comments to chunk, adding single chunk with post only',
-          {
-            correlationId: CorrelationUtils.getCorrelationId(),
-            postId: post.id,
-          },
-        );
-
-        chunks.push({
-          posts: [
-            {
-              id: post.id,
-              // Extract from comment-less posts unless the caller pre-decided
-              // (thread-level dedupe sends an already-covered post body as
-              // context only, extract_from_post === false)
-              extract_from_post: post.extract_from_post !== false,
-              title: post.title,
-              content: post.content,
-              subreddit: post.subreddit,
-              author: post.author,
-              url: post.url,
-              score: post.score,
-              created_at: post.created_at,
-              comments: [],
-            },
-          ],
-        });
-
-        chunkMetadata.push({
-          chunkId: `chunk_post_${post.id}`,
-          commentCount: 0,
-          rootCommentScore: 0,
-          estimatedProcessingTime: 5, // Base processing time for post only
-          threadRootId: post.id,
-          postId: post.id,
-          postChunkIndex: 0,
-          estimatedTokenCount: postTokens,
-        });
-
-        continue; // Continue to next post instead of returning
-      }
-
-      // Get top-level comments (parent_id is null or points to post)
-      // Comments should already be sorted by "top" from Reddit API
-      const topLevelComments = post.comments
-        .filter(
-          (c) =>
-            c.parent_id === null ||
-            c.parent_id === post.id ||
-            c.parent_id === post.id.replace('t3_', ''),
-        )
-        .sort((a, b) => b.score - a.score); // Ensure top-scored first
-
-      this.logger.debug('Creating chunks from top comments', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        postId: post.id,
-        totalTopLevel: topLevelComments.length,
-        totalComments: post.comments.length,
-        topScores: topLevelComments.slice(0, 5).map((c) => c.score),
-      });
-
-      const postChunkStartIndex = chunks.length;
+    for (const post of llmInput.posts) {
+      const postWindows = this.windowsForPost(post);
       const postMetadataStartIndex = chunkMetadata.length;
-      const {
-        maxCommentsPerChunk,
-        maxCharsPerChunk,
-        maxTokensPerChunk,
-        maxDocsPerChunk,
-      } = this.getChunkingLimits();
-      const softTokenThreshold = Math.max(
-        1000,
-        Math.floor(maxTokensPerChunk * 0.8),
-      );
-      const postContextCharLength =
-        (post.title?.length || 0) + (post.content?.length || 0);
-
-      type ThreadInfo = {
-        topComment: LLMComment;
-        threadComments: LLMComment[];
-        commentCount: number;
-        charLength: number;
-        rootScore: number;
-      };
-
-      const threadInfos: ThreadInfo[] = topLevelComments.map((topComment) => {
-        const threadComments = this.getFullThread(topComment, post.comments);
-        const charLength = threadComments.reduce((sum, comment) => {
-          return sum + (comment.content?.length || 0);
-        }, 0);
-
-        return {
-          topComment,
-          threadComments,
-          commentCount: threadComments.length,
-          charLength,
-          rootScore: topComment.score,
-        };
-      });
-
-      type ThreadGroup = {
-        threads: ThreadInfo[];
-        commentCount: number;
-        charLength: number;
-      };
-
-      const groupedThreads: ThreadGroup[] = [];
-      let currentGroup: ThreadGroup | null = null;
-      let chunkSequenceForPost = 0;
-
-      for (const thread of threadInfos) {
-        if (!currentGroup) {
-          currentGroup = {
-            threads: [thread],
-            commentCount: thread.commentCount,
-            charLength: postContextCharLength + thread.charLength,
-          };
-          continue;
-        }
-
-        const proposedCommentCount =
-          currentGroup.commentCount + thread.commentCount;
-        const proposedCharLength = currentGroup.charLength + thread.charLength;
-        const proposedTokenEstimate =
-          this.estimateTokensFromChars(proposedCharLength);
-
-        const exceedsLimits =
-          proposedCharLength > maxCharsPerChunk ||
-          proposedTokenEstimate > maxTokensPerChunk ||
-          // ATTENTION CAP (miss RC4): a HARD doc-count bound — adding this
-          // thread would push the chunk past the docs-per-chunk cap, so it
-          // starts a new chunk (a lone thread bigger than the cap still
-          // stays whole: thread coherence is never split).
-          proposedCommentCount > maxDocsPerChunk ||
-          (proposedCommentCount > maxCommentsPerChunk &&
-            proposedTokenEstimate >= softTokenThreshold);
-
-        if (exceedsLimits) {
-          groupedThreads.push(currentGroup);
-          currentGroup = {
-            threads: [thread],
-            commentCount: thread.commentCount,
-            charLength: postContextCharLength + thread.charLength,
-          };
-        } else {
-          currentGroup.threads.push(thread);
-          currentGroup.commentCount = proposedCommentCount;
-          currentGroup.charLength = proposedCharLength;
-        }
+      for (const window of postWindows) {
+        chunks.push(window.chunk);
+        chunkMetadata.push(window.metadata);
       }
 
-      if (currentGroup) {
-        groupedThreads.push(currentGroup);
-      }
-
-      groupedThreads.forEach((group, groupIndex) => {
-        // Group 0 carries post-body extraction by default, but a caller may
-        // pre-decide extract_from_post === false (thread-level dedupe: post
-        // body already covered, riding along as context only).
-        const shouldExtractFromPost =
-          groupIndex === 0 && post.extract_from_post !== false;
-        const chunkPost = shouldExtractFromPost
-          ? {
-              id: post.id,
-              extract_from_post: true,
-              title: post.title,
-              content: post.content,
-              subreddit: post.subreddit,
-              author: post.author,
-              url: post.url,
-              score: post.score,
-              created_at: post.created_at,
-              comments: [],
-            }
-          : {
-              id: post.id,
-              extract_from_post: false,
-              title: post.title,
-              content: post.content,
-              subreddit: post.subreddit,
-              author: post.author,
-              url: post.url,
-              score: post.score,
-              created_at: post.created_at,
-              comments: [],
-            };
-
-        const combinedComments = group.threads.flatMap(
-          (thread) => thread.threadComments,
-        );
-        const rootCommentIds = group.threads.map(
-          (thread) => thread.topComment.id,
-        );
-        const rootCommentScores = group.threads.map(
-          (thread) => thread.rootScore,
-        );
-        const commentCount = combinedComments.length;
-        const chunkId =
-          group.threads.length === 1
-            ? `chunk_${rootCommentIds[0]}`
-            : `chunk_${post.id}_group_${groupIndex + 1}`;
-        const tokenEstimate = this.estimateTokensFromChars(group.charLength);
-
-        chunks.push({
-          posts: [
-            {
-              ...chunkPost,
-              comments: combinedComments,
-            },
-          ],
-        });
-
-        chunkMetadata.push({
-          chunkId,
-          commentCount,
-          rootCommentScore: Math.max(...rootCommentScores),
-          estimatedProcessingTime: commentCount * 6.4,
-          threadRootId:
-            group.threads.length === 1
-              ? rootCommentIds[0]
-              : `group:${rootCommentIds.join(',')}`,
-          rootCommentIds,
-          rootCommentScores,
-          postId: post.id,
-          postChunkIndex: chunkSequenceForPost++,
-          estimatedTokenCount: tokenEstimate,
-        });
-      });
-
-      // Handle orphaned comments for this post (defensive programming)
-      const thisPostChunks = chunks.slice(postChunkStartIndex);
-
-      const processedCommentIds = new Set<string>();
-      thisPostChunks.forEach((chunk) => {
-        chunk.posts[0].comments.forEach((comment) => {
-          processedCommentIds.add(comment.id);
-        });
-      });
-
-      const orphanedComments = post.comments.filter(
-        (c) => !processedCommentIds.has(c.id),
-      );
-      if (orphanedComments.length > 0) {
-        const orphanCharLength =
-          postContextCharLength +
-          orphanedComments.reduce(
-            (sum, comment) => sum + (comment.content?.length || 0),
-            0,
-          );
-        const orphanTokens = this.estimateTokensFromChars(orphanCharLength);
-
-        this.logger.debug('Found orphaned comments, adding as separate chunk', {
-          correlationId: CorrelationUtils.getCorrelationId(),
-          postId: post.id,
-          orphanedCount: orphanedComments.length,
-          orphanedIds: orphanedComments.slice(0, 5).map((c) => c.id),
-        });
-
-        // Orphaned comments get lightweight post context
-        chunks.push({
-          posts: [
-            {
-              // Lightweight post object for orphaned chunk
-              id: post.id,
-              extract_from_post: false, // PROMINENT: Never extract from post in orphaned chunk
-              title: post.title,
-              content: post.content, // Keep for context
-              subreddit: post.subreddit, // Keep for references
-              author: post.author, // Keep author field
-              url: post.url,
-              score: post.score,
-              created_at: post.created_at,
-              comments: orphanedComments,
-            },
-          ],
-        });
-
-        chunkMetadata.push({
-          chunkId: `chunk_orphaned_${post.id}`,
-          commentCount: orphanedComments.length,
-          rootCommentScore: Math.max(
-            ...orphanedComments.map((c) => c.score || 0),
-          ),
-          estimatedProcessingTime: orphanedComments.length * 6.4,
-          threadRootId: 'orphaned',
-          postId: post.id,
-          postChunkIndex: chunkSequenceForPost++,
-          estimatedTokenCount: orphanTokens,
-        });
-      }
-
-      // Log chunk distribution analysis for this post
       const postChunkMetadata = chunkMetadata.slice(postMetadataStartIndex);
-      const chunkSizes = postChunkMetadata.map((m) => m.commentCount);
-      const totalChunkComments = chunkSizes.reduce(
-        (sum, size) => sum + size,
-        0,
-      );
-      const aggregatedRootScores = postChunkMetadata.flatMap((meta) =>
-        Array.isArray(meta.rootCommentScores) &&
-        meta.rootCommentScores.length > 0
-          ? meta.rootCommentScores
-          : [meta.rootCommentScore],
-      );
-
       if (postChunkMetadata.length > 0) {
+        const chunkSizes = postChunkMetadata.map((m) => m.commentCount);
         this.logger.debug('Chunk distribution analysis for post', {
           correlationId: CorrelationUtils.getCorrelationId(),
           postId: post.id,
-          postIndex: postIndex + 1,
           totalPostChunks: postChunkMetadata.length,
           chunkSizes,
-          averageChunkSize: totalChunkComments / postChunkMetadata.length || 0,
+          contextSizes: postChunkMetadata.map(
+            (m) => m.contextCommentCount ?? 0,
+          ),
           largestChunk: Math.max(...chunkSizes),
           smallestChunk: Math.min(...chunkSizes),
-          topRootScores: aggregatedRootScores.slice(0, 10),
-          estimatedTotalTime: Math.max(
-            ...postChunkMetadata.map((m) => m.estimatedProcessingTime),
-          ),
         });
       }
-    } // End of post processing loop
+    }
 
-    // Final summary logging for all posts
     const totalChunkSizes = chunkMetadata.map((m) => m.commentCount);
     const totalComments = totalChunkSizes.reduce((sum, size) => sum + size, 0);
-    const allRootScores = chunkMetadata.flatMap((meta) =>
-      Array.isArray(meta.rootCommentScores) && meta.rootCommentScores.length > 0
-        ? meta.rootCommentScores
-        : [meta.rootCommentScore],
-    );
-
-    this.logger.debug('Final chunk distribution analysis - all posts', {
+    this.logger.info('Chunking complete', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'create_contextual_chunks',
       totalPosts: llmInput.posts.length,
       totalChunks: chunks.length,
-      totalComments,
-      chunkSizes: totalChunkSizes,
+      totalEmittingComments: totalComments,
+      totalContextComments: chunkMetadata.reduce(
+        (sum, m) => sum + (m.contextCommentCount ?? 0),
+        0,
+      ),
       averageChunkSize: chunks.length > 0 ? totalComments / chunks.length : 0,
       largestChunk:
         totalChunkSizes.length > 0 ? Math.max(...totalChunkSizes) : 0,
-      smallestChunk:
-        totalChunkSizes.length > 0 ? Math.min(...totalChunkSizes) : 0,
-      topRootScores: allRootScores.slice(0, 10),
-      estimatedTotalTime:
-        chunkMetadata.length > 0
-          ? Math.max(...chunkMetadata.map((m) => m.estimatedProcessingTime))
-          : 0,
+      targetTokens: this.maxTokensPerChunk,
+      maxDocsPerChunk: this.maxDocsPerChunk,
     });
 
-    // SAME-POST PACKING ONLY (contamination A/B verdict 2026-07-11):
-    // cross-post packing FAILED its empirical gate — packed runs resolved
-    // anaphora against co-packed sibling posts (proven at 8k: "their
-    // sandwich joint" -> a restaurant from another post) and lost 21-31% of
-    // mentions at every pack size, with no passing knee before N=1. So
-    // merging is restricted to chunks of the SAME post (group_1+group_2 —
-    // one sealed world, safe by construction; the old 12k-char cap was
-    // splitting single posts needlessly). Prompt-overhead economics are
-    // carried by the explicit batch system-prompt cache instead.
-    // Re-gate any future cross-post attempt with scripts/packing-ab.ts.
-    return this.packChunks(chunks, chunkMetadata);
+    return { chunks, metadata: chunkMetadata };
   }
 
-  private packChunks(
-    chunks: LLMModelInput[],
-    metadata: ChunkMetadata[],
-  ): ChunkResult {
-    const { maxTokensPerChunk, maxDocsPerChunk } = this.getChunkingLimits();
-    const packedChunks: LLMModelInput[] = [];
-    const packedMetadata: ChunkMetadata[] = [];
-    let currentPosts: Map<string, LLMModelInput['posts'][number]> | null = null;
-    let currentTokens = 0;
-    let currentDocs = 0;
-    let currentMeta: ChunkMetadata | null = null;
+  private windowsForPost(
+    post: LLMPost,
+  ): Array<{ chunk: LLMModelInput; metadata: ChunkMetadata }> {
+    const postContextCharLength =
+      (post.title?.length || 0) + (post.content?.length || 0);
+    const extractFromPost = post.extract_from_post !== false;
+    const comments = post.comments ?? [];
 
-    const flush = () => {
-      if (!currentPosts || !currentMeta) return;
-      packedChunks.push({ posts: Array.from(currentPosts.values()) });
-      packedMetadata.push({
-        ...currentMeta,
-        estimatedTokenCount: currentTokens,
-      });
-      currentPosts = null;
-      currentTokens = 0;
-      currentDocs = 0;
-      currentMeta = null;
-    };
+    if (comments.length === 0) {
+      if (!extractFromPost) {
+        // Nothing to emit: a covered post body with no comments is not a
+        // window (the caller's dedupe should have dropped it).
+        return [];
+      }
+      return [
+        {
+          chunk: {
+            posts: [{ ...post, extract_from_post: true, comments: [] }],
+          },
+          metadata: {
+            chunkId: `chunk_post_${post.id}`,
+            commentCount: 0,
+            contextCommentCount: 0,
+            rootCommentScore: 0,
+            estimatedProcessingTime: 5, // Base processing time for post only
+            threadRootId: post.id,
+            postId: post.id,
+            postChunkIndex: 0,
+            estimatedTokenCount: this.estimateTokensFromChars(
+              postContextCharLength,
+            ),
+          },
+        },
+      ];
+    }
 
-    for (let index = 0; index < chunks.length; index += 1) {
-      const chunk = chunks[index];
-      const meta = metadata[index];
-      const tokens =
-        meta.estimatedTokenCount ??
-        this.estimateTokensFromChars(JSON.stringify(chunk).length);
-      const currentPostIds = currentPosts ? new Set(currentPosts.keys()) : null;
-      const sameSinglePost =
-        currentPostIds !== null &&
-        currentPostIds.size === 1 &&
-        chunk.posts.length === 1 &&
-        currentPostIds.has(chunk.posts[0].id);
-      if (
-        currentPosts &&
-        (!sameSinglePost ||
-          currentTokens + tokens > maxTokensPerChunk ||
-          // ATTENTION CAP (miss RC4): packing was token-governed only, which
-          // built 57-avg/143-max-doc chunks and cost the tail ~18% relative
-          // emission. Same law as grouping: merging must not push the packed
-          // chunk past the docs cap (a lone oversized raw chunk still ships
-          // whole — coherence).
-          currentDocs + meta.commentCount > maxDocsPerChunk)
-      ) {
-        flush();
+    const { roots, byId } = this.buildForest(post);
+    const items: PackItem[] = [];
+    for (const root of roots) {
+      this.flattenSubtree(root, [], items);
+    }
+    const windows = this.packItems(items, postContextCharLength);
+
+    const result: Array<{ chunk: LLMModelInput; metadata: ChunkMetadata }> = [];
+    let postChunkIndex = 0;
+    for (const window of windows) {
+      const isFirst = result.length === 0;
+      const windowExtractsPost = isFirst && extractFromPost;
+      if (window.emitting === 0 && !windowExtractsPost) {
+        continue;
       }
-      if (!currentPosts) {
-        currentPosts = new Map();
-        currentMeta = {
-          ...meta,
-          chunkId: `pack_${packedChunks.length}_${meta.chunkId}`,
-        };
-      } else if (currentMeta) {
-        currentMeta.commentCount += meta.commentCount;
-      }
-      for (const post of chunk.posts) {
-        const existing = currentPosts.get(post.id);
-        if (existing) {
-          existing.comments = [
-            ...(existing.comments ?? []),
-            ...(post.comments ?? []),
-          ];
-          if ((post as { extract_from_post?: boolean }).extract_from_post) {
-            (existing as { extract_from_post?: boolean }).extract_from_post =
-              true;
-          }
-        } else {
-          currentPosts.set(post.id, {
-            ...post,
-            comments: [...(post.comments ?? [])],
-          });
+      // Reading order = the post's depth-first order, filtered to this
+      // window: ancestors always precede descendants, so the prompt's
+      // depth-aware resolution walks the chain exactly as in a whole thread.
+      const orderedComments = Array.from(byId.values())
+        .filter(
+          (node) =>
+            window.emittingIds.has(node.comment.id) ||
+            window.contextIds.has(node.comment.id),
+        )
+        .sort((a, b) => a.order - b.order)
+        .map((node) =>
+          window.emittingIds.has(node.comment.id)
+            ? this.asEmitting(node.comment)
+            : this.asContextOnly(node.comment),
+        );
+      const emittingRoots = new Map<string, number>();
+      for (const node of byId.values()) {
+        if (window.emittingIds.has(node.comment.id)) {
+          emittingRoots.set(node.root.id, node.root.score ?? 0);
         }
       }
-      currentTokens += tokens;
-      currentDocs += meta.commentCount;
-    }
-    flush();
+      const rootCommentIds = Array.from(emittingRoots.keys());
+      const rootCommentScores = Array.from(emittingRoots.values());
+      const contextCommentCount = orderedComments.length - window.emitting;
 
-    this.logger.info('Chunk packing complete', {
-      correlationId: CorrelationUtils.getCorrelationId(),
-      rawChunks: chunks.length,
-      packedChunks: packedChunks.length,
-      targetTokens: maxTokensPerChunk,
-    });
-    return { chunks: packedChunks, metadata: packedMetadata };
+      result.push({
+        chunk: {
+          posts: [
+            {
+              ...post,
+              extract_from_post: windowExtractsPost,
+              comments: orderedComments,
+            },
+          ],
+        },
+        metadata: {
+          chunkId: `chunk_${post.id}_w${postChunkIndex + 1}`,
+          commentCount: window.emitting,
+          contextCommentCount,
+          rootCommentScore:
+            rootCommentScores.length > 0 ? Math.max(...rootCommentScores) : 0,
+          estimatedProcessingTime: Math.max(5, window.emitting * 6.4),
+          threadRootId:
+            rootCommentIds.length === 1
+              ? rootCommentIds[0]
+              : rootCommentIds.length === 0
+                ? post.id
+                : `group:${rootCommentIds.join(',')}`,
+          rootCommentIds,
+          rootCommentScores,
+          postId: post.id,
+          postChunkIndex,
+          estimatedTokenCount: this.estimateTokensFromChars(window.charLength),
+        },
+      });
+      postChunkIndex += 1;
+    }
+    return result;
   }
 
-  /**
-   * Recursively get all comments in a thread starting from a root comment
-   *
-   * @param root - Root comment of the thread
-   * @param allComments - All comments from the post
-   * @returns Array of all comments in the thread (including root)
-   */
-  private getFullThread(
-    root: LLMComment,
-    allComments: LLMComment[],
-  ): LLMComment[] {
-    const thread = [root];
-
-    // Find all direct replies to this comment
-    const replies = allComments.filter((c) => c.parent_id === root.id);
-
-    // Recursively get full threads for each reply
-    for (const reply of replies) {
-      thread.push(...this.getFullThread(reply, allComments));
+  /** Comments → forest. Top-level roots ("top" score order, as Reddit
+   *  serves them) are comments whose parent is the post, null, or absent
+   *  from the post (an orphan is its own root — there is no separate
+   *  orphan chunk). Children keep input order (reply order). */
+  private buildForest(post: LLMPost): {
+    roots: CommentNode[];
+    byId: Map<string, CommentNode>;
+  } {
+    const comments = post.comments ?? [];
+    const bareId = post.id.replace('t3_', '');
+    const nodesById = new Map<string, CommentNode>();
+    for (const comment of comments) {
+      nodesById.set(comment.id, {
+        comment,
+        children: [],
+        root: comment,
+        order: 0,
+      });
     }
+    const roots: CommentNode[] = [];
+    for (const comment of comments) {
+      const node = nodesById.get(comment.id)!;
+      const parent =
+        comment.parent_id &&
+        comment.parent_id !== post.id &&
+        comment.parent_id !== bareId
+          ? nodesById.get(comment.parent_id)
+          : undefined;
+      if (parent && parent !== node) {
+        parent.children.push(node);
+      } else {
+        roots.push(node);
+      }
+    }
+    roots.sort((a, b) => (b.comment.score ?? 0) - (a.comment.score ?? 0));
+    let order = 0;
+    const visited = new Set<CommentNode>();
+    const visit = (node: CommentNode, root: LLMComment) => {
+      if (visited.has(node)) return;
+      visited.add(node);
+      node.root = root;
+      node.order = order++;
+      node.children = node.children.filter((child) => !visited.has(child));
+      for (const child of node.children) visit(child, root);
+    };
+    for (const root of roots) visit(root, root.comment);
+    // A parent_id cycle (malformed data) leaves its members unreachable
+    // from any root; the first becomes a root so every comment ships
+    // exactly once and the cycle edge is cut.
+    for (const node of nodesById.values()) {
+      if (!visited.has(node)) {
+        roots.push(node);
+        visit(node, node.comment);
+      }
+    }
+    return { roots, byId: nodesById };
+  }
 
-    return thread;
+  private subtreeInOrder(node: CommentNode): LLMComment[] {
+    const out: LLMComment[] = [node.comment];
+    for (const child of node.children) out.push(...this.subtreeInOrder(child));
+    return out;
+  }
+
+  private emittingCount(comments: LLMComment[]): number {
+    return comments.filter((c) => !isContextOnlyComment(c)).length;
+  }
+
+  private charLengthOf(comments: LLMComment[]): number {
+    return comments.reduce((sum, c) => sum + (c.content?.length || 0), 0);
+  }
+
+  /** A subtree within the cap is one unit. Past the cap it splits at the
+   *  first branching comment: the linear chain from the subtree root down to
+   *  that comment is one unit (a chain is never split), and each of its
+   *  child subtrees recurses with the chain appended to its ancestor
+   *  context. */
+  private flattenSubtree(
+    node: CommentNode,
+    chain: LLMComment[],
+    out: PackItem[],
+  ): void {
+    const subtree = this.subtreeInOrder(node);
+    const emitting = this.emittingCount(subtree);
+    if (emitting <= this.maxDocsPerChunk) {
+      out.push({
+        chain,
+        docs: subtree,
+        emitting,
+        charLength: this.charLengthOf(subtree),
+      });
+      return;
+    }
+    const prefix: LLMComment[] = [];
+    let cursor = node;
+    while (cursor.children.length === 1) {
+      prefix.push(cursor.comment);
+      cursor = cursor.children[0];
+    }
+    prefix.push(cursor.comment);
+    out.push({
+      chain,
+      docs: prefix,
+      emitting: this.emittingCount(prefix),
+      charLength: this.charLengthOf(prefix),
+    });
+    const childChain = [...chain, ...prefix];
+    for (const child of cursor.children) {
+      this.flattenSubtree(child, childChain, out);
+    }
+  }
+
+  /** Greedy packing in item order: an item joins the open window unless it
+   *  would push EMITTING docs past the cap or the estimate past the token
+   *  ceiling (a lone oversized item — an irreducible chain — still ships
+   *  whole). Ancestor chains ride as context; a chain member already
+   *  emitting in the window is not duplicated. */
+  private packItems(
+    items: PackItem[],
+    postContextCharLength: number,
+  ): Window[] {
+    const windows: Window[] = [];
+    let current: Window | null = null;
+    const contextChars = new Map<string, number>();
+
+    const flush = () => {
+      if (current) windows.push(current);
+      current = null;
+      contextChars.clear();
+    };
+
+    for (const item of items) {
+      if (current) {
+        const newContext = item.chain.filter(
+          (c) =>
+            !current!.emittingIds.has(c.id) && !current!.contextIds.has(c.id),
+        );
+        const proposedChars =
+          current.charLength + item.charLength + this.charLengthOf(newContext);
+        const exceeds =
+          current.emitting + item.emitting > this.maxDocsPerChunk ||
+          this.estimateTokensFromChars(proposedChars) > this.maxTokensPerChunk;
+        if (exceeds) flush();
+      }
+      if (!current) {
+        current = {
+          emittingIds: new Set(),
+          contextIds: new Set(),
+          emitting: 0,
+          charLength: postContextCharLength,
+        };
+      }
+      for (const ancestor of item.chain) {
+        if (
+          !current.emittingIds.has(ancestor.id) &&
+          !current.contextIds.has(ancestor.id)
+        ) {
+          current.contextIds.add(ancestor.id);
+          current.charLength += ancestor.content?.length || 0;
+        }
+      }
+      for (const doc of item.docs) {
+        if (isContextOnlyComment(doc)) {
+          if (!current.contextIds.has(doc.id)) {
+            current.contextIds.add(doc.id);
+            current.charLength += doc.content?.length || 0;
+          }
+          continue;
+        }
+        if (current.contextIds.has(doc.id)) {
+          // Was context for an earlier item; it emits here after all.
+          current.contextIds.delete(doc.id);
+        } else {
+          current.charLength += doc.content?.length || 0;
+        }
+        current.emittingIds.add(doc.id);
+        current.emitting += 1;
+      }
+    }
+    flush();
+    return windows;
+  }
+
+  private asEmitting(comment: LLMComment): LLMComment {
+    if (comment.context_only === undefined) return comment;
+    const emitting = { ...comment };
+    delete emitting.context_only;
+    return emitting;
+  }
+
+  private asContextOnly(comment: LLMComment): LLMComment {
+    return { ...comment, context_only: true };
   }
 }

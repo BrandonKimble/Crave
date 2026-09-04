@@ -47,6 +47,13 @@ cheapest-first, and each one protects the tests after it.
 Still use the post title and body to resolve names in comments. The flag
 controls emission from the body only, never the use of context.
 
+**`context_only`**: a comment carrying `context_only: true` emits nothing.
+It is an ancestor of the comments in this payload, present so that references
+and asks resolve through the depth-aware order exactly as in the full thread.
+Read it as context only: it is never a `source_id`, but it MAY be a
+`place_source_id` when its text is where the place was named. A comment
+without the flag is an ordinary source.
+
 **`subreddit`**: the community this post comes from — background context
 for reading the thread (what "the domain" of local shorthand is). It
 licenses no claims and changes no rule below.

@@ -22,6 +22,7 @@ import { PlaceSecondaryLocationExpansionWorker } from './restaurant-secondary-lo
 import { isWorkerRuntime } from '../../shared/utils/process-role';
 import { RedditCollectorModule } from '../content-processing/reddit-collector/reddit-collector.module';
 import { AttributeOntologyModule } from '../attribute-ontology/attribute-ontology.module';
+import { EntityTextSearchModule } from '../entity-text-search/entity-text-search.module';
 
 const placeEnrichmentWorkerProviders = isWorkerRuntime()
   ? [
@@ -37,6 +38,7 @@ const placeEnrichmentWorkerProviders = isWorkerRuntime()
     PrismaModule,
     ExternalIntegrationsModule,
     EntityResolverModule,
+    EntityTextSearchModule, // write-time entity embeddings
     PublicCraveScoreModule,
     forwardRef(() => RedditCollectorModule),
     AttributeOntologyModule,

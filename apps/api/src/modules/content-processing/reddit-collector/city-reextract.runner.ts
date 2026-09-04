@@ -111,11 +111,18 @@ export class CityReextractRunner implements OnApplicationBootstrap {
       );
       return;
     }
+    // RE-CHUNK (reply-chain windows, 2026-09-04): REEXTRACT_RECHUNK=true
+    // rebuilds every replayed run's windows with the current chunker instead
+    // of reusing stored payloads. Off by default — a prompt diff wants the
+    // same windows; a chunking change wants this. Estimate with the same
+    // flag (reextract-estimate.ts --rechunk) so the envelope prices the new
+    // window count.
+    const rechunk = isEnvFlagEnabled(process.env.REEXTRACT_RECHUNK, false);
     // Fire-and-forget on purpose: boot must complete so the batch ingest
     // pollers this run depends on are alive alongside it.
     void runInWorkContext(
       { campaignId, label: `reextract:${communities.join('+')}` },
-      () => this.run(communities, campaignId, activate, promptVersion),
+      () => this.run(communities, campaignId, activate, promptVersion, rechunk),
     ).catch((error: unknown) => {
       this.logger.error('City re-extract CRASHED', {
         communities,
@@ -132,6 +139,7 @@ export class CityReextractRunner implements OnApplicationBootstrap {
     campaignId: string | undefined,
     activate: boolean = true,
     promptVersion?: number,
+    rechunk: boolean = false,
   ): Promise<void> {
     if (!campaignId) {
       this.logger.error(
@@ -170,6 +178,7 @@ export class CityReextractRunner implements OnApplicationBootstrap {
       campaignId,
       runs: runs.length,
       totalDocs,
+      rechunk,
     });
 
     let ok = 0;
@@ -182,6 +191,7 @@ export class CityReextractRunner implements OnApplicationBootstrap {
           activate,
           campaignId,
           promptVersion,
+          rechunk,
         });
         ok += 1;
       } catch (error) {

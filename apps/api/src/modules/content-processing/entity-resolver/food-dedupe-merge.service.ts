@@ -32,6 +32,7 @@ import {
   ENTITY_DEDUPE_RULE_FINGERPRINT,
   ENTITY_DEDUPE_RULE_VERSION,
 } from './entity-dedupe-rule';
+import { EntityEmbeddingReconcilerService } from '../../entity-text-search/entity-embedding-reconciler.service';
 
 export interface DedupeMergeSummary {
   candidatePairs: number;
@@ -171,6 +172,7 @@ export class ItemDedupeMergeService {
     loggerService: LoggerService,
     /** THE budget chokepoint every court drains through (G2). */
     private readonly budget: ClaimRehearingBudgetService,
+    private readonly entityEmbeddings: EntityEmbeddingReconcilerService,
   ) {
     this.logger = loggerService.setContext('FoodDedupeMergeService');
   }
@@ -1050,6 +1052,10 @@ export class ItemDedupeMergeService {
       // taco/tacos merge could never complete; matches the rebuild's).
       { timeout: 15 * 60 * 1000, maxWait: 30_000 },
     );
+
+    // Write-time embedding law: the winner's doc just gained the loser's
+    // folded name; re-embed after the commit.
+    await this.entityEmbeddings.embedEntities([winner.entityId]);
 
     this.logger.info('Merged duplicate foods', {
       winner: winner.name,

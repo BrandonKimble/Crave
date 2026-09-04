@@ -42,6 +42,7 @@ import { SignalsModule } from '../../signals/signals.module';
 import { AttributeOntologyModule } from '../../attribute-ontology/attribute-ontology.module';
 import { isWorkerRuntime } from '../../../shared/utils/process-role';
 import { SpendAnalyticsService } from '../../external-integrations/shared/spend-analytics.service';
+import { EntityTextSearchModule } from '../../entity-text-search/entity-text-search.module';
 
 const redditCollectorCoreProviders = [
   ExtractionScopeService,
@@ -147,6 +148,7 @@ const redditCollectorWorkerProviders = isWorkerRuntime()
     PrismaModule, // Provides PrismaService for database access
     ExternalIntegrationsModule, // Provides LLMService for integration
     EntityResolverModule, // Provides EntityResolutionService for unified processing
+    EntityTextSearchModule, // Write-time entity embeddings (EntityEmbeddingReconcilerService)
     AttributeOntologyModule, // Adjudicates pending attributes after collection batches
     PublicCraveScoreModule, // Provides repository services for database access
     BullModule.registerQueue({

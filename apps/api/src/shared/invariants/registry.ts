@@ -637,6 +637,49 @@ export const INVARIANTS: readonly Invariant[] = [
     ],
   },
   {
+    // THE COURT SEES THE WHOLE ROSTER (recall-scope rederivation,
+    // 2026-09-04). The entity-match judge can only rule on what recall
+    // shows it. After the alias clean slate, 7,024 of 8,448 active staging
+    // places carried no recallable surface, so the lexical lane's NAME ARMS
+    // (lower(name) / identity_key: exact, prefix, FTS, trigram) were the
+    // only thing standing between a live entity and total invisibility to
+    // the judge — and nothing exercised them against a real database. The
+    // adoption scope's STATUS law (active or pending, plus this run's
+    // rehearsal mints) is the second half: a shadow run that could not
+    // recall its own earlier mint judged "Salt Lick Bbq" against a roster
+    // missing "Salt Lick" and minted the twin.
+    id: 'recall.every-live-entity-is-recallable-by-its-own-name',
+    statement:
+      "Every live (active or pending) place/item/ingredient/attribute entity is returned by the judge's recall (retrieveCandidates, adoption scope) when probed with its own name — with or without banked surface rows.",
+    incident:
+      'v23 shadow on staging (2026-09-04): 48 anchored places lost support because the judge was shown a shortlist that could not contain the entity the mention named; same-run rehearsal twins (Salt Lick / Salt Lick Bbq, Uptown Sports / Uptown Sports Club) because both recall lanes read status = active only.',
+    level: 'behaviour',
+    mechanism:
+      'entity-text-search.service.ts — the name arms of fetchFtsTrgmRowsForTerms / fetchPrefixRowsForTerms and the RecallScope status law (recallScope); scripts/check-name-recall.ts censuses live rows (surface-less first) by their own name through retrieveCandidates.',
+    check: {
+      command: 'npx ts-node -T scripts/check-name-recall.ts --per-type=60',
+      reads:
+        "real live rows in a real database, each probed by its own name through the judge's recall entry point",
+    },
+    mutations: [
+      {
+        // Delete the name arm: a surface-less entity is then unreachable
+        // by its own name — exactly the post-clean-slate exposure.
+        file: 'src/modules/entity-text-search/entity-text-search.service.ts',
+        find: '              (dn.entity_id IS NULL AND (\n                lower(e.name) LIKE v.prefix_pattern',
+        replace:
+          '              (false AND (\n                lower(e.name) LIKE v.prefix_pattern',
+      },
+      {
+        // Narrow the adoption status law back to active-only: a pending
+        // row (the census fixture guarantees one) stops answering.
+        file: 'src/modules/entity-text-search/entity-text-search.service.ts',
+        find: "Prisma.sql`${e}.status IN ('active'::entity_status, 'pending'::entity_status)`",
+        replace: "Prisma.sql`${e}.status = 'active'::entity_status`",
+      },
+    ],
+  },
+  {
     // THE SAME LAW, ONE TABLE OVER — and the one that had actually rotted.
     //
     // `entity_surface.form_folded` is what every recall arm compares against,

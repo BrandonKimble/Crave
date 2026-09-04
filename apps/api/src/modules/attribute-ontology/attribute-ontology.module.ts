@@ -11,6 +11,7 @@ import {
   ATTRIBUTE_ONTOLOGY_QUEUE,
 } from './attribute-ontology-queue.service';
 import { AttributeOntologyWorker } from './attribute-ontology.worker';
+import { EntityTextSearchModule } from '../entity-text-search/entity-text-search.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { AttributeOntologyWorker } from './attribute-ontology.worker';
     // Hearing ledger + user-anchor rehome for the active-vocabulary
     // dedupe-merge lane (one implementation each; never re-provided here).
     EntityResolverModule,
+    EntityTextSearchModule, // write-time entity embeddings
     BullModule.registerQueue({ name: ATTRIBUTE_ONTOLOGY_QUEUE }),
   ],
   providers: [

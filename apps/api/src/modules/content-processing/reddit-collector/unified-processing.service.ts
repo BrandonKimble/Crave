@@ -28,6 +28,10 @@ import {
 } from '../entity-resolver/entity-identity';
 import { addSurfaces } from '../entity-resolver/entity-surface.service';
 import {
+  classifyArchivedRedirectFree,
+  reviveParkedName,
+} from '../entity-resolver/entity-reject-lane';
+import {
   ENTITY_MATCH_LANE,
   entityMatchLane,
 } from '../entity-resolver/entity-match-lane';
@@ -87,6 +91,7 @@ import {
 } from './extraction-scope.service';
 import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
 import { mentionSentenceOf } from './mention-sentence';
+import { EntityEmbeddingReconcilerService } from '../../entity-text-search/entity-embedding-reconciler.service';
 
 // Generous ceiling so a worst-case 300-mention batch never aborts mid-write;
 // normal batches finish in seconds — only a hung DB hits it. Insensitive.
@@ -237,6 +242,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     private readonly collectorSourceRegistry: CollectorSourceRegistryService,
     private readonly attributeOntologyQueue: AttributeOntologyQueueService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
+    private readonly entityEmbeddings: EntityEmbeddingReconcilerService,
   ) {
     // 2026-07-11 fold-in: batch sizes/concurrency are throughput constants,
     // not env config (former UNIFIED_PROCESSING_BATCH_SIZE /
@@ -1618,6 +1624,18 @@ export class UnifiedProcessingService implements OnModuleInit {
     connectionsCreated: number;
     affectedConnectionIds: string[];
     affectedPlaceIds: string[];
+    /** Entities MINTED by this batch — the write-time embedding set. */
+    createdEntityIds: string[];
+    createdEntitySummaries: CreatedEntitySummary[];
+    /** Entities REUSED (surfaces may have been banked on them). */
+    reusedEntitySummaries: {
+      tempId: string;
+      entityId: string;
+      entityType: string;
+      normalizedName?: string;
+      originalText?: string;
+      canonicalName?: string;
+    }[];
   }> {
     const startTime = Date.now();
     // REHEARSAL GENERATION (plans/shadow-sandbox.md): under a non-activated
@@ -1732,22 +1750,72 @@ export class UnifiedProcessingService implements OnModuleInit {
                 const forward = new Map(
                   redirects.map((row) => [row.fromEntityId, row.toEntityId]),
                 );
+                // WHAT A REDIRECT-FREE ARCHIVE MEANS is the ledger's call,
+                // not the status's (parked-names law, 2026-09-04 — one
+                // classification shared with the mint block below and the
+                // resolver's pre-sink): a ledgered reject in force or
+                // Google's closure SINKS the mention; an archive with no
+                // verdict behind it is a PARKED NAME this mention revives.
+                const fates = await classifyArchivedRedirectFree(
+                  tx,
+                  archived
+                    .map((row) => row.entityId)
+                    .filter((id) => !forward.has(id)),
+                  rehearsalRunId ?? null,
+                );
                 let dropped = 0;
+                let revived = 0;
+                const revivedIds = new Set<string>();
                 for (const [tempId, entityId] of tempIdToEntityIdMap) {
                   const target = forward.get(entityId);
                   if (target) {
                     tempIdToEntityIdMap.set(tempId, target);
-                  } else if (
-                    archived.some((row) => row.entityId === entityId)
-                  ) {
-                    // JUNK SINK, made explicit (class ②): an archived
-                    // entity with NO redirect is rejected vocabulary — the
-                    // sink ABSORBS the mention by writing nothing, instead
-                    // of writing an event no projection can ever see
-                    // (11,235 such invisible events had accumulated).
-                    tempIdToEntityIdMap.delete(tempId);
-                    dropped += 1;
+                    continue;
                   }
+                  const fate = fates.get(entityId);
+                  if (!fate) continue;
+                  if (fate === 'parked') {
+                    // A live batch brings the name back before it writes
+                    // onto it; a rehearsal batch leaves the row as-is (its
+                    // events are quarantined by run id) and the activation
+                    // flip revives it (rehearsal-generation.service.ts).
+                    if (
+                      rehearsalRunId ||
+                      revivedIds.has(entityId) ||
+                      (await reviveParkedName(tx, entityId))
+                    ) {
+                      if (!rehearsalRunId) revivedIds.add(entityId);
+                      revived += 1;
+                      continue;
+                    }
+                    // A live twin took the fold's identity slot between
+                    // resolution and this write: the twin IS the fold's
+                    // owner, so the mention belongs to it.
+                    const twin = await tx.$queryRaw<
+                      Array<{ entity_id: string }>
+                    >`
+                      SELECT live.entity_id
+                        FROM core_entities parked
+                        JOIN core_entities live
+                          ON live.type = parked.type
+                         AND live.identity_key = parked.identity_key
+                         AND live.status IN ('active'::entity_status,
+                                             'pending'::entity_status)
+                       WHERE parked.entity_id = ${entityId}::uuid
+                       ORDER BY live.created_at
+                       LIMIT 1`;
+                    if (twin.length) {
+                      tempIdToEntityIdMap.set(tempId, twin[0].entity_id);
+                      continue;
+                    }
+                  }
+                  // JUNK SINK, made explicit (class ②): a verdict stands
+                  // against this archive (or it is a rejected shadow's
+                  // residue) — the sink ABSORBS the mention by writing
+                  // nothing, instead of writing an event no projection can
+                  // ever see (11,235 such invisible events had accumulated).
+                  tempIdToEntityIdMap.delete(tempId);
+                  dropped += 1;
                 }
                 this.logger.warn(
                   'Revalidated stale resolution ids at write time',
@@ -1756,6 +1824,7 @@ export class UnifiedProcessingService implements OnModuleInit {
                     archivedResolved: archived.length,
                     redirected: redirects.length,
                     sinkDropped: dropped,
+                    parkedRevived: revived,
                   },
                 );
               }
@@ -2241,27 +2310,76 @@ export class UnifiedProcessingService implements OnModuleInit {
                     }
                   }
                 } else {
-                  // REJECTED tombstone (final red team F5): archived with NO
-                  // redirect is a junk verdict, not an absence. Falling
-                  // through to create re-minted every rejected term as a
-                  // fresh 'pending' row on its next mention (1,608 junk
-                  // terms measured re-mintable), re-paying adjudication
-                  // forever. ADOPT the tombstone id instead: the event
-                  // write's junk sink sees the archived id and drops the
-                  // mention — same verdict, zero churn.
-                  existing = await tx.entity.findFirst({
-                    where: { entityId: tombstone.entityId },
-                    select: { entityId: true, name: true },
-                  });
-                  this.logger.info(
-                    'Rejected-tombstone adopt — junk verdict reused',
-                    {
-                      batchId,
-                      entityType,
-                      name: canonicalName,
-                      tombstoneId: tombstone.entityId,
-                    },
-                  );
+                  // A REDIRECT-FREE ARCHIVE IS WHAT THE LEDGER SAYS IT IS
+                  // (parked-names law, 2026-09-04; before it, final red team
+                  // F5 adopted EVERY such row as a junk verdict — and the
+                  // janitor's ungroundable archives and 714 verdict-less
+                  // items were adopted as junk with it).
+                  //   'sink'   — a ledgered reject in force, Google's
+                  //              closure, or the attribute ontology's
+                  //              archive: adopt the tombstone id; the
+                  //              event write's junk sink sees the archived
+                  //              id and drops the mention — same verdict,
+                  //              zero churn (1,608 junk terms measured
+                  //              re-mintable before F5).
+                  //   'parked' — no verdict: the name comes back. A live
+                  //              batch revives it here, under the same
+                  //              lock a fresh mint takes; a rehearsal batch
+                  //              adopts it as-is (events quarantined by run
+                  //              id, surfaces banked born to the run) and
+                  //              the activation flip revives it.
+                  //   'shadow-residue' — a rejected shadow's mint: nobody's
+                  //              verdict, nobody's name; fall through and
+                  //              mint fresh (the archived row holds no
+                  //              identity slot).
+                  const fate = (
+                    await classifyArchivedRedirectFree(
+                      tx,
+                      [tombstone.entityId],
+                      rehearsalRunId ?? null,
+                    )
+                  ).get(tombstone.entityId);
+                  if (fate === 'sink') {
+                    existing = await tx.entity.findFirst({
+                      where: { entityId: tombstone.entityId },
+                      select: { entityId: true, name: true },
+                    });
+                    this.logger.info(
+                      'Rejected-tombstone adopt — junk verdict reused',
+                      {
+                        batchId,
+                        entityType,
+                        name: canonicalName,
+                        tombstoneId: tombstone.entityId,
+                      },
+                    );
+                  } else if (fate === 'parked') {
+                    // Under the creator's lock no live twin holds this
+                    // fold (the probes above found none), so a live
+                    // revival cannot lose the identity slot; a false return
+                    // would mean the probes and the slot disagree, and the
+                    // fall-through mint's own unique index then rules.
+                    const revived = rehearsalRunId
+                      ? true
+                      : await reviveParkedName(tx, tombstone.entityId);
+                    if (revived) {
+                      existing = await tx.entity.findFirst({
+                        where: { entityId: tombstone.entityId },
+                        select: { entityId: true, name: true },
+                      });
+                      this.logger.info(
+                        rehearsalRunId
+                          ? 'Parked name adopted by rehearsal — revives at activation'
+                          : 'Parked name revived by mention',
+                        {
+                          batchId,
+                          entityType,
+                          name: canonicalName,
+                          entityId: tombstone.entityId,
+                        },
+                      );
+                    }
+                  }
                 }
               }
             }
@@ -2783,13 +2901,15 @@ export class UnifiedProcessingService implements OnModuleInit {
     batchId: string,
     maxRetries: number,
     sourceLedgerRecords: SourceLedgerRecord[],
-  ): Promise<{
-    entitiesCreated: number;
-    connectionsCreated: number;
-    affectedConnectionIds: string[];
-    affectedPlaceIds: string[];
-  }> {
+  ): Promise<
+    Awaited<
+      ReturnType<UnifiedProcessingService['performConsolidatedProcessing']>
+    >
+  > {
     let lastError: Error | undefined;
+    let committed: Awaited<
+      ReturnType<UnifiedProcessingService['performConsolidatedProcessing']>
+    > | null = null;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
@@ -2799,13 +2919,14 @@ export class UnifiedProcessingService implements OnModuleInit {
           maxRetries,
         });
 
-        return await this.performConsolidatedProcessing(
+        committed = await this.performConsolidatedProcessing(
           llmOutput,
           resolutionResult, // Cached resolution result - no re-resolution needed
           sourceMetadata,
           batchId,
           sourceLedgerRecords,
         );
+        break;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
 
@@ -2854,12 +2975,36 @@ export class UnifiedProcessingService implements OnModuleInit {
       }
     }
 
-    this.logger.error('All retry attempts exhausted', {
-      batchId,
-      maxRetries,
-      finalError: lastError?.message || 'Unknown error',
-    });
-    throw lastError || new Error('All retry attempts exhausted');
+    if (!committed) {
+      this.logger.error('All retry attempts exhausted', {
+        batchId,
+        maxRetries,
+        finalError: lastError?.message || 'Unknown error',
+      });
+      throw lastError || new Error('All retry attempts exhausted');
+    }
+
+    // WRITE-TIME EMBEDDING (recall-scope rederivation, 2026-09-04): every
+    // entity this batch MINTED, and every reused entity whose surfaces it
+    // may have touched, carries a fresh dense vector before the batch
+    // reports done — so the next batch's judge (and this shadow's own next
+    // batch) can recall it through the dense lane without waiting on a
+    // cron that does not run where crons are off. AFTER the commit and
+    // OUTSIDE the retry loop: an embed is an external call, and an embed
+    // failure must surface without re-running a transaction that already
+    // committed. The reconciler embeds only rows still NULL/stale, so a
+    // reused entity nobody renamed costs nothing.
+    const embedded = await this.entityEmbeddings.embedEntities([
+      ...committed.createdEntityIds,
+      ...committed.reusedEntitySummaries.map((summary) => summary.entityId),
+    ]);
+    if (embedded > 0) {
+      this.logger.debug('Embedded batch entities at write time', {
+        batchId,
+        embedded,
+      });
+    }
+    return committed;
   }
 
   /**
@@ -3748,11 +3893,19 @@ export class UnifiedProcessingService implements OnModuleInit {
     summaries: CreatedEntitySummary[],
     sourceMetadata?: SourceMetadata,
   ): Promise<void> {
-    // REHEARSAL (plans/shadow-sandbox.md door 12): no live spend or
-    // probes for rows that may never activate; fired at activation instead.
-    if (sourceMetadata?.extractionTrace?.rehearsal === true) {
-      return;
-    }
+    // THE SHADOW IS THE FULL PIPELINE (shadow-grounding rederivation,
+    // 2026-09-04). This door used to close under a rehearsal run ("door
+    // 12": no live spend for rows that may never activate), which meant a
+    // shadow could never show its true twin count — the v23 Austin shadow
+    // minted 1,375 ungrounded rehearsal places, so the place-id collision
+    // merge that folds "Cuba Cafe" into the grounded "Cuba Bakery & Café"
+    // never ran and the diff reported 48 anchored places as lost. Rehearsal
+    // mints are grounded like any mint: a collision with an ACTIVE owner
+    // merges the rehearsal loser into it through the ledgered place-merge
+    // door (harmless on rejection — a merge loser is already archived), the
+    // spend is metered into the shadow's campaign by the ambient context
+    // (captured into the job payload, re-established in the worker), and
+    // the manifest carries a measured Places line for it.
     if (!summaries.length) {
       return;
     }

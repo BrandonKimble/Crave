@@ -231,6 +231,7 @@ describe('FoodDedupeMergeService.mergeFoodPair — connection fold, mention-coll
         prisma as never,
         new ClaimVerdictLedgerService(prisma as never),
       ),
+      { embedEntities: () => Promise.resolve(0) } as never,
     );
 
     // The wave-2 signature: the sweep hands the pair through the verdict

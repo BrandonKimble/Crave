@@ -1,5 +1,10 @@
 import { Injectable, Inject } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import {
+  identitySlotFreeSql,
+  parkedNameSql,
+} from '../entity-resolver/entity-reject-lane';
 import { LoggerService } from '../../../shared';
 
 /**
@@ -18,8 +23,14 @@ import { LoggerService } from '../../../shared';
  * - reject(runIds): rehearsal → archived; the run's verdicts are DELETED —
  *   a rejected rehearsal's judgments must never seed live memory.
  * - Nothing else needs cleanup on rejection BY CONSTRUCTION: the side-effect
- *   doors (adjudication, enrichment, metro probes, projections, embedding
- *   touches) never fired for a rehearsal.
+ *   doors (adjudication, metro probes, projections, embedding touches)
+ *   never fired for a rehearsal. Places GROUNDING does fire (shadow-grounding
+ *   rederivation 2026-09-04 — the shadow is the full pipeline): a rejected
+ *   mint keeps its paid location row as an archived, redirect-free owner,
+ *   which the grounding owner law revives the next time the business is
+ *   mentioned, so the spend is never re-bought; a mint that collided with a
+ *   live owner is already a merge loser (archived + redirect) and the
+ *   reject/flip keys never touch it.
  */
 @Injectable()
 export class RehearsalGenerationService {
@@ -74,6 +85,13 @@ export class RehearsalGenerationService {
       // rows (rehearsal, or archived-by-a-rejected-shadow: born run id
       // NOT NULL, so genuine live junk tombstones are untouchable) that
       // carry a surface born to the flipping runs.
+      // A MERGE LOSER STAYS A MERGE LOSER (shadow-grounding rederivation,
+      // 2026-09-04): rehearsal mints are grounded inside the shadow now, and
+      // a mint whose Google place is already owned by a live entity is
+      // merged into it — archived WITH a redirect, its surfaces folded onto
+      // the winner. Such a row still carries surfaces born to this run, so
+      // without the redirect exclusion this clause would resurrect it as a
+      // second live entity beside its own redirect on activation.
       const adopted = await tx.$executeRaw`
         UPDATE core_entities e
            SET status = CASE WHEN e.type IN ('item_attribute'::entity_type,
@@ -85,10 +103,34 @@ export class RehearsalGenerationService {
                 OR (e.status = 'archived'::entity_status
                     AND e.born_extraction_run_id IS NOT NULL))
            AND NOT (e.born_extraction_run_id = ANY(${ids}::uuid[]))
+           AND NOT EXISTS (
+             SELECT 1 FROM entity_redirects r WHERE r.from_entity_id = e.entity_id)
            AND EXISTS (
              SELECT 1 FROM entity_surface s
               WHERE s.entity_id = e.entity_id
                 AND s.born_extraction_run_id = ANY(${ids}::uuid[]))`;
+      // PARKED NAMES A SHADOW ADOPTED COME BACK AT ACTIVATION (parked-names
+      // law, 2026-09-04). A live batch that meets an archived, redirect-
+      // free, verdict-less row for a fold it would otherwise mint REVIVES
+      // it on the spot (unified-processing's mint block); a rehearsal batch
+      // may not change a row live readers share, so it adopts the parked
+      // row as-is — its events quarantined by run id, its reference banked
+      // as a surface born to the run — and the revival happens HERE, when
+      // the run becomes real. Same law as the cross-run adoption arm above,
+      // for rows born to nobody: no verdict against the name (a ledgered
+      // reject in force or Google's closure would have sunk the mention
+      // instead of adopting), and the identity slot free (a live twin that
+      // appeared meanwhile owns the fold; the parked row stays parked).
+      const revived = await tx.$executeRaw(Prisma.sql`
+        UPDATE core_entities e
+           SET status = 'active'::entity_status,
+               last_updated = now()
+         WHERE ${parkedNameSql('e', null)}
+           AND ${identitySlotFreeSql('e')}
+           AND EXISTS (
+             SELECT 1 FROM entity_surface s
+              WHERE s.entity_id = e.entity_id
+                AND s.born_extraction_run_id = ANY(${ids}::uuid[]))`);
       const surfaces = await tx.$executeRaw`
         UPDATE entity_surface
            SET status = 'active', updated_at = now()
@@ -102,6 +144,7 @@ export class RehearsalGenerationService {
         runs: ids.length,
         entities,
         adoptedCrossRun: adopted,
+        revivedParked: revived,
         surfaces,
         verdicts,
       });

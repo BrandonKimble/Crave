@@ -63,6 +63,7 @@ const service = new ItemDedupeMergeService(
     prisma as never,
     new ClaimVerdictLedgerService(prisma as never),
   ),
+  { embedEntities: () => Promise.resolve(0) } as never,
 );
 
 const DRIFT_KEY = 'itest-drifted-key';

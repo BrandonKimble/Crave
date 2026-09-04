@@ -147,6 +147,7 @@ describe('the enrichment failure taxonomy (transient failures do not archive)', 
         } as never,
         { reconcile: () => Promise.resolve(0) } as never,
         logger as never,
+        { embedEntities: () => Promise.resolve(0) } as never,
       );
       const asPrivate = service as unknown as {
         recordEnrichmentFailure(

@@ -4,6 +4,8 @@ import {
   ChunkMetadata,
   ChunkResult,
   LLMChunkingService,
+  emittingSourceIdsOf,
+  isContextOnlyComment,
 } from '../../external-integrations/llm/llm-chunking.service';
 import {
   LLMConcurrentProcessingService,
@@ -26,7 +28,6 @@ import {
   LLMMention,
   AdmittedMention,
   MentionEnrichment,
-  LLMComment,
   LLMPost,
   LLMProcessingInput,
   LLMOutputStructure,
@@ -139,9 +140,16 @@ export interface StoredExtractionInputChunk {
   inputIndex: number;
   inputPayload: LLMModelInput;
   sourceMap: LLMSourceMap;
-  sourceDocumentIds: string[];
   sourceInputId?: string | null;
 }
+
+/** Every document a chunk plan can reference (its source_map universe:
+ *  emitting documents AND context-only ancestors), with its document id. */
+export type ExtractionSourceDocumentRef = {
+  documentId: string;
+  sourceType: 'post' | 'comment';
+  sourceId: string;
+};
 
 type ProcessingChunkResult = ChunkResult<LLMProcessingInput>;
 
@@ -185,11 +193,17 @@ export interface ExtractionPipelineStoredInputsParams
   extends ExtractionPipelineBaseParams {
   llmPosts: LLMPost[];
   inputChunks: StoredExtractionInputChunk[];
-  sourceDocuments: Array<{
-    documentId: string;
-    sourceType: 'post' | 'comment';
-    sourceId: string;
-  }>;
+  sourceDocuments: ExtractionSourceDocumentRef[];
+}
+
+/** Re-chunked replay: the source run's posts (already persisted and
+ *  gate-judged), re-windowed by the current chunker. `llmPosts` carry the
+ *  source run's emitting set as flags (extract_from_post / context_only)
+ *  so the replay never widens what the source run extracted. */
+export interface ExtractionPipelineRechunkParams
+  extends ExtractionPipelineBaseParams {
+  llmPosts: LLMPost[];
+  sourceDocuments: ExtractionSourceDocumentRef[];
 }
 
 export interface ExtractionPipelineBankedMentionsParams
@@ -398,28 +412,94 @@ export class ExtractionPipelineService implements OnModuleInit {
       ),
     );
 
-    // PRE-LLM DEDUPE GATE (duplication red-team 2026-07-11; thread-level
-    // refinement same day): skip posts whose every source is already covered
-    // by a completed same-contract extraction or an in-flight batch job —
-    // BEFORE chunking and BEFORE Gemini bills. 68%+29% of the stage-2 load's
-    // duplicate spend was exactly this class (seed re-launches re-submitting
-    // the whole plan). Partially-covered posts are TRIMMED to thread level:
-    // only top-level threads containing an uncovered comment are resent
-    // (sibling threads are self-contained worlds — a new comment that needed
-    // their context would have been posted under them), with the post
-    // title/body riding along as context and extract_from_post=false when the
-    // post body itself is already covered. The post-LLM mention dedupe
-    // remains the data-level guard.
+    const uncoveredPosts = await this.admitUncoveredPosts(
+      params,
+      sourceDocumentIdBySourceKey,
+    );
+    if (uncoveredPosts.length === 0) {
+      return this.buildFullyCoveredResult();
+    }
+    const baseParams: ExtractionPipelinePostsParams = {
+      ...params,
+      llmPosts: uncoveredPosts,
+    };
+    return this.processPostsThroughChunker({
+      baseParams,
+      llmPosts: uncoveredPosts,
+      sourceDocumentIdBySourceKey,
+    });
+  }
+
+  /**
+   * RE-CHUNKED REPLAY (reply-chain windows, 2026-09-04): rebuild the
+   * windows from the source documents with the CURRENT chunker instead of
+   * reusing a source run's stored payloads — the only way a replay ever
+   * benefits from a chunking change. Documents are already persisted and
+   * gate-judged (replays reuse verdicts), so this is processPosts minus
+   * persistence and the relevance gate: coverage gate + claim + trim, then
+   * chunk, then the shared chunk plan. The caller marks what the source run
+   * did NOT emit for (a context-riding post body, a context-only ancestor)
+   * so a re-chunk never widens the run's emitting set.
+   */
+  async processRechunkedPosts(
+    params: ExtractionPipelineRechunkParams,
+  ): Promise<ExtractionPipelineResult> {
+    const sourceDocumentIdBySourceKey = new Map<SourceDocumentKey, string>(
+      params.sourceDocuments.map((document) => [
+        buildSourceDocumentKey(document.sourceType, document.sourceId),
+        document.documentId,
+      ]),
+    );
+    const uncoveredPosts = await this.admitUncoveredPosts(
+      params,
+      sourceDocumentIdBySourceKey,
+    );
+    if (uncoveredPosts.length === 0) {
+      return this.buildFullyCoveredResult();
+    }
+    const baseParams: ExtractionPipelineRechunkParams = {
+      ...params,
+      llmPosts: uncoveredPosts,
+    };
+    return this.processPostsThroughChunker({
+      baseParams,
+      llmPosts: uncoveredPosts,
+      sourceDocumentIdBySourceKey,
+      chunkingConfigSource: 'rechunked_replay',
+    });
+  }
+
+  /**
+   * PRE-LLM DEDUPE GATE (duplication red-team 2026-07-11; thread-level
+   * refinement same day; reply-chain refinement 2026-09-04): skip posts
+   * whose every source is already covered by a completed same-contract
+   * extraction or an in-flight batch job — BEFORE chunking and BEFORE
+   * Gemini bills. 68%+29% of the stage-2 load's duplicate spend was exactly
+   * this class (seed re-launches re-submitting the whole plan).
+   * Partially-covered posts are TRIMMED to the uncovered comments plus
+   * their ancestor chains (covered ancestors ride as context_only; covered
+   * siblings and covered subtrees are dropped), with the post title/body
+   * riding along as context and extract_from_post=false when the post body
+   * itself is already covered. The post-LLM mention dedupe remains the
+   * data-level guard. Returns the posts that still have something to emit.
+   */
+  private async admitUncoveredPosts(
+    params: ExtractionPipelineBaseParams & { llmPosts: LLMPost[] },
+    sourceDocumentIdBySourceKey: Map<SourceDocumentKey, string>,
+  ): Promise<LLMPost[]> {
     const effectivePrompt = await this.resolveEffectivePrompt(params);
     const currentPromptHash = effectivePrompt.contentHash;
-    const allSourceIds = params.llmPosts.flatMap((post) => [
-      post.id,
-      ...post.comments.map((comment) => comment.id),
-    ]);
+    // Only sources this batch would EMIT for are candidates for coverage or
+    // a claim — a caller-marked context-only source is never re-extracted
+    // and never reserved.
+    const emittingSourceIds = params.llmPosts.flatMap((post) => {
+      const emitting = emittingSourceIdsOf({ posts: [post] });
+      return [...emitting.postIds, ...emitting.commentIds];
+    });
     const coveredSourceIds =
       await this.collectionEvidenceService.findExtractionCoveredSourceIds({
-        platform: 'reddit',
-        sourceIds: allSourceIds,
+        platform: params.platform ?? 'reddit',
+        sourceIds: emittingSourceIds,
         systemPromptHash: currentPromptHash,
         extractionSchemaVersion: 'v1',
       });
@@ -429,15 +509,18 @@ export class ExtractionPipelineService implements OnModuleInit {
     {
       const docIdBySourceId = new Map<string, string>();
       for (const post of params.llmPosts) {
-        const postDocId = sourceDocumentIdBySourceKey.get(
-          buildSourceDocumentKey('post', post.id),
-        );
-        if (postDocId) docIdBySourceId.set(post.id, postDocId);
-        for (const comment of post.comments) {
-          const commentDocId = sourceDocumentIdBySourceKey.get(
-            buildSourceDocumentKey('comment', comment.id),
+        const emitting = emittingSourceIdsOf({ posts: [post] });
+        for (const postId of emitting.postIds) {
+          const postDocId = sourceDocumentIdBySourceKey.get(
+            buildSourceDocumentKey('post', postId),
           );
-          if (commentDocId) docIdBySourceId.set(comment.id, commentDocId);
+          if (postDocId) docIdBySourceId.set(postId, postDocId);
+        }
+        for (const commentId of emitting.commentIds) {
+          const commentDocId = sourceDocumentIdBySourceKey.get(
+            buildSourceDocumentKey('comment', commentId),
+          );
+          if (commentDocId) docIdBySourceId.set(commentId, commentDocId);
         }
       }
       const uncovered = Array.from(docIdBySourceId.entries()).filter(
@@ -465,7 +548,8 @@ export class ExtractionPipelineService implements OnModuleInit {
       .filter((post): post is LLMPost => post !== null);
     const skippedCount = params.llmPosts.length - uncoveredPosts.length;
     const keptCommentCount = uncoveredPosts.reduce(
-      (sum, post) => sum + post.comments.length,
+      (sum, post) =>
+        sum + emittingSourceIdsOf({ posts: [post] }).commentIds.length,
       0,
     );
     const trimmedCommentCount = originalCommentCount - keptCommentCount;
@@ -479,16 +563,21 @@ export class ExtractionPipelineService implements OnModuleInit {
         remainingComments: keptCommentCount,
       });
     }
-    if (uncoveredPosts.length === 0) {
-      return this.buildFullyCoveredResult();
-    }
-    params = { ...params, llmPosts: uncoveredPosts };
+    return uncoveredPosts;
+  }
+
+  private processPostsThroughChunker(params: {
+    baseParams: ExtractionPipelineBaseParams;
+    llmPosts: LLMPost[];
+    sourceDocumentIdBySourceKey: Map<SourceDocumentKey, string>;
+    chunkingConfigSource?: string;
+  }): Promise<ExtractionPipelineResult> {
     const llmInput: LLMModelInput = { posts: params.llmPosts };
 
     const chunkStartTime = Date.now();
-    const chunkData = this.normalizeSourceRefsInChunkData(
-      this.llmChunkingService.createContextualChunks(llmInput),
-    );
+    const rawChunkData =
+      this.llmChunkingService.createContextualChunks(llmInput);
+    const chunkData = this.normalizeSourceRefsInChunkData(rawChunkData);
     const chunkDurationMs = Date.now() - chunkStartTime;
 
     // ACTIVATION FROM THE EXTRACTED SET ONLY (async-integrity step 4, C1):
@@ -496,36 +585,41 @@ export class ExtractionPipelineService implements OnModuleInit {
     // it. The pre-trim set included covered/trimmed documents — flipping
     // their pointer DARKENED the covering run's evidence (and activation
     // now supersede-DELETES other runs' events, which makes overreach
-    // destructive, not just dark).
+    // destructive, not just dark). A context-riding post body
+    // (extract_from_post=false) or context-only ancestor keeps its pointer
+    // on the run that covers it.
     const extractedDocumentIds = new Set<string>();
     for (const post of params.llmPosts) {
-      // A covered post body rides along as CONTEXT ONLY
-      // (extract_from_post=false) — its pointer must stay on the run that
-      // covers it.
-      const postDocId =
-        post.extract_from_post === false
-          ? undefined
-          : sourceDocumentIdBySourceKey.get(
-              buildSourceDocumentKey('post', post.id),
-            );
-      if (postDocId) extractedDocumentIds.add(postDocId);
-      for (const comment of post.comments) {
-        const commentDocId = sourceDocumentIdBySourceKey.get(
-          buildSourceDocumentKey('comment', comment.id),
+      const emitting = emittingSourceIdsOf({ posts: [post] });
+      for (const postId of emitting.postIds) {
+        const postDocId = params.sourceDocumentIdBySourceKey.get(
+          buildSourceDocumentKey('post', postId),
+        );
+        if (postDocId) extractedDocumentIds.add(postDocId);
+      }
+      for (const commentId of emitting.commentIds) {
+        const commentDocId = params.sourceDocumentIdBySourceKey.get(
+          buildSourceDocumentKey('comment', commentId),
         );
         if (commentDocId) extractedDocumentIds.add(commentDocId);
       }
     }
 
     return this.processChunkPlan({
-      baseParams: params,
+      baseParams: params.baseParams,
       llmPosts: params.llmPosts,
       chunkData,
-      sourceDocumentIdBySourceKey,
+      sourceDocumentIdBySourceKey: params.sourceDocumentIdBySourceKey,
       chunkDurationMs,
-      activateDocumentIds: params.activateDocumentsBeforeProcessing
+      activateDocumentIds: params.baseParams.activateDocumentsBeforeProcessing
         ? Array.from(extractedDocumentIds)
         : [],
+      chunkingConfigOverride: params.chunkingConfigSource
+        ? {
+            source: params.chunkingConfigSource,
+            ...this.buildChunkingConfigSnapshot(rawChunkData),
+          }
+        : undefined,
     });
   }
 
@@ -547,7 +641,20 @@ export class ExtractionPipelineService implements OnModuleInit {
     // and silently no-op (red team F3).
     const gatePromptHash = (await this.resolveEffectivePrompt(params))
       .contentHash;
-    const gateSourceIds = params.sourceDocuments.map(
+    const sourceDocumentIdBySourceKey = new Map<SourceDocumentKey, string>(
+      params.sourceDocuments.map((document) => [
+        buildSourceDocumentKey(document.sourceType, document.sourceId),
+        document.documentId,
+      ]),
+    );
+    // The gate/claim set is what the stored windows EMIT for — a
+    // context-only ancestor is in the source_map (the window needs its
+    // text) but is covered, claimed, and activated only by its own window.
+    const emittingDocuments = this.emittingDocumentsOfStoredInputs(
+      params.inputChunks,
+      sourceDocumentIdBySourceKey,
+    );
+    const gateSourceIds = emittingDocuments.map(
       (document) => document.sourceId,
     );
     const gateCovered =
@@ -575,7 +682,7 @@ export class ExtractionPipelineService implements OnModuleInit {
     // but if EVERY uncovered doc is claimed by another live run, this
     // replay is a duplicate in flight and must stand down.
     {
-      const uncoveredDocIds = params.sourceDocuments
+      const uncoveredDocIds = emittingDocuments
         .filter((document) => !gateCovered.has(document.sourceId))
         .map((document) => document.documentId);
       const won =
@@ -592,12 +699,6 @@ export class ExtractionPipelineService implements OnModuleInit {
       }
     }
 
-    const sourceDocumentIdBySourceKey = new Map<SourceDocumentKey, string>(
-      params.sourceDocuments.map((document) => [
-        buildSourceDocumentKey(document.sourceType, document.sourceId),
-        document.documentId,
-      ]),
-    );
     const chunkStartTime = Date.now();
     const chunkData = this.normalizeSourceRefsInChunkData(
       this.buildChunkDataFromStoredInputs(params.inputChunks),
@@ -611,9 +712,7 @@ export class ExtractionPipelineService implements OnModuleInit {
       sourceDocumentIdBySourceKey,
       activateDocumentIds: params.activateDocumentsBeforeProcessing
         ? Array.from(
-            new Set(
-              params.inputChunks.flatMap((chunk) => chunk.sourceDocumentIds),
-            ),
+            new Set(emittingDocuments.map((document) => document.documentId)),
           )
         : [],
       chunkDurationMs,
@@ -1405,6 +1504,23 @@ export class ExtractionPipelineService implements OnModuleInit {
       return refuse('missing_place_observed', null);
     }
 
+    // A CONTEXT-ONLY SOURCE NEVER EMITS (reply-chain windows): a mention
+    // whose source_id is a context_only ancestor or a context-riding post
+    // body (extract_from_post=false) was emitted from a source another
+    // window owns. The response schema forbids it on the batch path; here
+    // it is a banked refusal, never a quarantine and never data. (The
+    // mention may still CITE such a source as place_source_id below.)
+    if (
+      this.contextOnlyRefsOf(chunkResult.input).has(
+        wireMention.source_id.trim(),
+      )
+    ) {
+      return refuse(
+        'source_is_context_only',
+        `${wireMention.source_id.trim()} rides in this window as context only`,
+      );
+    }
+
     // F.2's asserts-nothing law, made mechanical: a PLACE mention with no
     // attributes and general_praise false claims nothing — the prompt says
     // "do not emit it", and when the model emits one anyway it is a defined
@@ -1549,6 +1665,18 @@ export class ExtractionPipelineService implements OnModuleInit {
     } as HydratingMention;
   }
 
+  /** Chunk-local refs of the sources this window carries as context only. */
+  private contextOnlyRefsOf(input: LLMProcessingInput): Set<string> {
+    const refs = new Set<string>();
+    for (const post of input.posts ?? []) {
+      if (post.extract_from_post === false) refs.add(post.id);
+      for (const comment of post.comments ?? []) {
+        if (isContextOnlyComment(comment)) refs.add(comment.id);
+      }
+    }
+    return refs;
+  }
+
   private resolveDocumentIdForCanonicalSourceId(
     canonicalSourceId: string,
     enrichment: SourceEnrichmentMaps,
@@ -1634,34 +1762,42 @@ export class ExtractionPipelineService implements OnModuleInit {
     } as EnrichedLLMMention;
   }
 
-  /** THREAD-LEVEL DEDUPE REBUILD (2026-07-11). Given the covered-source set:
-   *  - fully covered post (post id + every comment) → null (drop entirely);
+  /** REPLY-CHAIN DEDUPE REBUILD (2026-07-11 thread-level; reply-chain
+   *  2026-09-04). Given the covered-source set:
+   *  - fully covered post (post id + every emitting comment) → null;
    *  - fully uncovered post (nothing covered) → pass through unchanged;
-   *  - partially covered → keep ONLY the top-level threads (root comment +
-   *    all descendants via parent_id chains) containing at least one
-   *    uncovered comment. The post title/body always ride along as context
-   *    for the kept threads, but the post body is only RE-EXTRACTED when the
-   *    post id itself is uncovered: extract_from_post is set explicitly and
-   *    the chunker honors a pre-set false (its group-0 default only applies
-   *    when the pipeline didn't decide).
-   *  Sibling threads with no new comments are self-contained worlds — if a
-   *  new comment had needed their context it would have been posted under
-   *  them — so resending them is pure duplicate spend. Comments whose
-   *  parent chain doesn't resolve to another comment in the post (parent is
-   *  the post, null, or missing) are treated as thread roots themselves,
-   *  matching the chunker's top-level/orphan handling. */
+   *  - partially covered → keep the uncovered comments plus their ancestor
+   *    chains; a covered ancestor rides along as `context_only` (the
+   *    prompt's depth-aware resolution needs it, and it emits nothing);
+   *    covered siblings and covered subtrees are dropped. The post
+   *    title/body always ride along as context, but the post body is only
+   *    RE-EXTRACTED when the post id itself is uncovered: extract_from_post
+   *    is set explicitly and the chunker honors a pre-set false.
+   *  Resending a covered comment as an emitting source is pure duplicate
+   *  spend AND a second claim on a document another run owns — activation
+   *  would flip it and supersede-delete the covering run's events for it.
+   *  Comments whose parent chain doesn't resolve to another comment in the
+   *  post are chain roots themselves, matching the chunker. A comment the
+   *  caller already flagged context_only stays context. */
   private rebuildPostForUncoveredThreads(
     post: LLMPost,
     coveredSourceIds: Set<string>,
   ): LLMPost | null {
     const postCovered = coveredSourceIds.has(post.id);
-    const uncoveredComments = post.comments.filter(
+    const emittingComments = post.comments.filter(
+      (comment) => !isContextOnlyComment(comment),
+    );
+    const uncoveredComments = emittingComments.filter(
       (comment) => !coveredSourceIds.has(comment.id),
     );
-    if (postCovered && uncoveredComments.length === 0) {
-      return null; // fully covered — drop
+    if (
+      (postCovered || post.extract_from_post === false) &&
+      uncoveredComments.length === 0
+    ) {
+      return null; // nothing left to emit — drop
     }
-    const anyCommentCovered = post.comments.length > uncoveredComments.length;
+    const anyCommentCovered =
+      emittingComments.length > uncoveredComments.length;
     if (!postCovered && !anyCommentCovered) {
       return post; // brand-new post — pass through unchanged
     }
@@ -1669,27 +1805,33 @@ export class ExtractionPipelineService implements OnModuleInit {
     const commentById = new Map(
       post.comments.map((comment) => [comment.id, comment]),
     );
-    const threadRootOf = (comment: LLMComment): string => {
-      let current = comment;
-      const visited = new Set<string>([current.id]);
-      while (current.parent_id && commentById.has(current.parent_id)) {
-        const parent = commentById.get(current.parent_id)!;
+    const keptIds = new Set<string>();
+    const contextIds = new Set<string>();
+    for (const comment of uncoveredComments) {
+      keptIds.add(comment.id);
+      let cursor = comment;
+      const visited = new Set<string>([cursor.id]);
+      while (cursor.parent_id && commentById.has(cursor.parent_id)) {
+        const parent = commentById.get(cursor.parent_id)!;
         if (visited.has(parent.id)) break; // defensive: cyclic parent_id
         visited.add(parent.id);
-        current = parent;
+        if (!keptIds.has(parent.id)) contextIds.add(parent.id);
+        cursor = parent;
       }
-      return current.id;
-    };
-    const keptThreadRoots = new Set(
-      uncoveredComments.map((comment) => threadRootOf(comment)),
-    );
-    const keptComments = post.comments.filter((comment) =>
-      keptThreadRoots.has(threadRootOf(comment)),
-    );
+    }
+    const keptComments = post.comments
+      .filter(
+        (comment) => keptIds.has(comment.id) || contextIds.has(comment.id),
+      )
+      .map((comment) =>
+        keptIds.has(comment.id) && !contextIds.has(comment.id)
+          ? comment
+          : { ...comment, context_only: true as const },
+      );
     return {
       ...post,
       comments: keptComments,
-      extract_from_post: !postCovered,
+      extract_from_post: !postCovered && post.extract_from_post !== false,
     };
   }
 
@@ -1744,6 +1886,39 @@ export class ExtractionPipelineService implements OnModuleInit {
       reddit_api_keyword_search: pipeline === 'keyword' ? postCount : 0,
       reddit_api_on_demand: 0, // 'on-demand' pipeline ghost is dead (§12.7)
     };
+  }
+
+  /** The documents a set of stored windows EMIT for, resolved through each
+   *  window's own source_map (refs are chunk-local). */
+  private emittingDocumentsOfStoredInputs(
+    inputChunks: StoredExtractionInputChunk[],
+    sourceDocumentIdBySourceKey: Map<SourceDocumentKey, string>,
+  ): ExtractionSourceDocumentRef[] {
+    const byDocumentId = new Map<string, ExtractionSourceDocumentRef>();
+    for (const chunk of inputChunks) {
+      const sourceMap = this.normalizeSourceMap(chunk.sourceMap);
+      const emitting = emittingSourceIdsOf(chunk.inputPayload);
+      const resolve = (ref: string, sourceType: 'post' | 'comment') => {
+        const canonicalId = this.resolveCanonicalSourceIdFromInput(
+          ref,
+          sourceMap,
+        );
+        if (!canonicalId) return;
+        const documentId = sourceDocumentIdBySourceKey.get(
+          buildSourceDocumentKey(sourceType, canonicalId),
+        );
+        if (documentId && !byDocumentId.has(documentId)) {
+          byDocumentId.set(documentId, {
+            documentId,
+            sourceType,
+            sourceId: canonicalId,
+          });
+        }
+      };
+      emitting.postIds.forEach((ref) => resolve(ref, 'post'));
+      emitting.commentIds.forEach((ref) => resolve(ref, 'comment'));
+    }
+    return Array.from(byDocumentId.values());
   }
 
   private buildChunkDataFromStoredInputs(
@@ -2121,6 +2296,9 @@ export class ExtractionPipelineService implements OnModuleInit {
       ? chunk.inputPayload.posts
       : [];
     const comments = posts.flatMap((post) => post.comments ?? []);
+    const emittingComments = comments.filter(
+      (comment) => !isContextOnlyComment(comment),
+    );
     const estimatedTokenCount = this.estimateTokensFromInputPayload(
       chunk.inputPayload,
     );
@@ -2129,9 +2307,10 @@ export class ExtractionPipelineService implements OnModuleInit {
       chunkId: chunk.sourceInputId
         ? `replay_input_${chunk.sourceInputId}`
         : `replay_input_index_${chunk.inputIndex}`,
-      commentCount: comments.length,
+      commentCount: emittingComments.length,
+      contextCommentCount: comments.length - emittingComments.length,
       rootCommentScore: 0,
-      estimatedProcessingTime: Math.max(5, comments.length * 6.4),
+      estimatedProcessingTime: Math.max(5, emittingComments.length * 6.4),
       threadRootId: posts[0]?.id ?? `replay_input_${chunk.inputIndex}`,
       rootCommentIds: comments
         .filter((comment) => {

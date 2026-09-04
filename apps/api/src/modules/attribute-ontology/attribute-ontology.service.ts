@@ -9,6 +9,7 @@ import { LLMService } from '../external-integrations/llm/llm.service';
 import { EmbeddingService } from '../external-integrations/llm/embedding.service';
 import { LLMAttributePlacementResult } from '../external-integrations/llm/llm.types';
 import { stripAttributeIdRefs } from './attribute-reference-registry';
+import { EntityEmbeddingReconcilerService } from '../entity-text-search/entity-embedding-reconciler.service';
 
 /** Attribute entity types this service canonicalizes. */
 export type AttributeEntityType = 'item_attribute' | 'place_attribute';
@@ -290,6 +291,7 @@ export class AttributeOntologyService {
     /** THE merge door — every attribute merge, ontology-decided or
      *  dedupe-decided, is ledgered and executed by one implementation. */
     private readonly dedupeMerge: AttributeDedupeMergeService,
+    private readonly entityEmbeddings: EntityEmbeddingReconcilerService,
   ) {
     this.logger = loggerService.setContext('AttributeOntologyService');
   }
@@ -896,6 +898,16 @@ export class AttributeOntologyService {
       counts.applied = true;
     } catch (error) {
       if (!(error instanceof PlanRollback)) throw error;
+    }
+    if (counts.applied) {
+      // Write-time embedding law: renamed rows (name_embedding_stale set
+      // in the tx above) and merge winners (flagged by the merge door)
+      // re-embed now, after the commit.
+      await this.entityEmbeddings.embedEntities([
+        ...plan.renames.map((rename) => rename.entityId),
+        ...plan.merges.map((merge) => merge.canonicalEntityId),
+        ...plan.promotions.map((promotion) => promotion.entityId),
+      ]);
     }
 
     this.logger.info(

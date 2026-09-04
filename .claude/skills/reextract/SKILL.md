@@ -32,7 +32,13 @@ items. Design doc: plans/reextract-choreography.md. Entry point:
    registers the candidate; note the version number.
 2. **estimate** — `estimate <communities> <version>` prints doc counts and
    the campaign manifest (built on `prepareManifestEstimate`, the onboarding
-   manifest machinery). Render the manifest to the owner (a small table or
+   manifest machinery). The **Places line is a measured forecast**: the
+   mint count of the newest prior shadow of the SAME community set (the
+   script prints `PLACES forecast: MEASURED — v<N> ... minted <M> places`)
+   at the published `google_places.enrichment` rate. With no comparable
+   prior shadow it prints `PLACES forecast: UNKNOWN` and prices the line at
+   zero mints — tell the owner that line is uncovered except by the
+   tolerance. Render the manifest to the owner (a small table or
    visual: per-line $, tolerance, envelope, hash), wait for their explicit
    approval, then re-run with `--approve-estimate <hash>` (it approves the
    existing awaiting_approval row, never mints a twin).
@@ -40,8 +46,16 @@ items. Design doc: plans/reextract-choreography.md. Entry point:
    worker env (REEXTRACT\_\* with ACTIVATE=false). Staging by default
    (REEXTRACT_ENV=production for prod data). Before arming, verify
    quiescence: no in-flight collection jobs or non-terminal llm_batch_jobs
-   for those communities. Watch worker logs; wait for the batch queue to
-   drain fully.
+   for those communities. Watch worker logs; wait for the batch queue AND
+   the `restaurant-primary-enrichment` queue to drain fully.
+   **The shadow is the full pipeline (2026-09-04):** rehearsal mints are
+   Places-grounded inside the shadow, metered into the campaign, and a
+   mint whose Google place is already owned by a live restaurant merges
+   into it through the ledgered place-merge door (that is how the diff
+   shows the TRUE twin count — v23 reported 48 anchored places "lost"
+   only because its 1,375 rehearsal mints were never grounded). The
+   shadow no longer sets `DISABLE_RESTAURANT_ENRICHMENT`; that flag is an
+   operator kill-switch on new scheduling only.
 4. **diff** — `diff <communities> <version>` writes the review file. Triage:
    - **AUTO** (act yourself, no ping): NOTHING to merge by hand — owner
      ruling 2026-08-10. Shadow-minted name-variant twins (Mcdonalds vs
@@ -116,10 +130,14 @@ items. Design doc: plans/reextract-choreography.md. Entry point:
 - **Every verb targets `REEXTRACT_DB`** — including push/estimate/activate,
   which boot AppModule. Unset, they hit the LOCAL dev database and the prod
   worker will never find the candidate or campaign.
-- **After disarming, run `apps/api/scripts/enrich-restaurants.ts`.** The shadow sets
-  `DISABLE_RESTAURANT_ENRICHMENT` service-wide, so restaurants minted by
-  LIVE collection during the window never got Places grounding, and the
-  backfill has no cron.
+- ~~After disarming, run `apps/api/scripts/enrich-restaurants.ts`~~ —
+  **DELETED 2026-09-04**: the shadow no longer sets
+  `DISABLE_RESTAURANT_ENRICHMENT`, so live collection AND the shadow's own
+  mints ground as they are mentioned. Run the operator sweep only if you
+  set the kill-switch by hand for some other reason. Note the sweep honors
+  the same grounding decline hold the worker does (one hold, at
+  `enrichPlace`); a halted sweep means the judge is broken, not that the
+  backlog is done.
 
 ## Gotchas learned the hard way
 
@@ -131,8 +149,9 @@ items. Design doc: plans/reextract-choreography.md. Entry point:
 - `railway up` ships the WORKING TREE — deploy from a clean worktree of
   HEAD when other sessions have the tree dirty.
 - Report costs from the ledger AND run cost-reconcile; any one-off estimate
-  must include BOTH Gemini and Places lines (a re-extract's Places line is
-  legitimately $0 — restaurants are already grounded).
+  AND any report of a shadow's cost must include BOTH Gemini and Places
+  lines — a shadow's Places line is real now (rehearsal mints are grounded
+  inside it); only already-grounded restaurants are never re-bought.
 - The SQL verbs (diff, gc, status) run against LOCAL Postgres by default —
   set `REEXTRACT_DB` to the target DB (the READ-ONLY credential in
   `~/.crave-prod-readonly.env` for prod diff/status; superuser only for the

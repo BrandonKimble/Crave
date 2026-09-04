@@ -474,13 +474,63 @@ export class PlaceEntityMergeService {
     domain: string,
     extraNames: string[] = [],
   ): Promise<boolean> {
-    const rows = await this.prisma.$queryRaw<Array<{ name: string }>>`
-      SELECT name FROM core_entities
-      WHERE type = 'place'
-        AND status = 'active'
-        AND lower(canonical_domain) = lower(${domain})
+    return (await this.ownedDomainCluster(domain, extraNames)).owned;
+  }
+
+  /**
+   * THE ONE ANSWER TO "WHO CARRIES THIS DOMAIN, AND IS IT OWNED?" (red team
+   * 2026-09-04 E-7). Both doors that merge on a shared domain — the
+   * enrichment-time domain merge and the nightly sweep's domain lane — read
+   * the cluster from here. Members are the ACTIVE places carrying the
+   * domain, REDIRECT-RESOLVED: an archived carrier that was merged away
+   * counts through its live winner (the domain travels with the merge, but
+   * the winner may not carry it yet), and an archived carrier with no
+   * redirect is nobody — it cannot be merged into, so it must not be a
+   * canonical candidate. The enrichment door used to run its own status-
+   * free query and picked exactly such a stranded tombstone as canonical.
+   * Ownership is brand purity over the members plus the names the caller is
+   * about to merge under it.
+   */
+  async ownedDomainCluster(
+    domain: string,
+    extraNames: string[] = [],
+  ): Promise<{
+    owned: boolean;
+    /** Oldest first — the enrichment door's canonical is members[0]. */
+    members: Array<{ entityId: string; name: string; createdAt: Date }>;
+  }> {
+    const rows = await this.prisma.$queryRaw<
+      Array<{ entity_id: string; name: string; created_at: Date }>
+    >`
+      SELECT e.entity_id, e.name, e.created_at
+      FROM core_entities e
+      WHERE e.type = 'place'
+        AND e.status = 'active'
+        AND (
+          lower(e.canonical_domain) = lower(${domain})
+          OR EXISTS (
+            SELECT 1 FROM entity_redirects r
+            JOIN core_entities loser ON loser.entity_id = r.from_entity_id
+            WHERE r.to_entity_id = e.entity_id
+              AND loser.type = 'place'
+              AND lower(loser.canonical_domain) = lower(${domain})
+          )
+        )
+      ORDER BY e.created_at ASC, e.entity_id ASC
+      LIMIT 50
     `;
-    return brandClusterPurity([...rows.map((r) => r.name), ...extraNames]).pure;
+    const members = rows.map((row) => ({
+      entityId: row.entity_id,
+      name: row.name,
+      createdAt: row.created_at,
+    }));
+    return {
+      owned: brandClusterPurity([
+        ...members.map((member) => member.name),
+        ...extraNames,
+      ]).pure,
+      members,
+    };
   }
 
   private async mergePlaceEvents(

@@ -389,7 +389,7 @@ async function main(): Promise<void> {
     consumeActivationPlan(planPath);
     if (flippedGeneration.flippedPlaceIds.length) {
       console.log(
-        `DEFERRED MACHINERY: ${flippedGeneration.flippedPlaceIds.length} newly-live restaurants need enrichment — the mention-driven queue re-attempts on next collection touch, or run the enrichment janitor now. Attribute adjudication fires on the next banked batch's debounce.`,
+        `${flippedGeneration.flippedPlaceIds.length} newly-live restaurants flipped. They were Places-grounded inside the shadow (2026-09-04: the shadow is the full pipeline); any that failed grounding re-attempt through the mention-driven queue on their next collection touch. Attribute adjudication fires on the next banked batch's debounce.`,
       );
     }
     console.log(

@@ -16,6 +16,7 @@ import {
   StoredExtractionInputChunk,
 } from './extraction-pipeline.service';
 import { RehearsalGenerationService } from './rehearsal-generation.service';
+import { emittingSourceIdsOf } from '../../external-integrations/llm/llm-chunking.service';
 
 type ReplaySourceDocument = {
   documentId: string;
@@ -95,6 +96,11 @@ export class ReplayService implements OnModuleInit {
     /** VERSIONED PROMPTS: pin a registered candidate version for a SHADOW
      *  replay (activate:false). Omit to replay under the active prompt. */
     promptVersion?: number;
+    /** RE-CHUNK (reply-chain windows, 2026-09-04): rebuild the windows from
+     *  the source documents with the CURRENT chunker instead of reusing the
+     *  stored payloads. Default false — a replay is otherwise byte-for-byte
+     *  the run it replays, which is what a prompt diff wants. */
+    rechunk?: boolean;
   }): Promise<ExtractionRunReplaySummary> {
     const sourceRun = await this.prismaService.extractionRun.findUnique({
       where: { extractionRunId: params.sourceExtractionRunId },
@@ -222,56 +228,67 @@ export class ReplayService implements OnModuleInit {
       }
     }
 
-    const sourceDocuments = this.collectSourceDocumentsFromInputs(
-      sourceRun.inputs,
-    );
-    const llmPosts = this.buildPostsFromSourceDocuments(sourceDocuments);
+    const sourceDocuments = await this.loadReplayDocuments(sourceRun.inputs);
     const inputChunks = sourceRun.inputs.map<StoredExtractionInputChunk>(
       (input) => ({
         inputIndex: input.inputIndex,
         inputPayload: this.asInputPayload(input.inputPayload),
         sourceMap: this.asSourceMap(input.sourceMap, input.inputId),
-        sourceDocumentIds: input.sourceDocuments.map(
-          (documentLink) => documentLink.document.documentId,
-        ),
         sourceInputId: input.inputId,
       }),
     );
+    const sharedParams = {
+      pipeline: this.normalizePipeline(sourceRun.pipeline),
+      platform: sourceDocuments[0]?.platform ?? 'reddit',
+      community: this.resolveCommunity(
+        sourceDocuments,
+        this.asRecord(sourceRun.metadata),
+      ),
+      sourceDocuments: sourceDocuments.map((document) => ({
+        documentId: document.documentId,
+        sourceType: document.sourceType,
+        sourceId: document.sourceId,
+      })),
+      batchId: `replay-run-${params.sourceExtractionRunId}-${Date.now()}`,
+      parentJobId: params.sourceExtractionRunId,
+      collectionRunScopeKey: `replay:extraction:${params.sourceExtractionRunId}`,
+      activateDocumentsBeforeProcessing: params.activate === true,
+      rehearsal: params.activate !== true,
+      promptVersion: params.promptVersion,
+      skipSourceLedgerDedupe: true,
+      runMetadata: {
+        replaySource: 'extraction_run',
+        replayOfExtractionRunId: params.sourceExtractionRunId,
+        rechunk: params.rechunk === true,
+        ...(params.campaignId ? { campaignId: params.campaignId } : {}),
+      },
+    };
 
     const replayResult =
-      await this.extractionPipelineService.processStoredInputs({
-        pipeline: this.normalizePipeline(sourceRun.pipeline),
-        platform: sourceDocuments[0]?.platform ?? 'reddit',
-        community: this.resolveCommunity(
-          sourceDocuments,
-          this.asRecord(sourceRun.metadata),
-        ),
-        llmPosts,
-        inputChunks,
-        sourceDocuments: sourceDocuments.map((document) => ({
-          documentId: document.documentId,
-          sourceType: document.sourceType,
-          sourceId: document.sourceId,
-        })),
-        batchId: `replay-run-${params.sourceExtractionRunId}-${Date.now()}`,
-        parentJobId: params.sourceExtractionRunId,
-        collectionRunScopeKey: `replay:extraction:${params.sourceExtractionRunId}`,
-        activateDocumentsBeforeProcessing: params.activate === true,
-        rehearsal: params.activate !== true,
-        promptVersion: params.promptVersion,
-        skipSourceLedgerDedupe: true,
-        runMetadata: {
-          replaySource: 'extraction_run',
-          replayOfExtractionRunId: params.sourceExtractionRunId,
-          ...(params.campaignId ? { campaignId: params.campaignId } : {}),
-        },
-      });
+      params.rechunk === true
+        ? await this.extractionPipelineService.processRechunkedPosts({
+            ...sharedParams,
+            llmPosts: this.buildPostsForRechunk(
+              sourceDocuments,
+              sourceRun.inputs,
+            ),
+          })
+        : await this.extractionPipelineService.processStoredInputs({
+            ...sharedParams,
+            llmPosts: this.buildPostsFromSourceDocuments(sourceDocuments),
+            inputChunks,
+          });
+    const chunkCount =
+      params.rechunk === true
+        ? replayResult.chunkStats.chunkCount
+        : inputChunks.length;
 
     this.logger.info('Replay extraction run completed', {
       sourceExtractionRunId: params.sourceExtractionRunId,
       extractionRunId: replayResult.extractionRunId,
       documentCount: sourceDocuments.length,
-      chunkCount: inputChunks.length,
+      chunkCount,
+      rechunk: params.rechunk === true,
       placeCount: replayResult.dbResult.affectedPlaceIds.length,
       connectionCount: replayResult.dbResult.affectedConnectionIds.length,
       activated: params.activate === true,
@@ -282,7 +299,7 @@ export class ReplayService implements OnModuleInit {
       extractionRunId: replayResult.extractionRunId,
       collectionRunId: undefined,
       documentCount: sourceDocuments.length,
-      chunkCount: inputChunks.length,
+      chunkCount,
       placeCount: replayResult.dbResult.affectedPlaceIds.length,
       connectionCount: replayResult.dbResult.affectedConnectionIds.length,
       activated: params.activate === true,
@@ -465,18 +482,13 @@ export class ReplayService implements OnModuleInit {
         mentionsByInputIndex.set(inputIndex, mentions);
       }
 
-      const sourceDocuments = this.collectSourceDocumentsFromInputs(
-        sourceRun.inputs,
-      );
+      const sourceDocuments = await this.loadReplayDocuments(sourceRun.inputs);
       const llmPosts = this.buildPostsFromSourceDocuments(sourceDocuments);
       const inputChunks = sourceRun.inputs.map<StoredExtractionInputChunk>(
         (input) => ({
           inputIndex: input.inputIndex,
           inputPayload: this.asInputPayload(input.inputPayload),
           sourceMap: this.asSourceMap(input.sourceMap, input.inputId),
-          sourceDocumentIds: input.sourceDocuments.map(
-            (documentLink) => documentLink.document.documentId,
-          ),
           sourceInputId: input.inputId,
         }),
       );
@@ -736,18 +748,13 @@ export class ReplayService implements OnModuleInit {
         continue;
       }
 
-      const sourceDocuments = this.collectSourceDocumentsFromInputs(
-        sourceRun.inputs,
-      );
+      const sourceDocuments = await this.loadReplayDocuments(sourceRun.inputs);
       const llmPosts = this.buildPostsFromSourceDocuments(sourceDocuments);
       const inputChunks = sourceRun.inputs.map<StoredExtractionInputChunk>(
         (input) => ({
           inputIndex: input.inputIndex,
           inputPayload: this.asInputPayload(input.inputPayload),
           sourceMap: this.asSourceMap(input.sourceMap, input.inputId),
-          sourceDocumentIds: input.sourceDocuments.map(
-            (documentLink) => documentLink.document.documentId,
-          ),
           sourceInputId: input.inputId,
         }),
       );
@@ -986,12 +993,28 @@ export class ReplayService implements OnModuleInit {
       );
   }
 
-  private collectSourceDocumentsFromInputs(
+  /**
+   * THE REPLAY UNIVERSE IS THE SOURCE_MAP, NOT THE LINKS (reply-chain
+   * windows, 2026-09-04). An input's document links are its coverage claims
+   * — written only for documents the window EMITS for — while its
+   * source_map names every document the model saw, context-only ancestors
+   * included. A replay must rebuild the window the model saw (the ancestor
+   * text is what place_source_id may cite and what the span check verifies
+   * against), so linked documents are the seed and any source_map canonical
+   * id without a link is fetched by identity. Pre-2026-09-04 runs link
+   * every document, so nothing is fetched for them.
+   */
+  private async loadReplayDocuments(
     inputs: Array<{
+      inputId: string;
+      sourceMap: Prisma.JsonValue | null;
       sourceDocuments: Array<{ document: ReplaySourceDocument }>;
     }>,
-  ): ReplaySourceDocument[] {
+  ): Promise<ReplaySourceDocument[]> {
     const documentsById = new Map<string, ReplaySourceDocument>();
+    const seen = new Set<string>();
+    const missing: Array<{ sourceType: 'post' | 'comment'; sourceId: string }> =
+      [];
 
     inputs.forEach((input) => {
       input.sourceDocuments.forEach((documentLink) => {
@@ -999,13 +1022,112 @@ export class ReplayService implements OnModuleInit {
           documentLink.document.documentId,
           documentLink.document,
         );
+        seen.add(
+          `${documentLink.document.sourceType}:${documentLink.document.sourceId}`,
+        );
       });
     });
+    inputs.forEach((input) => {
+      const sourceMap = this.asSourceMap(input.sourceMap, input.inputId);
+      for (const entry of Object.values(sourceMap)) {
+        const key = `${entry.source_type}:${entry.canonical_id}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          missing.push({
+            sourceType: entry.source_type,
+            sourceId: entry.canonical_id,
+          });
+        }
+      }
+    });
+
+    if (missing.length > 0) {
+      const platform =
+        Array.from(documentsById.values())[0]?.platform ?? 'reddit';
+      const fetched = await this.prismaService.sourceDocument.findMany({
+        where: {
+          platform,
+          OR: (['post', 'comment'] as const)
+            .map((sourceType) => ({
+              sourceType,
+              sourceId: {
+                in: missing
+                  .filter((item) => item.sourceType === sourceType)
+                  .map((item) => item.sourceId),
+              },
+            }))
+            .filter((clause) => clause.sourceId.in.length > 0),
+        },
+        select: {
+          documentId: true,
+          platform: true,
+          community: true,
+          sourceType: true,
+          sourceId: true,
+          parentSourceId: true,
+          title: true,
+          body: true,
+          url: true,
+          sourceCreatedAt: true,
+          scoreSnapshot: true,
+          rawPayload: true,
+        },
+      });
+      for (const document of fetched) {
+        documentsById.set(document.documentId, {
+          ...document,
+          sourceType: document.sourceType as 'post' | 'comment',
+        });
+      }
+      if (fetched.length !== missing.length) {
+        throw new Error(
+          `Replay universe incomplete: ${missing.length - fetched.length} source_map documents are missing from collection_source_documents`,
+        );
+      }
+    }
 
     return Array.from(documentsById.values()).sort(
       (left, right) =>
         left.sourceCreatedAt.getTime() - right.sourceCreatedAt.getTime(),
     );
+  }
+
+  /**
+   * RE-CHUNK (reply-chain windows): the source run's posts, flagged with
+   * the source run's EMITTING set — a post body that only rode as context
+   * (extract_from_post=false in every stored window) stays context, and a
+   * comment that was context_only in every window stays context — so the
+   * re-windowed replay never claims a document the source run did not.
+   */
+  private buildPostsForRechunk(
+    sourceDocuments: ReplaySourceDocument[],
+    inputs: Array<{
+      inputId: string;
+      inputPayload: Prisma.JsonValue;
+      sourceMap: Prisma.JsonValue | null;
+    }>,
+  ): LLMPost[] {
+    const emittingPostIds = new Set<string>();
+    const emittingCommentIds = new Set<string>();
+    for (const input of inputs) {
+      const payload = this.asInputPayload(input.inputPayload);
+      const sourceMap = this.asSourceMap(input.sourceMap, input.inputId);
+      const canonical = (ref: string) => sourceMap[ref]?.canonical_id ?? ref;
+      const emitting = emittingSourceIdsOf(payload);
+      emitting.postIds.forEach((ref) => emittingPostIds.add(canonical(ref)));
+      emitting.commentIds.forEach((ref) =>
+        emittingCommentIds.add(canonical(ref)),
+      );
+    }
+    return this.buildPostsFromSourceDocuments(sourceDocuments).map((post) => ({
+      ...post,
+      extract_from_post: emittingPostIds.has(post.id),
+      comments: post.comments.map((comment) =>
+        emittingCommentIds.has(comment.id)
+          ? comment
+          : { ...comment, context_only: true as const },
+      ),
+    }));
   }
 
   private resolveCommunity(

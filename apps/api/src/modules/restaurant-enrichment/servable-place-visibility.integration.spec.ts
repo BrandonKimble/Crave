@@ -134,4 +134,32 @@ describe('servable-place A-1 visibility gate', () => {
     expect(served).toContain(cohort);
     expect(served).toContain(grounded);
   });
+
+  it('hides a TERMINALLY UNGROUNDABLE place however many mentions it has; a grounded one with the same history stays (parked-names law, 2026-09-04)', async () => {
+    // The 2026-08-12 ruling ("ungrounded-after-attempt must not be
+    // searchable") is a PREDICATE here now, not a janitor archive — the
+    // archive masqueraded as a judge reject in the resolver's sink.
+    // MUTATION: drop the enrichment_failure_count clause from the floor's
+    // mentions arm and `terminal` appears in the served set.
+    const terminal = await seedPlace('terminal-ungroundable');
+    const terminalGrounded = await seedPlace('terminal-but-grounded');
+    await seedMentions(terminal, 3);
+    await seedMentions(terminalGrounded, 3);
+    await prisma.$executeRawUnsafe(
+      `UPDATE core_entities SET enrichment_failure_count = 99
+        WHERE entity_id = ANY($1::uuid[])`,
+      [terminal, terminalGrounded],
+    );
+    await prisma.placeLocation.create({
+      data: {
+        placeId: terminalGrounded,
+        googlePlaceId: `${TEST_TAG}-gpid-terminal`,
+        address: '2 Test Way',
+      },
+    });
+
+    const served = await servedIds();
+    expect(served).not.toContain(terminal);
+    expect(served).toContain(terminalGrounded);
+  });
 });

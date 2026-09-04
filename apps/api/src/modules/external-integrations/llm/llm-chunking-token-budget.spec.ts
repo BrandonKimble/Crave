@@ -51,10 +51,10 @@ describe('resolveChunkMaxDocs', () => {
 });
 
 /**
- * THE ATTENTION CAP ITSELF (miss RC4): packing/grouping must stop adding
- * threads once a chunk holds maxDocsPerChunk comments, even when the token
- * budget has plenty of room — and a single thread larger than the cap still
- * ships whole (thread coherence is never split).
+ * THE ATTENTION CAP ITSELF (miss RC4): packing must stop adding threads
+ * once a window holds maxDocsPerChunk emitting comments, even when the
+ * token budget has plenty of room — and a thread larger than the cap splits
+ * into reply-chain windows (llm-chunking-reply-chain.spec.ts has the law).
  */
 describe('docs-per-chunk attention cap', () => {
   function buildService(): LLMChunkingService {
@@ -122,11 +122,21 @@ describe('docs-per-chunk attention cap', () => {
     expect(total).toBe(100);
   });
 
-  it('never splits a single thread larger than the cap (coherence)', () => {
+  it('splits a single thread larger than the cap into reply-chain windows (the root rides as context)', () => {
+    // Was "never splits a single thread larger than the cap (coherence)":
+    // the reply-chain rederivation (2026-09-04) keeps the CHAIN coherent,
+    // not the whole subtree — a 45-reply thread becomes two windows.
     process.env.LLM_CHUNK_MAX_DOCS = '30';
     const service = buildService();
-    const { metadata } = service.createContextualChunks(buildInput([45]));
-    expect(metadata).toHaveLength(1);
-    expect(metadata[0].commentCount).toBe(45);
+    const { chunks, metadata } = service.createContextualChunks(
+      buildInput([45]),
+    );
+    expect(metadata).toHaveLength(2);
+    expect(metadata.map((m) => m.commentCount)).toEqual([30, 15]);
+    expect(metadata[1].contextCommentCount).toBe(1);
+    expect(chunks[1].posts[0].comments[0]).toMatchObject({
+      id: 'c1',
+      context_only: true,
+    });
   });
 });

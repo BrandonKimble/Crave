@@ -16,10 +16,11 @@ import type {
   LLMPost,
 } from '../../external-integrations/llm/llm.types';
 
-/** Thread-level pre-LLM dedupe gate (2026-07-11): partially-covered posts are
- *  trimmed to the top-level threads containing uncovered comments; the post
- *  title/body ride along as context with extract_from_post reflecting whether
- *  the post body itself still needs extraction. */
+/** Pre-LLM dedupe gate (thread-level 2026-07-11; reply-chain 2026-09-04):
+ *  partially-covered posts are trimmed to the uncovered comments plus their
+ *  ancestor chains (covered ancestors ride as context_only, covered siblings
+ *  drop); the post title/body ride along as context with extract_from_post
+ *  reflecting whether the post body itself still needs extraction. */
 
 const makeComment = (
   id: string,
@@ -88,7 +89,7 @@ describe('thread-level dedupe rebuild', () => {
     expect(result!.extract_from_post).toBeUndefined();
   });
 
-  it('keeps only the thread with the new comment, post body as context NOT re-extracted when post is covered', () => {
+  it('keeps the new comment plus its ancestor chain as context_only; post body as context NOT re-extracted when post is covered', () => {
     const post = buildPost();
     // Everything covered except a new reply c2b in thread c2.
     post.comments.push(makeComment('c2b', 'c2a'));
@@ -100,31 +101,37 @@ describe('thread-level dedupe rebuild', () => {
     expect(result.content).toBe('body t3_p1');
     // ...but the covered post body must NOT be re-extracted.
     expect(result.extract_from_post).toBe(false);
-    // Only thread c2 survives — sibling thread c1 (no new comments) dropped.
-    expect(result.comments.map((c) => c.id).sort()).toEqual([
-      'c2',
-      'c2a',
-      'c2b',
+    // Only chain c2 -> c2a -> c2b survives — sibling thread c1 dropped, and
+    // the covered ancestors emit nothing (they are context for c2b).
+    expect(result.comments.map((c) => c.id)).toEqual(['c2', 'c2a', 'c2b']);
+    expect(result.comments.map((c) => c.context_only === true)).toEqual([
+      true,
+      true,
+      false,
     ]);
   });
 
-  it('a new nested reply deep in a thread keeps that whole thread (root + all descendants)', () => {
+  it('a new nested reply deep in a thread keeps its ancestor chain (context_only) and drops covered siblings', () => {
     const post = makePost('t3_p2', [
       makeComment('r1', 't3_p2'),
       makeComment('r1a', 'r1'),
+      makeComment('r1b', 'r1'), // covered sibling branch — dropped
       makeComment('r1a1', 'r1a'),
       makeComment('r1a1x', 'r1a1'), // NEW deep reply
       makeComment('r2', 't3_p2'),
     ]);
-    const covered = new Set(['t3_p2', 'r1', 'r1a', 'r1a1', 'r2']);
+    const covered = new Set(['t3_p2', 'r1', 'r1a', 'r1b', 'r1a1', 'r2']);
     const result = rebuild(post, covered)!;
     expect(result.extract_from_post).toBe(false);
-    expect(result.comments.map((c) => c.id).sort()).toEqual([
+    expect(result.comments.map((c) => c.id)).toEqual([
       'r1',
       'r1a',
       'r1a1',
       'r1a1x',
     ]);
+    expect(
+      result.comments.filter((c) => c.context_only === true).map((c) => c.id),
+    ).toEqual(['r1', 'r1a', 'r1a1']);
   });
 
   it('re-extracts the post body when the post id itself is uncovered', () => {

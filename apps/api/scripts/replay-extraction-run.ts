@@ -23,11 +23,13 @@ type CliOptions = {
   end?: string;
   pipeline?: 'chronological' | 'keyword' | 'archive';
   activate: boolean;
+  rechunk: boolean;
 };
 
 function parseArgs(argv: string[]): CliOptions {
   const options: CliOptions = {
     activate: false,
+    rechunk: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -97,6 +99,10 @@ function parseArgs(argv: string[]): CliOptions {
     }
     if (token === '--activate') {
       options.activate = true;
+      continue;
+    }
+    if (token === '--rechunk') {
+      options.rechunk = true;
       continue;
     }
     if (token === '--help' || token === '-h') {
@@ -169,6 +175,8 @@ Flags:
   --end <iso-date>         Inclusive source-created end date for date-range replay
   --pipeline <name>        Replay pipeline label for date-range mode
   --activate               Make the new extraction authoritative for the selected documents
+  --rechunk                (--source-run only) Rebuild the windows from the source documents with the
+                           current chunker instead of reusing the stored input payloads
   --help, -h               Show this help
 `);
 }
@@ -187,6 +195,7 @@ async function main(): Promise<void> {
       ? await replayService.replayExtractionRun({
           sourceExtractionRunId: options.sourceRunId,
           activate: options.activate,
+          rechunk: options.rechunk,
         })
       : options.sourceCollectionRunId
         ? await replayService.replayCollectionRun({

@@ -106,6 +106,7 @@ import {
   PLACE_CHOOSER_RESPONSE_JSON_SCHEMA,
   SEARCH_QUERY_RESPONSE_JSON_SCHEMA,
 } from './prompts/llm-response-schemas';
+import { emittingSourceIdsOf } from './llm-chunking.service';
 
 interface GeminiCacheEntry {
   name: string;
@@ -121,7 +122,10 @@ type SearchQueryCacheLayer = 'memory' | 'redis';
  * drop, not a runtime shape-sniff. This serializer is the one place that
  * decides what the model sees.
  */
-type LightweightComment = Pick<LLMComment, 'id' | 'content' | 'parent_id'>;
+type LightweightComment = Pick<
+  LLMComment,
+  'id' | 'content' | 'parent_id' | 'context_only'
+>;
 
 type LightweightPost = Pick<
   LLMPost,
@@ -1174,6 +1178,15 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         collectionResponseJsonSchemaForSourceRefs(
           'source_map' in input
             ? Object.keys((input as LLMProcessingInput).source_map ?? {})
+            : undefined,
+          // Emitting refs only for `source_id`: a context-only ancestor
+          // (reply-chain windows) can be cited as place_source_id, never
+          // as the source a mention is emitted FROM.
+          'source_map' in input
+            ? (() => {
+                const emitting = emittingSourceIdsOf(input);
+                return [...emitting.postIds, ...emitting.commentIds];
+              })()
             : undefined,
         ),
       ),
@@ -2652,6 +2665,9 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
           id: comment.id,
           content: comment.content,
           parent_id: comment.parent_id ?? null,
+          // Reply-chain windows: the flag is on the wire ONLY when true —
+          // the prompt reads its presence, and every other comment emits.
+          ...(comment.context_only === true ? { context_only: true } : {}),
         }),
       );
 

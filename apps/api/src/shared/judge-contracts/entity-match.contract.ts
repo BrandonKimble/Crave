@@ -26,7 +26,8 @@ export const ENTITY_MATCH_CONTRACT: JudgeContract = {
       'modules/content-processing/entity-resolver/entity-match-lane.ts',
   },
   claimKeySpec:
-    'canonical fold of (extracted name, candidate shortlist identity) — see EntityMatchLaneAdapter.canonicalClaimKey; folded text, so fold-versioned.',
+    'canonical fold of (extracted name, candidate shortlist identity) — see EntityMatchLaneAdapter.canonicalClaimKey; folded text, so fold-versioned. ' +
+    'The SAME hearing also writes the term-keyed entity_reject lane (entity-reject-lane.ts, claim_key = kind|canonicalFold(term), same rule version + fingerprint) when the verdict is reject — the resolver tombstone sink reads that lane, never the archived row alone (2026-09-04).',
   foldParticipation: 2,
   // The fold v2 bump (2026-08-30) re-stamped identity_key thinking and forgot
   // the LEDGER read filter — 152k verdicts went invisible, every match

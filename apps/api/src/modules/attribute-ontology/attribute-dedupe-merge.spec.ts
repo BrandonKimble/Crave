@@ -73,6 +73,7 @@ describe('AttributeDedupeMergeService.planMerge', () => {
       {} as EntityAnchorRehomeService,
       {} as ClaimVerdictLedgerService,
       noopLogger(),
+      { embedEntities: () => Promise.resolve(0) } as never,
     );
   }
 

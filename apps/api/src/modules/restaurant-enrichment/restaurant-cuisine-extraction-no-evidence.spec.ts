@@ -62,6 +62,7 @@ describe('cuisine judge reads the venue name as first-class evidence', () => {
       aliasManagement as never,
       attributeOntologyQueue as never,
       logger as never,
+      { embedEntities: () => Promise.resolve(0) } as never,
     );
     return { service, prisma, llmService };
   }

@@ -12,6 +12,7 @@ import { recordUnanswered } from '../../external-integrations/llm/unanswered-out
 import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
 import { DISH_KNOWLEDGE_RULE } from './dish-knowledge-rule';
 import { cuisineVocabularySql, mintCuisineFacetRow } from './cuisine-attribute';
+import { EntityEmbeddingReconcilerService } from '../../entity-text-search/entity-embedding-reconciler.service';
 
 export interface DishKnowledgeSummary {
   dishesProcessed: number;
@@ -64,6 +65,7 @@ export class DishKnowledgeSynthesisService {
     private readonly llmService: LLMService,
     private readonly pooled: PooledBatchRunner,
     loggerService: LoggerService,
+    private readonly entityEmbeddings: EntityEmbeddingReconcilerService,
   ) {
     this.logger = loggerService.setContext('DishKnowledgeSynthesisService');
   }
@@ -468,10 +470,14 @@ export class DishKnowledgeSynthesisService {
     // THE shared minter (redteam-l2 K5): facet='cuisine' + explicit status,
     // race-safe — the same primitive the venue-facts lane calls, so the two
     // cuisine minters cannot disagree about whether a cuisine is a cuisine.
-    return mintCuisineFacetRow(this.prisma, normalized, {
+    const minted = await mintCuisineFacetRow(this.prisma, normalized, {
       forms: [normalized],
       source: 'cuisine',
     });
+    // Write-time embedding law: a minted row is recallable before this
+    // call returns (the minter itself is a free function with no service).
+    if (minted) await this.entityEmbeddings.embedEntities([minted.entityId]);
+    return minted;
   }
 
   /**
@@ -548,6 +554,7 @@ export class DishKnowledgeSynthesisService {
       },
       select: { entityId: true },
     });
+    await this.entityEmbeddings.embedEntities([created.entityId]);
     return { entityId: created.entityId, created: true };
   }
 
@@ -601,6 +608,7 @@ export class DishKnowledgeSynthesisService {
         },
         select: { entityId: true },
       });
+      await this.entityEmbeddings.embedEntities([created.entityId]);
       return { entityId: created.entityId, created: true };
     } catch (error) {
       // FULL uniqueness scope (2026-08-27): uq_ingredient_identity_key

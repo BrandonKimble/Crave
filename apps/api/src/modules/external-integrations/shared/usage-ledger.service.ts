@@ -59,7 +59,7 @@ export interface UsageEvent {
   campaignId?: string;
   /** Spend-cause dimension (see work-context.ts) — explicit wins, ambient
    *  fills in. Places: 'grounding.new' | 'grounding.refresh' |
-   *  'grounding.expansion' (see work-context.ts for why three). */
+   *  'grounding.expansion' | 'grounding.moved' (see work-context.ts). */
   attribution?: string;
 }
 

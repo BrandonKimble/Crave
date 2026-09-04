@@ -58,7 +58,9 @@ const ontology = new AttributeOntologyService(
     new EntityAnchorRehomeService(logger),
     new ClaimVerdictLedgerService(prisma as never),
     logger,
+    { embedEntities: () => Promise.resolve(0) } as never,
   ),
+  { embedEntities: () => Promise.resolve(0) } as never,
 );
 
 const dishKnowledge = new DishKnowledgeSynthesisService(
@@ -66,6 +68,7 @@ const dishKnowledge = new DishKnowledgeSynthesisService(
   {} as never,
   {} as never,
   logger,
+  { embedEntities: () => Promise.resolve(0) } as never,
 );
 
 async function seedEntity(

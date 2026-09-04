@@ -57,6 +57,7 @@ function buildService() {
       authorizeDrain: ({ dueCount }: { dueCount: number }) =>
         Promise.resolve({ allowed: dueCount, estimate: null }),
     } as never,
+    { embedEntities: () => Promise.resolve(0) } as never,
   );
   (service as never as Record<string, unknown>).executeItemMergePlan = (
     plan: unknown,

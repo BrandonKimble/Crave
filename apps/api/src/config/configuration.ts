@@ -211,6 +211,16 @@ function ceilingEnv(name: string, fallback: number): number {
   return value;
 }
 
+/**
+ * THE MONEY GUARD's threshold, readable outside the ConfigService (the
+ * servable-place visibility floor is a pure SQL fragment with no injector).
+ * ONE declaration still (F365): the configuration object below calls this
+ * same function, so the env name and default exist exactly once.
+ */
+export function locationNoMatchAttemptThreshold(): number {
+  return positiveIntEnv('LOCATION_NO_MATCH_ATTEMPT_THRESHOLD', 3);
+}
+
 function positiveIntEnv(name: string, fallback: number): number {
   const raw = process.env[name];
   if (raw === undefined || raw.trim() === '') return fallback;
@@ -246,14 +256,14 @@ export default () => {
       /**
        * THE MONEY GUARD's threshold (janitor slim-down 2026-08-08): DEFINITIVE
        * grounding failures before enrichment refuses to buy further lookups
-       * for an entity. Nothing is archived on it — the entity stays active and
-       * name-searchable; it just stops costing money. Bypasses: force
-       * (identity changed) and retryTerminal (recovery sweep).
+       * for an entity. Nothing is archived on it (the janitor's ungroundable
+       * arm is gone — 2026-09-04, parked-names law): the entity stays active
+       * as a parked, ungrounded name; it stops costing money, and the
+       * servable-place visibility floor hides it from every serving surface
+       * by predicate (servable-place-scope.ts). Bypasses: force (identity
+       * changed) and retryTerminal (recovery sweep).
        */
-      noMatchAttemptThreshold: positiveIntEnv(
-        'LOCATION_NO_MATCH_ATTEMPT_THRESHOLD',
-        3,
-      ),
+      noMatchAttemptThreshold: locationNoMatchAttemptThreshold(),
       /** ACT: moved-place re-enrichments per weekly lifecycle pass. */
       retryLimit: positiveIntEnv('LOCATION_RETRY_LIMIT', 25),
     },

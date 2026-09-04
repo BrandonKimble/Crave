@@ -92,6 +92,11 @@ export interface LLMComment {
   created_at: string | null;
   parent_id: string | null;
   url: string;
+  /** CONTEXT-ONLY (reply-chain windows, 2026-09-04): an ancestor riding in
+   *  a window so references resolve; it emits nothing here, is never a
+   *  `source_id`, and may be a `place_source_id`. Emitted to the model only
+   *  when true (the comment's own window carries it without the flag). */
+  context_only?: true;
 }
 
 /**

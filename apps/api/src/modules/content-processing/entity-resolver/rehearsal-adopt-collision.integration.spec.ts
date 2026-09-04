@@ -53,6 +53,7 @@ const synthesis = new DishKnowledgeSynthesisService(
   {} as never,
   {} as never,
   logger,
+  { embedEntities: () => Promise.resolve(0) } as never,
 );
 
 const rehearsalGen = new RehearsalGenerationService(prisma as never, logger);

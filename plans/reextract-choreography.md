@@ -270,9 +270,14 @@ contract that makes this safe:
 
 - Projections/scores never read shadow evidence (active-run filter), so
   rankings are untouched.
-- Places enrichment is DISABLED during shadows (the shadow verb sets
-  DISABLE_RESTAURANT_ENRICHMENT=true) — a candidate prompt can never buy
-  vendor data.
+- ~~Places enrichment is DISABLED during shadows~~ — **SUPERSEDED
+  2026-09-04 (the shadow is the full pipeline):** rehearsal mints ARE
+  Places-grounded inside the shadow, metered into the campaign by the
+  ambient context, priced by a measured Places line on the manifest (the
+  prior shadow's mint count for the same communities). A mint whose place
+  is already owned by a live restaurant merges into it through the
+  ledgered place-merge door — that is what makes the diff's twin count
+  true. The shadow verb no longer sets DISABLE_RESTAURANT_ENRICHMENT.
 - A rejected candidate is removed with `reextract.sh discard <version>`:
   runs+events+claims deleted, prompt retired, then
   gc-unsupported-entities.sql collects the minted vocabulary. NOTE

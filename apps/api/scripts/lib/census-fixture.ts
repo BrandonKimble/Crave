@@ -132,3 +132,38 @@ export async function ensurePlaceTypeCensusFixture(
   if (Number(rows[0]?.n ?? 0) > 0) return;
   await seedFixturePlaces(prisma);
 }
+
+/**
+ * NAME-RECALL CENSUS (recall-scope rederivation, 2026-09-04). The scanner
+ * asks every live entity to answer to its OWN name through the judge's
+ * recall, so it needs (a) at least one live entity — the fold fixture's
+ * surface-less places cover an empty database, and their lack of surfaces
+ * is the point: the name arm is their ONLY recall path — and (b) at least
+ * one PENDING row, because the adoption scope's status law ("active or
+ * pending") is the second thing the census proves and a corpus with no
+ * pending rows would let a mutation narrowing it to 'active' pass blind.
+ */
+export async function ensureNameRecallCensusFixture(
+  prisma: PrismaClient,
+): Promise<void> {
+  await ensureFoldCensusFixture(prisma);
+  const pending = await prisma.$queryRawUnsafe<Array<{ n: bigint }>>(
+    `SELECT count(*) AS n FROM core_entities
+      WHERE status = 'pending'
+        AND type IN ('place','item','ingredient','item_attribute','place_attribute')`,
+  );
+  if (Number(pending[0]?.n ?? 0) > 0) return;
+  const name = `${CENSUS_FIXTURE_TAG}Pending Attribute`;
+  const identity = identityInsertData(name, 'place_attribute' as never);
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO core_entities
+       (entity_id, name, type, status, identity_key, identity_key_sorted, fold_version)
+     VALUES ($1::uuid, $2, 'place_attribute'::entity_type, 'pending'::entity_status, $3, $4, $5)`,
+    randomUUID(),
+    name,
+    identity.identityKey,
+    identity.identityKeySorted,
+    identity.foldVersion,
+  );
+  console.log('census fixture: seeded 1 pending attribute — none existed');
+}

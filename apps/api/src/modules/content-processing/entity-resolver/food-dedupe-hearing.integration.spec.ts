@@ -110,6 +110,7 @@ const serviceWith = (llm: LLMService): ItemDedupeMergeService =>
       prisma as never,
       new ClaimVerdictLedgerService(prisma as never),
     ),
+    { embedEntities: () => Promise.resolve(0) } as never,
   );
 
 /** The same service with the EFFECT step killed — the crash seam. */
@@ -300,6 +301,7 @@ describe('the dedupe lane on the hearing ledger — live database', () => {
         prisma as never,
         new ClaimVerdictLedgerService(prisma as never),
       ),
+      { embedEntities: () => Promise.resolve(0) } as never,
     );
     await expect(drive(crashing, [pair], emptySummary())).rejects.toThrow(
       'process died before the merge ran',

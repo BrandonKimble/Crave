@@ -8,10 +8,14 @@
  * assertion below is about WHICH ids an arm SELECTED
  * (`JanitorSummary.selected`).
  *
- * SLIM JANITOR (owner ruling 2026-08-08): the ungrounded retry/archive arms
- * are DELETED — retry is mention-driven and the money guard lives in the
- * enrichment service (tested in terminal-failure-guard.spec.ts). What
- * remains, and what this file proves, is the grounded-place lifecycle:
+ * SLIM JANITOR (owner ruling 2026-08-08, re-affirmed by the parked-names
+ * law 2026-09-04): the ungrounded retry/archive arms are DELETED — retry is
+ * mention-driven, the money guard lives in the enrichment service (tested
+ * in terminal-failure-guard.spec.ts), and a terminally ungroundable place
+ * is hidden by the visibility floor's PREDICATE, never archived (an
+ * archive with no verdict behind it was read as a judge reject by the
+ * resolver's sink). What remains, and what this file proves, is the
+ * grounded-place lifecycle:
  *   - archive ONLY on Google's own verdict — every location
  *     CLOSED_PERMANENTLY — never a restaurant with any open/unknown
  *     location, and NEVER an ungrounded placeholder however bad its history
@@ -188,26 +192,17 @@ beforeAll(async () => {
     label: 'status-unknown',
     locations: [{ businessStatus: null, grounded: true }],
   });
-  // ── The ungroundable-survival gate's axes (2026-08-12 ruling + SD-3) ──
-  // Terminal definitive-failure history, ungrounded, unanchored: the gate's
-  // ONE archivable shape.
+  // ── No ungroundable arm (parked-names law, 2026-09-04) ────────────────
+  // A terminally ungroundable, unanchored place is exactly what the
+  // 2026-08-12 gate archived — and what then masqueraded as a judge reject
+  // in the resolver's sink. It stays ACTIVE now (hidden by the visibility
+  // floor's predicate, servable-place-visibility.integration.spec.ts); NO
+  // arm of this janitor may select it. MUTATION FIXTURE: re-add the arm
+  // and this row appears in a selection.
   await seedPlace({
     label: 'ungrounded-many-failures',
     failureCount: 99,
     locations: [{ businessStatus: null, grounded: false }],
-  });
-  // Below the threshold: attempts remain; the gate must wait.
-  await seedPlace({
-    label: 'ungrounded-below-threshold',
-    failureCount: 1,
-    locations: [{ businessStatus: null, grounded: false }],
-  });
-  // Terminal AND user-anchored: the anchor law outranks the gate, always.
-  await seedPlace({
-    label: 'ungrounded-terminal-anchored',
-    failureCount: 99,
-    locations: [{ businessStatus: null, grounded: false }],
-    userAnchored: true,
   });
   // Every location closed AND user-anchored: the anchor law outranks the
   // closed arm too (red team 2026-09-04 E-5) — the saved place stays.
@@ -248,23 +243,13 @@ describe('grounded-lifecycle policy, proven against Postgres', () => {
     expect(seededLabels(selected.closed)).toEqual(['all-closed']);
   });
 
-  it('the ungroundable gate archives EXACTLY the terminal, unanchored ghost', () => {
-    // MUTATION FIXTURES in one assertion:
-    //   drop the threshold clause      : ungrounded-below-threshold appears
-    //   drop the anchor NOT EXISTS     : ungrounded-terminal-anchored appears
-    //   drop the ungrounded predicate  : grounded terminals would appear
-    expect(seededLabels(selected.ungroundable)).toEqual([
-      'ungrounded-many-failures',
-    ]);
-  });
-
-  it('the closed and moved arms still never touch ungrounded placeholders', () => {
-    expect(seededLabels(selected.closed)).not.toContain(
+  it('NO arm selects a terminally ungroundable place — it is a parked name, never a corpse (2026-09-04)', () => {
+    const everySelection = Object.values(selected).flat();
+    expect(seededLabels(everySelection)).not.toContain(
       'ungrounded-many-failures',
     );
-    expect(seededLabels(selected.moved)).not.toContain(
-      'ungrounded-many-failures',
-    );
+    // ...and the summary has no ungroundable arm to report at all.
+    expect(Object.keys(selected).sort()).toEqual(['closed', 'moved']);
   });
 
   it('selects moved locations for forced re-enrichment, and only those', () => {
@@ -273,7 +258,6 @@ describe('grounded-lifecycle policy, proven against Postgres', () => {
 
   it('a dry pass reports counts consistent with its selections', () => {
     expect(summary.archivedClosed).toBe(selected.closed.length);
-    expect(summary.archivedUngroundable).toBe(selected.ungroundable.length);
     expect(summary.reEnrichedMoved).toBe(selected.moved.length);
   });
 });

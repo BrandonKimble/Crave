@@ -24,6 +24,7 @@ import { LoggerService, CorrelationUtils } from '../../../shared';
 import { localeLookupChain } from '../../../shared/locale/accept-language';
 import { LLMService } from '../../external-integrations/llm/llm.service';
 import {
+  type AdoptionScope,
   EntityTextSearchService,
   type RecallCandidate,
 } from '../../entity-text-search/entity-text-search.service';
@@ -38,6 +39,15 @@ import {
   ENTITY_DEDUPE_RULE_FINGERPRINT,
   ENTITY_DEDUPE_RULE_VERSION,
 } from './entity-dedupe-rule';
+import {
+  ENTITY_REJECT_FOLD_VERSION,
+  ENTITY_REJECT_LANE,
+  entityRejectClaimKey,
+  googleClosedSql,
+  redirectFreeArchivedSql,
+  sinkVerdictSql,
+  type EntityRejectKind,
+} from './entity-reject-lane';
 import { identityGradeSql } from './entity-surface.service';
 import {
   EntityResolutionInput,
@@ -1597,13 +1607,20 @@ export class EntityResolutionService implements OnModuleInit {
       originalInput: entity,
     });
 
-    // TOMBSTONE PRE-SINK (the reject verdict's memory, 2026-08-30): a term
-    // the judge already REJECTED lives on as an archived row with NO merge
-    // redirect (a redirect means merge-loser, never junk). Repeat mentions
-    // resolve onto the tombstone BEFORE recall runs, so a judged reject is
-    // free forever — the same absorption the attribute vocabulary has had
-    // all along (markEntitiesForCreation's attribute sink). Rehearsal runs
-    // sink too: the tombstone is inert either way.
+    // TOMBSTONE PRE-SINK (the reject verdict's memory, 2026-08-30; keyed on
+    // THE LEDGER since 2026-09-04): a term the judge already REJECTED has a
+    // ledgered 'entity_reject' verdict at the rule in force AND an archived,
+    // redirect-free landing row for its fold. Repeat mentions resolve onto
+    // the landing row BEFORE recall runs, so a judged reject is free forever
+    // — the same absorption the attribute vocabulary has had all along
+    // (markEntitiesForCreation's attribute sink). The archived row is WHERE
+    // the mention lands, never the evidence that it should: an archive with
+    // no verdict behind it is a PARKED NAME (entity-reject-lane.ts), and a
+    // parked name reaches recall and the judge like any other term (the
+    // ungroundable "Arlo's" that swallowed every vouch meant for the live
+    // "Arlo's Junior"; the 714 verdict-less items that ate "hard shell
+    // taco" and the place vouch riding on it). Rehearsal runs sink too: the
+    // landing row is inert either way.
     //
     // ACTIVE-TWIN STANDDOWN (red-team F1, 2026-08-30): a pre-sink hit is
     // lawful ONLY when no live entity shares the fold. If an active (or
@@ -1627,18 +1644,25 @@ export class EntityResolutionService implements OnModuleInit {
         ),
       );
       if (folds.length) {
-        // Two arms, one standdown law. Arm 1: the tombstone's own name key
-        // (the original reject sink). Arm 2 — CLOSED-PLACE STANDDOWN
-        // (plans/alias-clean-slate.md item 4): an archived redirect-free
-        // entity also absorbs mentions matching its OBSERVED spellings. A
-        // real place that closed (janitor-archived after Google reported it
-        // gone) still owns its name: "mandala" must sink into the archived
+        // Two arms, one standdown law. Arm 1: the landing row's own name
+        // key, admitted by EITHER sink verdict — a ledgered reject in force
+        // or Google's closure (entity-reject-lane.ts spells both once, for
+        // every site). Arm 2 — CLOSED-PLACE STANDDOWN (plans/alias-clean-
+        // slate.md item 4): a place Google reported closed also absorbs
+        // mentions matching its OBSERVED spellings. A real place that
+        // closed still owns its name: "mandala" must sink into the archived
         // Mandala Kitchen — hidden from search, mention absorbed — rather
         // than mint a duplicate or drift to the nearest look-alike
-        // spelling. Observed grade only: a judged/recall alias on a dead
+        // spelling. Google's verdict ONLY (business_status =
+        // CLOSED_PERMANENTLY on every location) — an ungroundable place the
+        // janitor once archived is not closed, and its spellings route to
+        // the judge. Observed grade only: a judged/recall alias on a dead
         // entity is not the dead entity's name. The active-twin standdown
         // applies to both arms per FOLD: any live entity holding the fold
         // as its identity key stands the sink down and the judge decides.
+        // Both arms read redirect-free, born-null rows only: a redirect is a
+        // merge loser, and a rejected shadow's residue (born run id set —
+        // red team 2026-09-04 T1-1) is nobody's verdict.
         const rows = await this.prisma.$queryRaw<
           Array<{ entity_id: string; fold: string }>
         >(Prisma.sql`
@@ -1646,32 +1670,21 @@ export class EntityResolutionService implements OnModuleInit {
             SELECT e.entity_id, e.identity_key AS fold
               FROM core_entities e
              WHERE e.type = ${entityType}::entity_type
-               AND e.status = 'archived'
-               -- A REJECT TOMBSTONE IS A LIVE JUDGMENT, NEVER A REJECTED
-               -- SHADOW'S RESIDUE (red team 2026-09-04 T1-1): a shadow
-               -- that was rejected archives its mints WITH their born run
-               -- id (rehearsal-generation.reject), and the flip path
-               -- already tells the two apart by exactly this column. A
-               -- sink that ignored it made every name a rejected shadow
-               -- coined first a permanent black hole for live mentions.
-               AND e.born_extraction_run_id IS NULL
+               AND ${redirectFreeArchivedSql('e')}
                AND e.identity_key = ANY(${folds}::text[])
+               AND ${sinkVerdictSql('e', rehearsalRunId)}
             UNION
             SELECT e.entity_id, s.form_folded AS fold
               FROM core_entities e
               JOIN entity_surface s ON s.entity_id = e.entity_id
              WHERE e.type = ${entityType}::entity_type
-               AND e.status = 'archived'
-               AND e.born_extraction_run_id IS NULL
+               AND ${redirectFreeArchivedSql('e')}
+               AND ${googleClosedSql('e')}
                AND s.claim_grade = 'observed'
                AND s.status IN ('active', 'deprecated')
                AND s.form_folded = ANY(${folds}::text[])
           ) x
            WHERE NOT EXISTS (
-               SELECT 1 FROM entity_redirects r
-                WHERE r.from_entity_id = x.entity_id
-             )
-             AND NOT EXISTS (
                SELECT 1 FROM core_entities live
                 WHERE live.type = ${entityType}::entity_type
                   AND live.identity_key = x.fold
@@ -1716,7 +1729,25 @@ export class EntityResolutionService implements OnModuleInit {
       }
     }
 
-    // Recall for every term first (shared lexical+dense core, type+market
+    // THE COURT SEES THE WHOLE ROSTER (recall-scope rederivation,
+    // 2026-09-04): the judge's shortlist is drawn from exactly the world a
+    // mention may ADOPT — the tiers' status law (active/pending + this
+    // run's rehearsal mints) and the metro gate's geography (80 km from
+    // the community's anchor, ungrounded places included; no anchor = no
+    // geo-scope, exactly as the gate stands down). It used to be drawn
+    // from the READER's world (active only, engine place-DAG polygon), so
+    // Round Rock's "Cuba Bakery & Café" was adoptable but unrecallable and
+    // the judge minted its twin; the same run's "Salt Lick" mint was
+    // invisible to its second mention "Salt Lick Bbq".
+    const adoption: AdoptionScope = {
+      rehearsalRunId,
+      metro:
+        entityType === 'place' && engineId
+          ? await this.metroAdoption.anchorForEngine(engineId)
+          : null,
+    };
+
+    // Recall for every term first (shared lexical+dense core, type+metro
     // scoped) — recall stays per-term concurrent; only the JUDGE is batched.
     const recalls = await this.mapLimit(
       stillLive,
@@ -1730,6 +1761,7 @@ export class EntityResolutionService implements OnModuleInit {
           EntityResolutionService.LLM_MATCHER_SHORTLIST_K,
           {
             engineId,
+            adoption,
             denseMode: 'always',
             // THE DOCUMENT'S LANGUAGE OPENS THE LOCALIZED-SURFACE LANE.
             // Without it this recall could only ever see und rows, so a
@@ -1890,6 +1922,8 @@ export class EntityResolutionService implements OnModuleInit {
     for (let i = 0; i < stillDue.length; i += BATCH) {
       chunks.push(stillDue.slice(i, i + BATCH));
     }
+    // The judge's stated ground for each REJECT — the ledger row's reason.
+    const rejectReasonByTempId = new Map<string, string>();
     const verdictByTempId = new Map<
       string,
       {
@@ -1932,18 +1966,28 @@ export class EntityResolutionService implements OnModuleInit {
           verdict.candidateId !== null
             ? (r.shown[verdict.candidateId] ?? null)
             : null;
+        const reason = verdict?.reason?.trim() ?? '';
+        // A REJECT WITH NO STATED GROUND IS NOT A VERDICT (H5 amendment
+        // (d), the same doctrine the 'new' path already obeys): it cannot
+        // enter the ledger, and without a ledger row there is nothing for
+        // the sink to remember — so it is heard as a fail-closed 'new' and
+        // the question stays open for the next mention.
         const decision: 'match' | 'new' | 'reject' = matched
           ? 'match'
-          : verdict?.decision === 'reject'
+          : verdict?.decision === 'reject' && reason
             ? 'reject'
             : 'new';
         verdictByTempId.set(r.entity.tempId, {
           decision,
           candidate: matched,
         });
-        // A reject is a TERM-level ruling, not a pair ruling — its durable
-        // memory is the tombstone row the sink below writes, so it is
-        // deliberately NOT recorded in the pair-keyed entity_match lane.
+        if (decision === 'reject') {
+          rejectReasonByTempId.set(r.entity.tempId, reason);
+        }
+        // A reject is a TERM-level ruling, not a pair ruling: it is
+        // recorded on the term-keyed 'entity_reject' lane (below, before
+        // its landing row is minted), never in the pair-keyed entity_match
+        // lane.
         if (decision !== 'reject') {
           await this.recordEntityMatchVerdicts(
             r.term,
@@ -1959,20 +2003,36 @@ export class EntityResolutionService implements OnModuleInit {
       }
     });
 
-    // REJECTED TERMS become archived TOMBSTONES: junk ("5 piece", "clay",
-    // "South Lamar Location") must stop minting entities — the judge's own
-    // reasons have called these garbage all along while `new` was the only
-    // non-match verdict (judge-ledger audit, top failure pattern #1). The
-    // mention resolves onto the tombstone (refs are inert: read surfaces and
-    // match tiers are active/pending-only) and the pre-sink above absorbs
-    // every future occurrence for free. Rehearsal runs do NOT mint live
-    // tombstones (shadow isolation) — their rejects fall through to the
-    // quarantined creation path exactly as before.
+    // REJECTED TERMS are LEDGERED, then land on archived TOMBSTONES: junk
+    // ("5 piece", "clay", "South Lamar Location") must stop minting
+    // entities — the judge's own reasons have called these garbage all
+    // along while `new` was the only non-match verdict (judge-ledger audit,
+    // top failure pattern #1). VERDICT FIRST (the hearing ledger's ordering
+    // law): the 'entity_reject' row is the court's memory; the landing row
+    // minted after it is only where the mention goes. The mention resolves
+    // onto the landing row (refs are inert: read surfaces and match tiers
+    // are active/pending-only) and the pre-sink above absorbs every future
+    // occurrence for free.
+    //
+    // REHEARSAL RUNS ledger their rejects under source 'rehearsal:<run>'
+    // (visible to that run only; deleted if the shadow is rejected, flipped
+    // to steady at activation — rehearsal-generation.service.ts) but mint
+    // NO live landing row (shadow isolation), so the mention falls through
+    // to the quarantined creation path exactly as before. An activated
+    // shadow's reject therefore takes effect only once a live hearing
+    // re-rejects the term and mints its landing — one judge call, then
+    // free — which is the honest shape: a shadow may remember what it
+    // ruled, it may not archive a row live readers share.
     const rejectResults = new Map<string, EntityResolutionResult>();
     for (const r of stillDue) {
-      if (verdictByTempId.get(r.entity.tempId)?.decision !== 'reject') {
-        continue;
-      }
+      const verdict = verdictByTempId.get(r.entity.tempId);
+      if (verdict?.decision !== 'reject') continue;
+      await this.recordEntityRejectVerdict(
+        kind,
+        r.entity.normalizedName,
+        rejectReasonByTempId.get(r.entity.tempId) ?? '',
+        rehearsalRunId,
+      );
       if (rehearsalRunId) continue;
       const tombstoneId = await this.ensureRejectTombstone(
         r.entity.normalizedName,
@@ -2132,6 +2192,47 @@ export class EntityResolutionService implements OnModuleInit {
       }
       throw error;
     }
+  }
+
+  /**
+   * BANK THE REJECT — the term-keyed 'entity_reject' lane (the court's
+   * memory is the ledger, 2026-09-04). Same judge, same rule version and
+   * fingerprint as the pair-keyed entity_match lane; keyed by the fold the
+   * landing row's identity_key carries (entity-reject-lane.ts).
+   *
+   * VERDICT-MEMORY-ONLY, like the entity_match lane and for the same
+   * reason: `executed_at` stamps at record. The landing row is not an
+   * effect a resume queue could replay — a reject whose landing was never
+   * minted (a crash between record and mint, a shadow's verdict flipped
+   * live) is simply heard again on the next mention and re-mints then; no
+   * drain exists for this lane, and the self-healing hearing IS its resume.
+   */
+  private async recordEntityRejectVerdict(
+    kind: EntityRejectKind,
+    term: string,
+    reason: string,
+    rehearsalRunId: string | null,
+  ): Promise<void> {
+    const claimKey = entityRejectClaimKey(kind, term);
+    await this.claimLedger.record({
+      lane: ENTITY_REJECT_LANE,
+      claimKey,
+      ruleVersion: ENTITY_DEDUPE_RULE_VERSION,
+      foldVersion: ENTITY_REJECT_FOLD_VERSION,
+      outcome: 'reject',
+      reason,
+      ruleFingerprint: ENTITY_DEDUPE_RULE_FINGERPRINT,
+      subject: { kind, term, outcome: 'reject' },
+      ...(rehearsalRunId
+        ? { source: `rehearsal:${rehearsalRunId}` as const }
+        : {}),
+    });
+    await this.claimLedger.markExecuted(
+      ENTITY_REJECT_LANE,
+      claimKey,
+      ENTITY_DEDUPE_RULE_VERSION,
+      ENTITY_REJECT_FOLD_VERSION,
+    );
   }
 
   /**

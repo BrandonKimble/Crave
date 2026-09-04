@@ -15,6 +15,7 @@ import { AliasManagementService } from '../content-processing/entity-resolver/al
 import { PlaceCuisineExtractionQueueService } from '../restaurant-enrichment/restaurant-cuisine-extraction-queue.service';
 import { PlaceLocationEnrichmentService } from '../restaurant-enrichment/restaurant-location-enrichment.service';
 import { EntityTextSearchService } from '../entity-text-search/entity-text-search.service';
+import { EntityEmbeddingReconcilerService } from '../entity-text-search/entity-embedding-reconciler.service';
 
 /** Phase C re-key: entity seeding is biased by the creation PLACE (centroid +
  *  region hints) — the old market context is dead. */
@@ -65,6 +66,7 @@ export class PollEntitySeedService {
     private readonly placeEnrichment: PlaceLocationEnrichmentService,
     private readonly cuisineExtractionQueue: PlaceCuisineExtractionQueueService,
     private readonly entityTextSearch: EntityTextSearchService,
+    private readonly entityEmbeddings: EntityEmbeddingReconcilerService,
   ) {
     this.logger = loggerService.setContext('PollEntitySeedService');
   }
@@ -98,6 +100,7 @@ export class PollEntitySeedService {
         ...identityInsertData(name, EntityType.item),
       },
     });
+    await this.entityEmbeddings.embedEntities([created.entityId]);
 
     return { entityId: created.entityId, name: created.name, created: true };
   }
@@ -142,6 +145,7 @@ export class PollEntitySeedService {
         ...identityInsertData(name, params.entityType),
       },
     });
+    await this.entityEmbeddings.embedEntities([created.entityId]);
 
     return { entityId: created.entityId, name: created.name, created: true };
   }
@@ -471,6 +475,8 @@ export class PollEntitySeedService {
     if (created.adopted) {
       return { entityId: created.entityId, name: created.name, created: false };
     }
+    // Write-time embedding law: after the commit, never inside it.
+    await this.entityEmbeddings.embedEntities([created.entityId]);
 
     this.logger.info('Created restaurant from poll input', {
       entityId: created.entityId,

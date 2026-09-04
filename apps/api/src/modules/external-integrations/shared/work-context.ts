@@ -34,7 +34,9 @@ export interface WorkContext {
    *  'grounding.new' (first grounding of a restaurant, full mask),
    *  'grounding.refresh' (lean-mask volatility re-poll) and
    *  'grounding.expansion' (secondary-location expansion, full mask over an
-   *  already-grounded place). Written to api_usage_ledger.attribution so rate
+   *  already-grounded place); a fourth, 'grounding.moved' (one full-mask
+   *  details call following Google's moved-place redirect, E-3), is like
+   *  expansion in neither published rate. Written to api_usage_ledger.attribution so rate
    *  derivation can slice by cause instead of dividing everything by one
    *  denominator (the 51%-contaminated-Places-rate lesson). */
   attribution?: string;

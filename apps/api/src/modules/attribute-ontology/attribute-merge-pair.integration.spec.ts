@@ -91,6 +91,7 @@ function buildService(): AttributeDedupeMergeService {
     new EntityAnchorRehomeService(noopLogger()),
     new ClaimVerdictLedgerService(prisma as unknown as PrismaService),
     noopLogger(),
+    { embedEntities: () => Promise.resolve(0) } as never,
   );
 }
 

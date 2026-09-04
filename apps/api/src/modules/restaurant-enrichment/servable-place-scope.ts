@@ -33,6 +33,8 @@
  * user-list-results.assembler.ts.
  */
 
+import { locationNoMatchAttemptThreshold } from '../../config/configuration';
+
 /** Market-membership verdict only: the place is not excluded from every
  *  crediting community's market. NULL = in market (fail-open; see
  *  market-membership.service.ts for the verdict's definition). */
@@ -60,19 +62,35 @@ export function marketIncludedSql(alias: string): string {
  *
  *  The `LIMIT 2` subquery is the cheap existence-of-two test on
  *  idx_restaurant_events_restaurant_time; the grounded arm rides the
- *  locations FK index. */
+ *  locations FK index.
+ *
+ *  TERMINALLY UNGROUNDABLE IS NOT SERVABLE EITHER (2026-09-04, parked-names
+ *  law). The 2026-08-12 ruling ("ungrounded-after-attempt must not be
+ *  searchable") used to be enforced by the janitor ARCHIVING the place once
+ *  the money guard's threshold said Google had definitively said no — and
+ *  that archive then masqueraded as a judge reject in the resolver's sink
+ *  (an archived "Arlo's" ate every vouch meant for the live "Arlo's
+ *  Junior"). The place now stays ACTIVE as a parked, ungrounded name, and
+ *  THIS predicate is what keeps it off every serving surface: the mentions
+ *  arm admits an ungrounded place only while grounding attempts remain.
+ *  One threshold, one meaning, read from the same declaration the money
+ *  guard reads (configuration.ts). Grounded places are unaffected — a
+ *  google_place_id is the first arm regardless of failure history. */
 export function placeVisibilityFloorSql(alias: string): string {
   return `(EXISTS (
       SELECT 1 FROM core_restaurant_locations svgl
       WHERE svgl.restaurant_id = ${alias}.entity_id
         AND svgl.google_place_id IS NOT NULL
     ) OR (
-      SELECT COUNT(*) FROM (
-        SELECT 1 FROM core_restaurant_events svge
-        WHERE svge.restaurant_id = ${alias}.entity_id
-        LIMIT 2
-      ) svgc
-    ) >= 2)`;
+      ${alias}.enrichment_failure_count < ${locationNoMatchAttemptThreshold()}
+      AND (
+        SELECT COUNT(*) FROM (
+          SELECT 1 FROM core_restaurant_events svge
+          WHERE svge.restaurant_id = ${alias}.entity_id
+          LIMIT 2
+        ) svgc
+      ) >= 2
+    ))`;
 }
 
 /** The full public serving floor: a place entity, never archived, in

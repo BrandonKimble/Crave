@@ -128,6 +128,7 @@ function makeService(pages: Array<() => Promise<unknown>>) {
     } as never,
     { reconcile: () => Promise.resolve(0) } as never,
     logger as never,
+    { embedEntities: () => Promise.resolve(0) } as never,
   );
 
   const anyService = service as unknown as Record<string, unknown>;

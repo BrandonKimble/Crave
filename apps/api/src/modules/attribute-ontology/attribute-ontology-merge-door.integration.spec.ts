@@ -113,6 +113,7 @@ describe('AttributeOntologyService.applyPlan merges (real DB)', () => {
       new EntityAnchorRehomeService(noopLogger()),
       new ClaimVerdictLedgerService(prisma as unknown as PrismaService),
       noopLogger(),
+      { embedEntities: () => Promise.resolve(0) } as never,
     );
     const ontology = new AttributeOntologyService(
       prisma as unknown as PrismaService,
@@ -120,6 +121,7 @@ describe('AttributeOntologyService.applyPlan merges (real DB)', () => {
       {} as EmbeddingService,
       noopLogger(),
       door,
+      { embedEntities: () => Promise.resolve(0) } as never,
     );
     const plan: CanonicalizationPlan = {
       type: 'place_attribute',

@@ -40,6 +40,7 @@ import {
   ATTRIBUTE_MERGE_RULE_FINGERPRINT,
   ATTRIBUTE_MERGE_RULE_VERSION,
 } from './attribute-merge-rule';
+import { EntityEmbeddingReconcilerService } from '../entity-text-search/entity-embedding-reconciler.service';
 
 /**
  * A candidate pair — two live same-type attributes whose MEANING may
@@ -132,6 +133,7 @@ export class AttributeDedupeMergeService {
     private readonly anchorRehome: EntityAnchorRehomeService,
     private readonly ledger: ClaimVerdictLedgerService,
     loggerService: LoggerService,
+    private readonly entityEmbeddings: EntityEmbeddingReconcilerService,
   ) {
     this.logger = loggerService.setContext('AttributeDedupeMergeService');
   }
@@ -728,6 +730,10 @@ export class AttributeDedupeMergeService {
       },
       { timeout: 15 * 60 * 1000, maxWait: 30_000 },
     );
+
+    // Write-time embedding law: the winner's doc just gained the loser's
+    // folded name; re-embed after the commit.
+    await this.entityEmbeddings.embedEntities([plan.winnerId]);
 
     this.logger.info('Merged duplicate attributes', {
       winner: plan.winnerName,

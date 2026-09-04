@@ -13,9 +13,15 @@
  *   npx ts-node scripts/reextract-estimate.ts --communities a,b --prompt-version N \
  *        --approve-estimate <hash>
  *
- * Re-extraction replays EXISTING documents: no Places line (place-grounded
- * restaurants are never re-created — expectedNewRestaurants=0); the spend
- * is extraction/interactive/embedding over the doc count.
+ * Re-extraction replays EXISTING documents, so already-grounded restaurants
+ * are never re-bought — but THE SHADOW IS THE FULL PIPELINE (2026-09-04):
+ * the places a candidate prompt newly mints are Places-grounded inside the
+ * shadow, metered into this campaign. The Places line is therefore a
+ * MEASURED forecast: the mint count of the previous shadow of the SAME
+ * community set (staging's v23 Austin shadow minted 986 places) times the
+ * published google_places.enrichment rate. With no comparable prior shadow
+ * the line is declared UNKNOWN out loud and priced at zero mints — the
+ * envelope tolerance is then the only cover, and the report says so.
  */
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
@@ -24,10 +30,159 @@ import { SpendCampaignService } from '../src/modules/external-integrations/share
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 import { campaignAttributableRates } from '../src/modules/external-integrations/shared/gemini-pricing';
 import { replayPriorUsable } from './lib/replay-prior-guard';
+import { LLMChunkingService } from '../src/modules/external-integrations/llm/llm-chunking.service';
+import { activeExtractionInputsJoinSql } from '../src/modules/content-processing/reddit-collector/extraction-scope.service';
+import type {
+  LLMModelInput,
+  LLMPost,
+} from '../src/modules/external-integrations/llm/llm.types';
 
 function arg(name: string): string | undefined {
   const idx = process.argv.indexOf(`--${name}`);
   return idx >= 0 ? process.argv[idx + 1] : undefined;
+}
+
+/** The model-facing payload size the pipeline would send (llm.service's
+ *  lightweight projection), chars/4 — the pipeline's own estimator. */
+function payloadTokens(input: LLMModelInput): number {
+  return Math.floor(
+    JSON.stringify({
+      posts: input.posts.map((post) => ({
+        id: post.id,
+        subreddit: post.subreddit,
+        title: post.title,
+        content: post.content,
+        extract_from_post: Boolean(post.extract_from_post),
+        comments: post.comments.map((comment) => ({
+          id: comment.id,
+          content: comment.content,
+          parent_id: comment.parent_id ?? null,
+          ...(comment.context_only === true ? { context_only: true } : {}),
+        })),
+      })),
+    }).length / 4,
+  );
+}
+
+/**
+ * RE-CHUNK PRICING (reply-chain windows, 2026-09-04). A replay that
+ * re-windows with the current chunker (--rechunk / REEXTRACT_RECHUNK) does
+ * not send the stored payloads, so its extraction line cannot be the
+ * per-document prior as-is: the ancestor context duplicated across windows
+ * and the extra calls' cached-prompt reads change the input tokens.
+ * Measured, not guessed: the stored inputs of the communities' active runs
+ * are priced against the CURRENT chunker's windows over the same
+ * documents, and the ratio of all-in input token-equivalents (payload +
+ * cached system prompt at 0.1x per call) scales the extraction line.
+ */
+async function rechunkMultiplier(
+  prisma: PrismaService,
+  chunker: LLMChunkingService,
+  communities: string[],
+  promptChars: number,
+): Promise<{
+  storedChunks: number;
+  newChunks: number;
+  storedTokens: number;
+  newTokens: number;
+  multiplier: number;
+}> {
+  // THE ACTIVE GENERATION HAS ONE DEFINITION (ExtractionScopeService):
+  // both reads go through its exported join fragment, so this script never
+  // spells the activation pointer itself.
+  const activeInputs = `SELECT DISTINCT i.input_id ${activeExtractionInputsJoinSql()}
+    WHERE d.community = ANY($1::text[]) AND d.platform <> 'poll_surface'`;
+  const stored = await prisma.$queryRawUnsafe<
+    Array<{ chunks: bigint; chars: bigint }>
+  >(
+    `SELECT count(*) AS chunks,
+            coalesce(sum(length(ei.input_payload::text)), 0) AS chars
+     FROM collection_extraction_inputs ei
+     WHERE ei.input_id IN (${activeInputs})`,
+    communities,
+  );
+  const docs = await prisma.$queryRawUnsafe<
+    Array<{
+      sourceType: 'post' | 'comment';
+      sourceId: string;
+      parentSourceId: string | null;
+      title: string | null;
+      body: string | null;
+      scoreSnapshot: number | null;
+      sourceCreatedAt: Date;
+      community: string | null;
+      rawPayload: Record<string, unknown> | null;
+    }>
+  >(
+    `SELECT DISTINCT ON (d.document_id)
+            d.source_type AS "sourceType", d.source_id AS "sourceId",
+            d.parent_source_id AS "parentSourceId", d.title, d.body,
+            d.score_snapshot AS "scoreSnapshot",
+            d.source_created_at AS "sourceCreatedAt", d.community,
+            d.raw_payload AS "rawPayload"
+     ${activeExtractionInputsJoinSql()}
+     WHERE d.community = ANY($1::text[]) AND d.platform = 'reddit'
+     ORDER BY d.document_id`,
+    communities,
+  );
+  docs.sort(
+    (left, right) =>
+      new Date(left.sourceCreatedAt).getTime() -
+      new Date(right.sourceCreatedAt).getTime(),
+  );
+  const posts = new Map<string, LLMPost>();
+  for (const doc of docs) {
+    if (doc.sourceType !== 'post') continue;
+    posts.set(doc.sourceId, {
+      id: doc.sourceId,
+      title: doc.title ?? '',
+      content: doc.body ?? '',
+      subreddit: doc.community ?? '',
+      author: null,
+      url: '',
+      score: doc.scoreSnapshot ?? 0,
+      created_at: new Date(doc.sourceCreatedAt).toISOString(),
+      comments: [],
+    });
+  }
+  for (const doc of docs) {
+    if (doc.sourceType !== 'comment') continue;
+    const raw = doc.rawPayload ?? {};
+    const postId =
+      (typeof raw.post_id === 'string' ? raw.post_id : null) ??
+      doc.parentSourceId;
+    const post = postId ? posts.get(postId) : undefined;
+    if (!post) continue;
+    post.comments.push({
+      id: doc.sourceId,
+      content: doc.body ?? '',
+      author: null,
+      score: doc.scoreSnapshot ?? 0,
+      created_at: new Date(doc.sourceCreatedAt).toISOString(),
+      parent_id:
+        (typeof raw.parent_id === 'string' ? raw.parent_id : null) ??
+        doc.parentSourceId,
+      url: '',
+    });
+  }
+  const { chunks } = chunker.createContextualChunks({
+    posts: Array.from(posts.values()),
+  });
+  const promptReadTokens = Math.floor(promptChars / 4) * 0.1;
+  const storedChunks = Number(stored[0]?.chunks ?? 0);
+  const storedTokens =
+    Math.floor(Number(stored[0]?.chars ?? 0) / 4) +
+    storedChunks * promptReadTokens;
+  const newTokens =
+    chunks.reduce((sum, chunk) => sum + payloadTokens(chunk), 0) +
+    chunks.length * promptReadTokens;
+  return {
+    storedChunks,
+    newChunks: chunks.length,
+    storedTokens: Math.round(storedTokens),
+    newTokens: Math.round(newTokens),
+    multiplier: storedTokens > 0 ? newTokens / storedTokens : 1,
+  };
 }
 
 async function main(): Promise<void> {
@@ -37,9 +192,10 @@ async function main(): Promise<void> {
     .filter(Boolean);
   const promptVersion = arg('prompt-version');
   const approveHash = arg('approve-estimate');
+  const rechunk = process.argv.includes('--rechunk');
   if (!communities.length || !promptVersion) {
     console.error(
-      'Usage: reextract-estimate.ts --communities a,b --prompt-version N [--approve-estimate <hash>]',
+      'Usage: reextract-estimate.ts --communities a,b --prompt-version N [--rechunk] [--approve-estimate <hash>]',
     );
     process.exit(1);
   }
@@ -74,7 +230,32 @@ async function main(): Promise<void> {
       SELECT count(*) AS count FROM collection_source_documents
       WHERE community = ANY(${resolvedCommunities})`;
     const docCount = Number(count);
-    const name = `reextract:${resolvedCommunities.join('+')}:v${promptVersion}`;
+    // The re-chunk measurement prints FIRST — it is a fact about the corpus
+    // and the current chunker, worth seeing even when the quote below
+    // refuses for want of a measured rate window.
+    let rechunkMeasured: Awaited<ReturnType<typeof rechunkMultiplier>> | null =
+      null;
+    if (rechunk) {
+      const prompt = await prisma.llmPrompt.findFirst({
+        where: { kind: 'collection_system', version: Number(promptVersion) },
+        select: { content: true },
+      });
+      if (!prompt) {
+        throw new Error(`No prompt v${promptVersion} registered`);
+      }
+      rechunkMeasured = await rechunkMultiplier(
+        prisma,
+        app.get(LLMChunkingService),
+        resolvedCommunities,
+        prompt.content.length,
+      );
+      console.log(
+        `RE-CHUNK: stored inputs ${rechunkMeasured.storedChunks} chunks / ${rechunkMeasured.storedTokens.toLocaleString()} input token-eq -> ` +
+          `current chunker ${rechunkMeasured.newChunks} windows / ${rechunkMeasured.newTokens.toLocaleString()} input token-eq ` +
+          `(x${rechunkMeasured.multiplier.toFixed(3)} on the extraction line).`,
+      );
+    }
+    const name = `reextract:${resolvedCommunities.join('+')}:v${promptVersion}${rechunk ? ':rechunk' : ''}`;
 
     // APPROVE THE EXISTING ROW (round-six cost red team #8): calling
     // prepareManifestEstimate again on the --approve-estimate pass minted a
@@ -223,13 +404,62 @@ async function main(): Promise<void> {
       );
     }
 
+    // THE PLACES FORECAST (shadow grounding, 2026-09-04): places born under
+    // the most recent prior shadow of these communities. A prior shadow that
+    // covered only a subset of the requested communities is not a
+    // measurement of this set and is reported as UNKNOWN, never scaled.
+    const placesForecast = await forecastShadowPlaceMints(
+      prisma,
+      resolvedCommunities,
+      Number.parseInt(promptVersion, 10),
+    );
+    if (placesForecast.kind === 'measured') {
+      console.log(
+        `PLACES forecast: MEASURED — the v${placesForecast.priorVersion} shadow of ` +
+          `${placesForecast.communities.join(',')} minted ${placesForecast.mints} places; ` +
+          `each is Places-grounded inside the shadow at the published google_places.enrichment rate.`,
+      );
+    } else {
+      console.warn(
+        `PLACES forecast: UNKNOWN — ${placesForecast.reason}. The Places line is priced at ` +
+          `0 mints; the envelope tolerance is the only cover for shadow grounding spend. ` +
+          `Report the ledger's Places line beside Gemini when this shadow closes.`,
+      );
+    }
+
+    const perDocRateOverrides: Record<string, number> =
+      replayPriorOverrides ?? {
+        'gemini.interactive_pipeline': interactivePerDocMicros,
+      };
+    if (rechunkMeasured) {
+      const publishedExtraction = await prisma.spendUnitCost.findUnique({
+        where: {
+          workClass_unit: {
+            workClass: 'gemini.reddit_extraction',
+            unit: 'document',
+          },
+        },
+      });
+      const baseExtractionRate =
+        perDocRateOverrides['gemini.reddit_extraction'] ??
+        publishedExtraction?.microUsdPerUnit;
+      if (baseExtractionRate === undefined) {
+        throw new Error(
+          'no extraction rate to scale for --rechunk (no replay prior and no published gemini.reddit_extraction/document rate)',
+        );
+      }
+      perDocRateOverrides['gemini.reddit_extraction'] =
+        baseExtractionRate * rechunkMeasured.multiplier;
+      console.log(
+        `RE-CHUNK: extraction line scaled from $${(baseExtractionRate / 1e6).toFixed(6)}/doc ` +
+          `to $${(perDocRateOverrides['gemini.reddit_extraction'] / 1e6).toFixed(6)}/doc.`,
+      );
+    }
     const estimate = await campaigns.prepareManifestEstimate({
       name,
       docCount,
       expectedNewPlaces: 0,
-      perDocRateOverrides: replayPriorOverrides ?? {
-        'gemini.interactive_pipeline': interactivePerDocMicros,
-      },
+      perDocRateOverrides,
     });
     console.log(`Campaign: ${estimate.campaignId} (${name})`);
     console.log(`Docs: ${docCount}`);
@@ -256,6 +486,64 @@ async function main(): Promise<void> {
   } finally {
     await app.close();
   }
+}
+
+/**
+ * Places born under the newest prior shadow of the SAME community set — the
+ * measured input for the manifest's Places line. Rehearsal-born rows keep
+ * their born run whatever happened to them since (flipped, rejected, merged
+ * away), so the count is the shadow's true mint count, not its survivors.
+ */
+export async function forecastShadowPlaceMints(
+  prisma: PrismaService,
+  communities: string[],
+  promptVersion: number,
+): Promise<
+  | {
+      kind: 'measured';
+      priorVersion: number;
+      communities: string[];
+      mints: number;
+    }
+  | { kind: 'unknown'; reason: string }
+> {
+  const rows = await prisma.$queryRaw<
+    Array<{ version: number; communities: string[]; mints: number }>
+  >`
+    SELECT p.version,
+           array_agg(DISTINCT r.metadata->>'subreddit') AS communities,
+           count(*)::int AS mints
+    FROM core_entities e
+    JOIN collection_extraction_runs r ON r.extraction_run_id = e.born_extraction_run_id
+    JOIN llm_prompts p ON p.content_hash = r.system_prompt_hash
+    WHERE e.type = 'place'
+      AND p.kind = 'collection_system'
+      AND p.version <> ${promptVersion}
+      AND r.metadata->>'subreddit' = ANY(${communities})
+    GROUP BY p.version
+    ORDER BY p.version DESC
+    LIMIT 1`;
+  const prior = rows[0];
+  if (!prior) {
+    return {
+      kind: 'unknown',
+      reason: `no prior shadow has minted places for ${communities.join(',')}`,
+    };
+  }
+  const covered = new Set(prior.communities);
+  const missing = communities.filter((community) => !covered.has(community));
+  if (missing.length) {
+    return {
+      kind: 'unknown',
+      reason: `the newest prior shadow (v${prior.version}) covered ${prior.communities.join(',')} but not ${missing.join(',')} — a partial set is not a measurement of this one`,
+    };
+  }
+  return {
+    kind: 'measured',
+    priorVersion: prior.version,
+    communities: prior.communities,
+    mints: prior.mints,
+  };
 }
 
 void main().catch((error: unknown) => {

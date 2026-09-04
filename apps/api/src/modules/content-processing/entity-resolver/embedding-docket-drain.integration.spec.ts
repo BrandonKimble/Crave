@@ -146,6 +146,7 @@ describe('embedding recall — a judged pair never re-occupies the docket (F2)',
         prisma as never,
         new ClaimVerdictLedgerService(prisma as never),
       ),
+      { embedEntities: () => Promise.resolve(0) } as never,
     );
 
     const testable = service as unknown as {

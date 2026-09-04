@@ -5,7 +5,10 @@ import {
   SweepCandidate,
 } from './grounding-sweep-selection';
 import { PlaceLocationEnrichmentService } from './restaurant-location-enrichment.service';
-import { GroundingSweepHaltError } from './grounding-sweep-tripwire';
+import {
+  GroundingSweepHaltError,
+  WorkerLaneDeclineAlarm,
+} from './worker-lane-decline-alarm';
 
 /**
  * THE BATCH-SWEEP WEDGE (grounding red team 2026-08-31).
@@ -14,8 +17,9 @@ import { GroundingSweepHaltError } from './grounding-sweep-tripwire';
  * --limit 100) re-selected the same declined head every run: entity #101+
  * of a 1,021 backlog was never reached, silently. These specs pin the
  * rederived rule — terminal exclusion, untried-first ordering, declines
- * sink — and prove the per-run decline-rate tripwire still fires through
- * the NEW selection path.
+ * sink — and prove the ONE grounding decline hold (E-6: evaluated inside
+ * enrichPlace from the durable window) still halts a sweep through the NEW
+ * selection path.
  */
 
 const candidate = (
@@ -132,7 +136,7 @@ describe('sweep ordering', () => {
   });
 });
 
-describe('the sweep tripwire still fires through the new selection', () => {
+describe('the grounding hold still halts the sweep through the new selection', () => {
   function makeService(candidateRows: Array<Record<string, unknown>>) {
     const logger = {
       setContext: () => logger,
@@ -175,20 +179,27 @@ describe('the sweep tripwire still fires through the new selection', () => {
       } as never,
       { reconcile: () => Promise.resolve(0) } as never,
       logger as never,
+      { embedEntities: () => Promise.resolve(0) } as never,
     );
     // Every selected entity declines — the exact 08-20 shape, driven through
-    // the real enrichMissingPlaces loop (the chooser itself is not on trial).
+    // the real enrichMissingPlaces loop AND the real enrichPlace chokepoint
+    // (the chooser itself is not on trial: the inner hearing is stubbed and
+    // writes its decline into a simulated durable window; the hold reads
+    // that window on every entry, recheck interval zero so the spec pins
+    // exactly which attempt trips).
     const enriched: string[] = [];
-    (service as unknown as Record<string, unknown>).enrichPlace = jest.fn(
-      (entity: { entityId: string }) => {
-        enriched.push(entity.entityId);
-        return Promise.resolve({
-          entityId: entity.entityId,
-          status: 'no_match',
-          reason: 'declined',
-        });
-      },
-    );
+    const svc = service as unknown as Record<string, unknown>;
+    svc.enrichPlaceInner = jest.fn((entity: { entityId: string }) => {
+      enriched.push(entity.entityId);
+      return Promise.resolve({
+        entityId: entity.entityId,
+        status: 'no_match',
+        reason: 'declined',
+      });
+    });
+    svc.readWorkerLaneWindowCounts = () =>
+      Promise.resolve({ declines: enriched.length, successes: 0 });
+    svc.workerLaneAlarm = new WorkerLaneDeclineAlarm(undefined, undefined, 0);
     return { service, emit, enriched };
   }
 
@@ -207,7 +218,7 @@ describe('the sweep tripwire still fires through the new selection', () => {
       service.enrichMissingPlaces({ limit: 50 }),
     ).rejects.toBeInstanceOf(GroundingSweepHaltError);
 
-    // The tripwire needs GROUNDING_SWEEP_MIN_ATTEMPTS (20) declines before
+    // The hold needs WORKER_LANE_MIN_ATTEMPTS (20) judged attempts before
     // it may rule — it halted at the bound, not at the end of the window.
     expect(enriched.length).toBe(20);
     expect(emit).toHaveBeenCalledWith(

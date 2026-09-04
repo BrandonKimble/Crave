@@ -52,6 +52,11 @@ interface Row {
   redirected?: boolean;
   /** born_extraction_run_id — set on a REJECTED SHADOW's archived mint. */
   bornRun?: string;
+  /** A ledgered 'entity_reject' verdict at the rule in force stands against
+   *  this row's fold (the court's memory is the ledger, 2026-09-04). */
+  rejected?: boolean;
+  /** Google reported every location CLOSED_PERMANENTLY. */
+  closed?: boolean;
 }
 
 const sqlText = (query: any): string =>
@@ -78,12 +83,18 @@ function buildHarness(rows: Row[]) {
       const requiresLiveTombstone = sql.includes(
         'born_extraction_run_id IS NULL',
       );
+      // THE LEDGER IS THE EVIDENCE (2026-09-04): the sink admits a row
+      // only on a ledgered reject or Google's closure. Mirrored at text
+      // fidelity — delete the claim_verdicts arm from the service's SQL and
+      // the parked-name case below goes RED (it sinks again).
+      const requiresVerdict = sql.includes('claim_verdicts');
       let hits = rows.filter(
         (r) =>
           r.type === type &&
           r.status === 'archived' &&
           !r.redirected &&
           (!requiresLiveTombstone || !r.bornRun) &&
+          (!requiresVerdict || r.rejected || r.closed) &&
           probes.has(fold(r.name)),
       );
       // TEXT-FIDELITY MUTATION SENSOR: the live-twin standdown applies only
@@ -220,6 +231,7 @@ describe('reject tombstone pre-sink — active twin standdown (F1)', () => {
         name: 'best',
         type: EntityType.place,
         status: 'archived',
+        rejected: true,
       },
       {
         entityId: 'live-best',
@@ -253,6 +265,7 @@ describe('reject tombstone pre-sink — active twin standdown (F1)', () => {
         name: 'birria',
         type: EntityType.item,
         status: 'archived',
+        rejected: true,
       },
       {
         entityId: 'pending-x',
@@ -269,13 +282,14 @@ describe('reject tombstone pre-sink — active twin standdown (F1)', () => {
     expect(results[0].entityId).toBeNull(); // falls through to creation
   });
 
-  it('JUNK-ONLY SINKING still works: no live twin → the mention sinks onto the tombstone and recall never runs', async () => {
+  it('JUNK-ONLY SINKING still works: a LEDGERED reject with no live twin → the mention sinks onto the tombstone and recall never runs', async () => {
     const h = buildHarness([
       {
         entityId: 'tomb-junk',
         name: '5 piece',
         type: EntityType.item,
         status: 'archived',
+        rejected: true,
       },
     ]);
 
@@ -284,6 +298,55 @@ describe('reject tombstone pre-sink — active twin standdown (F1)', () => {
     expect(h.retrieveCandidates).not.toHaveBeenCalled();
     expect(results).toHaveLength(1);
     expect(results[0].entityId).toBe('tomb-junk');
+  });
+
+  it('A PARKED NAME never sinks: an archived redirect-free row with NO ledgered reject and NOT Google-closed reaches recall (the ungroundable-Arlo’s case, 2026-09-04)', async () => {
+    const h = buildHarness([
+      {
+        entityId: 'parked-arlos',
+        name: "Arlo's",
+        type: EntityType.place,
+        status: 'archived',
+      },
+      {
+        entityId: 'live-arlos-junior',
+        name: "Arlo's Junior",
+        type: EntityType.place,
+        status: 'active',
+      },
+    ]);
+    h.retrieveCandidates.mockResolvedValue([
+      { entityId: 'live-arlos-junior', name: "Arlo's Junior" },
+    ]);
+    h.matchEntitiesBatch.mockResolvedValue([
+      { decision: 'match', candidateId: 0, reason: 'same taqueria' },
+    ]);
+
+    const results = await h.run([mention('t1', 'arlos')], EntityType.place);
+
+    // Pre-law, the archived Arlo's absorbed the mention before recall.
+    expect(h.retrieveCandidates).toHaveBeenCalledTimes(1);
+    expect(results[0].entityId).toBe('live-arlos-junior');
+  });
+
+  it('a GOOGLE-CLOSED place still sinks its own name without a ledgered reject', async () => {
+    const h = buildHarness([
+      {
+        entityId: 'closed-mandala',
+        name: 'Mandala Kitchen',
+        type: EntityType.place,
+        status: 'archived',
+        closed: true,
+      },
+    ]);
+
+    const results = await h.run(
+      [mention('t1', 'mandala kitchen')],
+      EntityType.place,
+    );
+
+    expect(h.retrieveCandidates).not.toHaveBeenCalled();
+    expect(results[0].entityId).toBe('closed-mandala');
   });
 
   it('a REJECTED SHADOW’S archived mint (born run id set) never sinks — it is residue, not a judgment (T1-1)', async () => {

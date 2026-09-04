@@ -14,6 +14,7 @@ import {
 import { OpsAlertsService } from '../../external-integrations/shared/ops-alerts.service';
 import { GeminiBatchService } from '../../external-integrations/llm/gemini-batch.service';
 import { ChunkProcessingResult } from '../../external-integrations/llm/llm-concurrent-processing.service';
+import { isContextOnlyComment } from '../../external-integrations/llm/llm-chunking.service';
 import {
   LLMModelInput,
   LLMPost,
@@ -1181,6 +1182,10 @@ export class CollectionEvidenceService
               id: comment.id,
               content: comment.content ?? null,
               parent_id: comment.parent_id ?? null,
+              // Reply-chain windows: the stored payload must replay with the
+              // same emitting set the model saw (and the same source_id
+              // schema), so the context-only flag persists when set.
+              ...(comment.context_only === true ? { context_only: true } : {}),
             })),
           }) as Prisma.InputJsonValue,
       ),
@@ -1198,6 +1203,19 @@ export class CollectionEvidenceService
     return sourceMap as unknown as Prisma.InputJsonValue;
   }
 
+  /**
+   * THE INPUT→DOCUMENT LINK IS A COVERAGE CLAIM (reply-chain windows,
+   * 2026-09-04): every reader of collection_extraction_input_documents —
+   * findExtractionCoveredSourceIds, documentIdsForInputs (activation),
+   * documentsOwnedByRun, the shadow diff's coverage, the per-document spend
+   * denominator — asks "did this input extract this document?". So a link
+   * is written ONLY for documents the input EMITS for: comments not
+   * flagged context_only, and the post body only under extract_from_post.
+   * An ancestor riding along as context is in the input's source_map (so
+   * replays can rebuild the window and place_source_id can cite it) but
+   * never in its links — a context-only appearance can never satisfy
+   * coverage, and a document's one emitting window is the one that claims it.
+   */
   private buildInputDocumentLinks(
     input: LLMProcessingInput,
     sourceDocumentIdBySourceKey: Map<SourceDocumentKey, string>,
@@ -1213,25 +1231,24 @@ export class CollectionEvidenceService
       }
       return canonicalId;
     };
-
-    (input.posts ?? []).forEach((post) => {
-      const postDocumentId = sourceDocumentIdBySourceKey.get(
-        buildSourceDocumentKey('post', resolveCanonicalId(post.id)),
+    const link = (sourceType: 'post' | 'comment', sourceRef: string) => {
+      const documentId = sourceDocumentIdBySourceKey.get(
+        buildSourceDocumentKey(sourceType, resolveCanonicalId(sourceRef)),
       );
-      if (postDocumentId && !seen.has(postDocumentId)) {
-        links.push({ documentId: postDocumentId, ordinal });
-        seen.add(postDocumentId);
+      if (documentId && !seen.has(documentId)) {
+        links.push({ documentId, ordinal });
+        seen.add(documentId);
         ordinal += 1;
       }
+    };
 
+    (input.posts ?? []).forEach((post) => {
+      if (post.extract_from_post !== false) {
+        link('post', post.id);
+      }
       (post.comments ?? []).forEach((comment) => {
-        const commentDocumentId = sourceDocumentIdBySourceKey.get(
-          buildSourceDocumentKey('comment', resolveCanonicalId(comment.id)),
-        );
-        if (commentDocumentId && !seen.has(commentDocumentId)) {
-          links.push({ documentId: commentDocumentId, ordinal });
-          seen.add(commentDocumentId);
-          ordinal += 1;
+        if (!isContextOnlyComment(comment)) {
+          link('comment', comment.id);
         }
       });
     });

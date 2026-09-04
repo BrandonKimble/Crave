@@ -10,7 +10,6 @@ import { userAnchoredEntitySql } from './user-anchor-scope';
 
 export interface JanitorSummary {
   archivedClosed: number;
-  archivedUngroundable: number;
   reEnrichedMoved: number;
   /**
    * The entity ids each arm SELECTED, before any action was taken on them.
@@ -22,7 +21,6 @@ export interface JanitorSummary {
    */
   selected: {
     closed: string[];
-    ungroundable: string[];
     moved: string[];
   };
 }
@@ -32,8 +30,8 @@ export interface JanitorSummary {
  * (refreshStaleLocations is the DETECT half). Weekly: refresh a slice of
  * stale grounded locations (business_status, moved_place_id, hours, at the
  * lean SKU), then act on what the refresh flagged — archive restaurants whose
- * every location is CLOSED_PERMANENTLY; re-enrich through the redirect when a
- * location carries movedPlaceId.
+ * every location is CLOSED_PERMANENTLY; follow Google's redirect once (one
+ * details call, row rewritten in place) when a location carries movedPlaceId.
  *
  * THE UNGROUNDED RETRY ARM IS GONE (owner ruling 2026-08-08): retry is
  * mention-driven — an ungrounded restaurant re-attempts the next time anyone
@@ -41,22 +39,30 @@ export interface JanitorSummary {
  * MONEY GUARD stays at the spend chokepoint (enrichment refuses once
  * enrichment_failure_count reaches the threshold).
  *
- * THE UNGROUNDABLE-SURVIVAL GATE IS BACK, BY LATER RULING (2026-08-12
- * "don't create anything we can't hook to a real restaurant" + SD-3,
- * 2026-08-16, which ruled the ghost-'Best' case specifically: a name-court
- * UPHELD name still dies here — "ungrounded-after-attempt must not be
- * searchable; the defect is lifecycle, not name-hood"). The 08-08 posture
- * ("stays ACTIVE, name-searchable") is SUPERSEDED for the terminal case:
- * once the money guard's own threshold says a place has definitively failed
- * grounding, the same line now also says it stops being searchable — one
- * constant, one meaning, two consumers. USER-ANCHORED entities are never
- * touched (the standing anchor law), and archiving is a status flip —
- * events retained, revivable, and a future force/retryTerminal grounding
- * can resurrect it.
+ * THE UNGROUNDABLE-SURVIVAL GATE IS GONE AGAIN (owner-approved
+ * rederivation, 2026-09-04 — "the court's memory is the ledger"). It came
+ * back on 2026-08-12 (+ SD-3) to make a terminally ungroundable place
+ * unsearchable by ARCHIVING it, and that archive then wore a judge
+ * reject's clothes: the resolver's tombstone sink read `archived + no
+ * redirect` as "rejected", so the 134 places this arm archived on
+ * 2026-09-03 swallowed 632 live place mentions in the v23 shadow
+ * ("Arlo's", archived here, ate every vouch meant for the live, grounded
+ * "Arlo's Junior"). Under the parked-names law an archive with no verdict
+ * behind it is a name waiting to be revived by its next mention — so this
+ * arm would have flip-flopped weekly against the resolver. Its two
+ * purposes live where they belong now: the money guard at the spend
+ * chokepoint (enrichment refuses at the threshold — unchanged), and the
+ * 08-12 ruling's "must not be searchable" as a PREDICATE on the
+ * servable-place visibility floor (servable-place-scope.ts: an ungrounded
+ * place past the threshold is off every serving surface — search list,
+ * map, autocomplete, teaser, curated feeder — while staying active as a
+ * parked name). Hidden by predicate, never by archiving.
  *
  * Everything here archives by status-flip only — reversible, and consistent
  * with how cuisine hubs and leaked entities are retired; the closed arm
- * still acts on GOOGLE'S OWN verdict (CLOSED_PERMANENTLY everywhere).
+ * still acts on GOOGLE'S OWN verdict (CLOSED_PERMANENTLY everywhere), and
+ * that same verdict is what the resolver's closed-place sink reads
+ * (entity-reject-lane.ts `googleClosedSql`), never the status alone.
  */
 @Injectable()
 export class PlaceJanitorService {
@@ -138,7 +144,7 @@ export class PlaceJanitorService {
         title: 'Weekly location lifecycle pass FAILED',
         body:
           `The janitor/refresh pass threw and did no work: ${message}. ` +
-          `Closed-place archival, ungroundable archival and moved-place ` +
+          `Closed-place archival and moved-place ` +
           `re-enrichment are not running until this is fixed.`,
         dedupeKey: `lifecycle-pass-failed:${new Date().toISOString().slice(0, 10)}`,
       });
@@ -158,9 +164,8 @@ export class PlaceJanitorService {
     const dryRun = options.dryRun ?? false;
     const summary: JanitorSummary = {
       archivedClosed: 0,
-      archivedUngroundable: 0,
       reEnrichedMoved: 0,
-      selected: { closed: [], ungroundable: [], moved: [] },
+      selected: { closed: [], moved: [] },
     };
 
     // 1. Every location closed permanently → archive the restaurant.
@@ -194,42 +199,19 @@ export class PlaceJanitorService {
     summary.archivedClosed = closed.length;
     summary.selected.closed = closed.map((row) => row.entity_id);
 
-    // 1b. THE UNGROUNDABLE-SURVIVAL GATE (2026-08-12 ruling + SD-3; see the
-    // header). Terminal = the money guard's own threshold — the counter only
-    // increments on DEFINITIVE no-match verdicts, so this is "Google said no,
-    // N separate times", never a transient. User anchors are inviolable.
-    const terminalThreshold = this.config.get<number>(
-      'locationLifecycle.noMatchAttemptThreshold',
-    )!;
-    // USER ANCHORS ARE INVIOLABLE — and "user anchor" is the ONE shared
-    // predicate in user-anchor-scope.ts (grounding red team 2026-08-31; it
-    // mirrors preserved-anchors.sql's full entity-anchor roster, where this
-    // guard used to hand-copy only 2 of the ~8 sources).
-    const ungroundable = await this.prisma.$queryRaw<{ entity_id: string }[]>`
-      SELECT e.entity_id FROM core_entities e
-      WHERE e.type = 'place' AND e.status = 'active'
-        AND e.enrichment_failure_count >= ${terminalThreshold}
-        AND NOT EXISTS (
-          SELECT 1 FROM core_restaurant_locations l
-          WHERE l.restaurant_id = e.entity_id
-            AND l.google_place_id IS NOT NULL
-        )
-        AND NOT ${Prisma.raw(userAnchoredEntitySql('e'))}
-    `;
-    if (!dryRun && ungroundable.length) {
-      await this.prisma.entity.updateMany({
-        where: { entityId: { in: ungroundable.map((row) => row.entity_id) } },
-        data: { status: EntityStatus.archived },
-      });
-    }
-    summary.archivedUngroundable = ungroundable.length;
-    summary.selected.ungroundable = ungroundable.map((row) => row.entity_id);
+    // (No 1b.) The ungroundable-survival gate lived here until 2026-09-04 —
+    // see the header for where its two purposes went. An ungrounded place
+    // past the money guard's threshold stays ACTIVE as a parked name and is
+    // hidden by the visibility floor's predicate, never archived.
 
-    // 2. Moved → re-enrich through the redirect target (force: the identity
-    // changed; enrichRestaurantById follows movedPlaceId internally).
+    // 2. Moved → follow Google's redirect ONCE (red team 2026-09-04 E-3):
+    // one details call on the new place id, the row rewritten in place, the
+    // moved flag cleared. This arm used to force a full re-enrichment (name
+    // search + chooser + details) that minted a SECOND location row and
+    // left the moved one standing, so the same redirect was re-bought every
+    // week forever.
     const moved = await this.prisma.placeLocation.findMany({
       where: { movedPlaceId: { not: null } },
-      select: { locationId: true, placeId: true },
       distinct: ['placeId'],
       // Rotate under the cap: oldest-attempted first, and we stamp the row
       // below after EVERY attempt (success rewrites the location; failure
@@ -241,10 +223,7 @@ export class PlaceJanitorService {
     summary.selected.moved = moved.map((row) => row.placeId);
     if (!dryRun) {
       for (const row of moved) {
-        const result = await this.enrichmentService.enrichPlaceById(
-          row.placeId,
-          { force: true },
-        );
+        const result = await this.enrichmentService.followMovedPlace(row);
         if (result.status === 'updated') {
           summary.reEnrichedMoved += 1;
         } else {

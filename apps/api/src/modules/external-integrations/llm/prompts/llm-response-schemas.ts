@@ -400,8 +400,16 @@ export const COLLECTION_RESPONSE_JSON_SCHEMA = {
  * decode layer instead of failing ingest post-hoc. Falls back to the
  * unconstrained schema when refs are unavailable.
  */
+/**
+ * `source_id` may name only an EMITTING source (a context-only ancestor
+ * or an `extract_from_post: false` body emits nothing — reply-chain
+ * windows, 2026-09-04); `place_source_id` may name ANY source in the
+ * window, since a context-only ancestor is exactly where "the one on
+ * Burnet" was named. Enforced in the schema, not just the prompt.
+ */
 export function collectionResponseJsonSchemaForSourceRefs(
   sourceRefs: readonly string[] | undefined,
+  emittingRefs: readonly string[] | undefined = sourceRefs,
 ): Record<string, unknown> {
   if (!sourceRefs || sourceRefs.length === 0) {
     return COLLECTION_RESPONSE_JSON_SCHEMA as unknown as Record<
@@ -423,9 +431,9 @@ export function collectionResponseJsonSchemaForSourceRefs(
   for (const variant of schema.properties.mentions.items.anyOf) {
     variant.properties.source_id = {
       type: 'string',
-      enum: [...sourceRefs],
+      enum: [...(emittingRefs?.length ? emittingRefs : sourceRefs)],
       description:
-        'Chunk-local source identifier: exactly one of the id values in the input payload',
+        'Chunk-local source identifier: exactly one of the EMITTING id values in the input payload (never a context_only comment)',
     };
     variant.properties.place_source_id = {
       type: 'string',
