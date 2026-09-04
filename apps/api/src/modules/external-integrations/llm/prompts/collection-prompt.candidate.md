@@ -172,9 +172,20 @@ example outweighs it.**
   the score IS the landing, judged against the writer's own scale (a 7.3
   beside the writer's 8.4 favorite lands low; eating it added nothing on
   top).
-- **Evaluative means about how good it is to eat or how worth having.** A
+- **Evaluative means about how good it is to eat or how worth having —
+  evaluated BY THIS WRITER.** A relayed judgment about the subject —
+  someone else's verdict, a review-site score, an external list's
+  inclusion or absence ("neither spot is on Eater's list"), a
+  companion's opinion — is HEARSAY (an act, A.0 step 3), and hearsay is
+  never a landing clause: it neither lands the subject low nor rescues
+  it, exactly as a clause about another subject cannot. Only the
+  writer's OWN clauses land a subject; a remembered verdict stands
+  against any amount of relayed doubt beside it. A
   clause that doubts a PROPERTY ("good but I don't know how authentic they
-  are" — or how spicy, or whether it counts as barbacoa), quotes a price
+  are" — or how spicy, or whether it counts as barbacoa), states SCALE or
+  OWNERSHIP ("I know it's a chain now", "they got bought", "they
+  expanded" — facts about the business, not the eating; a common hedge
+  that lands nothing), quotes a price
   without judging it, describes size or portions, or gives directions and
   hours is not evaluative: it neither raises nor lowers the landing, so the
   verdict beside it stands and the doubted property simply enters no array.
@@ -317,10 +328,15 @@ The writer vouches from experience, or reports a clear consensus:
   1. **THE ONE QUESTION, asked of the ASK — two probes, in order.**
      **Probe zero is MODE (the MAKER TEST, B.2): is the ask for a SERVED
      PLATE, or for a good CARRIED OFF?** A carried-off ask — a place to
-     shop, a good to take home ("who stocks tamales? need a couple dozen
-     to take home", "where can I buy masa?", "best middle eastern grocery
-     store?", "best yogurt — farmers market or shops?") — is a SHELF
-     ERRAND, and mode settles it before quality is ever probed: every
+     shop, or a PACKAGED good to take home ("who stocks tamales? need a
+     couple dozen to take home", "where can I buy masa?", "best middle
+     eastern grocery store?", "best yogurt — farmers market or shops?")
+     — is a SHELF ERRAND, and mode settles it before quality is ever
+     probed. A CRAVING is never one: an ask naming a food the asker wants
+     to EAT ("Spumoni??? Where can it be found in Austin????", "who has
+     espresso buns?") is a served-plate ask however procurement-shaped
+     its verb — "where can it be found" asks where to go eat it, and
+     only a stated take-home or shop errand makes it a shelf ask. every
      bare name under it is a SHELF pick and emits nothing, however
      quality-seeking the ask's wording ("best", "good") — wanting the
      best tub of yogurt is still wanting a tub that goes home. Only for a
@@ -492,7 +508,13 @@ The writer vouches from experience, or reports a clear consensus:
   phrasing: an ask states what the asker WANTS TO KNOW. Only ANSWERS emit.
   A rhetorical question asks nothing — it asserts — and is judged as the
   verdict it carries (the LANDING TEST's meaning rule). An asker's separate
-  clause reporting their OWN past verdict is A.1 testimony as ever.
+  clause reporting their OWN past verdict is A.1 testimony as ever —
+  INCLUDING a verdict about the very place the ask then questions ("I
+  remember Uchi being one of the best restaurants in the city … is Uchi
+  still worth a trip?" — the remembered verdict emits; the question
+  emits nothing): asking whether a verdict still holds does not un-say
+  it, and the name's second appearance inside the request strips nothing
+  from its first appearance inside the memory.
 - **AN ANNOUNCING ACT.** The test: _is the writer ANNOUNCING what exists —
   or ANSWERING, REPORTING, or STEERING?_ Announcing looks like a roster or
   line-up (participants, fundraiser lists, "these 12 spots are doing a prix
@@ -767,7 +789,12 @@ uncertain to carry: skip it.
 
 Resolve references (pronouns, deictics, definites, ellipsis) by THE
 depth-aware order (the preamble's one algorithm — there is no second
-resolution rule) to the nearest source that names an anchor. **If no
+resolution rule) to the nearest source that names an anchor. A NAME is
+not a reference: emit the WHOLE span this source wrote, as it wrote it
+(B.3) — neither trimmed to a sibling comment's shorter form nor
+extended to its longer one ("Lefty's" stays `lefty's` beside a sibling's
+"Lefty's Pizza"; "Aster's Ethiopian" stays `aster's ethiopian`, never
+`aster's`). Resolution moves REFERENTS, never letters. **If no
 anchor survives, or two anchors remain equally likely, stop — never
 carry ambiguity forward.**
 
@@ -1377,8 +1404,9 @@ pick answering a constrained ask asserts fit** — EVERY venue-level
 constraint word the ask wrote ("romantic", "cheap", "outdoor seating", a
 cuisine like "mexican"), each one, canonicalized, walking D.1/D.2 like
 any stated word — a multi-constraint ask ("cheap romantic spot with a
-patio?") loads all of its words onto the pick, never just the most
-salient: the answerer chose this place BECAUSE it fits what was asked, and
+patio?") loads ALL of its venue-level words onto the pick, never just
+the most salient — and never its DISH words ("best tacos?" → `taco`
+is C.1 Gate 3's inheritance into the food slot, never an attribute): the answerer chose this place BECAUSE it fits what was asked, and
 that choice vouches for the fit. **The ask a pick answers is found by
 the depth-aware order**: a pick replying to an intermediate comment
 (a clarifying question, a sub-thread) still answers the post's ask and
