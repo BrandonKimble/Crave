@@ -362,6 +362,10 @@ export class SpendCampaignService implements OnModuleInit, OnModuleDestroy {
       intervalMs: 6 * 60 * 60 * 1000,
       offSwitchEnv: 'SPEND_CAMPAIGN_WATCHDOG_ENABLED',
       run: () => this.alertStaleRunningCampaigns(),
+      onFailure: (error) =>
+        this.logger.error('SpendCampaignService watchdog tick failed', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
     });
   }
 

@@ -75,6 +75,10 @@ export class VendorQuotaWatcherService
       intervalMs: 60 * 60 * 1000,
       offSwitchEnv: 'VENDOR_QUOTA_WATCHER_ENABLED',
       run: () => this.hourlyCheck(),
+      onFailure: (error) =>
+        this.logger.error('VendorQuotaWatcher tick failed', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
     });
   }
 

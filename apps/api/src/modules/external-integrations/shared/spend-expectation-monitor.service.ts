@@ -78,6 +78,10 @@ export class SpendExpectationMonitorService
       intervalMs: 6 * 60 * 60 * 1000,
       offSwitchEnv: 'SPEND_EXPECTATION_MONITOR_ENABLED',
       run: () => this.nightlyCheck(),
+      onFailure: (error) =>
+        this.logger.error('SpendExpectationMonitor tick failed', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
     });
   }
 

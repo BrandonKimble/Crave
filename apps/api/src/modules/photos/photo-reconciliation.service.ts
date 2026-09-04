@@ -62,6 +62,10 @@ export class PhotoReconciliationService
       intervalMs: SWEEP_INTERVAL_MS,
       offSwitchEnv: 'PHOTO_RECONCILE_ENABLED',
       run: () => this.sweep(),
+      onFailure: (error) =>
+        this.logger.error('Photo reconciliation tick failed', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
     });
   }
 

@@ -137,6 +137,10 @@ export class CollectorPacerService implements OnModuleInit, OnModuleDestroy {
       intervalMs: RECONCILER_INTERVAL_MS,
       offSwitchEnv: 'COLLECTION_RECONCILER_ENABLED',
       run: () => this.runExpectedBatchesReconciler(),
+      onFailure: (error) =>
+        this.logger.error('Expected-batches reconciler tick failed', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
     });
   }
 

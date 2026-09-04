@@ -95,6 +95,10 @@ export class NotificationDispatcherService
       intervalMs: DISPATCH_INTERVAL_MS,
       offSwitchEnv: 'NOTIFICATION_DISPATCH_ENABLED',
       run: () => this.runDispatchPass(),
+      onFailure: (error) =>
+        this.logger.error('Notification dispatch tick failed', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
     });
   }
 

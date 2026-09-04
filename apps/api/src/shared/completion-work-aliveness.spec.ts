@@ -116,6 +116,7 @@ describe('the completion-work timer — the shared block itself, tested once', (
       intervalMs: 1000,
       offSwitchEnv: 'TEST_COMPLETION_TIMER_ENABLED',
       run,
+      onFailure: () => undefined,
     });
     expect(handle).not.toBeNull();
     // BOOT ARM: one immediate pass, outside the interval.
@@ -131,6 +132,40 @@ describe('the completion-work timer — the shared block itself, tested once', (
     setIntervalSpy.mockRestore();
   });
 
+  it('a REJECTING pass is routed to onFailure and never becomes an unhandled rejection (CI 2026-09-04: the boot-armed reconciler killed the jest process)', async () => {
+    const boom = new Error('pass exploded');
+    const run = jest.fn().mockRejectedValue(boom);
+    const onFailure = jest.fn();
+    const escaped: unknown[] = [];
+    const listener = (reason: unknown): void => {
+      escaped.push(reason);
+    };
+    process.on('unhandledRejection', listener);
+    try {
+      const handle = startCompletionWorkTimer({
+        intervalMs: 1000,
+        offSwitchEnv: 'TEST_COMPLETION_TIMER_ENABLED',
+        run,
+        onFailure,
+      });
+      expect(handle).not.toBeNull();
+      // Let the boot-arm's rejection settle through the microtask queue.
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(onFailure).toHaveBeenCalledWith(boom);
+      // A synchronous throw is owned the same way.
+      run.mockImplementationOnce(() => {
+        throw boom;
+      });
+      jest.advanceTimersByTime(1000);
+      expect(onFailure).toHaveBeenCalledTimes(2);
+      handle!.stop();
+    } finally {
+      process.off('unhandledRejection', listener);
+    }
+    expect(escaped).toEqual([]);
+  });
+
   it('its explicit off-switch arms nothing and runs nothing', () => {
     process.env.TEST_COMPLETION_TIMER_ENABLED = 'false';
     const run = jest.fn().mockResolvedValue(undefined);
@@ -138,6 +173,7 @@ describe('the completion-work timer — the shared block itself, tested once', (
       intervalMs: 1000,
       offSwitchEnv: 'TEST_COMPLETION_TIMER_ENABLED',
       run,
+      onFailure: () => undefined,
     });
     expect(handle).toBeNull();
     jest.advanceTimersByTime(10_000);

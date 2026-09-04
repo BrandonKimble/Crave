@@ -34,7 +34,16 @@ describe('persistSourceDocuments — the document takes its language from its so
       },
       collectionCommunity: { findUnique },
     };
-    const logger = { setContext: jest.fn().mockReturnThis(), debug: jest.fn() };
+    // A full-shaped logger: onModuleInit boot-arms the reconciler on a
+    // worker runtime, and its failure path logs through `error` (CI 2026-09-04:
+    // a stub without `error` turned that path into an unhandled rejection).
+    const logger = {
+      setContext: jest.fn().mockReturnThis(),
+      debug: jest.fn(),
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    };
     const service = new CollectionEvidenceService(
       prisma as never,
       {} as never,

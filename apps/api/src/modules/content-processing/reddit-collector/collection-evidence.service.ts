@@ -144,6 +144,10 @@ export class CollectionEvidenceService
       intervalMs: RECONCILE_INTERVAL_MS,
       offSwitchEnv: 'COLLECTION_RECONCILE_ENABLED',
       run: () => this.runReconcilePass(),
+      onFailure: (error) =>
+        this.logger.error('Collection reconciler tick failed', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
     });
   }
 
