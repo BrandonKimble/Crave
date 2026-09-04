@@ -207,3 +207,13 @@ residency chain + hook + modules.
 ## CI GREEN — 2026-09-04, run for 8350754c6: the first fully green run since 2026-08-09.
 Every lane (static guards, unit, DB-integration, track-sheet/native, invariant
 mutation proofs) executed and passed. The staging deploy gate now reads green.
+
+## CORRECTION (2026-09-04, owner question): chunking truth
+There is NO document-count cap in the chunker. The only knob is
+LLM_CHUNK_TARGET_TOKENS=35000, and it has never bound: v21–v23 chunks are
+whole threads, avg ~1,300 tokens, max ~8,600. "K=30 / LLM_CHUNK_MAX_DOCS"
+existed only in the A/B harness's windowed variant. 552 of 1,762 shadow
+chunks carry ≥30 comments (max 143 in ~4,500 tokens) — the attention shape
+the K-sweep flagged. If the diff shows chunk-context leaks: add a real
+doc-count window (whole top-level subtrees, post carried) and re-replay
+those chunks (~31% of the run).
