@@ -310,6 +310,8 @@ export class ClaimRehearingBudgetService {
         FROM api_usage_ledger
        WHERE service = 'gemini' AND caller = ANY(${[...meter.callers]}::text[])
          AND created_at > now() - make_interval(hours => ${windowHours}::int)
+         -- replays bill the lane's callers but record no hearing (T1-6)
+         AND coalesce(attribution, '') <> 'replay'
        GROUP BY model`;
     let micros = 0;
     let calls = 0;

@@ -1647,6 +1647,14 @@ export class EntityResolutionService implements OnModuleInit {
               FROM core_entities e
              WHERE e.type = ${entityType}::entity_type
                AND e.status = 'archived'
+               -- A REJECT TOMBSTONE IS A LIVE JUDGMENT, NEVER A REJECTED
+               -- SHADOW'S RESIDUE (red team 2026-09-04 T1-1): a shadow
+               -- that was rejected archives its mints WITH their born run
+               -- id (rehearsal-generation.reject), and the flip path
+               -- already tells the two apart by exactly this column. A
+               -- sink that ignored it made every name a rejected shadow
+               -- coined first a permanent black hole for live mentions.
+               AND e.born_extraction_run_id IS NULL
                AND e.identity_key = ANY(${folds}::text[])
             UNION
             SELECT e.entity_id, s.form_folded AS fold
@@ -1654,6 +1662,7 @@ export class EntityResolutionService implements OnModuleInit {
               JOIN entity_surface s ON s.entity_id = e.entity_id
              WHERE e.type = ${entityType}::entity_type
                AND e.status = 'archived'
+               AND e.born_extraction_run_id IS NULL
                AND s.claim_grade = 'observed'
                AND s.status IN ('active', 'deprecated')
                AND s.form_folded = ANY(${folds}::text[])

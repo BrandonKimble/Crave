@@ -1,3 +1,4 @@
+import { runInWorkContext } from '../../external-integrations/shared/work-context';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { sampleLaneVerdicts } from './verdict-replay-sampler';
@@ -52,8 +53,16 @@ export class VerdictReplayRunner {
     }
     const startedAt = new Date();
     const rows = await sampleLaneVerdicts(this.prisma, lane, capped);
+    // A REPLAY IS NOT A HEARING (red team 2026-09-04 T1-6): it bills the
+    // lane's production caller tags but writes no claim_verdicts row, so
+    // the hearing-rate quote (spend ÷ hearings) inflated after every
+    // replay and the standing drain estimate hash moved. The ambient
+    // attribution marks these rows so the rate meter can exclude them.
     const results: ReplayRowResult[] = rows.length
-      ? await adapter.rejudge(rows)
+      ? await runInWorkContext(
+          { attribution: 'replay', label: `verdict-replay:${lane}` },
+          () => adapter.rejudge(rows),
+        )
       : [];
 
     const flipped = results.filter((r) => r.status === 'flipped');

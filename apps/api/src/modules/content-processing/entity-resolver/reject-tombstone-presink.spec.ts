@@ -50,6 +50,8 @@ interface Row {
   type: EntityType;
   status: 'active' | 'pending' | 'archived' | 'rehearsal';
   redirected?: boolean;
+  /** born_extraction_run_id — set on a REJECTED SHADOW's archived mint. */
+  bornRun?: string;
 }
 
 const sqlText = (query: any): string =>
@@ -71,11 +73,17 @@ function buildHarness(rows: Row[]) {
       const probes = new Set(
         (values.find((v) => Array.isArray(v)) as string[]) ?? [],
       );
+      // The SQL's born predicate (T1-1) is mirrored here: absent from the
+      // query text, shadow residue would sink like a real tombstone.
+      const requiresLiveTombstone = sql.includes(
+        'born_extraction_run_id IS NULL',
+      );
       let hits = rows.filter(
         (r) =>
           r.type === type &&
           r.status === 'archived' &&
           !r.redirected &&
+          (!requiresLiveTombstone || !r.bornRun) &&
           probes.has(fold(r.name)),
       );
       // TEXT-FIDELITY MUTATION SENSOR: the live-twin standdown applies only
@@ -276,6 +284,27 @@ describe('reject tombstone pre-sink — active twin standdown (F1)', () => {
     expect(h.retrieveCandidates).not.toHaveBeenCalled();
     expect(results).toHaveLength(1);
     expect(results[0].entityId).toBe('tomb-junk');
+  });
+
+  it('a REJECTED SHADOW’S archived mint (born run id set) never sinks — it is residue, not a judgment (T1-1)', async () => {
+    const h = buildHarness([
+      {
+        entityId: 'shadow-residue',
+        name: 'zebra tartine',
+        type: EntityType.item,
+        status: 'archived',
+        bornRun: 'run-rejected-shadow',
+      },
+    ]);
+    h.retrieveCandidates.mockResolvedValue([]);
+
+    const results = await h.run(
+      [mention('t1', 'zebra tartine')],
+      EntityType.item,
+    );
+
+    expect(h.retrieveCandidates).toHaveBeenCalledTimes(1);
+    expect(results[0].entityId).toBeNull();
   });
 
   it('a redirected archived row (merge loser, not junk) never sinks', async () => {
