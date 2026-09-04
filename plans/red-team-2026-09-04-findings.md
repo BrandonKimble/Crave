@@ -217,3 +217,13 @@ chunks carry ≥30 comments (max 143 in ~4,500 tokens) — the attention shape
 the K-sweep flagged. If the diff shows chunk-context leaks: add a real
 doc-count window (whole top-level subtrees, post carried) and re-replay
 those chunks (~31% of the run).
+
+## v23 diff triage (2026-09-04, review file logs/reextract-review-20260904-113149.txt)
+
+- Coverage 39,793/39,802. Resolve-shift 239 (bookkeeping). Semantic twins 0.
+- LOST SUPPORT 497; anchored 98 (v22: 38). Classified against what v23 wrote on the SAME document:
+  - 48 = resolution twins. v23 extracted the place under a variant spelling ("Giovanni Table", "Cotton Patch Restaurant", "Cuba Cafe", "Bon Jaoanese") and it minted a new ungrounded entity instead of matching the anchor. Enrichment is off during shadow, so no place-id collision merge could fold them. AUTO per runbook: enrich-restaurants → collision merge drains them after activation. VERIFY the anchored count drains.
+  - 50 = genuine drops. ~35 doctrine-correct (retail/grocery gate: Man Pasand, Sprouts, Walmart, Con Olio; venues: Mohawk, Highland Lanes; out-of-town: Ema Chicago, Pujol, Henk's Dallas; wholesale asks; hedges "maybe?"/"half kidding"; unnamed Proper Hotel restaurants; closed Mezzaluna).
+  - ~7 entities / ~12 docs are real vouches v23 silently omitted (no refusal row): Arlo's ("Arlos is the BEST", 5 docs), El Secreto de Abuela ("Secreto Abeula is good"), Taco Casa Hutto, Insomnia Cookies (bare pick under an OG ask), Sweet Caroline's, Middleton Brewing, Cotton Patch (reply names only "their chicken fried steak"; the place lives in the thread subject).
+- NEW 388 (305 items). 30-row sample: ~25 real dishes; noise class = frame/wrapper leaks kept as dish names ("21 course omakase", "double with bacon, cheese, and jalapenos", "ayce soup", "12\" pie", "9-pc dark meat order") and two restaurants minted as items ("terry blacks", "petes tantalizing tacos"). ~15% noise.
+- Refusals: ingredient_not_in_source 67, span_not_in_cited_source 43.
