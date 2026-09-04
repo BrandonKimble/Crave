@@ -120,6 +120,49 @@ service_health_url() {
   esac
 }
 
+# ── CI VERDICT (2026-08-02, the 100-red-runs lesson) ──────────────────────
+# CI failed 100 consecutive runs and nothing noticed, because nothing
+# consulted it. Rule: a KNOWN-RED CI hard-stops the deploy; a pending or
+# absent run only warns (the staging promotion gate is the hard gate — CI
+# is the async safety net, and a solo deploy should not idle 10 minutes
+# for it). --force skips, loudly. A gh AUTH failure must be distinguishable
+# from a clean bill of health (red-team P1): `gh run list` returns empty
+# BOTH when there is no run AND when the token is expired, so we probe auth
+# separately and SAY when the verdict is unavailable rather than silently
+# proceeding as if green.
+#   ci_gate <sha>  <label>  — the exact commit's run (prod promotion)
+#   ci_gate main   <label>  — the newest completed run on main (staging)
+ci_gate() {
+  local target="$1" label="$2" ci_state=""
+  if ! command -v gh >/dev/null 2>&1; then
+    echo "==> CI ($label): gh not installed — verdict UNAVAILABLE, proceeding."
+    return 0
+  elif ! gh auth status >/dev/null 2>&1; then
+    echo "==> CI ($label): gh not authenticated — verdict UNAVAILABLE, proceeding."
+    return 0
+  fi
+  if [[ "$target" == "main" ]]; then
+    ci_state="$(gh run list --branch main --workflow CI --status completed --limit 1 \
+      --json status,conclusion,headSha -q '.[0] | .status + ":" + (.conclusion // "") + ":" + .headSha' 2>/dev/null || true)"
+  else
+    ci_state="$(gh run list --commit "$target" --workflow CI \
+      --json status,conclusion,headSha -q '.[0] | .status + ":" + (.conclusion // "") + ":" + .headSha' 2>/dev/null || true)"
+  fi
+  local run_sha="${ci_state##*:}"
+  case "$ci_state" in
+    completed:success:*)
+      echo "==> CI ($label): green (${run_sha:0:9})" ;;
+    completed:*)
+      local conclusion="${ci_state#completed:}"; conclusion="${conclusion%%:*}"
+      echo "REFUSED: CI is RED (${conclusion}) on ${run_sha:0:9} — $label deploys wait for a green run." >&2
+      echo "  gh run view \$(gh run list --branch main --workflow CI --limit 1 --json databaseId -q '.[0].databaseId') --log-failed" >&2
+      echo "Fix CI (or --force for a hotfix, loudly)." >&2
+      exit 1 ;;
+    *)
+      echo "==> CI ($label): no completed run for ${target:0:9} yet (${ci_state:-none}) — proceeding; check it after." ;;
+  esac
+}
+
 if [[ "$ENVIRONMENT" == "production" && "$FORCE" -ne 1 ]]; then
   # Untracked (non-ignored) files ship too — `railway up` uploads the tree,
   # not the index — so the check must NOT pass --untracked-files=no.
@@ -188,36 +231,21 @@ if [[ "$ENVIRONMENT" == "production" && "$FORCE" -ne 1 ]]; then
     exit 1
   fi
 
-  # ── CI VERDICT (2026-08-02, the 100-red-runs lesson) ────────────────────
-  # CI failed 100 consecutive runs and nothing noticed, because nothing
-  # consulted it. Rule: a KNOWN-RED CI on this exact commit hard-stops a
-  # prod deploy; a pending or absent run only warns (the staging gate above
-  # is the hard promotion gate — CI is the async safety net, and a solo
-  # deploy should not idle 10 minutes for it). --force skips, loudly.
-  # A gh AUTH failure must be distinguishable from a clean bill of health
-  # (red-team P1): `gh run list` returns empty BOTH when there is no run AND
-  # when the token is expired, so we probe auth separately and SAY when the
-  # verdict is unavailable rather than silently proceeding as if green.
-  if ! command -v gh >/dev/null 2>&1; then
-    echo "==> CI: gh not installed — verdict UNAVAILABLE, proceeding (staging gate stands)."
-  elif ! gh auth status >/dev/null 2>&1; then
-    echo "==> CI: gh not authenticated — verdict UNAVAILABLE, proceeding (staging gate stands)."
-  else
-    CI_STATE="$(gh run list --commit "$HEAD_SHA" --workflow CI \
-      --json status,conclusion -q '.[0] | .status + ":" + (.conclusion // "")' 2>/dev/null || true)"
-    case "$CI_STATE" in
-      completed:success)
-        echo "==> CI: green for ${HEAD_SHA:0:9}" ;;
-      completed:*)
-        echo "REFUSED: CI is RED for ${HEAD_SHA:0:9} (${CI_STATE#completed:})." >&2
-        echo "  gh run list --commit $HEAD_SHA   # see what failed" >&2
-        echo "Fix it (or --force for a hotfix, loudly)." >&2
-        exit 1 ;;
-      *)
-        echo "==> CI: no completed run for ${HEAD_SHA:0:9} yet (${CI_STATE:-none}) — proceeding; check it after." ;;
-    esac
-  fi
+  ci_gate "$HEAD_SHA" "prod"
   echo "==> Promotion gate: staging is healthy on ${HEAD_SHA:0:9}."
+fi
+
+# ── STAGING CI GATE (2026-09-04, the 25-red-days lesson) ─────────────────
+# The prod gate above consults CI for the exact commit, but from 2026-08-09
+# to 2026-09-04 every deploy was staging-only, so nothing consulted CI at
+# all and it sat red for 25 days at a step BEFORE type check, tests, and
+# the invariant proofs. Owner ruling: red CI refuses STAGING too. Staging
+# usually deploys a commit CI has not run yet (the early-start push below
+# is what starts it), so the staging question is about the LINEAGE, not the
+# commit: "is the newest completed CI run on main red?" A red lineage stays
+# a refusal until a green run lands — fix CI first, then deploy.
+if [[ "$ENVIRONMENT" == "staging" && "$FORCE" -ne 1 ]]; then
+  ci_gate "main" "staging"
 fi
 
 if [[ "$ENVIRONMENT" == "production" ]]; then

@@ -77,8 +77,8 @@ SELECT count(*) AS untraced FROM core_restaurant_entity_events
 Probes to re-run after regeneration: bubbles (must not route to boba tea),
 Mandala (must not reach Mandola's), mole vs mole plate, breakfast
 croissant — all four are pinned in
-`scripts/fixtures/entity-match-gold-cases.json` and certified by
-`scripts/entity-match-gold.ts`.
+`apps/api/scripts/fixtures/entity-match-gold-cases.json` and certified by
+`apps/api/scripts/entity-match-gold.ts`.
 
 Rule of conduct: if regeneration exposes a judgment gap, fix the RULE and
 re-hear (version bump) — never hand-edit rows.
