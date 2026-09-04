@@ -123,3 +123,11 @@ Places (TomTom) module: one LEAD (promotion attempts uncapped/unread).
 - G-1/G-3 1a9aa5eee — stall alarm keyed on owed-since; transient regex
   narrowed; complete() refuses with open batch work; one non-terminal
   status list.
+- S-4/S-5 (search) + G-4 (registry fingerprint) — landed; S-4 spec owed.
+- NOTE 2026-09-04 03:36: a SECOND Claude session ran `yarn invariants`
+  in this tree while this session's jest ran (the harness mutates source:
+  entity-match-prompt.md, entity-match.contract.ts, a probe file). The
+  CLAUDE.md law "never run invariants concurrently with jest" now needs a
+  cross-SESSION guard, not just a same-session one — docketed as a
+  finding against the harness (it should take a repo-level lock file and
+  refuse when another runner holds it).
