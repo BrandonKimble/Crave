@@ -177,3 +177,23 @@ before judge lanes re-arm; pro-form rule waits on v23 activation; F-8
 demand-vocab judges attributes with dish doctrine; F-12 probers; F-4
 ingredient lexical arm. ATTRIBUTE_MERGE_JUDGE_ENABLED arming → OWNER.
 E-2 docket anti-join + proof landed (this commit).
+
+## Wave 2 — docket drain A (red-team-08-19 + open-items; agent-verified, exec proofs)
+
+~70 items: majority FIXED/MOOT with citations. LANDED from it today: G3
+dead predicate deleted; 5 .swp files removed; multi-primary location rows
+repaired + partial unique (migration 20260904150000); G2 dedupe judge lane
+now drains through the hearing allowance (meter + authorizeDrain); L1
+compound-only lock (a part of a dish name is only an item_attribute or
+ingredient constraint — never a rival dish, never a venue attribute;
+probe: "tacos veganos" GREEN). STILL RED (docketed): "arroz con pollo"
+with no compound entity grounds two top-level dish words — needs
+connective-aware conjunct parsing ("con" → ingredient), not a placement
+rule. OWNER/LATER: feed runtimes 2x (mobile P0), account-switch cache
+leak + lapse tags + health-probe banner (mobile services), 120Hz class,
+focus camera 256px, M3 1,705 active surfaces on archived entities
+(sweep+invariant), 710 ungrounded active places incl. the 'Best' ghost
+(lifecycle flag), poll-supply rederivation (16,226 rows), derived-index
+partial-collapse prior, raw-SQL row-shape guard, rising/thread-share,
+stopword hand lists, C3 synergy gate, C2 curation runbook, dead mobile
+residency chain + hook + modules.
