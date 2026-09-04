@@ -62,15 +62,20 @@ export function userAnchoredEntitySql(alias: string): string {
       SELECT 1 FROM collection_on_demand_requests odr
       WHERE odr.entity_id = ${id}
     )
-    -- signal acts: raw ledger AND the durable daily aggregate (bare text
-    -- ids, no FK — sole); see preserved-anchors.sql for why both.
+    -- signal acts: raw ledger AND the durable daily aggregate (uuid
+    -- columns, no FK — sole); see preserved-anchors.sql for why both.
+    -- NO ::text here (red team 2026-09-04, CI wave 0c): both subject_id
+    -- columns are uuid, and casting the entity id to text made the whole
+    -- predicate 'uuid = text' — the janitor's ungroundable gate threw on
+    -- every run since the shared predicate landed, and the spec that
+    -- proves it sat behind a CI step nobody had seen green in 25 days.
     OR EXISTS (
       SELECT 1 FROM signals s
-      WHERE s.subject_type = 'entity' AND s.subject_id = ${id}::text
+      WHERE s.subject_type = 'entity' AND s.subject_id = ${id}
     )
     OR EXISTS (
       SELECT 1 FROM signal_demand_daily sdd
-      WHERE sdd.subject_type = 'entity' AND sdd.subject_id = ${id}::text
+      WHERE sdd.subject_type = 'entity' AND sdd.subject_id = ${id}
     )
     -- poll endorsements: bare uuid subject, or either half of the
     -- poll-local 'restaurantId::foodId' composite (no FK — sole)
