@@ -145,3 +145,22 @@ alone cannot distinguish variance from a regression. Result: the first
 
 Wave-1..3 hoists (quotation / passing-clause / deal-law / seven-laws
 header) remain queued as v24; the choice-law consolidation last.
+
+## Waves 1–3: RETIRED after execution (2026-09-04)
+
+Wave 1 (quotation-law hoist) was built and certified twice. Placed at the
+top (after THE FOUR TESTS): 282/284 — two bare-pick cases (N49, FA31)
+went 0/6, attributed by per-edit ablation to the box alone, not to any
+site trim; every wording variant at the top failed the same way. Placed
+at the head of Step B: N49/FA31 6/6 in isolation, but the full deck came
+back 280/284 (C3 flaky, N46 fail, N58 flaky, FA31 0/3). Verdict: a
+structural hoist cannot show improvement on an all-pass deck and
+measurably adds variance; the per-field restatements are consistent
+with each other and sit at their point of use. Waves 2 and 3 were
+re-read against the full text and judged the same — one real duplicate
+(F.1's dishless-deal consequence, twice in twenty lines) and one
+grammatical seam (A.1's craving carve-out insertion) are the only
+cosmetic finds. LAW BANKED: a long prohibition block near the top of the
+prompt suppresses bare-pick emission regardless of wording; the preamble
+is about WHETHER a claim exists and must stay short. The committed v23
+text stands; the waves are closed, not queued.
