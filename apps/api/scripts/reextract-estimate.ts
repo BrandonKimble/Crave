@@ -193,9 +193,34 @@ async function main(): Promise<void> {
   const promptVersion = arg('prompt-version');
   const approveHash = arg('approve-estimate');
   const rechunk = process.argv.includes('--rechunk');
+  // --extraction-multiplier <x> --measured-from "<provenance>": a MEASURED
+  // per-doc extraction cost multiplier for a candidate whose output shape
+  // differs from the version the published rate was measured under (v24's
+  // worksheet). Both halves are required together — a multiplier with no
+  // stated measurement is a guess, and the no-fake-estimates law refuses it.
+  const multiplierRaw = arg('extraction-multiplier');
+  const multiplierProvenance = arg('measured-from');
+  if ((multiplierRaw === undefined) !== (multiplierProvenance === undefined)) {
+    throw new Error(
+      '--extraction-multiplier and --measured-from must be given together (a multiplier states its measurement)',
+    );
+  }
+  const extractionMultiplier =
+    multiplierRaw !== undefined
+      ? { value: Number(multiplierRaw), provenance: multiplierProvenance! }
+      : null;
+  if (
+    extractionMultiplier &&
+    (!Number.isFinite(extractionMultiplier.value) ||
+      extractionMultiplier.value <= 0)
+  ) {
+    throw new Error(
+      `--extraction-multiplier must be a positive number, got '${multiplierRaw}'`,
+    );
+  }
   if (!communities.length || !promptVersion) {
     console.error(
-      'Usage: reextract-estimate.ts --communities a,b --prompt-version N [--rechunk] [--approve-estimate <hash>]',
+      'Usage: reextract-estimate.ts --communities a,b --prompt-version N [--rechunk] [--extraction-multiplier <x> --measured-from "<provenance>"] [--approve-estimate <hash>]',
     );
     process.exit(1);
   }
@@ -255,7 +280,7 @@ async function main(): Promise<void> {
           `(x${rechunkMeasured.multiplier.toFixed(3)} on the extraction line).`,
       );
     }
-    const name = `reextract:${resolvedCommunities.join('+')}:v${promptVersion}${rechunk ? ':rechunk' : ''}`;
+    const name = `reextract:${resolvedCommunities.join('+')}:v${promptVersion}${rechunk ? ':rechunk' : ''}${extractionMultiplier ? `:x${extractionMultiplier.value}` : ''}`;
 
     // APPROVE THE EXISTING ROW (round-six cost red team #8): calling
     // prepareManifestEstimate again on the --approve-estimate pass minted a
@@ -455,10 +480,47 @@ async function main(): Promise<void> {
           `to $${(perDocRateOverrides['gemini.reddit_extraction'] / 1e6).toFixed(6)}/doc.`,
       );
     }
+    // THE FORECAST PRICES THE LINE (2026-09-05): the measured mint count was
+    // printed and then the manifest was built with expectedNewPlaces: 0 —
+    // a $0.00 Places line beside a "MEASURED — 986 mints" sentence. The v24
+    // Austin manifest would have breached its envelope on the first
+    // grounding call.
+    const expectedNewPlaces =
+      placesForecast.kind === 'measured' ? placesForecast.mints : 0;
+    if (extractionMultiplier) {
+      // A prompt version that changes OUTPUT shape changes the extraction
+      // rate (v24's per-source worksheet: output tokens ×2.5, input ×1.15 on
+      // 608 audit chunks). The published per-doc rate was measured under the
+      // previous shape; the multiplier is the operator's measurement, stated
+      // with its provenance in the manifest so it is never a guess.
+      const base =
+        perDocRateOverrides['gemini.reddit_extraction'] ??
+        (
+          await prisma.spendUnitCost.findUnique({
+            where: {
+              workClass_unit: {
+                workClass: 'gemini.reddit_extraction',
+                unit: 'document',
+              },
+            },
+          })
+        )?.microUsdPerUnit;
+      if (base === undefined) {
+        throw new Error(
+          'no extraction rate to scale for --extraction-multiplier (no replay prior and no published gemini.reddit_extraction/document rate)',
+        );
+      }
+      perDocRateOverrides['gemini.reddit_extraction'] =
+        base * extractionMultiplier.value;
+      console.log(
+        `EXTRACTION MULTIPLIER x${extractionMultiplier.value} (${extractionMultiplier.provenance}): ` +
+          `$${(base / 1e6).toFixed(6)}/doc -> $${(perDocRateOverrides['gemini.reddit_extraction'] / 1e6).toFixed(6)}/doc.`,
+      );
+    }
     const estimate = await campaigns.prepareManifestEstimate({
       name,
       docCount,
-      expectedNewPlaces: 0,
+      expectedNewPlaces,
       perDocRateOverrides,
     });
     console.log(`Campaign: ${estimate.campaignId} (${name})`);
