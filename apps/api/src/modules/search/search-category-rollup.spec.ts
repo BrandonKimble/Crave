@@ -36,20 +36,20 @@ function constraints(): SearchConstraints {
 }
 
 /**
- * Charter §2a + §3b unified: the restaurant rollup counts ONE CLAIM ONCE,
- * credited to the most specific carrier that document named.
+ * ONE COMMENT IS ONE RESTAURANT VOTE (owner ruling 2026-09-04). These pin the
+ * SHAPE of the restaurant rollup in both rollup CTEs; the arithmetic is
+ * proven against a real database in
+ * restaurant-vote-totals-per-document.integration.spec.ts.
  *
- * These pin the shape in BOTH rollup CTEs. Each can show RED: the previous
- * row-type rule (`NOT c.is_category_item OR NOT EXISTS ... d.categories`)
- * fails every one of them.
- *
- * Verified against live data (2026-07-28): old 122,402 upvotes -> new
- * 123,965, with 190 restaurants GAINED (claims the row rule dropped, because
- * banking files them as support and this rollup sums direct) and 140 REDUCED
- * (same-document parent/child double counts). Both directions move, which is
- * what distinguishes a correctness fix from "count more".
+ * History: the 2026-07-28 claim-identity rule deduped only category-vs-member
+ * pairs from the same document ("taco" shadowed by "carnitas taco"), so a
+ * comment naming five distinct dishes still counted five times. Collapsing
+ * per source document subsumes that rule — same-document rows collapse
+ * regardless of lineage — so the derived-edge shadow lookup is gone from the
+ * restaurant lane. The dish lane never read it (it reads the connection
+ * counters), so nothing else lost it.
  */
-describe('restaurant rollup counts one claim once, most specific carrier wins', () => {
+describe('restaurant rollup counts one source document once', () => {
   const preview = (): string =>
     renderInlinedSql(
       new SearchQueryBuilder().buildPlaceQuery({
@@ -59,59 +59,61 @@ describe('restaurant rollup counts one claim once, most specific carrier wins', 
       }).dataSql,
     );
 
-  it('reads the mention LEDGER, not the item counters (claims live per document)', () => {
+  const rollup = (): string => {
     const sql = preview();
+    const start = sql.indexOf('restaurant_vote_totals AS (');
+    expect(start).toBeGreaterThanOrEqual(0);
+    // The CTE closes at the first line that is exactly ")".
+    const end = sql.indexOf('\n)', start);
+    expect(end).toBeGreaterThan(start);
+    return sql.slice(start, end);
+  };
+
+  it('reads the mention LEDGER (direct kind only — support rows are banked evidence, not votes)', () => {
+    const sql = rollup();
     expect(sql).toContain('core_restaurant_item_mentions m');
     expect(sql).toContain("m.kind = 'direct'");
   });
 
-  it('shadows only within the SAME source document', () => {
-    expect(preview()).toContain('m2.source_document_id = m.source_document_id');
+  it('collapses per (restaurant, source document) BEFORE summing — a five-dish comment is one vote', () => {
+    const sql = rollup();
+    expect(sql).toContain('GROUP BY restaurant_id, claim_key');
+    // Each document's upvotes are taken once (MAX over its rows), never
+    // re-summed per dish.
+    expect(sql).toContain('MAX(source_upvotes) AS source_upvotes');
+    // The outer aggregate counts DOCUMENTS, not ledger rows.
+    expect(sql).toContain('COUNT(*) AS total_mentions');
+    expect(sql).toContain('SUM(source_upvotes) AS total_upvotes');
+    expect(sql).not.toContain('SUM(m.source_upvotes)');
   });
 
-  it('shadows only within the SAME restaurant', () => {
-    expect(preview()).toContain('c2.restaurant_id = c.restaurant_id');
+  it('a mention with no source document still counts once (its own row is its claim key)', () => {
+    expect(rollup()).toContain('COALESCE(m.source_document_id, m.id)');
   });
 
-  it('resolves specificity from ONE source of truth: the derived edge table (class ⑤, P2.4)', () => {
-    const sql = preview();
-    expect(sql).toContain('derived_food_category_edges');
-    // The projection-array branch is GONE — arrays were a strict subset of
-    // the edges and made the shadow verdict depend on which branch fired.
-    expect(sql).not.toContain('ANY(c2.categories)');
+  it('the general_praise carrier is a vote too — read from the ACTIVE-run event ledger, same scope as the praise lane', () => {
+    const sql = rollup();
+    expect(sql).toContain("ev_scope.evidence_type = 'general_praise'");
+    expect(sql).toContain('core_restaurant_events ev_scope');
+    expect(sql).toContain(
+      'd_scope.active_extraction_run_id = ev_scope.extraction_run_id',
+    );
+    expect(sql).toContain('UNION ALL');
   });
 
-  it('never shadows a mention that has no source document', () => {
-    expect(preview()).toContain('m2.source_document_id IS NOT NULL');
+  it('no longer shadows by food lineage — per-document collapse subsumes the category-vs-member rule', () => {
+    const sql = rollup();
+    expect(sql).not.toContain('derived_food_category_edges');
+    expect(sql).not.toContain('NOT c.is_category_item');
   });
 
-  it('no longer excludes category items by ROW TYPE (that dropped real claims)', () => {
-    // Scoped to the ROLLUP CTE. The preview is the rendered statement now
-    // (concept-graph §11 item 6), and the top-dishes LATERAL legitimately
-    // carries its own `AND NOT c.is_category_item` (F9967 — rollup rows are
-    // never dish rows). The old hand-written preview simply omitted that
-    // subquery, so a whole-statement assertion passed on a sketch.
-    const sql = preview();
-    const start = sql.indexOf('restaurant_vote_totals AS (');
-    expect(start).toBeGreaterThanOrEqual(0);
-    const end = sql.indexOf('\n)', start);
-    expect(end).toBeGreaterThan(start);
-    expect(sql.slice(start, end)).not.toContain('NOT c.is_category_item');
-  });
-
-  it('is ANTISYMMETRIC: a synonym cycle must not erase both claims', () => {
-    // Lineage is genuinely directed (11,093 edges, 8 symmetric), but where
-    // both directions exist ('wings' <-> 'chicken wings') the relation means
-    // synonym, not parent/child. Without the reverse-edge guard each would
-    // shadow the other and the claim would vanish from the rollup entirely.
-    expect(preview()).toContain('rev.food_id = c.food_id');
-  });
-
-  it('breaks symmetric-claim ties with a deterministic winner instead of erasing both', () => {
-    // Red team R2: mutual edges are synonym shapes; exactly one side must
-    // survive (never zero, never two).
-    const sql = preview();
-    expect(sql).toContain('c2.food_id < c.food_id');
-    expect(sql).toContain('rev.food_id = c.food_id');
+  it('is scoped to the filtered restaurant set in BOTH lanes (never a corpus-wide scan)', () => {
+    const sql = rollup();
+    expect(sql).toContain(
+      'JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id',
+    );
+    expect(sql).toContain(
+      'JOIN filtered_restaurants fr ON fr.entity_id = ev_scope.restaurant_id',
+    );
   });
 });

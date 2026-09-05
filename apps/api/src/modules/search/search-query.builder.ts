@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { identityScope } from '../../shared/locale';
-import { activePlaceEventExistsSql } from '../content-processing/reddit-collector/extraction-scope.service';
+import {
+  activePlaceEventExistsSql,
+  activePlaceEventsSourceSql,
+} from '../content-processing/reddit-collector/extraction-scope.service';
 import { servablePlaceConditionsSql } from '../restaurant-enrichment/servable-place-scope';
 import {
   conceptArmsOrSql,
@@ -1580,94 +1583,71 @@ selected_locations AS (
   }
 
   /**
-   * RESTAURANT ROLLUP = ONE CLAIM, COUNTED ONCE, CREDITED TO THE MOST
-   * SPECIFIC CARRIER (charter §2a + §3b, unified 2026-07-28).
+   * RESTAURANT ROLLUP = ONE SOURCE DOCUMENT IS ONE RESTAURANT VOTE
+   * (owner ruling 2026-09-04; supersedes the 2026-07-28 claim-identity rule).
    *
-   * A claim is one source document saying one thing about one restaurant.
-   * It should lift that restaurant exactly once, credited to the most
-   * specific thing it named.
+   * A comment is one person endorsing one restaurant, however many dishes it
+   * names. "Nixta: get the duck carnitas taco, the mole, and the flan" lifted
+   * Nixta THREE times here (three direct mentions, its upvotes summed three
+   * times) while the public crave score already counted that comment once
+   * per restaurant (praise_dedup / replacePlacePraise). Measured on staging:
+   * 1,448 (restaurant, document) pairs carried 2-8 direct mentions. The two
+   * lanes now agree: total_mentions = distinct source documents that endorsed
+   * the restaurant; total_upvotes = each document's upvotes counted ONCE.
    *
-   * This replaces a ROW-TYPE test ("does a dish exist under this category?")
-   * that could not tell two situations apart, and got each of them wrong:
+   * The old category-vs-member shadow ("taco" shadowed by "carnitas taco"
+   * from the same document) is subsumed, not lost: both rows share a
+   * document, so they collapse into one vote anyway. Documents never shadow
+   * each other, so a category-only endorsement still survives.
    *
-   *   "Nixta has the best tacos - the duck carnitas taco is unreal"
-   *     ONE claim. The row rule suppressed the taco category item and
-   *     scored 1 -- right, but by luck.
+   * Two lanes feed the per-document collapse, because a document's evidence
+   * lives in two ledgers:
+   *   - core_restaurant_item_mentions (kind = 'direct'): dish and category
+   *     mentions. Support-kind rows are banked evidence, never a vote.
+   *   - core_restaurant_events (evidence_type = 'general_praise', ACTIVE run
+   *     only, same scope as the praise lane): the restaurant-only carrier.
+   *     Carriers are NOT mention rows, so before this a praise-only comment
+   *     ("Nixta is the best spot in town") contributed NOTHING to search's
+   *     rollup while the crave score credited it. One comment, one vote,
+   *     whether it named dishes, praised the place, or both.
    *
-   *   "Nixta has the best steak. The duck carnitas taco is unreal"
-   *     TWO claims about different things. If Nixta happened to have a
-   *     steak dish, the row rule suppressed the steak category item and
-   *     scored 1, LOSING the steak claim entirely -- because banking files
-   *     it as SUPPORT, and this rollup sums DIRECT only. Measured: 514
-   *     suppressed category items held 1,532 direct mentions / 2,651 direct
-   *     upvotes that counted zero.
+   * A mention with no source document cannot be collapsed with anything, so
+   * it counts once (its own row id is its claim key). Upvotes per document
+   * are MAX across its rows (they are the same document's score; MAX guards
+   * a stale row rather than re-summing it).
    *
-   *   "the kung pao chicken here is incredible" (no dishes)
-   *     ONE claim that emits BOTH 'kung pao chicken' and its parent
-   *     'chicken' as categories. Nothing banks between two category items,
-   *     so both counted. Measured: 723 mentions / 1,006 upvotes double-
-   *     counted this way.
-   *
-   * The claim-identity rule fixes all three with one law, because it asks
-   * about the DOCUMENT, not the row type: a direct mention is shadowed when
-   * the SAME document also directly named something MORE SPECIFIC at the
-   * SAME restaurant -- a dish under this category, or a narrower category.
-   * Claims from different documents never shadow each other, so a
-   * category-only endorsement always survives.
-   *
-   * Reads the mention LEDGER rather than the item counters. Verified
-   * equivalent before switching: 0 of 11,840 items disagreed with their own
-   * direct-mention rows, so the ledger changes nothing except the dedup.
-   * A mention with no source document cannot be shadowed (it counts).
+   * The dish lane is untouched: each distinct dish keeps its own mention via
+   * the connection counters (c.mention_count / c.total_upvotes).
    */
-  private static readonly CLAIM_MENTIONS_FROM_SQL = `
-  FROM core_restaurant_item_mentions m
-  JOIN core_restaurant_items c ON c.connection_id = m.connection_id`;
-
-  private static readonly CLAIM_IDENTITY_WHERE_SQL = `
-    m.kind = 'direct'
-    AND NOT EXISTS (
-      SELECT 1
-      FROM core_restaurant_item_mentions m2
-      JOIN core_restaurant_items c2 ON c2.connection_id = m2.connection_id
-      WHERE m2.kind = 'direct'
-        AND m2.source_document_id IS NOT NULL
-        AND m2.source_document_id = m.source_document_id
-        AND c2.restaurant_id = c.restaurant_id
-        AND c2.food_id <> c.food_id
-        -- ONE source of truth for food→category membership (class ⑤,
-        -- data-audit P2.4): derived_food_category_edges — what SEARCH
-        -- resolves members from. The old projection-array branch was a
-        -- second, disagreeing answer (arrays are a strict SUBSET of the
-        -- edges; 13.3% of shadow pairs were visible only via edges), so
-        -- the shadow verdict silently depended on which branch fired.
-        -- Symmetric-claim tiebreak preserved: where both directions are
-        -- claimed ('wings' <-> 'chicken wings') the relation means
-        -- synonym, and the food_id total order picks exactly ONE survivor
-        -- — never both (double count), never neither (claim vanishes).
-        AND EXISTS (
-          SELECT 1 FROM derived_food_category_edges e
-          WHERE e.food_id = c2.food_id AND e.category_id = c.food_id
-            AND (
-              NOT EXISTS (
-                SELECT 1 FROM derived_food_category_edges rev
-                WHERE rev.food_id = c.food_id
-                  AND rev.category_id = c2.food_id
-              )
-              OR c2.food_id < c.food_id
-            )
-        )
-    )`;
-
   private buildPlaceVoteTotalsCte(): { sql: Prisma.Sql } {
     const body = `
   SELECT
-    c.restaurant_id,
-    SUM(m.source_upvotes) AS total_upvotes,
-    COUNT(*) AS total_mentions${SearchQueryBuilder.CLAIM_MENTIONS_FROM_SQL}
-  JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
-  WHERE ${SearchQueryBuilder.CLAIM_IDENTITY_WHERE_SQL}
-  GROUP BY c.restaurant_id`;
+    restaurant_id,
+    SUM(source_upvotes) AS total_upvotes,
+    COUNT(*) AS total_mentions
+  FROM (
+    SELECT restaurant_id, claim_key, MAX(source_upvotes) AS source_upvotes
+    FROM (
+      SELECT
+        c.restaurant_id,
+        COALESCE(m.source_document_id, m.id) AS claim_key,
+        m.source_upvotes
+      FROM core_restaurant_item_mentions m
+      JOIN core_restaurant_items c ON c.connection_id = m.connection_id
+      JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
+      WHERE m.kind = 'direct'
+      UNION ALL
+      SELECT
+        ev_scope.restaurant_id,
+        ev_scope.source_document_id AS claim_key,
+        ev_scope.source_upvotes
+      FROM ${activePlaceEventsSourceSql()}
+      JOIN filtered_restaurants fr ON fr.entity_id = ev_scope.restaurant_id
+      WHERE ev_scope.evidence_type = 'general_praise'
+    ) claims
+    GROUP BY restaurant_id, claim_key
+  ) per_document
+  GROUP BY restaurant_id`;
 
     return {
       sql: Prisma.sql`

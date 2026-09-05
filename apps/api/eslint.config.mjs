@@ -172,6 +172,11 @@ export default tseslint.config(
       // fragment — same standing as the rt-activation-scope crime-scene
       // probe below; events go through writePlaceEvents, the one door.
       'src/modules/restaurant-enrichment/market-membership.integration.spec.ts',
+      // Same standing (one-comment-one-vote, 2026-09-04): seeds documents
+      // whose active run is the fixture run so the vote-total CTE's carrier
+      // lane (active-run events, the praise lane's scope) sees them; events
+      // go through writePlaceEvents, the one door.
+      'src/modules/search/restaurant-vote-totals-per-document.integration.spec.ts',
       // Owns the only legal write to enrichmentFailureCount, so its own type
       // annotation names the field.
       'src/modules/restaurant-enrichment/enrichment-failure-counter.ts',
