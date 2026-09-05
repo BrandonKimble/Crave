@@ -317,7 +317,9 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       connectTimeoutMs:
         this.configService.get<number>('llm.connectTimeoutMs') ?? 10_000,
       maxTokens: this.configService.get<number>('llm.maxTokens') || 65536, // Gemini 2.5 Flash supports up to 65,536 output tokens
-      temperature: this.configService.get<number>('llm.temperature') || 0.1,
+      // `??`, never `||`: a configured 0 is a real temperature, and `||`
+      // silently turned it back into 0.1 (found 2026-09-04).
+      temperature: this.configService.get<number>('llm.temperature') ?? 0.1,
       topP: this.configService.get<number>('llm.topP') || 0.95,
       topK: this.configService.get<number>('llm.topK') || 40,
       candidateCount: this.configService.get<number>('llm.candidateCount') || 1,

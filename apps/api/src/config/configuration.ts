@@ -442,7 +442,11 @@ export default () => {
       connectTimeoutMs: 10_000,
       // ---- Model behavior (tuned once per model switch, never per env) ----
       maxTokens: 0, // 0 = model default output cap (65,536 for Gemini Flash)
-      temperature: 0.1, // near-deterministic extraction/interpretation
+      // TEMPERATURE 0 (owner ruling 2026-09-04, from the 1,000-mention audit):
+      // at 0.1 one in six emitting sources flipped between two identical
+      // runs; at 0 the flip rate fell from 10.0% to 3.4% on the same chunks.
+      // Extraction is transcription; nothing in it wants sampling noise.
+      temperature: 0,
       topP: 0.5,
       topK: 30,
       candidateCount: 1,
