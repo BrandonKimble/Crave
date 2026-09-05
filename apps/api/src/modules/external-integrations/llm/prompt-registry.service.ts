@@ -32,6 +32,33 @@ export function promptFingerprint(kind: string, content: string): string {
   return createHash('sha256').update(folded).digest('hex');
 }
 
+/** The schema half of the contract, alone — what a row REMEMBERS it was
+ *  pushed under (llm_prompts.schema_hash, 2026-09-05). */
+export function schemaHashFor(kind: string): string | null {
+  const schema = KIND_SCHEMAS[kind];
+  if (!schema) return null;
+  return createHash('sha256').update(JSON.stringify(schema)).digest('hex');
+}
+
+export function contentSha(content: string): string {
+  return createHash('sha256').update(content).digest('hex');
+}
+
+/**
+ * How a stored row relates to the running code's response schema:
+ *  - 'current': pushed under this schema — servable everywhere.
+ *  - 'prior':   pushed under a PREVIOUS schema (its schema_hash differs). The
+ *    text is intact (content_sha matches) but the contract it describes is
+ *    not the one this process would run it under: never the LIVE extraction
+ *    prompt, always fine to read as history, and a candidate pushed under the
+ *    current schema may be shadowed beside it. This is what a schema edit
+ *    looks like between deploy and activation — the state that used to be a
+ *    boot refusal, which made every schema change impossible to shadow.
+ *  - 'legacy':  a pre-fold row (content-only sha256, no schema on record) —
+ *    tolerated with a warning; the next push re-fingerprints.
+ */
+export type PromptContract = 'current' | 'prior' | 'legacy';
+
 /** Every registry tenant self-seeds v1 from its shipped asset file — the
  *  file stays the version-1 source of record in git; the registry is the
  *  runtime truth. Add new prompt kinds HERE, never as a parallel loader. */
@@ -45,6 +72,7 @@ export interface RegisteredPrompt {
   content: string;
   contentHash: string;
   status: string;
+  contract: PromptContract;
 }
 
 /**
@@ -89,12 +117,30 @@ export class PromptRegistryService implements OnModuleInit {
     // the July 2026 accident. Extraction must stop instead.
     try {
       const active = await this.ensureSeededAndGetActive();
-      this.llmService.setActiveSystemPrompt(active.content);
-      this.activeCollectionVersion = active.version;
-      this.logger.info('Collection prompt registry ready', {
-        activeVersion: active.version,
-        contentHash: active.contentHash.slice(0, 12),
-      });
+      if (active.contract === 'prior') {
+        // A schema edit shipped ahead of the activation that carries it:
+        // live extraction must not run v${active.version}'s text under a
+        // schema it was never certified with (the G-4 coverage lie), but
+        // the process boots — a candidate pushed under THIS schema can be
+        // shadowed, diffed, and activated from here.
+        this.collectionPromptUnavailable =
+          `active collection prompt v${active.version} was pushed under a previous ` +
+          `response schema (row schema ${active.contentHash.slice(0, 12)} ≠ running ` +
+          `${(schemaHashFor(COLLECTION_SYSTEM_PROMPT_KIND) ?? '').slice(0, 12)}); live extraction ` +
+          `is blocked until a version pushed under the current schema is activated`;
+        this.logger.error(
+          'FAIL CLOSED for LIVE extraction only: the active collection prompt is a PRIOR contract',
+          { activeVersion: active.version },
+        );
+      } else {
+        this.llmService.setActiveSystemPrompt(active.content);
+        this.activeCollectionVersion = active.version;
+        this.logger.info('Collection prompt registry ready', {
+          activeVersion: active.version,
+          contentHash: active.contentHash.slice(0, 12),
+          contract: active.contract,
+        });
+      }
     } catch (error) {
       this.collectionPromptUnavailable =
         error instanceof Error ? error.message : String(error);
@@ -152,12 +198,7 @@ export class PromptRegistryService implements OnModuleInit {
     if (!row) {
       throw new Error(`Prompt version ${version} not found for kind ${kind}`);
     }
-    return {
-      version: row.version,
-      content: row.content,
-      contentHash: row.contentHash,
-      status: row.status,
-    };
+    return this.classify(kind, row);
   }
 
   /** Insert a new candidate version (next version number). Returns it. */
@@ -183,11 +224,19 @@ export class PromptRegistryService implements OnModuleInit {
         version,
         content,
         contentHash,
+        contentSha: contentSha(content),
+        schemaHash: schemaHashFor(kind),
         status: 'candidate',
         notes: notes ?? null,
       },
     });
-    return { version, content, contentHash, status: 'candidate' };
+    return {
+      version,
+      content,
+      contentHash,
+      status: 'candidate',
+      contract: 'current',
+    };
   }
 
   /** The governed switch: candidate → active, previous active → retired.
@@ -201,6 +250,12 @@ export class PromptRegistryService implements OnModuleInit {
   ): Promise<RegisteredPrompt> {
     const target = await this.getVersion(version, kind);
     if (target.status === 'active') return target;
+    if (target.contract === 'prior') {
+      throw new Error(
+        `v${version} was pushed under a previous response schema; push it again ` +
+          `under the current schema before activating`,
+      );
+    }
     await this.prisma.$transaction([
       this.prisma.llmPrompt.updateMany({
         where: { kind, status: 'active' },
@@ -219,6 +274,50 @@ export class PromptRegistryService implements OnModuleInit {
     this.activeCache.set(kind, { ...target, status: 'active' });
     this.logger.info('Prompt version activated', { version, kind });
     return { ...target, status: 'active' };
+  }
+
+  /** The contract a stored row describes, or a refusal when its text
+   *  matches nothing on record (a corrupted row is never served). */
+  private classify(
+    kind: string,
+    row: {
+      version: number;
+      content: string;
+      contentHash: string;
+      status: string;
+      contentSha: string | null;
+      schemaHash: string | null;
+    },
+  ): RegisteredPrompt {
+    const base = {
+      version: row.version,
+      content: row.content,
+      contentHash: row.contentHash,
+      status: row.status,
+    };
+    const currentSchema = schemaHashFor(kind);
+    if (row.contentHash === promptFingerprint(kind, row.content)) {
+      return { ...base, contract: 'current' };
+    }
+    const legacy = contentSha(row.content);
+    if (row.contentHash === legacy) {
+      return { ...base, contract: 'legacy' };
+    }
+    if (
+      row.schemaHash &&
+      currentSchema &&
+      row.schemaHash !== currentSchema &&
+      (row.contentSha ?? legacy) === legacy
+    ) {
+      return { ...base, contract: 'prior' };
+    }
+    throw new Error(
+      `${kind} v${row.version} row hash ${row.contentHash.slice(0, 12)} ` +
+        `matches neither its content+schema fingerprint ` +
+        `(${promptFingerprint(kind, row.content).slice(0, 12)}), a legacy ` +
+        `content-only hash, nor a recorded prior schema — refusing to serve ` +
+        `a prompt whose stored contract does not describe it`,
+    );
   }
 
   private async nextVersion(kind: string): Promise<number> {
@@ -245,38 +344,18 @@ export class PromptRegistryService implements OnModuleInit {
     });
     if (active) {
       // THE FINGERPRINT IS ENFORCED ON THE ROW WE SERVE (red team 2026-09-04
-      // G-4). The stored hash is the contract fingerprint every run's
-      // coverage keys on; served un-checked, a schema edit shipped while
-      // coverage still read "covered". A pre-fold row (content-only sha256)
-      // is recognised and tolerated — its schema drift is unobservable by
-      // construction and the next push re-fingerprints — but any OTHER
-      // mismatch is refused, which for the collection kind means the
-      // fail-closed door in onModuleInit.
-      const expected = promptFingerprint(kind, active.content);
-      if (active.contentHash !== expected) {
-        const legacy = createHash('sha256')
-          .update(active.content)
-          .digest('hex');
-        if (active.contentHash === legacy) {
-          this.logger.warn(
-            'Active prompt row carries a pre-fold content-only hash — response-schema drift is not observable for this version; the next push re-fingerprints',
-            { kind, version: active.version },
-          );
-        } else {
-          throw new Error(
-            `active ${kind} v${active.version} row hash ${active.contentHash.slice(0, 12)} ` +
-              `matches neither its content+schema fingerprint (${expected.slice(0, 12)}) ` +
-              `nor a legacy content-only hash — refusing to serve a prompt whose ` +
-              `stored contract does not describe it`,
-          );
-        }
+      // G-4), and the row's OWN schema decides what "its contract" means
+      // (2026-09-05): a row pushed under a previous schema is a PRIOR
+      // contract — intact, readable, never the live extraction prompt. A
+      // corrupted row (text no longer matching any hash on record) is still
+      // refused outright.
+      const row = this.classify(kind, active);
+      if (row.contract === 'legacy') {
+        this.logger.warn(
+          'Active prompt row carries a pre-fold content-only hash — response-schema drift is not observable for this version; the next push re-fingerprints',
+          { kind, version: active.version },
+        );
       }
-      const row = {
-        version: active.version,
-        content: active.content,
-        contentHash: active.contentHash,
-        status: active.status,
-      };
       this.activeCache.set(kind, row);
       return row;
     }
@@ -305,6 +384,8 @@ export class PromptRegistryService implements OnModuleInit {
         version,
         content,
         contentHash,
+        contentSha: contentSha(content),
+        schemaHash: schemaHashFor(kind),
         status: 'active',
         notes: `seeded from prompts/${asset} asset`,
       },
@@ -313,6 +394,12 @@ export class PromptRegistryService implements OnModuleInit {
       kind,
       version,
     });
-    return { version, content, contentHash, status: 'active' };
+    return {
+      version,
+      content,
+      contentHash,
+      status: 'active',
+      contract: 'current',
+    };
   }
 }

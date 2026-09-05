@@ -468,6 +468,11 @@ model LlmPrompt {
   version     Int
   content     String
   contentHash String    @map("content_hash") @db.VarChar(64)
+  /// sha256 of the text alone — integrity, independent of the schema
+  contentSha  String?   @map("content_sha") @db.VarChar(64)
+  /// sha256 of the response schema this row was pushed under; a row whose
+  /// schema_hash differs from the running code's is a PRIOR CONTRACT
+  schemaHash  String?   @map("schema_hash") @db.VarChar(64)
   /// candidate | active | retired (CHECK + one-active-per-kind partial unique)
   status      String    @default("candidate") @db.VarChar(16)
   notes       String?

@@ -42,7 +42,9 @@ async function main(): Promise<void> {
     console.log(
       `Registered candidate v${candidate.version} (hash ${candidate.contentHash.slice(0, 12)}…, ${content.length} chars)`,
     );
-    console.log(`Active remains v${active.version}. Next steps:`);
+    console.log(
+      `Active remains v${active.version}${active.contract === 'prior' ? ' (a PRIOR-schema contract: live extraction is blocked until a current-schema version is activated)' : ''}. Next steps:`,
+    );
     console.log(
       `  shadow replay: REEXTRACT_PROMPT_VERSION=${candidate.version} REEXTRACT_ACTIVATE=false + campaign`,
     );
