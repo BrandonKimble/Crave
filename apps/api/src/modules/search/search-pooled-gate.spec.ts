@@ -201,7 +201,12 @@ describe('step-3 pooled richness gate (SQL shape)', () => {
       // (json_build_object over MAXed window columns) — the old UNION ALL
       // re-scanned the pool once per soft id.
       expect(sql).toContain('json_build_object');
-      expect(sql).not.toContain('UNION ALL');
+      // The pool scan itself never UNIONs. The restaurant_vote_totals CTE
+      // legitimately UNION ALLs its two evidence ledgers (dish mentions and
+      // general-praise carriers — one comment, one vote, 2026-09-04), so
+      // assert on the SQL from the count SELECT onward, not the CTE prelude.
+      const countScan = sql.slice(sql.indexOf('SELECT COUNT(*)::bigint'));
+      expect(countScan).not.toContain('UNION ALL');
       // every soft id is bound as its own FILTER-counted row (ids ride as
       // parameters, so assert on the bound values)
       expect(count.values).toEqual(
