@@ -58,11 +58,16 @@ case "$VERB" in
   shadow)
     COMMUNITIES="${1:?communities}"; VERSION="${2:?prompt version}"; CAMPAIGN="${3:?campaign id}"
     ENVIRONMENT="${REEXTRACT_ENV:-staging}"
-    echo "Arming SHADOW replay on $ENVIRONMENT worker: communities=$COMMUNITIES v$VERSION campaign=$CAMPAIGN"
+    # --rechunk: rebuild reply-chain windows from the source documents with the
+    # current chunker instead of replaying the stored inputs (2026-09-04); the
+    # manifest must have been priced with `estimate ... --rechunk`.
+    RECHUNK="false"; for a in "$@"; do [ "$a" = "--rechunk" ] && RECHUNK="true"; done
+    echo "Arming SHADOW replay on $ENVIRONMENT worker: communities=$COMMUNITIES v$VERSION campaign=$CAMPAIGN rechunk=$RECHUNK"
     railway variables --service worker --environment "$ENVIRONMENT" \
       --set "REEXTRACT_COMMUNITIES=$COMMUNITIES" \
       --set "REEXTRACT_CAMPAIGN_ID=$CAMPAIGN" \
       --set "REEXTRACT_PROMPT_VERSION=$VERSION" \
+      --set "REEXTRACT_RECHUNK=$RECHUNK" \
       --set "REEXTRACT_ACTIVATE=false"
     # THE SHADOW IS THE FULL PIPELINE (2026-09-04): rehearsal mints are
     # Places-grounded inside the shadow (metered into the campaign; the
@@ -71,7 +76,7 @@ case "$VERB" in
     # kill-switch on new scheduling only — set it by hand if you mean it.
     echo "Worker redeploy fires the one-shot runner at boot. Watch: railway logs --service worker --environment $ENVIRONMENT"
     echo "AFTER the batch queue drains (batch + restaurant-primary-enrichment): ./scripts/rig/reextract.sh diff $COMMUNITIES $VERSION"
-    echo "Then DISARM: railway variable delete REEXTRACT_COMMUNITIES / REEXTRACT_CAMPAIGN_ID / REEXTRACT_PROMPT_VERSION / REEXTRACT_ACTIVATE --service worker --environment $ENVIRONMENT"
+    echo "Then DISARM: railway variable delete REEXTRACT_COMMUNITIES / REEXTRACT_CAMPAIGN_ID / REEXTRACT_PROMPT_VERSION / REEXTRACT_RECHUNK / REEXTRACT_ACTIVATE --service worker --environment $ENVIRONMENT"
     ;;
   rollback)
     COMMUNITIES="${1:?communities}"; VERSION="${2:?prompt version}"
