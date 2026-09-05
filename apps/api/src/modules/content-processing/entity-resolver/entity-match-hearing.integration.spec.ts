@@ -134,6 +134,7 @@ async function mintItem(name: string): Promise<RecallCandidate> {
     sparseEvidence: null,
     denseRank: null,
     denseCosine: null,
+    metroLocal: null,
   };
 }
 

@@ -2,24 +2,33 @@
  * THE COURT SEES THE WHOLE ROSTER — against a REAL Postgres (integration).
  *
  * Recall-scope rederivation (2026-09-04): the judge's candidate recall must
- * read exactly the world a mention may ADOPT — the tiers' status law
- * (active/pending + this run's rehearsal mints) and the metro gate's
- * geography (80 km from the anchor, ungrounded places included) — not the
- * reader's world (active only, engine place-DAG polygon). Both lanes
- * (lexical name arms, dense name_embedding) share one RecallScope.
+ * read exactly the rows a mention may ADOPT — the tiers' status law
+ * (active/pending + this run's rehearsal mints) — not the reader's world
+ * (active only, engine place-DAG polygon). Both lanes (lexical name arms,
+ * dense name_embedding) share one RecallScope.
  *
- * Executed cause on staging: "Cuba Cafe" (r/Austin) could not recall
+ * IDENTITY IS GLOBAL (owner ruling, later the same day): geography is
+ * NEVER a recall filter. The metro anchor is a bounded RANKING PRIOR — a
+ * near place outranks a far one at equal evidence, by exactly one rank —
+ * and every candidate carries `metroLocal` so the judge can be shown where
+ * it is.
+ *
+ * Executed causes on staging: "Cuba Cafe" (r/Austin) could not recall
  * "Cuba Bakery & Café" (Round Rock, outside the Austin polygon, 28 km from
  * the anchor) and the judge minted a twin; the same shadow run minted
  * "Salt Lick" and then "Salt Lick Bbq" because status='active' hid its own
- * first mint from the second mention's judge.
+ * first mint from the second mention's judge; and under the one-day metro
+ * FILTER a Chicagoan's "Ema" in r/austinfood could never reach the real
+ * Chicago Ema held from another community.
  *
- * WHY A DB SPEC: every scope predicate is SQL; only real rows can show a
- * lane admitting or refusing one.
+ * WHY A DB SPEC: every scope predicate is SQL, and the prior's "local" is
+ * the metro-distance SQL law; only real rows can show a lane admitting,
+ * refusing, or reordering one.
  *
- * MUTATION (shown RED on 2026-09-04): the pre-rederivation service had no
+ * MUTATIONS (shown RED on 2026-09-04): the pre-rederivation service had no
  * adoption scope — pending, rehearsal and out-of-polygon rows were never
- * returned, so every adoption assertion below failed.
+ * returned; the metro-FILTER version refused the far exact-name row (the
+ * "far exact-name is recalled" case below was red against commit 1277f1944).
  *
  * Run: yarn test:db   (needs DATABASE_URL — a dev/mirror database, never prod)
  */
@@ -67,6 +76,10 @@ const ids = {
   mine: randomUUID(),
   foreign: randomUUID(),
   pending: randomUUID(),
+  /** Two equally-evidenced fuzzy twins, one near and one far — the prior's
+   *  own case. Same shape as "Ema": a name that exists in two cities. */
+  twinNear: randomUUID(),
+  twinFar: randomUUID(),
 };
 
 async function seedEntity(opts: {
@@ -152,6 +165,20 @@ beforeAll(async () => {
     type: 'item_attribute',
     status: 'pending',
   });
+  await seedEntity({
+    id: ids.twinFar,
+    name: `${TAG} ema twin dallas`,
+    type: 'place',
+    status: 'active',
+    location: DALLAS,
+  });
+  await seedEntity({
+    id: ids.twinNear,
+    name: `${TAG} ema twin roundrock`,
+    type: 'place',
+    status: 'active',
+    location: ROUND_ROCK,
+  });
 });
 
 afterAll(async () => {
@@ -168,9 +195,10 @@ const recall = (
     rehearsalRunId: string | null;
     metro: { lat: number; lng: number } | null;
   },
+  opts: { term?: string; denseMode?: 'always' | 'none' } = {},
 ) =>
-  service.retrieveCandidates(`${TAG}`, types, 50, {
-    denseMode: 'always',
+  service.retrieveCandidates(opts.term ?? `${TAG}`, types, 50, {
+    denseMode: opts.denseMode ?? 'always',
     poolSize: 50,
     ...(adoption ? { adoption } : {}),
   });
@@ -204,19 +232,90 @@ describe('adoption-scoped recall — the judge sees what a mention may adopt', (
     expect(found.has(ids.far)).toBe(true);
   });
 
-  it('geography law: the metro radius admits Round Rock and ungrounded places, refuses Dallas — in BOTH lanes', async () => {
+  it('identity is global: a FAR exact-name place is recalled under a metro anchor — in BOTH lanes — and carries its geography', async () => {
+    // RED against 1277f1944 (metro FILTER): Dallas was refused outright.
     const candidates = await recall(['place'], {
       rehearsalRunId: null,
       metro: ANCHOR,
     });
     const byId = new Map(candidates.map((c) => [c.entityId, c]));
+    expect(byId.has(ids.far)).toBe(true);
     expect(byId.has(ids.near)).toBe(true);
     expect(byId.has(ids.ungrounded)).toBe(true);
-    expect(byId.has(ids.far)).toBe(false);
-    // Each admitted row was reached by the lexical lane AND the dense lane:
-    // one RecallScope governs both.
-    expect(byId.get(ids.near)?.sparseRank).not.toBeNull();
+    // One RecallScope governs both lanes: each row reached by lexical AND dense.
+    expect(byId.get(ids.far)?.sparseRank).not.toBeNull();
+    expect(byId.get(ids.far)?.denseRank).not.toBeNull();
     expect(byId.get(ids.near)?.denseRank).not.toBeNull();
-    expect(byId.get(ids.ungrounded)?.denseRank).not.toBeNull();
+    // The prior's input is on every place candidate: geocoded within 80 km
+    // of the anchor = local; Dallas and the ungrounded row are not.
+    expect(byId.get(ids.near)?.metroLocal).toBe(true);
+    expect(byId.get(ids.far)?.metroLocal).toBe(false);
+    expect(byId.get(ids.ungrounded)?.metroLocal).toBe(false);
+  });
+
+  it('no anchor / reader scope: the prior does not apply and metroLocal is null', async () => {
+    const adopted = await recall(['place'], {
+      rehearsalRunId: null,
+      metro: null,
+    });
+    expect(adopted.every((c) => c.metroLocal === null)).toBe(true);
+    const reader = await recall(['place']);
+    expect(reader.every((c) => c.metroLocal === null)).toBe(true);
+  });
+
+  it('a far EXACT-name match surfaces at the top of the shortlist, not buried by near fuzzy neighbours', async () => {
+    // Probe by the far row's own full name: it is the sparse lane's exact
+    // hit (rank 0). Near non-exact rows may be lifted one rank — so the far
+    // exact row is first or second, never lower. Sparse-only so the ranks
+    // are the lexical ladder's, not an arbitrary dense tie order.
+    const candidates = await recall(
+      ['place'],
+      { rehearsalRunId: null, metro: ANCHOR },
+      { term: `${TAG} far cafe`, denseMode: 'none' },
+    );
+    const index = candidates.findIndex((c) => c.entityId === ids.far);
+    expect(index).toBeGreaterThanOrEqual(0);
+    expect(index).toBeLessThanOrEqual(1);
+    expect(candidates[index].sparseEvidence).toBe('exact');
+  });
+
+  it('the prior: at equal evidence the near twin outranks the far twin — whichever order the lane returned them', async () => {
+    // Both twins match "<tag> ema twin" with the same lexical evidence; the
+    // SQL lane's order between them is arbitrary (adjacent ranks). The
+    // bounded prior (one rank, local wins the tie) puts Round Rock first.
+    const candidates = await recall(
+      ['place'],
+      { rehearsalRunId: null, metro: ANCHOR },
+      { term: `${TAG} ema twin`, denseMode: 'none' },
+    );
+    const nearIdx = candidates.findIndex((c) => c.entityId === ids.twinNear);
+    const farIdx = candidates.findIndex((c) => c.entityId === ids.twinFar);
+    expect(nearIdx).toBeGreaterThanOrEqual(0);
+    expect(farIdx).toBeGreaterThanOrEqual(0);
+    expect(nearIdx).toBeLessThan(farIdx);
+    // Without an anchor the same probe is ordered by evidence alone.
+    const unanchored = await recall(
+      ['place'],
+      { rehearsalRunId: null, metro: null },
+      { term: `${TAG} ema twin`, denseMode: 'none' },
+    );
+    expect(unanchored.some((c) => c.entityId === ids.twinFar)).toBe(true);
+  });
+
+  it('the prior is BOUNDED: worth exactly one rank, never two', () => {
+    // Pure arithmetic of the stated law: a local row one rank behind ties
+    // the far row (and wins the tie); two ranks behind, it does not reach it.
+    const K = 60;
+    const far0 = 1 / K;
+    expect(EntityTextSearchService.geographyPriorScore([1])).toBeCloseTo(
+      far0,
+      12,
+    );
+    expect(EntityTextSearchService.geographyPriorScore([2])).toBeLessThan(far0);
+    // Rank 0 cannot be bettered.
+    expect(EntityTextSearchService.geographyPriorScore([0])).toBeCloseTo(
+      far0,
+      12,
+    );
   });
 });

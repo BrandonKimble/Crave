@@ -84,6 +84,11 @@ const RULE_RELEASES: readonly RuleRelease[] = [
     fingerprint: 'e0236ace3f8a',
     note: 'Merge-batch repair 2026-08-30 (plans/merge-batch-audit.md): THE CORPUS-GLOBAL LAW replaces the home-restaurant fold section — item/ingredient entities are corpus-global, so merge = IDENTITY ONLY (fragmentation study §4). The narration-decoration and channel-wording same-restaurant fold clauses are DELETED (that unification belongs to extraction pro-forms / emit-as-spoken, never an entity fold); venue-name decoration stays as an identity ruling; "same restaurant" is declared never a ground for match, and category/specification/format/broader-narrower named as self-refuting reasons. same_place is re-scoped to mention hearings only (the sweep no longer sends it — its footprint-overlap flag licensed the 47 wrong merges). The bump re-opens every judged pair; the 48 overturned verdicts sit as holds',
   },
+  {
+    version: 6,
+    fingerprint: '60c56f32f741',
+    note: 'Identity is global (owner ruling 2026-09-04): recall no longer hides far places from the judge (the metro radius became a ranking prior), so the judge is now SHOWN geography — the document\'s `community` and each place candidate\'s `location` ("Chicago, IL" / "ungrounded") — with the law that geography is evidence of sameness never a verdict by itself: a full distinctive brand name far away can be the same business (Franklin Barbecue in a NY thread; a Chicagoan\'s "Ema" in r/austinfood), a short or nicknamed name far away is usually a different one (Rudy\'s vs Rudy\'s Bar & Grill) — the metro gate\'s ladder in words. The bump re-opens every judged pair: entity_match memory at v5 is forgotten (each remembered "new" is re-bought on its next mention — demand-side, no drain), and dedupe holds become due a re-hearing',
+  },
 ];
 
 function resolveRuleVersion(): number {

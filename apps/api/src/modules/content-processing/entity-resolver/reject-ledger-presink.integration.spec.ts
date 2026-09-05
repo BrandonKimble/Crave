@@ -181,6 +181,7 @@ const candidate = (entityId: string, name: string): RecallCandidate => ({
   sparseEvidence: null,
   denseRank: null,
   denseCosine: null,
+  metroLocal: null,
 });
 
 const forbiddenJudge = (): jest.Mock =>

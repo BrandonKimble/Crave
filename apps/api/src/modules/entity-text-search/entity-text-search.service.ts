@@ -11,24 +11,36 @@ import {
 import { EmbeddingService } from '../external-integrations/llm/embedding.service';
 import { DeniedNameRegistryService } from './denied-name-registry.service';
 import {
-  metroAdmissiblePlaceSql,
+  metroDistanceKmSql,
+  MetroAdoptionService,
   type MetroAnchor,
 } from '../content-processing/entity-resolver/metro-adoption.service';
 
 /**
  * THE COURT SEES THE WHOLE ROSTER (recall-scope rederivation, 2026-09-04).
  *
- * Resolution's identity tiers (exact / surface / joined) and its metro
- * adoption gate define WHAT A MENTION MAY ADOPT: every active or pending
- * entity, this run's own rehearsal mints, and — for places — anything with
- * a location inside the metro or no geocode at all. The judge's candidate
- * recall used to see a NARROWER world on both axes: `status = 'active'`
- * only (so the same shadow run minted "Salt Lick" and "Salt Lick Bbq" —
- * the second mention's judge was never shown the first mint) and the
- * engine's place-DAG polygon (Austin proper — so Round Rock's "Cuba Bakery
- * & Café", 80 km-adoptable by the gate, was unrecallable, and the judge,
- * shown "Cafe Java, Asia Cafe, NG Cafe", correctly said "new" and minted
- * a twin; 48 anchored places lost support that way in the v23 shadow).
+ * Resolution's identity tiers (exact / surface / joined) define WHICH ROWS
+ * a mention may adopt: every active or pending entity, plus this run's own
+ * rehearsal mints. The judge's candidate recall used to see `status =
+ * 'active'` only — so the same shadow run minted "Salt Lick" and "Salt
+ * Lick Bbq" (the second mention's judge was never shown the first mint) —
+ * and hard-filtered places by the engine's place-DAG polygon (Austin
+ * proper — Round Rock's "Cuba Bakery & Café" was unrecallable and the
+ * judge, shown "Cafe Java, Asia Cafe, NG Cafe", correctly said "new" and
+ * minted a twin; 48 anchored places lost support that way in the v23
+ * shadow).
+ *
+ * IDENTITY IS GLOBAL — recall is NEVER scoped by geography (owner ruling,
+ * 2026-09-04). For one day the adoption scope swapped the polygon for the
+ * metro gate's 80 km radius, which was still a filter: when a Chicagoan
+ * writes "I personally love Aba, Ema, RPM" in r/austinfood, the real
+ * Chicago Ema (held from another community) was invisible and a twin was
+ * minted — and the judge could not weigh geography it never saw. Geography
+ * is now a RANKING PRIOR on the fused shortlist (see retrieveCandidates)
+ * and a FACT the judge is shown (each place candidate's `location`, the
+ * document's `community`); the metro adoption GATE — a nickname may not
+ * travel across the country, a full name may — is untouched and still
+ * decides adoption after the judge.
  *
  * An AdoptionScope makes the recall's world exactly the adoptable world.
  * Callers that are NOT adopting (search, autocomplete, the gazetteer) pass
@@ -38,9 +50,9 @@ export interface AdoptionScope {
   /** This run's own rehearsal mints are recallable; foreign shadows never. */
   rehearsalRunId: string | null;
   /**
-   * The community's metro anchor (MetroAdoptionService.anchorForEngine).
-   * null = the gate stands down (no anchor) and so does the geo-scope:
-   * places recall globally, exactly as they adopt.
+   * The community's metro anchor (MetroAdoptionService.anchorForEngine) —
+   * the geography PRIOR's reference point, never a filter. null = no
+   * anchor: the shortlist is ordered by evidence alone.
    */
   metro: MetroAnchor | null;
 }
@@ -157,6 +169,13 @@ export interface RecallCandidate {
   sparseEvidence: TextMatchEvidence | null;
   denseRank: number | null;
   denseCosine: number | null;
+  /**
+   * The geography PRIOR's input (adoption recall only): true when a place
+   * has a geocoded location within the metro radius of the adoption
+   * anchor, false when every geocoded location is farther (or it has none),
+   * null when no prior applied (no anchor, not a place, reader scope).
+   */
+  metroLocal: boolean | null;
 }
 
 import {
@@ -238,11 +257,8 @@ export class EntityTextSearchService {
       };
     }
     const run = adoption.rehearsalRunId;
-    const metro = adoption.metro;
     return {
-      key: `adoptable|run:${run ?? ''}|metro:${
-        metro ? `${metro.lat},${metro.lng}` : ''
-      }`,
+      key: `adoptable|run:${run ?? ''}`,
       // THE SAME LAW THE TIERS APPLY (entity-resolution.service.ts, the
       // rehearsal predicates): live rows, plus rehearsal rows born in THIS
       // run. Archived rows are tombstones and never candidates.
@@ -254,12 +270,10 @@ export class EntityTextSearchService {
                    AND ${e}.born_extraction_run_id = ${run}::uuid))`
           : Prisma.sql`${e}.status IN ('active'::entity_status, 'pending'::entity_status)`;
       },
-      placeSql: (alias) =>
-        Promise.resolve(
-          metro
-            ? Prisma.sql`AND ${metroAdmissiblePlaceSql(alias, metro)}`
-            : Prisma.empty,
-        ),
+      // IDENTITY IS GLOBAL: no geography in the adoptable world. The
+      // anchor reaches the shortlist as a ranking prior (retrieveCandidates)
+      // and the judge as a fact, never as a place filter.
+      placeSql: () => Promise.resolve(Prisma.empty),
     };
   }
 
@@ -618,9 +632,11 @@ export class EntityTextSearchService {
       ]);
     }
 
-    const K = 60;
+    const K = EntityTextSearchService.RRF_K;
     const byId = new Map<string, RecallCandidate>();
-    const ensure = (m: TextSearchMatch): RecallCandidate => {
+    /** Every lane rank a candidate earned — the geography prior's input. */
+    const laneRanks = new Map<string, number[]>();
+    const ensure = (m: TextSearchMatch, rank: number): RecallCandidate => {
       let c = byId.get(m.entityId);
       if (!c) {
         c = {
@@ -633,30 +649,31 @@ export class EntityTextSearchService {
           sparseEvidence: null,
           denseRank: null,
           denseCosine: null,
+          metroLocal: null,
         };
         byId.set(m.entityId, c);
       }
+      laneRanks.set(m.entityId, [...(laneRanks.get(m.entityId) ?? []), rank]);
+      c.rrf += 1 / (K + rank);
       return c;
     };
 
     sparse.forEach((m, rank) => {
-      const c = ensure(m);
+      const c = ensure(m, rank);
       c.sparseRank = rank;
       c.sparseSimilarity = m.similarity;
       c.sparseEvidence = m.evidence;
-      c.rrf += 1 / (K + rank);
     });
     dense.forEach((m, rank) => {
-      const c = ensure(m);
+      const c = ensure(m, rank);
       c.denseRank = rank;
       c.denseCosine = m.similarity;
-      c.rrf += 1 / (K + rank);
     });
     // A localized hit is sparse-grade evidence: it matched a real stored
     // surface, in the requester's language. It only ever RAISES a candidate's
     // evidence (a lane cannot demote what another lane matched better).
     (await localizedPromise).forEach((m, rank) => {
-      const c = ensure(m);
+      const c = ensure(m, rank);
       if (
         c.sparseSimilarity === null ||
         (m.similarity ?? 0) > c.sparseSimilarity
@@ -664,12 +681,96 @@ export class EntityTextSearchService {
         c.sparseSimilarity = m.similarity;
         c.sparseEvidence = m.evidence;
       }
-      c.rrf += 1 / (K + rank);
     });
 
-    return Array.from(byId.values())
-      .sort((a, b) => b.rrf - a.rrf)
+    const fused = Array.from(byId.values());
+    const anchor = options.adoption?.metro ?? null;
+    const geoScore = new Map<string, number>();
+    if (anchor && fused.some((c) => c.type === 'place')) {
+      const local = await this.metroLocalPlaceIds(
+        fused.filter((c) => c.type === 'place').map((c) => c.entityId),
+        anchor,
+      );
+      for (const c of fused) {
+        if (c.type !== 'place') continue;
+        c.metroLocal = local.has(c.entityId);
+        if (c.metroLocal) {
+          geoScore.set(
+            c.entityId,
+            EntityTextSearchService.geographyPriorScore(
+              laneRanks.get(c.entityId) ?? [],
+            ),
+          );
+        }
+      }
+    }
+    const scoreOf = (c: RecallCandidate): number =>
+      geoScore.get(c.entityId) ?? c.rrf;
+
+    return fused
+      .sort(
+        (a, b) =>
+          scoreOf(b) - scoreOf(a) ||
+          Number(b.metroLocal === true) - Number(a.metroLocal === true) ||
+          b.rrf - a.rrf ||
+          a.name.localeCompare(b.name),
+      )
       .slice(0, limit);
+  }
+
+  /** Reciprocal Rank Fusion's k: `Σ 1/(k+rank)`, k=60 (the canonical value). */
+  private static readonly RRF_K = 60;
+
+  /**
+   * THE GEOGRAPHY PRIOR — a BOUNDED tie-break on the fused shortlist
+   * (identity-is-global ruling, 2026-09-04).
+   *
+   * A metro-local place is scored as if it had placed ONE RANK HIGHER in
+   * every lane that returned it, and wins a tie on that adjusted score; a
+   * remaining tie falls back to the raw fusion score. So the prior is worth
+   * exactly one rank: at equal evidence (adjacent ranks — the order the SQL
+   * lanes give two equally-similar fuzzy hits is arbitrary) the near place
+   * comes first, while a far place that OUT-EVIDENCES a near one by two or
+   * more ranks in a lane keeps its place. A far EXACT-name match (rank 0 in
+   * the sparse lane) therefore always surfaces at or next to the top — it
+   * can be joined by a near rank-1 place, never buried. Geography orders the
+   * roster the judge reads; it never decides sameness — the judge is shown
+   * each candidate's location and rules on it, and the metro adoption gate
+   * still governs what a nickname may reach.
+   */
+  static readonly GEOGRAPHY_PRIOR_RANKS = 1;
+
+  static geographyPriorScore(ranks: readonly number[]): number {
+    return ranks.reduce(
+      (sum, rank) =>
+        sum +
+        1 /
+          (EntityTextSearchService.RRF_K +
+            Math.max(0, rank - EntityTextSearchService.GEOGRAPHY_PRIOR_RANKS)),
+      0,
+    );
+  }
+
+  /**
+   * Which of these places have a geocoded location within the metro radius
+   * of the anchor — spelled with THE one metro-distance law
+   * (metroDistanceKmSql) and the gate's own radius, so "local" here means
+   * exactly what it means to MetroAdoptionService.geoVerdicts.
+   */
+  private async metroLocalPlaceIds(
+    placeIds: string[],
+    anchor: MetroAnchor,
+  ): Promise<Set<string>> {
+    if (!placeIds.length) return new Set();
+    const rows = await this.prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT DISTINCT rl.restaurant_id AS id
+        FROM core_restaurant_locations rl
+       WHERE rl.restaurant_id = ANY(${placeIds}::uuid[])
+         AND rl.latitude IS NOT NULL AND rl.longitude IS NOT NULL
+         AND ${metroDistanceKmSql(Prisma.sql`rl.latitude`, Prisma.sql`rl.longitude`, anchor)}
+             < ${MetroAdoptionService.METRO_RADIUS_KM}
+    `);
+    return new Set(rows.map((r) => r.id));
   }
 
   async searchEntities(

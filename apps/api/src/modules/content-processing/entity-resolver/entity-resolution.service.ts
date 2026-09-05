@@ -137,6 +137,9 @@ export class EntityResolutionService implements OnModuleInit {
   // BOTH K values (zero verdict flips), while K=15 inflates the judge's
   // candidate payload +46%. Re-run the probe before changing.
   private static readonly LLM_MATCHER_SHORTLIST_K = 8;
+  /** The `location` a place candidate with no geocoded location is shown
+   *  with — the judge is told we do not know where it is. */
+  static readonly UNGROUNDED_LOCATION = 'ungrounded';
   // Bound on concurrent LLM match calls within a batch (rate-limit friendly).
   private static readonly LLM_MATCHER_CONCURRENCY = 8;
 
@@ -1730,12 +1733,14 @@ export class EntityResolutionService implements OnModuleInit {
     }
 
     // THE COURT SEES THE WHOLE ROSTER (recall-scope rederivation,
-    // 2026-09-04): the judge's shortlist is drawn from exactly the world a
+    // 2026-09-04): the judge's shortlist is drawn from exactly the rows a
     // mention may ADOPT — the tiers' status law (active/pending + this
-    // run's rehearsal mints) and the metro gate's geography (80 km from
-    // the community's anchor, ungrounded places included; no anchor = no
-    // geo-scope, exactly as the gate stands down). It used to be drawn
-    // from the READER's world (active only, engine place-DAG polygon), so
+    // run's rehearsal mints) — with NO geography filter: identity is
+    // global (owner ruling, same day). The metro anchor rides along as a
+    // ranking PRIOR (a near place outranks a far one at equal evidence)
+    // and each place candidate's location is shown to the judge below;
+    // the metro adoption GATE still rules after the judge. Recall used to
+    // be the READER's world (active only, engine place-DAG polygon), so
     // Round Rock's "Cuba Bakery & Café" was adoptable but unrecallable and
     // the judge minted its twin; the same run's "Salt Lick" mint was
     // invisible to its second mention "Salt Lick Bbq".
@@ -1832,6 +1837,38 @@ export class EntityResolutionService implements OnModuleInit {
         homesById.set(row.entity_id, row.homes ?? []);
       }
     }
+    // Candidate LOCATIONS in one round-trip (identity is global, owner
+    // ruling 2026-09-04): recall no longer hides far places, so the judge
+    // is shown WHERE each place candidate is (city/region of its primary
+    // geocoded location, "ungrounded" when it has none) beside the
+    // document's `community` — geography as evidence it weighs, mirroring
+    // the metro gate's ladder (a full brand name may travel, a nickname
+    // may not), never a filter it cannot see.
+    const locationById = new Map<string, string>();
+    if (candidateIds.length && entityType === 'place') {
+      const rows = await this.prisma.$queryRaw<
+        Array<{ entity_id: string; city: string | null; region: string | null }>
+      >(Prisma.sql`
+        SELECT DISTINCT ON (rl.restaurant_id)
+               rl.restaurant_id AS entity_id, rl.city, rl.region
+          FROM core_restaurant_locations rl
+         WHERE rl.restaurant_id = ANY(${candidateIds}::uuid[])
+           AND rl.latitude IS NOT NULL AND rl.longitude IS NOT NULL
+         ORDER BY rl.restaurant_id, rl.is_primary DESC, rl.created_at ASC`);
+      for (const row of rows) {
+        const label = [row.city, row.region]
+          .map((part) => part?.trim() ?? '')
+          .filter((part) => part.length > 0)
+          .join(', ');
+        if (label) locationById.set(row.entity_id, label);
+      }
+    }
+    const locationOf = (entityId: string): string =>
+      locationById.get(entityId) ?? EntityResolutionService.UNGROUNDED_LOCATION;
+    const community = engineId
+      ? await this.metroAdoption.communityForEngine(engineId)
+      : null;
+
     const samePlaceFor = (
       mentionPlace: string | null | undefined,
       homes: string[],
@@ -1941,12 +1978,16 @@ export class EntityResolutionService implements OnModuleInit {
           // D2 context standard: the verbatim mention + thread restaurant.
           mention: r.entity.mentionQuote ?? null,
           threadPlace: r.entity.mentionPlace ?? null,
+          community,
           candidates: r.shown.map((c, i) => {
             const homes = homesById.get(c.entityId) ?? [];
             return {
               id: i,
               name: c.name,
               aliases: aliasesById.get(c.entityId) ?? undefined,
+              ...(entityType === 'place'
+                ? { location: locationOf(c.entityId) }
+                : {}),
               ...(homes.length ? { homePlaces: homes } : {}),
               ...(homes.length
                 ? {
@@ -2757,6 +2798,12 @@ export class EntityResolutionService implements OnModuleInit {
             // D2 context standard — same evidence the batch judge carries.
             mention: entity.mentionQuote ?? null,
             threadPlace: entity.mentionPlace ?? null,
+            // The document's community, as the batch judge sees it; overlay
+            // candidates are this run's unpersisted mints and carry no
+            // location of their own.
+            community: entity.engineId
+              ? await this.metroAdoption.communityForEngine(entity.engineId)
+              : null,
             kind:
               entityType === 'place'
                 ? 'place'

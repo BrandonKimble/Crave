@@ -40,15 +40,23 @@ export const entityMatchCandidateWire = (candidate: {
   aliases?: string[];
   homePlaces?: string[];
   samePlace?: boolean;
+  location?: string | null;
 }): {
   id: number;
   name: string;
   aliases?: string[];
   home_places?: string[];
   same_place?: boolean;
+  location?: string;
 } => ({
   id: candidate.id,
   name: candidate.name,
+  // Place candidates: where the candidate is ("Chicago, IL", or
+  // "ungrounded") — geography as a FACT the judge weighs, never a filter
+  // (identity is global, 2026-09-04).
+  ...(candidate.location?.trim()
+    ? { location: candidate.location.trim() }
+    : {}),
   ...(candidate.aliases?.length
     ? { aliases: candidate.aliases.slice(0, ENTITY_MATCH_ALIAS_CAP) }
     : {}),
@@ -71,12 +79,15 @@ export const entityMatchContextWire = (input: {
   mention?: string | null;
   threadPlace?: string | null;
   termHomePlaces?: string[];
+  community?: string | null;
 }): {
   mention?: string;
   thread_place?: string;
   term_home_places?: string[];
+  community?: string;
 } => ({
   ...(input.mention?.trim() ? { mention: input.mention.trim() } : {}),
+  ...(input.community?.trim() ? { community: input.community.trim() } : {}),
   ...(input.threadPlace?.trim()
     ? { thread_place: input.threadPlace.trim() }
     : {}),
@@ -108,11 +119,12 @@ export const entityMatchContextWire = (input: {
 export const ENTITY_MATCH_SINGLE_ENVELOPE = `## Request protocol
 
 This request carries ONE judgment: \`{"term", "kind", "candidates"}\`, and may
-also carry the evidence fields \`mention\`, \`thread_place\`, and
-\`term_home_places\` described above.
+also carry the evidence fields \`mention\`, \`thread_place\`,
+\`term_home_places\`, and \`community\` described above.
 
 Each candidate carries a \`name\` and may also carry \`aliases\`,
-\`home_places\`, and \`same_place\` — evidence fields described above.
+\`home_places\`, \`same_place\`, and \`location\` — evidence fields
+described above.
 
 Return \`{"decision", "candidate_id"}\`, where \`decision\` is \`match\`, \`new\`,
 or \`reject\`, and \`candidate_id\` is the matched candidate's id for \`match\`
@@ -123,14 +135,16 @@ export const ENTITY_MATCH_BATCH_ENVELOPE = `## Request protocol — batch
 This request carries SEVERAL independent judgments at once:
 \`{"kind": ..., "items": [{"index", "term", "candidates"}]}\`. Every item shares
 the top-level \`kind\`, and an item may also carry the evidence fields
-\`mention\`, \`thread_place\`, and \`term_home_places\` described above.
+\`mention\`, \`thread_place\`, \`term_home_places\`, and \`community\`
+described above.
 
 Apply everything above to EACH item on its own terms. Item i's \`term\` is judged
 ONLY against item i's own \`candidates\` — never against another item's, and one
 item's verdict never influences another's.
 
 Each candidate carries a \`name\` and may also carry \`aliases\`,
-\`home_places\`, and \`same_place\` — evidence fields described above.
+\`home_places\`, \`same_place\`, and \`location\` — evidence fields
+described above.
 
 Return \`{"items": [{"index", "decision", "candidateId"}]}\` covering every input
 index exactly once, where \`decision\` is \`match\`, \`new\`, or \`reject\`, and

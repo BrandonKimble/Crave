@@ -34,12 +34,13 @@ export interface MetroAnchor {
  * THE ONE METRO-DISTANCE LAW. Great-circle km (haversine) from a location
  * row's lat/lng columns to the anchor. Every place-geography question the
  * adoption ladder asks — the gate's verdict, the local re-resolve, and the
- * judge's candidate recall (recall-scope rederivation, 2026-09-04) — is
- * spelled with THIS fragment, so "local" cannot mean two different radii in
- * two different tiers. The judge's recall used to hard-filter places by the
- * engine's place-DAG polygon (Austin proper) while the gate that ADOPTS
- * measured 80 km from the anchor: Round Rock's "Cuba Bakery & Café" was
- * adoptable but unrecallable, and the judge minted its twin.
+ * judge's recall GEOGRAPHY PRIOR (entity-text-search.service.ts,
+ * metroLocalPlaceIds) — is spelled with THIS fragment, so "local" cannot
+ * mean two different radii in two different tiers. Recall is never
+ * geo-FILTERED (identity is global, owner ruling 2026-09-04): the judge's
+ * recall used to hard-filter places by the engine's place-DAG polygon,
+ * then for a day by this radius, and either way the judge could not see —
+ * let alone weigh — a far candidate that was the real business.
  */
 export function metroDistanceKmSql(
   latColumn: Prisma.Sql,
@@ -51,35 +52,6 @@ export function metroDistanceKmSql(
     + cos(radians(${anchor.lat})) * cos(radians(${latColumn}::float))
     * pow(sin(radians(${lngColumn}::float - ${anchor.lng}) / 2), 2)
   ))`;
-}
-
-/**
- * The gate's admissibility, as a WHERE fragment over `core_entities` alias
- * `e`: a place is within the metro when one geocoded location sits inside
- * METRO_RADIUS_KM of the anchor — OR when it has no geocoded location at
- * all (verdict 'unknown' stands the gate down; round-13 F5). Non-place
- * entities are never geo-scoped.
- */
-export function metroAdmissiblePlaceSql(
-  entityAlias: string,
-  anchor: MetroAnchor,
-): Prisma.Sql {
-  const e = Prisma.raw(entityAlias);
-  return Prisma.sql`(
-    ${e}.type <> 'place'::entity_type
-    OR NOT EXISTS (
-      SELECT 1 FROM core_restaurant_locations rl
-       WHERE rl.restaurant_id = ${e}.entity_id
-         AND rl.latitude IS NOT NULL AND rl.longitude IS NOT NULL
-    )
-    OR EXISTS (
-      SELECT 1 FROM core_restaurant_locations rl
-       WHERE rl.restaurant_id = ${e}.entity_id
-         AND rl.latitude IS NOT NULL AND rl.longitude IS NOT NULL
-         AND ${metroDistanceKmSql(Prisma.sql`rl.latitude`, Prisma.sql`rl.longitude`, anchor)}
-             < ${MetroAdoptionService.METRO_RADIUS_KM}
-    )
-  )`;
 }
 
 @Injectable()
@@ -94,6 +66,10 @@ export class MetroAdoptionService {
     { value: { lat: number; lng: number } | null; cachedAt: number }
   >();
   private static readonly ANCHOR_CACHE_TTL_MS = 5 * 60 * 1000;
+  private readonly communityCache = new Map<
+    string,
+    { value: string | null; cachedAt: number }
+  >();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -126,6 +102,30 @@ export class MetroAdoptionService {
     const anchor = rows[0] ?? null;
     this.anchorCache.set(engineId, { value: anchor, cachedAt: Date.now() });
     return anchor;
+  }
+
+  /** The community's name — its anchor place's name ("Austin"), the
+   *  `community` fact the entity-match judge is shown beside each place
+   *  candidate's `location` (identity-is-global ruling, 2026-09-04). Null
+   *  = no anchor place. Cached like the anchor: a handful of engines. */
+  async communityForEngine(engineId: string): Promise<string | null> {
+    const cached = this.communityCache.get(engineId);
+    if (
+      cached &&
+      Date.now() - cached.cachedAt < MetroAdoptionService.ANCHOR_CACHE_TTL_MS
+    ) {
+      return cached.value;
+    }
+    const rows = await this.prisma.$queryRaw<Array<{ name: string }>>`
+      SELECT p.name
+      FROM sources s
+      JOIN places p ON p.place_id = s.anchor_place_id
+      WHERE s.engine_id::text = ${engineId}
+      LIMIT 1
+    `;
+    const name = rows[0]?.name?.trim() || null;
+    this.communityCache.set(engineId, { value: name, cachedAt: Date.now() });
+    return name;
   }
 
   /** Geo verdict per restaurant: 'local' (a geocoded location inside the

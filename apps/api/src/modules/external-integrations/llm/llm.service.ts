@@ -1715,11 +1715,13 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         aliases?: string[];
         homePlaces?: string[];
         samePlace?: boolean;
+        location?: string | null;
       }[];
       /** D2 context standard — see LLMEntityMatchInput for field docs. */
       mention?: string | null;
       threadPlace?: string | null;
       termHomePlaces?: string[];
+      community?: string | null;
     }[];
   }): Promise<
     {

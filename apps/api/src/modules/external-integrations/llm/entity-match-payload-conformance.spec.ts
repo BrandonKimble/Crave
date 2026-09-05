@@ -146,6 +146,10 @@ const captureWire = async (mode: 'single' | 'batch'): Promise<Wire> => {
       aliases: ['tacos'],
       homePlaces: ['Amaya’s Taco Village'],
       samePlace: true,
+      // Geography evidence (identity is global, 2026-09-04): a place
+      // candidate's location — fed here so the `location` field is on the
+      // wire this fixture captures.
+      location: 'Austin, TX',
     },
   ];
   if (mode === 'single') {
@@ -155,6 +159,7 @@ const captureWire = async (mode: 'single' | 'batch'): Promise<Wire> => {
       mention: 'Get the al pastor taco at Amaya’s.',
       threadPlace: 'Amaya’s Taco Village',
       termHomePlaces: ['Amaya’s Taco Village'],
+      community: 'Austin',
       candidates,
     } as never);
   } else {
@@ -166,6 +171,7 @@ const captureWire = async (mode: 'single' | 'batch'): Promise<Wire> => {
           mention: 'Get the al pastor taco at Amaya’s.',
           threadPlace: 'Amaya’s Taco Village',
           termHomePlaces: ['Amaya’s Taco Village'],
+          community: 'Austin',
           candidates,
         },
       ],

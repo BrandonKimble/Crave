@@ -384,6 +384,10 @@ export interface LLMEntityMatchCandidate {
    *  mentioned/served at (the OTOKO rule made mechanical). Wire field:
    *  `same_place`. */
   samePlace?: boolean;
+  /** Place candidates: city/region of the candidate's primary location,
+   *  or "ungrounded" when it has none — geography is a FACT the judge
+   *  weighs (identity is global, 2026-09-04). Wire field: `location`. */
+  location?: string | null;
 }
 
 export interface LLMEntityMatchInput {
@@ -403,6 +407,10 @@ export interface LLMEntityMatchInput {
   /** Sweep hearings: restaurant(s) the term's own entity is connected to.
    *  Wire field: `term_home_places`. */
   termHomePlaces?: string[];
+  /** The community the mention was written in (its engine's metro name,
+   *  e.g. "Austin") — read with each candidate's `location`. Wire field:
+   *  `community`. */
+  community?: string | null;
 }
 
 export interface LLMEntityMatchResult {

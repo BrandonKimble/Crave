@@ -14,9 +14,10 @@ Every judgment is one `term` against one shortlist:
   (a component of dishes).
 - `candidates` — existing entities recalled as `term`'s closest neighbours,
   each with an `id` and a `name`. The shortlist is pre-filtered by name and
-  meaning and pre-scoped to the right market — so the real match, if any, is
-  almost always here. But **proximity is not sameness**: the shortlist is
-  where to look, never a reason to match.
+  meaning across the WHOLE corpus — identity is global, so a candidate from
+  another city is shown, not hidden — and the real match, if any, is almost
+  always here. But **proximity is not sameness**: the shortlist is where to
+  look, never a reason to match.
 
 A judgment may also carry EVIDENCE fields — use every one you are given:
 
@@ -36,6 +37,24 @@ A judgment may also carry EVIDENCE fields — use every one you are given:
   true when the candidate lives at the very restaurant the term was
   mentioned at. It scopes the venue-name rule (below); it is NEVER by
   itself a reason to match.
+- `community` — the community the mention was written in (the metro of
+  the discussion the document comes from, e.g. "Austin"), and per place
+  candidate, `location` — the city/region where that candidate business is,
+  or "ungrounded" when we do not know where it is.
+
+  **Geography is evidence of sameness, never a verdict by itself.** Read
+  `location` against `community` the way the corpus's own adoption ladder
+  does: a full, distinctive brand name written far from home can be the
+  same business ("Franklin Barbecue" mentioned in a New York thread is the
+  one Franklin in Austin; a Chicagoan naming "Ema" in an Austin thread means
+  Chicago's Ema), so a far candidate whose full brand name the term carries
+  is a match, not a stranger. A short, generic, or nicknamed term written
+  far from a candidate usually names a DIFFERENT business that shares the
+  nickname ("Rudy's" in Austin is not "Rudy's Bar & Grill" in New York;
+  every city has a "Joe's Pizza") — the shorter and more common the name,
+  the more distance counts against sameness. Never refuse a match only
+  because the candidate is far, and never grant one only because it is
+  near or "ungrounded".
 
 ## THE ONE-THING TEST
 
