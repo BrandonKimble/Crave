@@ -32,6 +32,19 @@ looks like a dish, and a comparison looks like a property.
 A failure at any test ends the work for that claim. Test in order: they run
 cheapest-first, and each one protects the tests after it.
 
+**PRECEDENCE — when two instructions seem to pull opposite ways, this order
+decides, and nothing below outranks it.** (1) MODE before quality: whose
+kitchen made it and whether it was served or carried off (B.2) is settled
+before any verdict is weighed. (2) ACTS ARE PER CLAUSE, never per source: a
+source has no genre, and a subject lands only on its OWN clauses (A.0). (3)
+THE ONE QUESTION (A.1) decides only BARE nominations; a clause with its own
+words is judged on its own words. (4) AS WRITTEN before everything
+downstream: names and dish words are transcribed, never repaired (B.3, C.2).
+(5) THE ASSEMBLY (F.0): a source emits the UNION of what its clauses earned,
+never the single best mention. Every rule in this document is an application
+of one of these five; an example that seems to contradict them is illustrative
+and loses.
+
 ---
 
 ## Processing loop and scope
@@ -160,11 +173,14 @@ example outweighs it.**
   after the marker IS the verdict; the praise before it is not.** "Good,
   but definitely nothing special" lands on "nothing special"; "nice and
   crispy but very average" lands on "average"; "liked it — but didn't love"
-  takes the praise back to the ordinary; "found the food delicious, but …
-  Not worth it" and "Good, but definitely not worth waiting on a long-ass
-  line for" land on "not worth" — all low, and nothing emits for those
-  subjects. The downgrade need not concern flavor: value, wait, or price
-  qualifying THIS subject's verdict defeats it. **What the marker does
+  takes the praise back to the ordinary — all low, and nothing emits for
+  those subjects. **A downgrade must be about the EATING.** Price, value,
+  wait, parking, or a policy qualifying a subject the writer liked never
+  defeats the verdict: "great but pricey", "delicious but not worth the
+  line", "good, not the best value" all VOUCH — nobody keeps calling food
+  great that they did not like — and the stated property enters the
+  arrays with its own sign (`expensive`; a long wait is not an attribute).
+  Only a landing AT or BELOW the ordinary on how it ate withholds. **What the marker does
   depends on the WEIGHT of the clause after it**: a REAL verdict after the
   marker reverses the frame ("wasn't sure about it, but honestly great",
   "…but their queso is genuinely great" land high), while a MILD word after
@@ -244,7 +260,11 @@ The writer vouches from experience, or reports a clear consensus:
   passed on as the writer's protip is the writer's own steer. (The steer
   still walks Steps B and C: "junk the tortillas and get fresh ones from
   HEB" steers you to a grocery SHELF — B.2, nothing emits.)
-- Consensus reported: "people rave about \_\_\_", "this sub loves \_\_\_".
+- **Never anyone else's experience.** Reported consensus ("people rave
+  about \_\_\_", "this sub loves \_\_\_", "highly rated"), a companion's
+  verdict, a crowd's number — none of it is this writer's testimony (A.2,
+  HEARSAY). Only what this writer ate and judged, or names as their own
+  pick, counts.
 - **THE VOLUNTEER PRINCIPLE — choosing to answer is itself the
   endorsement.** One insight, three faces: a NAME offered to a rec ask is a
   pick (the ANSWER TEST, next); a DEAL offered to a thread that wants one is
@@ -268,11 +288,13 @@ The writer vouches from experience, or reports a clear consensus:
   INSTEAD is still describing the menu: the asker wanted waffles, and
   nobody asked for pancakes, so no pancake was handed to anyone. A report of
   today's board ("The current daily special at X is swordfish") volunteers
-  nothing because NOBODY ASKED — an unsolicited board report, not an
-  answer to a want (how long the thing lasts is irrelevant: a limited
-  item handed to its asker banks) — while "you're in luck, Jack in the Box has them as a limited item
-  rn", answering "who still does potato wedges?", hands the asker the very
-  thing they wanted, and banks it. The bank is always AN ITEM — each
+  nothing even under an ask: a searcher cannot go get today's special
+  tomorrow, so it is coverage of a DAY, not of a place — while "you're
+  in luck, Jack in the Box has them as a limited item rn", answering
+  "who still does potato wedges?", hands the asker a thing that stands
+  on the menu for now, and banks it. The line is whether the thing is
+  there to be ordered by the next person who reads this, not how the
+  writer phrased it. The bank is always AN ITEM — each
   named item, when the answer hands several: a source whose
   words name no orderable thing ("serves BBQ" — a tradition, not an order)
   banks nothing, not even a bare place; a list reply banks only each entry's
@@ -330,7 +352,17 @@ The writer vouches from experience, or reports a clear consensus:
   that endorses WITHOUT naming ("+1", "Facts") is the AFFIRMATION move
   below. Count every entry and emit each (B.1's most-common-miss law):
   headings, per-neighborhood groupings, "My classification", and a
-  first-person sentence beside the list demote nothing. Two conditions,
+  first-person sentence beside the list demote nothing. **STRUCTURE IS
+  TEXT.** Writers carry meaning in the SHAPE of a reply as much as in its
+  words: a heading, a label, a grouping, a "Category - Place" line, a
+  table, one-name-per-line. Read the shape the writer used, whatever it
+  is, and let it supply to every entry beneath or beside it exactly what
+  an inline phrase would — "TACOS:" over a list is "PLACE for tacos"
+  written vertically (each entry inherits `taco`); "Italian - Artipasta"
+  is "Artipasta, Italian" (a stated cuisine); "Breakfast:" over a list
+  names an OCCASION (a place attribute, never a dish — C.1). Nobody
+  formats a list to withhold context; there is no rule per format, only
+  the reading a careful person gives the shape in front of them. Two conditions,
   both required:
   1. **THE ONE QUESTION, asked of the ASK — two probes, in order.**
      **Probe zero is MODE (the MAKER TEST, B.2): is the ask for a SERVED
@@ -514,7 +546,11 @@ The writer vouches from experience, or reports a clear consensus:
   anchor ("birria Landon the best Mexican?") — however admiring the
   phrasing: an ask states what the asker WANTS TO KNOW. Only ANSWERS emit.
   A rhetorical question asks nothing — it asserts — and is judged as the
-  verdict it carries (the LANDING TEST's meaning rule). An asker's separate
+  verdict it carries (the LANDING TEST's meaning rule). **A name offered
+  WITH a question mark, under someone else's rec ask, is a tentative
+  PICK, not an ask** ("Uchiko?", "Have you tried Lamberts?", "Velvet
+  Taco maybe?"): it names a place the asker did not, in answer to their
+  want — the question mark is modesty, and the ANSWER TEST owns it. An asker's separate
   clause reporting their OWN past verdict is A.1 testimony as ever —
   INCLUDING a verdict about the very place the ask then questions ("I
   remember Uchi being one of the best restaurants in the city … is Uchi
@@ -530,9 +566,13 @@ The writer vouches from experience, or reports a clear consensus:
   "James Beard semifinalists"; on promotion — "Wingstop has an offer, code
   FREESAMMY"), marketing, the business's own voice, an APPEARANCE post
   ("Tonight's truck …… Birria-Landia !", "look who pulled up" — presence,
-  not a verdict, and no exclamation mark makes it one), and a TITLE-ONLY
-  CAPTION ("Woodneck Kitchen - The Poor Joe" — a photo labeled with WHAT
-  THIS IS). Naming many restaurants neutrally, or one, is not endorsing
+  not a verdict, and no exclamation mark makes it one). **A diner's OWN
+  photo caption is not an announcement**: "Woodneck Kitchen - The Poor
+  Joe", "Casita Vizuet machete", "the burger at Dai Due" posted by the
+  person who ate it is the same act as "X at Y" written in a reply — an
+  eaten account offered to the community — and it emits the dish at the
+  place (a bare place caption emits the carrier). A business posting its
+  own food, or a roster of what exists, remains the announcing act. Naming many restaurants neutrally, or one, is not endorsing
   them: emit nothing for the announcing act, and judge any verdict clause
   beside it on its own ("…and it made me so happy", "all amazing" emit
   normally). **The announcing act belongs to the ANNOUNCER — never to a
@@ -622,7 +662,16 @@ The writer vouches from experience, or reports a clear consensus:
 - **SELF-PROMOTION.** A writer with a self-disclosed stake in the place —
   "my shop", "we just launched", "our website", staff speaking for the house
   — is the business's own voice, not word-of-mouth: nothing emits, however
-  sincere, and no rule elsewhere rescues it.
+  sincere, and no rule elsewhere rescues it. A relative who merely works
+  there ("my son is a server there, the food is great") is a diner with a
+  connection, not the house's voice; judge the words as ever, and treat
+  only ownership or speaking FOR the business as the stake.
+- **AN ETHICS STEER OR A BOYCOTT.** "Everybody go to X — they treat their
+  staff well", "won't go back after what they did to their servers" are
+  acts about the BUSINESS, not verdicts on the food. They create no food
+  claim and erase none: the food verdict beside them ("I loved their
+  food. Won't go back.") stands on its own words, and a steer with no
+  food clause at all earns nothing.
 - **A VERDICT THAT LANDS AT OR BELOW THE ORDINARY — THE BASELINE TEST.** Ask
   of the landing clause (A.0): **where does this phrase place the food
   relative to the ORDINARY, in the writer's own idiom?** ABOVE it, however
@@ -638,10 +687,16 @@ The writer vouches from experience, or reports a clear consensus:
   for what it is") → withholds. Where a clause LANDS — including what a
   mild word does after a contrast marker — is the LANDING TEST's business;
   this test only reads the clause it landed on.
-- **NEGATIVE CONTENT.** A subject that landed low or negative (A.0), a
-  warning ("I'd skip \_\_\_", "avoid Abbys like the plague"), or a reply to an
-  explicitly negative ask ("worst/avoid/overrated"). Emit nothing **for the
-  criticized subjects** — and only for them.
+- **NEGATIVE CONTENT.** A subject that landed low or negative (A.0), or a
+  warning ("I'd skip \_\_\_", "avoid Abbys like the plague"). Emit nothing
+  **for the criticized subjects** — and only for them. **A negative ask
+  ("worst / avoid / overrated / aggressively mediocre?") is just an ask**:
+  a BARE name under it nominates a criticized subject and emits nothing,
+  while a verdict clause under it lands exactly as it would anywhere
+  ("Secreto Abuela is good" three replies deep in an overrated thread is
+  a vouch; "Franklin still sets the standard" under a thread dunking on
+  Franklin is a vouch). The thread's mood never lands a subject; only the
+  subject's own clauses do (A.0, and PRECEDENCE 2).
 - **PRICE-ONLY commentary.** "priciest in town", "a 300 zł steak", "Also
   supremas enchiladas for 11", "6 dollar beers, 18 dollar spritzes" — quoted
   numbers with no value word and no verdict. A fact clause like any other:
@@ -790,7 +845,9 @@ is the most common miss in large threads: count the names the testimony
 covers, then emit a mention for each.
 
 **A misspelling is still a name.** Emit it as written after normalization —
-resolution happens downstream. But when the writer disclaims the name itself
+resolution happens downstream. **A social-media handle is not a name**:
+"@unmundodesabor.atx", "@gangnamkrnbbq" name an account, not a place —
+nothing emits from a handle, however food-shaped its letters. But when the writer disclaims the name itself
 ("some place called Ravi's or whatever it's called"), the reference is too
 uncertain to carry: skip it.
 
@@ -849,7 +906,10 @@ place; meals are always narrated in the past — "went last week, the
 ramen was perfect" reports a live dish): only availability/existence
 language about the THING does ("used to have/make/serve", "back when
 they had", a one-time bygone offering — "did one over Thanksgiving
-break one year"). (3) A subject whose status nothing states is ALIVE,
+break one year"). A STOCK-OUT is availability, not an ending: "they
+haven't had them the last times we went", "sold out by noon", "only as
+a special now and then" leave the dish alive — restaurants run out of
+what they keep. (3) A subject whose status nothing states is ALIVE,
 and a stated return or reopening overrides an older ending. Run this
 here for every PLACE; Gate 2 (C.1) runs the same test for every DISH.
 
@@ -881,10 +941,10 @@ it.
    Oskar Blues made neither, and earns neither the mention nor the dish.
 3. **NOBODY SERVED IT — the good goes WITH you.** Taken from a shelf,
    a case, a cooler, a freezer, an aisle, or a product page, to be eaten,
-   cooked, or finished elsewhere — **whoever made it**: a factory, the
-   shop's own smokehouse or bakery (a meat market's house-made sausage
-   you grab by the link is this answer, however proudly they made it), or
-   a restaurant's kitchen selling take-home tubs. The MODE decides, not
+   cooked, or finished elsewhere — **whoever made it**: a factory, a
+   STORE's own smokehouse or bakery case (a meat market's house-made
+   sausage you grab by the link, a grocery's pastry case), or a
+   restaurant's kitchen selling take-home tubs, jars, and starters. The MODE decides, not
    the maker: RETAIL, and retail earns nothing — no
    dish, no ingredients, no place — **even when the good needs no
    preparing** (a bottle, a jug of milk, a packaged bar, a six-pack, a
@@ -894,7 +954,14 @@ it.
    restaurant.
 
 A NAMED store whose good goes home with you is answer 3, however famous
-the store; an unnamed counter that cooks for you is answer 2. Ask the
+the store; an unnamed counter that cooks for you is answer 2. **A
+BAKERY, dessert shop, donut shop, ice-cream shop, or cake maker is a
+KITCHEN, not a store**: its business is making what it hands you, so a
+cake, a kolache, a cupcake, a pint from such a place is answer 1 whether
+you ate it at a table or carried it home — the mode question is who
+made it and whether it is a store's STOCK, never whether you sat down.
+(A store's bakery case stays answer 3: the store did not make what it
+stocks the way a bakery does, and its aisles are the business.) Ask the
 maker question of each CLAIM — one business can hold all three answers
 across its claims. (The test decides only who made the FOOD; it never
 touches Step A: a verdict, pick, or affirmation whose subject is a
@@ -912,6 +979,16 @@ application of the three answers above:
   shelf, however good), a bottle found in the cooler, a marinade you cook
   at home. A store praised AS a store ("Ashahi Imports slaps", "Sprouts
   rules!! Fast cheap and organic") is praise of aisles: nothing emits.
+- **A FORMAT you attend is not a plate.** A buffet, a hot bar, a happy
+  hour, a brunch are ways of being served, never things you order (C.1):
+  the format lands as a place attribute (`buffet`, `hot bar`, `happy
+  hour`), a named thing eaten from it is a dish as ever ("the youtiao
+  from the hot bar", "the brisket on the buffet"), and a hot bar or
+  buffet praised as a whole earns the place carrier plus the attribute.
+- **CATERING is a service, not a plate.** "Their catering at the wedding
+  was FIRE" vouches the kitchen — a place carrier (with `catering`) — and
+  names no dish unless the writer names one; nobody searches for a
+  catering order the way they search for a dish.
 - **At a RESTAURANT, what it serves is the kitchen's; a good it sells for
   your pantry is the shelf's.** "Suerte used to sell their masa by the
   pint", a restaurant's bottled sauce, a bakery's take-home starter, a
@@ -1006,7 +1083,8 @@ spelled it. Completing or correcting a name mis-resolves it downstream —
 emission records what was OBSERVED; resolution to the real place is another
 system's job. **Both directions of "fixing" are forbidden.** Never repair a
 typo toward the real-world name ("Dominic Ansel" stays `dominic ansel`,
-"Switf's" stays `switf's` — even when you know who is meant), and never
+"Switf's" stays `switf's`, "Nubelez" stays `nubelez` even though the
+rooftop is Nubeluz — even when you know who is meant), and never
 strip letters the writer DID write (the normalize rule below: diacritics
 are identity). A typo is not yours to correct; an accent is not yours to
 remove.
@@ -1018,10 +1096,20 @@ Normalization is MECHANICAL — the only changes you may make to the span:
 - Lowercase everything — but **keep every letter as the writer spelled it,
   diacritics included** ("Phở Lệ" → `phở lệ`, never `pho le`): accent marks
   are identity, and stripping them fuses different names downstream.
-- Collapse repeated whitespace; trim.
+- Collapse repeated whitespace; trim — and trim the SENTENCE's punctuation
+  off the span: a period, comma, exclamation mark, or question mark that
+  ends the writer's sentence is not part of the name ("Odd Duck." →
+  `odd duck`; "Hoovers!" → `hoovers`; "Justine's." → `justine's`), while
+  punctuation INSIDE the name stays ("Pho & Co.", "LOS TACOS No.1").
 - Keep the writer's punctuation as written — apostrophes, "&", periods are
   part of the observed form: "Joe's Pizza" → `joe's pizza`; "Pho & Co." →
-  `pho & co.`.
+  `pho & co.` — and write the CHARACTER, never an HTML entity ("Better
+  Half Coffee & Cocktails" → `better half coffee & cocktails`, never
+  `&amp;`). Every letter of the NAME stays, every accent stays, and none
+  is added ("Bouldin Creek Café" → `bouldin creek café`; "Tex Sueno" →
+  `tex sueno`, never `tex sueño`) — while the SENTENCE's own grammar
+  around the name (the possessive clitic that attaches it to a dish, the
+  period that ends the sentence — the two rules below) is not the name.
 - **Strip a possessive clitic used to attach the name to a dish**: "Nixta's
   duck carnitas tacos are crispy" is about a place written "Nixta" — the
   `'s` is this sentence's grammar, not the name. A possessive that IS the
@@ -1089,15 +1177,51 @@ combo`, "the Hangover Special" → `hangover special`; the article stays
   a standard eaten-and-judged review, and the dish is `kaiseki style
   omakase`; "experience" wording never demotes an ordered offering to
   an occasion.
-  **A bare format word is often a PRO-FORM.** When "the combo", "the
-  special", "that plate" points at a MORE SPECIFIC offering already
-  named for the SAME restaurant in scope ("I had the Khao Man Gai combo…
-  the combo is the best of both worlds"), it is a pro-form of that
-  offering — resolve it by the depth-aware order and emit the specific
-  name (`khao man gai combo`), one dish, exactly as C.2 resolves "the
-  mushroom based one". With no more specific antecedent, the bare word
-  stands as its own generic dish ("their omakase is incredible" →
-  `omakase`; "I got the combo" alone → `combo`).
+  **A DISH NAME NAMES WHAT ARRIVES.** Three probes on the phrase as the
+  clause uses it, in order:
+  (a) _Does it name the thing, or only its slot, its time, its mode, or
+  the wish to eat?_ A food or drink ("carnitas taco", "espresso"), a
+  house-named offering ("the Elvis Presley combo", "the Jess special",
+  "lazybones special"), or a format that IS the order ("omakase",
+  "tasting menu", "thali", "bento box", "espresso flight", "charcuterie
+  board", "lunch special", "2 meat plate") names the thing. A menu SLOT
+  ("appetizer", "entree", "side", "dessert", "drink"), a TIME
+  ("breakfast", "lunch", "brunch", "happy hour"), a MODE of service
+  ("buffet", "hot bar", "catering", "takeout"), or the wish itself
+  ("food", "a meal", "a plate of food") names no plate: alone, such a
+  word is never a dish. Praised as a whole, it is a PLACE property
+  instead ("their desserts are amazing" → `dessert` on the place, "great
+  for breakfast" → `breakfast`, "killer buffet" → `buffet` — Step D), so
+  a diner searching for great desserts or a good breakfast still finds
+  the place, without a fake dish. Welded to a food word it is that food's
+  order and stays as written ("breakfast taco", "side salad", "dinner
+  roll", "dessert tamale", "shrimp appetizer").
+  (b) _Would another diner, at another table, ask for it with the SAME
+  words?_ This is what makes a dish worth recording: a name many people
+  will say. "3 meat plate", "double double", "5 piece", "half chicken"
+  are how the menu itself names the order — the number stays. "21 course
+  omakase", "12-inch pie", "a dozen oysters", "9-pc dark meat order" are
+  the writer's quantity around an order — strip the quantity and emit the
+  order (`omakase`, `pie`, `oyster`, `dark meat`). A schedule is never a
+  name: "wednesday night special", "taco tuesday special", "happy hour
+  special" name when a deal runs, not what arrives — a recommended one
+  earns `affordable` and no dish (A.2's posture rule), while a special
+  named for FOOD or by a house COINAGE ("pork chop special", "grandpa's
+  special burrito", "the Jess special") is the dish arm's as ever.
+  (c) _Is it a STAND-IN?_ "the combo", "the special", "a slice", "the
+  bowl", "that plate", "the usual" point at something named elsewhere.
+  Resolve by the depth-aware order to the SAME-RESTAURANT offering the
+  scope names ("I had the Khao Man Gai combo… the combo is the best of
+  both worlds" → `khao man gai combo`; "the slice window at Homeslice" in
+  a thread titled "homeslice pizza" → `pizza slice` — the food word was
+  written in scope, so this is resolution, never invention). With no
+  antecedent, keep the bare word ONLY when it is the venue's own offering
+  by that name — "a bowl" at a bowl shop, "a slice" at a slice shop
+  ("grab a slice at Joe's" → `slice`) — exactly as written, no word
+  added; a stand-in with neither antecedent nor venue framing ("I got the
+  combo" with nothing in scope) emits no dish, and its clause's verdict
+  lands on the place as ever. Never build the food from your knowledge of
+  the menu; "pizza" enters `pizza slice` only when the scope wrote it.
 - **PRICES the offering → A.2's POSTURE rule decides.** When the clause
   QUOTES THE TERMS of a deal — a price, a schedule, a
   contents-inventory — ask A.2's one deal question, CLAUSE BY CLAUSE:
@@ -1183,15 +1307,21 @@ ordering-idiom "off the menu" ("I enjoy several things off the menu" is
 a live dish being eaten) — is ALIVE. Failing by definition:
 
 - wanting-anything words — "food", "a meal", "the food here", "drinks"/"a
-  drink" bare — name the desire to eat or drink, not a thing the server
-  could bring (a NAMED drink, "espresso", "margarita", is a dish as ever);
+  drink" bare, "appetizers"/"apps", "sides", "an entree", "the mains",
+  "a plate of food" — name the desire to eat or a menu POSITION, not a
+  thing the server could bring (a NAMED drink, "espresso", "margarita",
+  and a named side, "mac and cheese", are dishes as ever);
 - traditions and styles, however modified — "great Indian place", "red
   sauce italian food", bare "BBQ" (a tradition, not an order — "serves
   BBQ" banks nothing, while "brisket" or "bbq ribs" name orders) name
   no order (irreducible "comfort food" is the
   exception: carry it whole to Step D, where it is a style attribute);
 - a when-word praised holistically — "Dinner is super solid there" names
-  a clock, not an order;
+  a clock, not an order; and a when-word in the writer's own account of
+  going ("I've been for brunch or happy hour and it's consistently
+  good", "went for lunch") names WHEN they went, never what they ate —
+  no dish, the verdict lands on the place, and the occasion is a place
+  attribute (`brunch`, `happy hour`);
 - the kind of place it is — a cocktail bar does not thereby serve a dish
   called "cocktail".
 
@@ -1205,10 +1335,13 @@ C.2. Food language in a clause that earned nothing — a price complaint
 could happily get one for $10 at NG Cafe" — the named item is priced
 and complained about, never vouched, and births no dish at the
 complained-about place however specifically it is named; and the
-cheaper alternative is a subjunctive benchmark — A.3's asymmetry, which
-licenses ONLY eaten-experience benchmarks: `affordable` at most for the
-alternative, and its banh mi is priced, not vouched — no dish on
-EITHER side), a pan ("no flavor at all"), an UNPROMPTED deal or
+cheaper alternative is judged by A.2's DEAL POSTURE: held up as the
+BETTER value — "you can get a truly world-class meal at Pujol for the
+same money", "I could happily get one for $10 at NG Cafe" — it is a
+RECOMMENDED deal, and a recommended deal is food testimony: the
+alternative earns its place carrier and `affordable`, and its named food
+is a dish; merely PRICED with no better-value claim, it is a fact and
+earns nothing), a pan ("no flavor at all"), an UNPROMPTED deal or
 availability aside ("half off oysters on Wednesdays" dropped
 mid-story — a source VOLUNTEERED to a thread that wants the thing
 banks its item instead, A.1's volunteer principle), narration or a
@@ -1235,11 +1368,18 @@ UNQUALIFIED PICK** — a source that passes the TESTIMONY TEST while
 answering a dish-targeted ask (by bare name or with its own verdict
 words, "Desano and Homeslice are all great"), and whose own text neither
 names food nor hedges/re-scopes the pick — inherits the ASK's food
-language: EVERY dish phrase the ask composed — an either/or ask ("best
-phở or bún bò Huế?") bequeaths each named dish, never a forced choice —
-each phrase, as the asker
-composed it, walking these same gates, C.2, and Step D exactly as if this
-source had written it — "best burger in EV?" → `burger`; "crispy
+language: the dish phrase(s) the ask LEADS with — when the ask offers
+INTERCHANGEABLE alternatives ("best crab rangoon? best cream cheese
+wonton?", "best phở or bún bò Huế?") a bare pick inherits each of them
+(the asker would be happy with either, so a bare name answers both);
+when the ask's dishes are genuinely different things, a bare name
+inherits the one it plainly answers, and a reply that names its OWN dish
+inherits nothing (its dish is the link) — each inherited phrase, as the
+asker composed it, walking these same gates, C.2, and Step D exactly as
+if this source had written it — and an ask's TIME or MODE word
+("anniversary dinner", "brunch spot", "lunch near campus") inherits
+nothing as a dish (C.1: an occasion is never a dish; it reaches the pick
+only as a place attribute if the ask REQUIRED it) — "best burger in EV?" → `burger`; "crispy
 shoestring fries?" → `shoestring fry` with `crispy` peeling into
 `item_attributes` by D's normal tests; and in the asker's own spelling
 ("Best pho in Austin?" bequeaths `pho`, never a restored "phở" — C.2's
@@ -1276,7 +1416,8 @@ inherited — Step E.)
    - "carnitas taco", "tonkotsu ramen", "duck carnitas taco" — the specifier
      changes what arrives; keep it.
    - "breakfast taco" — a different order from "a taco"; **never** peel the
-     word out. "thin crust pizza" is the
+     word out. "oysters on the half shell" is the order, not "oysters" —
+     a preparation the diner names when ordering stays in the name. "thin crust pizza" is the
      same shape: ordering "the thin crust pizza" and "the pizza" are
      different orders, so the style words STAY in the dish name — a style
      word inside an order-name is never peeled off into an attribute (and
@@ -1407,12 +1548,16 @@ clear two bars to become an attribute.
 words.** Surrounding context — the ask, parent comments, siblings — resolves
 the SUBJECTS of a claim (which place, which dish; Steps B and E); it never
 supplies what is CLAIMED about them. One choice speaks: **an unqualified
-pick answering a constrained ask asserts fit** — EVERY venue-level
-constraint word the ask wrote ("romantic", "cheap", "outdoor seating", a
+pick answering a constrained ask asserts fit** — every venue-level
+REQUIREMENT the ask wrote ("romantic", "cheap", "outdoor seating", a
 cuisine like "mexican"), each one, canonicalized, walking D.1/D.2 like
 any stated word — a multi-constraint ask ("cheap romantic spot with a
-patio?") loads ALL of its venue-level words onto the pick, never just
-the most salient — and never its DISH words ("best tacos?" → `taco`
+patio?") loads ALL of its venue-level requirements onto the pick, never
+just the most salient. **A requirement is what would make an answer
+WRONG; a wish is not one.** "Bonus points if affordable", "ideally with
+a patio", "nice to have parking" are wishes — a pick asserts nothing
+from them (the reply's OWN words can still state them). The ask's
+SITUATION is never a requirement either (below) — and never its DISH words ("best tacos?" → `taco`
 is C.1 Gate 3's inheritance into the food slot, never an attribute): the answerer chose this place BECAUSE it fits what was asked, and
 that choice vouches for the fit. **The ask a pick answers is found by
 the depth-aware order**: a pick replying to an intermediate comment
@@ -1424,7 +1569,15 @@ canonicalization.** A fit-asserted word is a word the ASK WROTE, folded
 to its one canonical spelling exactly as D.5 folds any stated word —
 "won't break the bank", "cheap", "good value" are the ask's OWN value
 words and fold to `affordable`; "ambiance" folds to `atmosphere`
-wording. What canonicalization NEVER licenses is semantic inference
+wording; "won't cost an arm and a leg" is `affordable`. The ask's
+property word itself is kept ("patio" stays `patio`, never re-said as
+"outdoor seating" — a fit word is a QUOTATION). Where you DO choose the
+word is a writer's own DESCRIBING clause with no property word in it
+("we sat outside and it was lovely" → `outdoor seating`; "there were a
+lot of kids there" → `family-friendly`): pick the plainest common word
+a diner would filter by — the vocabulary downstream aliases synonyms,
+so your job is the RIGHT word, not a listed one. What
+canonicalization NEVER licenses is semantic inference
 from the ask's SITUATION — "My parents (in their late 50s) are
 visiting … suggest places" writes no `family-friendly`, and a pick
 under it carries none; "my sister is vegan" writes `vegan`, and a pick
@@ -1653,8 +1806,9 @@ Scope follows **what the property describes**, not where the word sits.
   no-double-ride rule: they ride the name AND the arrays, because the
   search toggle reads only the arrays.
 - **Styles and pure occasions**: styles ("comfort food", "street food") and
-  when-only occasions ("lunch", "dinner", "late-night", "happy hour") are
-  properties. Tied to a dish they are `item_attributes`; describing the place
+  when-only occasions and formats ("breakfast", "lunch", "dinner",
+  "brunch", "late-night", "happy hour", "buffet", "hot bar") are
+  properties, never dishes. Tied to a dish they are `item_attributes`; describing the place
   ("great happy hour", "open late") they are `place_attributes`. A style
   named with no dish ("great comfort food here") lands whole on
   `place_attributes` so the place stays searchable.
@@ -1722,6 +1876,58 @@ if the place cannot be resolved with confidence, skip the mention.
 
 ## Step F — Assemble the output
 
+### F.0 THE ASSEMBLY — everything a source earned, per restaurant
+
+**The most common way a correct reading becomes a wrong output is emitting
+ONE mention when the source earned SEVERAL.** Before writing any mention,
+walk this list for each restaurant the source credits, and emit every line
+that applies — they are independent, and each stands on its own clause:
+
+1. **The carrier** (`general_praise: true`, one PLACE mention per source per
+   restaurant): owed when the source is a PICK under a JUDGMENT ask (bare
+   or annotated, with or without a dish beside it), an AFFIRMATION of such
+   a pick, or holds a place-subject verdict that lands above the ordinary
+   (F.1). A pick whose OWN annotation lands it at or below the ordinary
+   ("Kolache Factory (not spectacular but on cheaper side)") is a pick the
+   writer disclaimed — no carrier, and no fit word rides it, whatever the
+   ask asked for; only its neighbours that landed above still carry. A
+   name answering a FACT ask — hours, capacity ("50+ breakfast
+   tacos by 7am"), a room, a policy — asserts fit with the capability and
+   earns nothing, even as "my go to for this problem" (A.1's ONE
+   QUESTION); the worksheet's act for it is "fit (fact ask)", never
+   "pick".
+2. **The inherited dish**: an unqualified pick under a dish-targeted ask
+   emits the ask's dish at this place, `is_menu_item: false` (C.1 Gate 3) —
+   BESIDE the carrier, never instead of it.
+3. **Each own dish**: every food this source's passing clauses name at this
+   place, composed as written (C.2), one mention per dish.
+4. **Each attribute**, on the side it describes, from this source's own
+   words or the ask's requirements, with per-word blocking (Step D) — on the
+   carrier for place properties, on the dish for dish properties.
+5. **Each VOLUNTEERED item** (A.1's volunteer principle): a clause that
+   hands an asker the thing they wanted — "F&D does dollar oysters on
+   Tuesday", "El Mercado has a wide variety of enchiladas", "Wheatsville
+   has a bacon egg & cheese bagel, $7-8" — banks that item at that place
+   with NO carrier (the writer stated a fact and chose to answer; the
+   endorsement is the item, not the place), plus `affordable` when the
+   volunteered thing is a deal. A volunteered DEAL that names no food
+   ("kids eat free at Dickey's") is a PLACE mention with `affordable` and
+   `general_praise: false` — never a carrier: nobody picked Dickey's, they
+   handed over a deal. Only a PICK or a place-subject verdict earns line 1.
+6. **Only what PASSED the gates**: this list never adds a mention the
+   steps refused — a style ("comfort food"), a slot ("appetizer"), an
+   occasion ("dinner"), a tradition ("red sauce italian food") stays out
+   of `item` even when the assembly asks for "each dish"; it lands as the
+   attribute Step D gave it, or nowhere.
+7. **Each source pointer**: `place_source_id` names the source that WROTE
+   the name (this one when it did); `source_id` is always this source.
+
+A source with five passing clauses about one place is one carrier plus up
+to five dishes; a bare "Hoover's!" under "best mashed potatoes?" is one
+carrier plus one inherited dish; "Everything is good, the chicken fried
+steak especially" is one carrier plus one dish. Writing the worksheet
+(`sources`, F.2) is how you prove to yourself the list was walked.
+
 ### F.1 `general_praise`
 
 `general_praise: true` marks **THE CARRIER of holistic, place-level
@@ -1730,9 +1936,16 @@ city", or
 a name offered as the writer's own pick (the ANSWER TEST, A.1). Decide
 placement by what the praise NAMES:
 
-- **Aimed at a dish** ("the brisket is unreal") → that DISH mention — the
-  praise IS the dish connection; no carrier is created and a dish mention
-  carries no praise flag.
+- **Aimed at a dish, in a source that is NOT a pick** ("the brisket is
+  unreal" in a review) → that DISH mention — the praise IS the dish
+  connection; no carrier is created and a dish mention carries no praise
+  flag. (A PICK that names a dish is the next arm: the dish AND the
+  carrier — "Lo Salvaje has a fried quail sandwich that is insane" under
+  a rec ask emits `fried quail sandwich` at Lo Salvaje AND Lo Salvaje's
+  carrier at `true`, from this source's id. The writer chose the place;
+  the dish is what they chose it for. One comment is never two votes
+  downstream — the scorer counts a source once per restaurant and once
+  per dish — so the carrier is owed, never inflationary.)
 - **Aimed at the place as a whole** (or an ANSWER-TEST pick) → ONE PLACE
   mention with `general_praise: true`, per source per restaurant. **An
   ANSWER-TEST pick ALWAYS produces this carrier** — including when the
@@ -1804,6 +2017,46 @@ service` records service praise). Availability, popularity, and a
 REPORTED deal are never endorsement (Step A.2) and emit nothing.
 
 ### F.2 Fields
+
+**The response has two parts, in this order: `sources`, then `mentions`.**
+
+`sources` is your WORKSHEET — one entry per EMITTING source in the payload
+(every comment without `context_only`, and the post body when
+`extract_from_post` is true), in payload order, including sources that
+emit nothing. Each entry is short and factual:
+
+- `id` — the source's id.
+- `subjects` — the places and foods this source speaks about (A.0 step 1;
+  an occasion, a slot, or a style is never a food subject — it is an
+  attribute candidate),
+  as a short comma-separated line, each written with THE WORDS THIS SOURCE
+  USED (the same span the mention will carry — "Leroy", not the fuller
+  "Leroy and Lewis" from the title; "Bun Belly", not "Bun Belly's");
+  "none" when there are none.
+- `acts` — one phrase per subject naming the act (verdict / fact / plan /
+  ask / hearsay / steer / pick / affirmation / volunteer / account) and
+  where it landed (above, at, below, or gone); for a FOOD subject, also
+  the C.1 gate it fails, if any ("rice: verdict (above), fails Gate 2 —
+  lone ingredient"; "brunch: fails Gate 1 — occasion"; "3/4 course menu:
+  fails Gate 1 — menu wrapper"; "japanese: fails Gate 2 — cuisine";
+  "drink: fails Gate 2 — wanting-word") — a food that fails a gate owns no dish
+  temp_id, however warm its verdict. "volunteer" is a fact
+  handed to an asker's want (it BANKS the item — line 5 of F.0, never
+  "fact (at)"); "account" is the writer's own eaten item inside a visit
+  report ("we also ordered the salt and pepper squid" — a dish, A.1's
+  experience narration, never a stock fact).
+- `inherits` — what the source takes from the ask or a parent: "dish:
+  taco", "fit: affordable, patio", "referent: Franklin", or "nothing".
+- `emits` — the temp_ids of the mentions this source produced, or "none"
+  with the one test that silenced it ("hearsay", "shelf", "plan", "closed",
+  "lands at ordinary", "unnamed maker", "fact ask"). A "volunteer" act
+  owns DISH temp_ids only (never a carrier); a "pick (at)" or "pick
+  (below)" owns none; a food subject that failed a gate owns none.
+
+The worksheet is not commentary; it is the procedure written down. Fill it
+BEFORE the mentions, from the steps above, and let it decide what the
+mentions are — a subject with a passing verdict in `acts` and no temp_id
+in `emits` is a mistake you can see.
 
 Every mention carries these fields:
 

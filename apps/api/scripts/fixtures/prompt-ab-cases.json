@@ -2016,7 +2016,7 @@
   },
   {
     "id": "V14m-title-only-caption",
-    "why": "v13 MAJOR 13c92a27, re-ruled under D4 (2026-08-30): 'Woodneck Kitchen - The Poor Joe', a verdict-free photo caption, emitted a fabricated dish mention (it invented a 'sandwich' classification). No clause passed Step A, so nothing emits — with categories knowledge-side the fabrication surface is the mention itself.",
+    "why": "RE-RULED 2026-09-04 (owner): a diner's own photo caption 'Woodneck Kitchen - The Poor Joe' is the same act as 'X at Y' in a reply — an eaten account offered to the community — and emits the dish at the place (no fabricated verdict words needed; the connection is the endorsement).",
     "posts": [
       {
         "id": "SRC001",
@@ -2027,7 +2027,8 @@
       }
     ],
     "expect": {
-      "emitsNothing": true
+      "places": ["woodneck kitchen"],
+      "items": ["poor joe"]
     }
   },
   {
@@ -3741,7 +3742,7 @@
   },
   {
     "id": "N42-vouch-test-findability-slices",
-    "why": "FLIPPED 2026-09-01 (Ruling 1): 'Cherrywood Coffeehouse sells cold slices of pie and cake' answering a where-can-I-get-slices ask is a volunteered source — pie and cake bank there.",
+    "why": "FLIPPED 2026-09-01 (Ruling 1): 'Cherrywood Coffeehouse sells cold slices of pie and cake' answering a where-can-I-get-slices ask is a volunteered source — pie and cake bank there. (re-pinned 2026-09-04: the handed thing is a SLICE of pie/cake — `pie slice`, `cake slice`, resolved from the words the source wrote; no carrier for a volunteered source)",
     "contract": "v17",
     "posts": [
       {
@@ -3763,7 +3764,8 @@
         {
           "source": "t1_n42",
           "places": ["cherrywood coffeehouse"],
-          "items": ["pie", "cake"]
+          "items": ["pie slice", "cake slice"],
+          "noPraise": true
         }
       ]
     }
@@ -5473,7 +5475,7 @@
   {
     "id": "FA37-price-complaint-births-no-dish",
     "contract": "v17",
-    "why": "Audit O2 (doc f5344b95): a price complaint names food and births no dish at the complained-about place, however specifically named — priced, not vouched; no praise carrier anywhere.",
+    "why": "Audit O2 (doc f5344b95): a price complaint names food and births no dish at the complained-about place, however specifically named — priced, not vouched; no praise carrier anywhere. (re-ruled 2026-09-04, owner: the cheaper alternative held up as the BETTER value is a recommended deal — NG Cafe earns its carrier + affordable and its banh mi; Elizabeth Street's priced banh mi still births nothing)",
     "posts": [
       {
         "id": "t3_fa37",
@@ -5493,10 +5495,12 @@
       "perSource": [
         {
           "source": "t1_fa37",
-          "notFoods": ["banh mi"],
-          "noPraise": true
+          "places": ["ng cafe"],
+          "attributes": ["affordable"],
+          "somePraise": true
         }
-      ]
+      ],
+      "notRestaurants": ["elizabeth street cafe"]
     }
   },
   {
@@ -6447,7 +6451,7 @@
   {
     "id": "FA71-treat-list-with-rider",
     "contract": "v17",
-    "why": "Ruling 3 (doc 0ff1d6b4): a habitual treat list emits its dishes however long the health rider around it — habitual choice is the verdict.",
+    "why": "Ruling 3 (doc 0ff1d6b4): a habitual treat list emits its dishes however long the health rider around it — habitual choice is the verdict. (re-pinned 2026-09-04: C.2's natural singular — `oyster on the half shell`)",
     "posts": [
       {
         "id": "t3_fa71",
@@ -6473,7 +6477,7 @@
         {
           "source": "t1_fa71b",
           "places": ["quality seafood"],
-          "items": ["oysters on the half shell", "lobster bisque", "gumbo"]
+          "items": ["oyster on the half shell", "lobster bisque", "gumbo"]
         }
       ]
     }

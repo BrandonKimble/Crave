@@ -296,8 +296,43 @@ const TEMP_ID_SCHEMA = withDescription(
 export const COLLECTION_RESPONSE_JSON_SCHEMA = {
   type: 'object',
   description:
-    'Restaurant and food mentions extracted from food community content',
+    'Restaurant and food mentions extracted from food community content — the per-source worksheet first, then the mentions it produced',
   properties: {
+    // THE WORKSHEET (v24, from the 1,000-mention audit 2026-09-04): at LOW
+    // thinking the model knows the rules and skips the procedure — it cites
+    // the opposing instruction itself 91% of the time it is wrong, and emits
+    // one mention where the source earned several. Writing the decomposition
+    // into the output makes the procedure run, and records the reasoning
+    // behind every mention (the audit had to interview the model post hoc).
+    sources: {
+      type: 'array',
+      description:
+        'One entry per EMITTING source in the payload, in payload order, including sources that emit nothing: the decision procedure written down BEFORE the mentions (subjects → acts and landings → what is inherited → what was emitted)',
+      items: {
+        type: 'object',
+        properties: {
+          id: SOURCE_ID_SCHEMA,
+          subjects: withDescription(
+            { type: 'string' },
+            'The places and foods this source speaks about, comma-separated; "none" when there are none',
+          ),
+          acts: withDescription(
+            { type: 'string' },
+            'One phrase per subject: its act (verdict / fact / plan / ask / hearsay / steer / pick / affirmation) and where it landed (above / at / below / gone)',
+          ),
+          inherits: withDescription(
+            { type: 'string' },
+            'What this source takes from the ask or a parent — "dish: taco", "fit: affordable, patio", "referent: Franklin" — or "nothing"',
+          ),
+          emits: withDescription(
+            { type: 'string' },
+            'The temp_ids this source produced, comma-separated, or "none" followed by the one test that silenced it (hearsay, shelf, plan, closed, lands at ordinary, unnamed maker, fact ask)',
+          ),
+        },
+        required: ['id', 'subjects', 'acts', 'inherits', 'emits'],
+        propertyOrdering: ['id', 'subjects', 'acts', 'inherits', 'emits'],
+      },
+    },
     mentions: {
       type: 'array',
       description:
@@ -389,7 +424,8 @@ export const COLLECTION_RESPONSE_JSON_SCHEMA = {
       },
     },
   },
-  required: ['mentions'],
+  required: ['sources', 'mentions'],
+  propertyOrdering: ['sources', 'mentions'],
 } as const;
 
 /**
@@ -427,6 +463,19 @@ export function collectionResponseJsonSchemaForSourceRefs(
         };
       };
     };
+  };
+  // The worksheet names EMITTING sources only, like source_id.
+  (
+    schema as unknown as {
+      properties: {
+        sources: { items: { properties: Record<string, unknown> } };
+      };
+    }
+  ).properties.sources.items.properties.id = {
+    type: 'string',
+    enum: [...(emittingRefs?.length ? emittingRefs : sourceRefs)],
+    description:
+      'Chunk-local id of an EMITTING source (never a context_only comment)',
   };
   for (const variant of schema.properties.mentions.items.anyOf) {
     variant.properties.source_id = {

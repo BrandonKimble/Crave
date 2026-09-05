@@ -141,3 +141,23 @@ the model is asked to run.
    fills BEFORE `mentions`. At LOW thinking the model skips the procedure; writing it
    down makes it run, and it records the reasoning for every mention.
 4. Delete the sentences that only exist to argue with each other.
+
+## Certification (2026-09-05, 284-case deck, 3 repeats, temperature 0)
+
+| text | PASS | FLAKY | FAIL |
+|---|---|---|---|
+| v24 (this text), run 7 | 276 | 7 | 1 |
+| v24, run 6 | 276 | 7 | 1 |
+| v23 CONTROL at today's settings (temp 0, three pins moved by owner rulings) | 270 | 4 | 10 |
+
+The deck's own noise at temperature 0 is 4–8 cases per 3× run; the set churns between
+runs (D3, D11, V14l, G59, FA37 …). v23's historic "284/284 ×3" was at temperature 0.1
+against pins tuned to it over many rounds. On the same deck at the same settings v24 is
+ahead by six to ten cases. Stubborn-in-both: N42 (a clause that both names a place under a
+craving ask and hands the item — the model flips between pick and volunteer), FA71
+(peels "on the half shell"), ML1 (Vietnamese menu wrapper). Two run-7 failures were
+mid-JSON truncations on 100+-comment deck cases (67k-character replies); production
+windows are ≤30 comments — watch parse failures in the shadow.
+
+Pins moved by owner rulings: FA37 (value benchmark vouches), V14m (photo caption
+vouches), N42 (`pie slice`/`cake slice`), FA71 (natural singular).
